@@ -1,5 +1,5 @@
 type SignalingMessage = {
-  type: 'offer' | 'answer' | 'candidate' | 'connected' | 'peer_disconnected';
+  type: "offer" | "answer" | "candidate" | "connected" | "peer_disconnected";
   payload: {
     clientId?: string;
     [key: string]: any;
@@ -9,15 +9,15 @@ type SignalingMessage = {
 };
 
 type SignalingEventMap = {
-  'connected': { clientId: string };
-  'peer_disconnected': { clientId: string };
-  'offer': RTCSessionDescriptionInit;
-  'answer': RTCSessionDescriptionInit;
-  'candidate': RTCIceCandidateInit;
+  connected: { clientId: string };
+  peer_disconnected: { clientId: string };
+  offer: RTCSessionDescriptionInit;
+  answer: RTCSessionDescriptionInit;
+  candidate: RTCIceCandidateInit;
 };
 
 const createSignaling = () => {
-  const url = 'ws://localhost:8080';  // シグナリングサーバーのURL
+  const url = "ws://localhost:8080"; // シグナリングサーバーのURL
   let ws: WebSocket | null = null;
   let clientId: string | null = null;
   const eventHandlers = new Map<string, Function[]>();
@@ -26,49 +26,49 @@ const createSignaling = () => {
     ws = new WebSocket(url);
 
     ws.onopen = () => {
-      console.log('シグナリングサーバーに接続しました');
+      console.log("シグナリングサーバーに接続しました");
     };
 
     ws.onmessage = (event) => {
       try {
         const message: SignalingMessage = JSON.parse(event.data);
-        console.log('受信したメッセージ:', message);
+        console.log("受信したメッセージ:", message);
         handleMessage(message);
       } catch (e) {
-        console.error('メッセージの解析に失敗:', e);
+        console.error("メッセージの解析に失敗:", e);
       }
     };
 
     ws.onerror = (error) => {
-      console.error('WebSocket エラー:', error);
+      console.error("WebSocket エラー:", error);
     };
 
     ws.onclose = () => {
-      console.log('シグナリングサーバーから切断されました');
+      console.log("シグナリングサーバーから切断されました");
       clientId = null;
     };
   };
 
   const handleMessage = (message: SignalingMessage) => {
-    console.log('受信したメッセージ:', message);
+    console.log("受信したメッセージ:", message);
 
-    if (message.type === 'connected' && 'clientId' in message.payload) {
+    if (message.type === "connected" && "clientId" in message.payload) {
       clientId = message.payload.clientId;
     }
 
     const handlers = eventHandlers.get(message.type) || [];
-    handlers.forEach(handler => handler(message.payload));
+    handlers.forEach((handler) => handler(message.payload));
   };
 
   const send = (message: SignalingMessage) => {
     if (ws?.readyState === WebSocket.OPEN) {
-      console.log('送信するメッセージ:', message);
+      console.log("送信するメッセージ:", message);
       if (clientId && message.to) {
         message.from = clientId;
       }
       ws.send(JSON.stringify(message));
     } else {
-      console.error('WebSocket接続が確立されていません');
+      console.error("WebSocket接続が確立されていません");
     }
   };
 
@@ -82,7 +82,7 @@ const createSignaling = () => {
     connect,
     send,
     on,
-    getClientId: () => clientId
+    getClientId: () => clientId,
   };
 };
 

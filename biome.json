@@ -1,32 +1,13 @@
 {
   "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
-  "vcs": {
-    "enabled": false,
-    "clientKind": "git",
-    "useIgnoreFile": false
-  },
   "files": {
     "ignoreUnknown": true,
     "include": ["*.ts", "*.json"],
-    "ignore": ["cdk.out", "*.d.ts", "*.tmp.ts", "package-lock.json"]
+    "ignore": ["cdk.out", "*.d.ts"]
   },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
     "lineWidth": 120
-  },
-  "organizeImports": {
-    "enabled": true
-  },
-  "linter": {
-    "enabled": true,
-    "rules": {
-      "recommended": true
-    }
-  },
-  "javascript": {
-    "formatter": {
-      "quoteStyle": "double"
-    }
   }
 }

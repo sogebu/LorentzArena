@@ -13,9 +13,9 @@
     "lint": "biome check --write --unsafe"
   },
   "devDependencies": {
-    "biome": "^0.3.3",
-    "typescript": "^5.3.3",
-    "vite": "^6.1.0"
+    "@biomejs/biome": "^1.9.4",
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0"
   },
   "volta": {
     "node": "22.14.0",
