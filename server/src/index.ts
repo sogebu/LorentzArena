@@ -43,12 +43,12 @@ wss.on("connection", (ws: WebSocket) => {
       }
       // ブロードキャスト（送信元以外の全クライアントへ）
       else {
-        clients.forEach((c) => {
+        for (const [_, c] of clients) {
           if (c.id !== clientId) {
             message.from = clientId;
             c.ws.send(JSON.stringify(message));
           }
-        });
+        }
       }
     } catch (e) {
       console.error("メッセージ処理エラー:", e);
@@ -60,7 +60,7 @@ wss.on("connection", (ws: WebSocket) => {
     clients.delete(clientId);
 
     // 他のクライアントに切断を通知
-    clients.forEach((c) => {
+    for (const [_, c] of clients) {
       if (c.id !== clientId) {
         c.ws.send(
           JSON.stringify({
@@ -69,7 +69,7 @@ wss.on("connection", (ws: WebSocket) => {
           }),
         );
       }
-    });
+    }
   });
 });
 
