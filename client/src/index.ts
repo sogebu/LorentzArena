@@ -1,8 +1,11 @@
+import { PongGame } from "./game";
 import { createSignaling } from "./signaling";
 
 const createGameConnection = () => {
   let peerConnection: RTCPeerConnection | null = null;
   let dataChannel: RTCDataChannel | null = null;
+  let isHost = false;
+  let remoteClientId: string | null = null;
   const signaling = createSignaling();
 
   const statusElement = document.getElementById("connectionStatus") as HTMLDivElement;
@@ -11,142 +14,163 @@ const createGameConnection = () => {
   const createOfferButton = document.getElementById("createOfferButton") as HTMLButtonElement;
   const sendTestMessageButton = document.getElementById("sendTestMessage") as HTMLButtonElement;
 
-  const updateStatus = (status: string) => {
-    statusElement.textContent = `接続状態: ${status}`;
-  };
+  if (sendTestMessageButton) {
+    sendTestMessageButton.textContent = "ゲーム開始";
+  }
 
-  const updateDebugInfo = () => {
-    const info = [
-      `クライアントID: ${signaling.getClientId() || "未取得"}`,
-      `WebRTC状態: ${peerConnection?.connectionState || "未接続"}`,
-      `DataChannel状態: ${dataChannel?.readyState || "未接続"}`,
-    ];
-    debugInfoElement.innerHTML = info.join("<br>");
+  const updateStatus = (status: string) => {
+    if (statusElement) {
+      statusElement.textContent = status;
+    }
   };
 
   const addMessage = (message: string) => {
-    const messageDiv = document.createElement("div");
-    messageDiv.className = "message";
-
-    const time = new Date().toLocaleTimeString();
-    messageDiv.innerHTML = `
-      <span class="message-time">[${time}]</span>
-      ${message}
-    `;
-
-    messagesElement.appendChild(messageDiv);
-    messagesElement.scrollTop = messagesElement.scrollHeight;
+    if (messagesElement) {
+      const messageElement = document.createElement("div");
+      messageElement.textContent = `${new Date().toLocaleTimeString()} ${message}`;
+      messagesElement.appendChild(messageElement);
+      messagesElement.scrollTop = messagesElement.scrollHeight;
+    }
   };
 
-  const initConnection = async () => {
+  const updateDebugInfo = () => {
+    if (debugInfoElement) {
+      debugInfoElement.innerHTML = `
+        クライアントID: ${signaling.getClientId() || "未取得"}<br>
+        WebRTC状態: ${peerConnection?.connectionState || "未接続"}<br>
+        DataChannel状態: ${dataChannel?.readyState || "未接続"}
+      `;
+    }
+  };
+
+  const initConnection = () => {
     signaling.connect();
 
-    signaling.on("connected", ({ clientId }: { clientId: string }) => {
-      addMessage(`シグナリングサーバーに接続しました（ID: ${clientId}）`);
-      updateStatus("シグナリングサーバーに接続済み");
+    signaling.on("connected", (payload) => {
+      console.log("シグナリングサーバーに接続:", payload);
+      updateStatus(`シグナリングサーバーに接続（ID: ${payload.clientId}）`);
       createOfferButton.disabled = false;
       updateDebugInfo();
     });
 
-    signaling.on("peer_disconnected", ({ clientId }: { clientId: string }) => {
-      addMessage(`ピア切断: ${clientId}`);
+    signaling.on("offer", (payload) => {
+      console.log("オファーを受信:", payload);
+      remoteClientId = payload.from;
+      handleOffer(payload);
     });
 
-    signaling.on("offer", async (offer: RTCSessionDescriptionInit) => {
-      if (!peerConnection) {
-        await setupPeerConnection();
+    signaling.on("answer", async (payload) => {
+      console.log("アンサーを受信:", payload);
+      if (peerConnection) {
+        try {
+          await peerConnection.setRemoteDescription(payload);
+        } catch (e) {
+          console.error("アンサーの設定に失敗:", e);
+        }
       }
-      await peerConnection?.setRemoteDescription(offer);
-      const answer = await peerConnection?.createAnswer();
-      await peerConnection?.setLocalDescription(answer);
-      signaling.send({
-        type: "answer",
-        payload: answer,
-      });
     });
 
-    signaling.on("answer", async (answer: RTCSessionDescriptionInit) => {
-      await peerConnection?.setRemoteDescription(answer);
+    signaling.on("candidate", async (payload) => {
+      console.log("ICE candidateを受信:", payload);
+      if (peerConnection) {
+        try {
+          await peerConnection.addIceCandidate(payload);
+        } catch (e) {
+          console.error("ICE candidateの追加に失敗:", e);
+        }
+      }
     });
 
-    signaling.on("candidate", async (candidate: RTCIceCandidateInit) => {
-      await peerConnection?.addIceCandidate(candidate);
-    });
-
-    // 定期的なデバッグ情報の更新
-    setInterval(updateDebugInfo, 1000);
-  };
-
-  const setupPeerConnection = async () => {
+    // WebRTC接続の初期化
     peerConnection = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
-
-    // 接続状態の変更を監視
-    peerConnection.onconnectionstatechange = () => {
-      updateStatus(`WebRTC: ${peerConnection?.connectionState}`);
-      updateDebugInfo();
-    };
 
     peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
         signaling.send({
           type: "candidate",
           payload: event.candidate,
+          to: remoteClientId,
         });
       }
     };
 
-    dataChannel = peerConnection.createDataChannel("gameData");
+    // データチャネルの設定
+    dataChannel = peerConnection.createDataChannel("game");
     setupDataChannel(dataChannel);
 
     peerConnection.ondatachannel = (event) => {
       setupDataChannel(event.channel);
     };
+
+    updateDebugInfo();
   };
 
   const setupDataChannel = (channel: RTCDataChannel) => {
-    channel.onmessage = (event) => {
-      addMessage(`受信: ${event.data}`);
-    };
+    dataChannel = channel;
 
     channel.onopen = () => {
       updateStatus("ピア接続済み");
       addMessage("データチャネルが開きました");
       sendTestMessageButton.disabled = false;
       updateDebugInfo();
+
+      console.log("接続役割:", isHost ? "ホスト" : "ゲスト");
+      game.setDataChannel(channel, isHost);
     };
 
     channel.onclose = () => {
-      updateStatus("切断");
+      updateStatus("ピア切断");
       addMessage("データチャネルが閉じました");
       sendTestMessageButton.disabled = true;
+      updateDebugInfo();
+    };
+
+    channel.onerror = (error) => {
+      console.error("データチャネルエラー:", error);
+      addMessage("データチャネルでエラーが発生しました");
       updateDebugInfo();
     };
   };
 
   const createOffer = async () => {
-    if (!peerConnection) {
-      await setupPeerConnection();
-    }
-
+    if (!peerConnection) return;
+    isHost = true;
     try {
-      const offer = await peerConnection?.createOffer();
-      await peerConnection?.setLocalDescription(offer);
-
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
       signaling.send({
         type: "offer",
         payload: offer,
+        to: remoteClientId,
       });
     } catch (e) {
       console.error("オファーの作成に失敗:", e);
     }
   };
 
-  const sendMessage = (message: string) => {
+  const handleOffer = async (offer: RTCSessionDescriptionInit) => {
+    if (!peerConnection) return;
+    isHost = false;
+    try {
+      await peerConnection.setRemoteDescription(offer);
+      const answer = await peerConnection.createAnswer();
+      await peerConnection.setLocalDescription(answer);
+      signaling.send({
+        type: "answer",
+        payload: answer,
+        to: remoteClientId,
+      });
+    } catch (e) {
+      console.error("オファーの処理に失敗:", e);
+    }
+  };
+
+  const sendMessage = () => {
     if (dataChannel?.readyState === "open") {
-      dataChannel.send(message);
-      addMessage(`送信: ${message}`);
+      game.start();
+      addMessage("ゲームを開始しました");
     } else {
       addMessage("エラー: 接続が確立されていません");
     }
@@ -160,17 +184,18 @@ const createGameConnection = () => {
 };
 
 // ゲームの初期化
-const game = createGameConnection();
+const game = new PongGame();
+const connection = createGameConnection();
 
 // UIイベントの設定
 document.getElementById("connectButton")?.addEventListener("click", () => {
-  game.init();
+  connection.init();
 });
 
 document.getElementById("createOfferButton")?.addEventListener("click", () => {
-  game.createOffer();
+  connection.createOffer();
 });
 
 document.getElementById("sendTestMessage")?.addEventListener("click", () => {
-  game.sendMessage("テストメッセージ");
+  connection.sendMessage();
 });
