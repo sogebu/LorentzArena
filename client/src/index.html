@@ -26,6 +26,28 @@
             gap: 10px;
             margin-bottom: 20px;
         }
+        .debug-info {
+            font-family: monospace;
+            background-color: #f8f8f8;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        #messages {
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 10px;
+            font-family: monospace;
+        }
+        .message {
+            padding: 4px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .message-time {
+            color: #666;
+            font-size: 0.8em;
+        }
     </style>
 </head>
 <body>
@@ -34,14 +56,23 @@
             接続状態: 未接続
         </div>
         
+        <div class="debug-info" id="debugInfo">
+            クライアントID: 未取得
+            <br>
+            WebRTC状態: 未接続
+            <br>
+            DataChannel状態: 未接続
+        </div>
+
         <div class="game-area">
             <h2>ゲームエリア</h2>
             <!-- ここにゲームのキャンバスなどを追加予定 -->
         </div>
 
         <div class="controls">
-            <button id="connectButton">接続開始</button>
-            <button id="sendTestMessage">テストメッセージ送信</button>
+            <button id="connectButton">シグナリング接続</button>
+            <button id="createOfferButton" disabled>接続開始（オファー作成）</button>
+            <button id="sendTestMessage" disabled>テストメッセージ送信</button>
         </div>
 
         <div id="messages">
