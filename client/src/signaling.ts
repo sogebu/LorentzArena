@@ -1,99 +1,119 @@
-type SignalingPayload = {
-  clientId?: string;
-  sdp?: string;
-  type?: string;
-  candidate?: RTCIceCandidateInit;
-} & (RTCSessionDescriptionInit | RTCIceCandidateInit | { clientId: string });
+// シグナリングメッセージの型定義
+interface SignalingMessage {
+  type: string;
+  payload: Record<string, unknown>;
+  from: string;
+  to: string;
+  timestamp: number;
+}
 
-type SignalingMessage = {
-  type: "offer" | "answer" | "candidate" | "connected" | "peer_disconnected";
-  payload: SignalingPayload;
-  from?: string;
-  to?: string;
-};
+export class SignalingClient {
+  private baseUrl: string;
+  private clientId: string | null = null;
+  private onOfferCallback: ((offer: RTCSessionDescriptionInit, from: string) => void) | null = null;
+  private onAnswerCallback: ((answer: RTCSessionDescriptionInit) => void) | null = null;
+  private onIceCandidateCallback: ((candidate: RTCIceCandidateInit) => void) | null = null;
 
-type SignalingEventMap = {
-  connected: { clientId: string };
-  peer_disconnected: { clientId: string };
-  offer: RTCSessionDescriptionInit;
-  answer: RTCSessionDescriptionInit;
-  candidate: RTCIceCandidateInit;
-};
+  constructor(baseUrl: string) {
+    this.baseUrl = baseUrl;
+  }
 
-// イベントハンドラーの型を定義
-type SignalingEventHandler<T = unknown> = (payload: T) => void;
+  public async connect(): Promise<string> {
+    const response = await fetch(`${this.baseUrl}/connect`, {
+      method: "POST",
+    });
+    const data = await response.json();
+    this.clientId = data.payload.clientId;
+    return this.clientId;
+  }
 
-const createSignaling = () => {
-  const url = "ws://localhost:8080"; // シグナリングサーバーのURL
-  let ws: WebSocket | null = null;
-  let clientId: string | null = null;
-  const eventHandlers = new Map<string, SignalingEventHandler[]>();
+  public async getClients(): Promise<string[]> {
+    if (!this.clientId) throw new Error('Not connected to signaling server');
+    
+    const response = await fetch(`${this.baseUrl}/clients?clientId=${this.clientId}`);
+    const data = await response.json();
+    return data.clients;
+  }
 
-  const connect = () => {
-    ws = new WebSocket(url);
+  public async sendOffer(targetClientId: string, offer: RTCSessionDescriptionInit): Promise<void> {
+    if (!this.clientId) throw new Error('Not connected to signaling server');
+    
+    await fetch(`${this.baseUrl}/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: 'offer',
+        payload: { offer },
+        from: this.clientId,
+        to: targetClientId,
+      }),
+    });
+  }
 
-    ws.onopen = () => {
-      console.log("シグナリングサーバーに接続しました");
-    };
+  public async sendAnswer(targetClientId: string, answer: RTCSessionDescriptionInit): Promise<void> {
+    if (!this.clientId) throw new Error('Not connected to signaling server');
+    
+    await fetch(`${this.baseUrl}/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: 'answer',
+        payload: { answer },
+        from: this.clientId,
+        to: targetClientId,
+      }),
+    });
+  }
 
-    ws.onmessage = (event) => {
-      try {
-        const message: SignalingMessage = JSON.parse(event.data);
-        console.log("受信したメッセージ:", message);
-        handleMessage(message);
-      } catch (e) {
-        console.error("メッセージの解析に失敗:", e);
+  public async sendIceCandidate(targetClientId: string, candidate: RTCIceCandidateInit): Promise<void> {
+    if (!this.clientId) throw new Error('Not connected to signaling server');
+    
+    await fetch(`${this.baseUrl}/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: 'ice',
+        payload: { candidate },
+        from: this.clientId,
+        to: targetClientId,
+      }),
+    });
+  }
+
+  public onOffer(callback: (offer: RTCSessionDescriptionInit, from: string) => void): void {
+    this.onOfferCallback = callback;
+  }
+
+  public onAnswer(callback: (answer: RTCSessionDescriptionInit) => void): void {
+    this.onAnswerCallback = callback;
+  }
+
+  public onIceCandidate(callback: (candidate: RTCIceCandidateInit) => void): void {
+    this.onIceCandidateCallback = callback;
+  }
+
+  public startPolling(): void {
+    setInterval(async () => {
+      if (!this.clientId) return;
+
+      const response = await fetch(`${this.baseUrl}/messages?clientId=${this.clientId}`);
+      const messages: SignalingMessage[] = await response.json();
+
+      for (const message of messages) {
+        if (message.type === "offer" && this.onOfferCallback && message.payload.offer) {
+          this.onOfferCallback(message.payload.offer as RTCSessionDescriptionInit, message.from);
+        } else if (message.type === "answer" && this.onAnswerCallback && message.payload.answer) {
+          this.onAnswerCallback(message.payload.answer as RTCSessionDescriptionInit);
+        } else if (message.type === "ice" && this.onIceCandidateCallback && message.payload.candidate) {
+          this.onIceCandidateCallback(message.payload.candidate as RTCIceCandidateInit);
+        }
       }
-    };
-
-    ws.onerror = (error) => {
-      console.error("WebSocket エラー:", error);
-    };
-
-    ws.onclose = () => {
-      console.log("シグナリングサーバーから切断されました");
-      clientId = null;
-    };
-  };
-
-  const handleMessage = (message: SignalingMessage) => {
-    console.log("受信したメッセージ:", message);
-
-    if (message.type === "connected" && "clientId" in message.payload) {
-      clientId = message.payload.clientId ?? null;
-    }
-
-    const handlers = eventHandlers.get(message.type) || [];
-    for (const handler of handlers) {
-      handler(message.payload);
-    }
-  };
-
-  const send = (message: SignalingMessage) => {
-    if (ws?.readyState === WebSocket.OPEN) {
-      console.log("送信するメッセージ:", message);
-      if (clientId && message.to) {
-        message.from = clientId;
-      }
-      ws.send(JSON.stringify(message));
-    } else {
-      console.error("WebSocket接続が確立されていません");
-    }
-  };
-
-  const on = <K extends keyof SignalingEventMap>(type: K, handler: SignalingEventHandler<SignalingEventMap[K]>) => {
-    const handlers = eventHandlers.get(type) || [];
-    handlers.push(handler as SignalingEventHandler);
-    eventHandlers.set(type, handlers);
-  };
-
-  return {
-    connect,
-    send,
-    on,
-    getClientId: () => clientId,
-  };
-};
-
-export { createSignaling };
-export type { SignalingMessage, SignalingEventMap };
+    }, 1000);
+  }
+}

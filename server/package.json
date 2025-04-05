@@ -16,6 +16,8 @@
     "typescript": "^5.8.2"
   },
   "dependencies": {
+    "@hono/node-server": "^1.14.0",
+    "hono": "^4.7.5",
     "ws": "^8.18.1"
   },
   "volta": {

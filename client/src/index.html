@@ -1,85 +1,12 @@
 <!DOCTYPE html>
 <html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LorentzArena</title>
-    <style>
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .status {
-            padding: 10px;
-            margin-bottom: 20px;
-            background-color: #f0f0f0;
-            border-radius: 4px;
-        }
-        .game-area {
-            border: 1px solid #ccc;
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-        .controls {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        .debug-info {
-            font-family: monospace;
-            background-color: #f8f8f8;
-            padding: 10px;
-            border-radius: 4px;
-            margin-bottom: 20px;
-        }
-        #messages {
-            height: 200px;
-            overflow-y: auto;
-            border: 1px solid #ddd;
-            padding: 10px;
-            font-family: monospace;
-        }
-        .message {
-            padding: 4px 0;
-            border-bottom: 1px solid #eee;
-        }
-        .message-time {
-            color: #666;
-            font-size: 0.8em;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="status" id="connectionStatus">
-            接続状態: 未接続
-        </div>
-        
-        <div class="debug-info" id="debugInfo">
-            クライアントID: 未取得
-            <br>
-            WebRTC状態: 未接続
-            <br>
-            DataChannel状態: 未接続
-        </div>
-
-        <div class="game-area">
-            <h2>ゲームエリア</h2>
-            <!-- ここにゲームのキャンバスなどを追加予定 -->
-        </div>
-
-        <div class="controls">
-            <button id="connectButton">シグナリング接続</button>
-            <button id="createOfferButton" disabled>接続開始（オファー作成）</button>
-            <button id="sendTestMessage" disabled>テストメッセージ送信</button>
-        </div>
-
-        <div id="messages">
-            <!-- メッセージログ表示エリア -->
-        </div>
-    </div>
-
-    <script type="module" src="./index.ts"></script>
-</body>
-</html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WebRTC チャット</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html> 
