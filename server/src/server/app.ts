@@ -1,6 +1,10 @@
-import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
+import { DynamoDBDocumentClient, PutCommand, QueryCommand, DeleteCommand, GetCommand, ScanCommand } from '@aws-sdk/lib-dynamodb'
+
+const dynamoClient = new DynamoDBClient({})
+const docClient = DynamoDBDocumentClient.from(dynamoClient)
 
 type Client = {
   id: string;
@@ -15,24 +19,28 @@ type Message = {
   timestamp: number;
 };
 
+const CLIENTS_TABLE_NAME = 'RTCSignalingClients';
+const MESSAGES_TABLE_NAME = 'RTCSignalingMessages';
+
 export const app = new Hono()
 app.use('/*', cors())
-
-const clients = new Map<string, Client>();
-const messagesByClient = new Map<string, Message[]>();
 
 function generateClientId(): string {
   return Math.random().toString(36).substring(2, 15);
 }
 
 // クライアント接続
-app.post('/api/connect', (c) => {
+app.post('/api/connect', async (c) => {
   const clientId = generateClientId();
   const client: Client = { 
     id: clientId, 
     lastActive: Date.now() 
   };
-  clients.set(clientId, client);
+
+  await docClient.send(new PutCommand({
+    TableName: CLIENTS_TABLE_NAME,
+    Item: client
+  }));
 
   return c.json({
     type: 'connected',
@@ -41,22 +49,42 @@ app.post('/api/connect', (c) => {
 });
 
 // 接続中のクライアント一覧を取得
-app.get('/api/clients', (c) => {
+app.get('/api/clients', async (c) => {
   const clientId = c.req.query('clientId');
   if (!clientId) {
     return c.json({ error: 'clientId is required' }, 400);
   }
 
-  const client = clients.get(clientId);
-  if (!client) {
+  // クライアントの存在確認
+  const client = await docClient.send(new GetCommand({
+    TableName: CLIENTS_TABLE_NAME,
+    Key: { id: clientId }
+  }));
+
+  if (!client.Item) {
     return c.json({ error: 'Client not found' }, 404);
   }
 
   // クライアントの最終アクティブ時間を更新
-  client.lastActive = Date.now();
+  await docClient.send(new PutCommand({
+    TableName: CLIENTS_TABLE_NAME,
+    Item: {
+      id: clientId,
+      lastActive: Date.now()
+    }
+  }));
 
-  // 自分以外の接続中のクライアントID一覧を返す
-  const clientList = Array.from(clients.keys()).filter(id => id !== clientId);
+  // 自分以外の接続中のクライアントID一覧を取得
+  const result = await docClient.send(new ScanCommand({
+    TableName: CLIENTS_TABLE_NAME,
+    ProjectionExpression: 'id',
+    FilterExpression: 'id <> :clientId',
+    ExpressionAttributeValues: {
+      ':clientId': clientId
+    }
+  }));
+
+  const clientList = (result.Items as { id: string }[]).map(item => item.id);
   
   return c.json({
     clients: clientList
@@ -67,13 +95,17 @@ app.get('/api/clients', (c) => {
 app.post('/api/messages', async (c) => {
   const body = await c.req.json();
   
-  // from と to が必須であることを確認
   if (!body.from || !body.to) {
     return c.json({ error: 'from and to are required' }, 400);
   }
   
   // 送信先のクライアントが存在するか確認
-  if (!clients.has(body.to)) {
+  const recipient = await docClient.send(new GetCommand({
+    TableName: CLIENTS_TABLE_NAME,
+    Key: { id: body.to }
+  }));
+
+  if (!recipient.Item) {
     return c.json({ error: 'Recipient client not found' }, 404);
   }
   
@@ -82,56 +114,102 @@ app.post('/api/messages', async (c) => {
     timestamp: Date.now()
   };
   
-  // 送信先のクライアントのメッセージキューに追加
-  if (!messagesByClient.has(message.to)) {
-    messagesByClient.set(message.to, []);
-  }
-  messagesByClient.get(message.to)?.push(message);
+  await docClient.send(new PutCommand({
+    TableName: MESSAGES_TABLE_NAME,
+    Item: message
+  }));
   
   return c.json({ success: true });
 });
 
 // メッセージの取得（ポーリング用）
-app.get('/api/messages', (c) => {
+app.get('/api/messages', async (c) => {
   const clientId = c.req.query('clientId');
   if (!clientId) {
     return c.json({ error: 'clientId is required' }, 400);
   }
 
-  const client = clients.get(clientId);
-  if (!client) {
+  const client = await docClient.send(new GetCommand({
+    TableName: CLIENTS_TABLE_NAME,
+    Key: { id: clientId }
+  }));
+
+  if (!client.Item) {
     return c.json({ error: 'Client not found' }, 404);
   }
 
   // クライアントの最終アクティブ時間を更新
-  client.lastActive = Date.now();
+  await docClient.send(new PutCommand({
+    TableName: CLIENTS_TABLE_NAME,
+    Item: {
+      id: clientId,
+      lastActive: Date.now()
+    }
+  }));
 
   // このクライアント宛てのメッセージを取得
-  const clientMessages = messagesByClient.get(clientId) || [];
-  
-  // メッセージを取得したら、クライアントのメッセージキューをクリア
-  messagesByClient.set(clientId, []);
+  const result = await docClient.send(new QueryCommand({
+    TableName: MESSAGES_TABLE_NAME,
+    KeyConditionExpression: '#to = :to',
+    ExpressionAttributeNames: {
+      '#to': 'to'
+    },
+    ExpressionAttributeValues: {
+      ':to': clientId
+    }
+  }));
 
-  return c.json(clientMessages);
+  const messages = result.Items as Message[];
+
+  // 取得したメッセージを削除
+  if (messages.length > 0) {
+    await Promise.all(messages.map(message => 
+      docClient.send(new DeleteCommand({
+        TableName: MESSAGES_TABLE_NAME,
+        Key: {
+          to: message.to,
+          timestamp: message.timestamp
+        }
+      }))
+    ));
+  }
+
+  return c.json(messages);
 });
 
 // クライアント切断
-app.delete('/api/connect/:clientId', (c) => {
+app.delete('/api/connect/:clientId', async (c) => {
   const clientId = c.req.param('clientId');
-  clients.delete(clientId);
-  messagesByClient.delete(clientId);
+  
+  // クライアントの削除
+  await docClient.send(new DeleteCommand({
+    TableName: CLIENTS_TABLE_NAME,
+    Key: { id: clientId }
+  }));
+
+  // クライアント宛ての未読メッセージを削除
+  const result = await docClient.send(new QueryCommand({
+    TableName: MESSAGES_TABLE_NAME,
+    KeyConditionExpression: '#to = :to',
+    ExpressionAttributeNames: {
+      '#to': 'to'
+    },
+    ExpressionAttributeValues: {
+      ':to': clientId
+    }
+  }));
+
+  if (result.Items && result.Items.length > 0) {
+    await Promise.all((result.Items as Message[]).map(message =>
+      docClient.send(new DeleteCommand({
+        TableName: MESSAGES_TABLE_NAME,
+        Key: {
+          to: message.to,
+          timestamp: message.timestamp
+        }
+      }))
+    ));
+  }
 
   return c.json({ success: true });
 });
-
-// 定期的に非アクティブなクライアントを削除
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, client] of clients.entries()) {
-    if (now - client.lastActive > 30000) { // 30秒以上アクティブでない場合
-      clients.delete(id);
-      messagesByClient.delete(id);
-    }
-  }
-}, 10000);
-
