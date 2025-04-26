@@ -6,7 +6,7 @@ export class WebRTCClient {
 
   constructor() {
     this.peerConnection = new RTCPeerConnection({
-      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
     });
 
     this.setupPeerConnectionListeners();
@@ -36,18 +36,18 @@ export class WebRTCClient {
     };
 
     this.dataChannel.onopen = () => {
-      console.log("DataChannel is open");
+      console.log('DataChannel is open');
     };
 
     this.dataChannel.onclose = () => {
-      console.log("DataChannel is closed");
+      console.log('DataChannel is closed');
     };
   }
 
   public async createOffer(): Promise<RTCSessionDescriptionInit> {
-    if (!this.peerConnection) throw new Error("PeerConnection is not initialized");
+    if (!this.peerConnection) throw new Error('PeerConnection is not initialized');
 
-    this.dataChannel = this.peerConnection.createDataChannel("chat");
+    this.dataChannel = this.peerConnection.createDataChannel('chat');
     this.setupDataChannel(this.dataChannel);
 
     const offer = await this.peerConnection.createOffer();
@@ -56,7 +56,7 @@ export class WebRTCClient {
   }
 
   public async handleOffer(offer: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> {
-    if (!this.peerConnection) throw new Error("PeerConnection is not initialized");
+    if (!this.peerConnection) throw new Error('PeerConnection is not initialized');
 
     await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
     const answer = await this.peerConnection.createAnswer();
@@ -65,18 +65,18 @@ export class WebRTCClient {
   }
 
   public async handleAnswer(answer: RTCSessionDescriptionInit): Promise<void> {
-    if (!this.peerConnection) throw new Error("PeerConnection is not initialized");
+    if (!this.peerConnection) throw new Error('PeerConnection is not initialized');
     await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
   }
 
   public async handleIceCandidate(candidate: RTCIceCandidateInit): Promise<void> {
-    if (!this.peerConnection) throw new Error("PeerConnection is not initialized");
+    if (!this.peerConnection) throw new Error('PeerConnection is not initialized');
     await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
   }
 
   public sendMessage(message: string): void {
-    if (!this.dataChannel || this.dataChannel.readyState !== "open") {
-      throw new Error("DataChannel is not open");
+    if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
+      throw new Error('DataChannel is not open');
     }
     this.dataChannel.send(message);
   }

@@ -20,7 +20,7 @@ export class SignalingClient {
 
   public async connect(): Promise<string> {
     const response = await fetch(`${this.baseUrl}/connect`, {
-      method: "POST",
+      method: 'POST',
     });
     const data = await response.json();
     this.clientId = data.payload.clientId;
@@ -29,7 +29,7 @@ export class SignalingClient {
 
   public async getClients(): Promise<string[]> {
     if (!this.clientId) throw new Error('Not connected to signaling server');
-    
+
     const response = await fetch(`${this.baseUrl}/clients?clientId=${this.clientId}`);
     const data = await response.json();
     return data.clients;
@@ -37,11 +37,11 @@ export class SignalingClient {
 
   public async sendOffer(targetClientId: string, offer: RTCSessionDescriptionInit): Promise<void> {
     if (!this.clientId) throw new Error('Not connected to signaling server');
-    
+
     await fetch(`${this.baseUrl}/messages`, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         type: 'offer',
@@ -54,11 +54,11 @@ export class SignalingClient {
 
   public async sendAnswer(targetClientId: string, answer: RTCSessionDescriptionInit): Promise<void> {
     if (!this.clientId) throw new Error('Not connected to signaling server');
-    
+
     await fetch(`${this.baseUrl}/messages`, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         type: 'answer',
@@ -71,11 +71,11 @@ export class SignalingClient {
 
   public async sendIceCandidate(targetClientId: string, candidate: RTCIceCandidateInit): Promise<void> {
     if (!this.clientId) throw new Error('Not connected to signaling server');
-    
+
     await fetch(`${this.baseUrl}/messages`, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         type: 'ice',
@@ -106,11 +106,11 @@ export class SignalingClient {
       const messages: SignalingMessage[] = await response.json();
 
       for (const message of messages) {
-        if (message.type === "offer" && this.onOfferCallback && message.payload.offer) {
+        if (message.type === 'offer' && this.onOfferCallback && message.payload.offer) {
           this.onOfferCallback(message.payload.offer as RTCSessionDescriptionInit, message.from);
-        } else if (message.type === "answer" && this.onAnswerCallback && message.payload.answer) {
+        } else if (message.type === 'answer' && this.onAnswerCallback && message.payload.answer) {
           this.onAnswerCallback(message.payload.answer as RTCSessionDescriptionInit);
-        } else if (message.type === "ice" && this.onIceCandidateCallback && message.payload.candidate) {
+        } else if (message.type === 'ice' && this.onIceCandidateCallback && message.payload.candidate) {
           this.onIceCandidateCallback(message.payload.candidate as RTCIceCandidateInit);
         }
       }

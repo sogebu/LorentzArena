@@ -80,7 +80,7 @@ function App() {
   return (
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">WebRTC チャット</h1>
-      
+
       <div className="mb-4">
         <h2 className="text-xl font-semibold mb-2">接続状態</h2>
         <p>シグナリングサーバー: {isConnected ? '接続中' : '未接続'}</p>

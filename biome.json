@@ -2,12 +2,17 @@
   "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
   "files": {
     "ignoreUnknown": true,
-    "include": ["*.ts", "*.json"],
+    "include": ["*.ts", "*.tsx", "*.json"],
     "ignore": ["cdk.out", "*.d.ts"]
   },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
     "lineWidth": 120
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single"
+    }
   }
 }
