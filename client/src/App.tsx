@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { WebRTCClient } from './webrtc';
 import { SignalingClient } from './signaling';
 
-const SIGNALING_SERVER_URL = 'http://localhost:8080/api';
+const SIGNALING_SERVER_URL = process.env.VITE_SIGNALING_SERVER_URL;
 
 function App() {
   const [messages, setMessages] = useState<string[]>([]);

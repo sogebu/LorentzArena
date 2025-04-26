@@ -15,7 +15,7 @@ type Message = {
   timestamp: number;
 };
 
-const app = new Hono()
+export const app = new Hono()
 app.use('/*', cors())
 
 const clients = new Map<string, Client>();
@@ -135,10 +135,3 @@ setInterval(() => {
   }
 }, 10000);
 
-const port = 8080;
-console.log(`サーバー起動: http://localhost:${port}`);
-
-serve({
-  fetch: app.fetch,
-  port
-});
