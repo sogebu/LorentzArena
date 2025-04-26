@@ -60,7 +60,7 @@ function App() {
     };
 
     initialize();
-  }, [selectedClient]);
+  }, [selectedClient, signaling, webrtc]);
 
   const handleSendOffer = async () => {
     if (!selectedClient) return;
@@ -103,6 +103,7 @@ function App() {
           ))}
         </select>
         <button
+          type="button"
           className="ml-2 bg-blue-500 text-white px-4 py-2 rounded"
           onClick={handleSendOffer}
           disabled={!selectedClient || isWebRTCConnected}
@@ -114,8 +115,8 @@ function App() {
       <div className="mb-4">
         <h2 className="text-xl font-semibold mb-2">メッセージ</h2>
         <div className="border p-4 h-64 overflow-y-auto mb-4">
-          {messages.map((message, index) => (
-            <p key={index} className="mb-2">
+          {messages.map((message, i) => (
+            <p key={`message-${i}-${message}`} className="mb-2">
               {message}
             </p>
           ))}
@@ -130,6 +131,7 @@ function App() {
             disabled={!isWebRTCConnected}
           />
           <button
+            type="button"
             className="ml-2 bg-green-500 text-white px-4 py-2 rounded"
             onClick={handleSendMessage}
             disabled={!isWebRTCConnected}
