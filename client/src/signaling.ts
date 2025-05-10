@@ -1,44 +1,76 @@
 // シグナリングメッセージの型定義
-interface SignalingMessage {
-  type: string;
-  payload: Record<string, unknown>;
+type SignalingMessage<T extends string, P> = {
+  type: T;
+  payload: P;
   from: string;
   to: string;
   timestamp: number;
 }
 
+type OfferMessage = SignalingMessage<'offer', { offer: RTCSessionDescriptionInit }>;
+type AnswerMessage = SignalingMessage<'answer', { answer: RTCSessionDescriptionInit }>;
+type IceCandidateMessage = SignalingMessage<'ice', { candidate: RTCIceCandidateInit }>;
+
+export type SignalingClientOptions = {
+  baseUrl: string;
+  clientId: string;
+  onOffer: (offer: RTCSessionDescriptionInit, from: string) => void;
+  onAnswer: (answer: RTCSessionDescriptionInit) => void;
+  onIceCandidate: (candidate: RTCIceCandidateInit) => void;
+};
+
+type ConnectState =
+  | 'waiting'
+  | 'offerSend'
+  | 'offerReceive'
+  | 'answerSend'
+  | 'answerReceive'
+  | 'iceSend'
+  | 'iceReceive'
+  | 'connected';
+
 export class SignalingClient {
   private baseUrl: string;
-  private clientId: string | null = null;
-  private onOfferCallback: ((offer: RTCSessionDescriptionInit, from: string) => void) | null = null;
-  private onAnswerCallback: ((answer: RTCSessionDescriptionInit) => void) | null = null;
-  private onIceCandidateCallback: ((candidate: RTCIceCandidateInit) => void) | null = null;
+  private clientId: string;
+  private state: ConnectState = 'waiting';
+  private onOfferCallback: ((offer: RTCSessionDescriptionInit, from: string) => void);
+  private onAnswerCallback: ((answer: RTCSessionDescriptionInit) => void);
+  private onIceCandidateCallback: ((candidate: RTCIceCandidateInit) => void);
 
-  constructor(baseUrl: string) {
-    this.baseUrl = baseUrl;
+  constructor(options: SignalingClientOptions) {
+    this.baseUrl = options.baseUrl;
+    this.clientId = options.clientId;
+    this.onOfferCallback = options.onOffer;
+    this.onAnswerCallback = options.onAnswer;
+    this.onIceCandidateCallback = options.onIceCandidate;
   }
 
-  public async connect(): Promise<string> {
-    const response = await fetch(`${this.baseUrl}/connect`, {
+  public async connect(): Promise<void> {
+    const params = new URLSearchParams({clientId: this.clientId});
+    const response = await fetch(`${this.baseUrl}/connect?${params}`, {
       method: 'POST',
     });
-    const data = await response.json();
-    this.clientId = data.payload.clientId;
-    return this.clientId;
+    if (response.status !== 200) {
+      throw new Error('Failed to connect to signaling server');
+    }
   }
 
   public async getClients(): Promise<string[]> {
-    if (!this.clientId) throw new Error('Not connected to signaling server');
-
-    const response = await fetch(`${this.baseUrl}/clients?clientId=${this.clientId}`);
+    const params = new URLSearchParams({clientId: this.clientId});
+    const response = await fetch(`${this.baseUrl}/clients?${params}`);
+    if (response.status !== 200) {
+      throw new Error('Failed to get clients from signaling server');
+    }
     const data = await response.json();
     return data.clients;
   }
 
   public async sendOffer(targetClientId: string, offer: RTCSessionDescriptionInit): Promise<void> {
-    if (!this.clientId) throw new Error('Not connected to signaling server');
-
-    await fetch(`${this.baseUrl}/messages`, {
+    if (this.state !== 'waiting') {
+      throw new Error('Invalid state');
+    }
+    const params = new URLSearchParams({clientId: this.clientId});
+    const response = await fetch(`${this.baseUrl}/messages?${params}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -50,12 +82,18 @@ export class SignalingClient {
         to: targetClientId,
       }),
     });
+    if (response.status !== 200) {
+      throw new Error('Failed to send offer to signaling server');
+    }
+    this.state = 'offerSend';
   }
 
   public async sendAnswer(targetClientId: string, answer: RTCSessionDescriptionInit): Promise<void> {
-    if (!this.clientId) throw new Error('Not connected to signaling server');
-
-    await fetch(`${this.baseUrl}/messages`, {
+    if (this.state !== 'offerReceive') {
+      throw new Error('Invalid state');
+    }
+    const params = new URLSearchParams({clientId: this.clientId});
+    const response = await fetch(`${this.baseUrl}/messages?${params}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -67,12 +105,15 @@ export class SignalingClient {
         to: targetClientId,
       }),
     });
+    if (response.status !== 200) {
+      throw new Error('Failed to send answer to signaling server');
+    }
+    this.state = 'answerSend';
   }
 
   public async sendIceCandidate(targetClientId: string, candidate: RTCIceCandidateInit): Promise<void> {
-    if (!this.clientId) throw new Error('Not connected to signaling server');
-
-    await fetch(`${this.baseUrl}/messages`, {
+    const params = new URLSearchParams({clientId: this.clientId});
+    const response = await fetch(`${this.baseUrl}/messages?${params}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -84,36 +125,43 @@ export class SignalingClient {
         to: targetClientId,
       }),
     });
-  }
-
-  public onOffer(callback: (offer: RTCSessionDescriptionInit, from: string) => void): void {
-    this.onOfferCallback = callback;
-  }
-
-  public onAnswer(callback: (answer: RTCSessionDescriptionInit) => void): void {
-    this.onAnswerCallback = callback;
-  }
-
-  public onIceCandidate(callback: (candidate: RTCIceCandidateInit) => void): void {
-    this.onIceCandidateCallback = callback;
+    if (response.status !== 200) {
+      throw new Error('Failed to send ice candidate to signaling server');
+    }
+    this.state = 'iceSend';
   }
 
   public startPolling(): void {
     setInterval(async () => {
-      if (!this.clientId) return;
-
       const response = await fetch(`${this.baseUrl}/messages?clientId=${this.clientId}`);
-      const messages: SignalingMessage[] = await response.json();
+      const messages: (OfferMessage | AnswerMessage | IceCandidateMessage)[] = await response.json();
+      messages.sort((a, b) => a.timestamp - b.timestamp);
 
       for (const message of messages) {
-        if (message.type === 'offer' && this.onOfferCallback && message.payload.offer) {
-          this.onOfferCallback(message.payload.offer as RTCSessionDescriptionInit, message.from);
-        } else if (message.type === 'answer' && this.onAnswerCallback && message.payload.answer) {
-          this.onAnswerCallback(message.payload.answer as RTCSessionDescriptionInit);
-        } else if (message.type === 'ice' && this.onIceCandidateCallback && message.payload.candidate) {
-          this.onIceCandidateCallback(message.payload.candidate as RTCIceCandidateInit);
+        switch (message.type) {
+          case 'offer':
+            if (this.state !== 'waiting') {
+              throw new Error('Invalid state');
+            }
+            this.state = 'offerReceive';
+            this.onOfferCallback(message.payload.offer as RTCSessionDescriptionInit, message.from);
+            break;
+          case 'answer':
+            if (this.state !== 'offerSend') {
+              throw new Error('Invalid state');
+            }
+            this.state = 'answerReceive';
+            this.onAnswerCallback(message.payload.answer as RTCSessionDescriptionInit);
+            break;
+          case 'ice':
+            if (this.state !== 'answerSend' &&this.state !== 'answerReceive' && this.state !== 'iceSend') {
+              throw new Error('Invalid state');
+            }
+            this.state = 'iceReceive';
+            this.onIceCandidateCallback(message.payload.candidate as RTCIceCandidateInit);
+            break;
         }
       }
-    }, 1000);
+    }, 3000);
   }
 }

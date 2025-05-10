@@ -1,19 +1,22 @@
+type DataConnection = {
+  isHost: true,
+  channels: Map<string, RTCDataChannel>
+} | {
+  isHost: false,
+  channel: RTCDataChannel
+};
+
 export class WebRTCClient {
   private peerConnection: RTCPeerConnection | null = null;
-  private dataChannel: RTCDataChannel | null = null;
-  private onMessageCallback: ((message: string) => void) | null = null;
+  private dataChannels = new Map<string, RTCDataChannel>();
+  private onMessageCallback: ((message: string, from: string) => void) | null = null;
   private onIceCandidateCallback: ((candidate: RTCIceCandidateInit) => void) | null = null;
+  private isHost = false;
 
   constructor() {
     this.peerConnection = new RTCPeerConnection({
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
     });
-
-    this.setupPeerConnectionListeners();
-  }
-
-  private setupPeerConnectionListeners() {
-    if (!this.peerConnection) return;
 
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate && this.onIceCandidateCallback) {
@@ -22,33 +25,35 @@ export class WebRTCClient {
     };
 
     this.peerConnection.ondatachannel = (event) => {
-      this.setupDataChannel(event.channel);
+      const clientId = event.channel.label;
+      this.setupDataChannel(clientId, event.channel);
     };
   }
 
-  private setupDataChannel(channel: RTCDataChannel) {
-    this.dataChannel = channel;
+  private setupDataChannel(clientId: string, channel: RTCDataChannel) {
+    this.dataChannels.set(clientId, channel);
 
-    this.dataChannel.onmessage = (event) => {
+    channel.onmessage = (event) => {
       if (this.onMessageCallback) {
-        this.onMessageCallback(event.data);
+        this.onMessageCallback(event.data, clientId);
       }
     };
 
-    this.dataChannel.onopen = () => {
-      console.log('DataChannel is open');
+    channel.onopen = () => {
+      console.log(`DataChannel with ${clientId} is open`);
     };
 
-    this.dataChannel.onclose = () => {
-      console.log('DataChannel is closed');
+    channel.onclose = () => {
+      console.log(`DataChannel with ${clientId} is closed`);
+      this.dataChannels.delete(clientId);
     };
   }
 
-  public async createOffer(): Promise<RTCSessionDescriptionInit> {
+  public async createOffer(clientId: string): Promise<RTCSessionDescriptionInit> {
     if (!this.peerConnection) throw new Error('PeerConnection is not initialized');
 
-    this.dataChannel = this.peerConnection.createDataChannel('chat');
-    this.setupDataChannel(this.dataChannel);
+    const dataChannel = this.peerConnection.createDataChannel(clientId);
+    this.setupDataChannel(clientId, dataChannel);
 
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
@@ -75,13 +80,16 @@ export class WebRTCClient {
   }
 
   public sendMessage(message: string): void {
-    if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
-      throw new Error('DataChannel is not open');
+    for (const channel of this.dataChannels.values()) {
+      console.log(`Channel ${channel}`);
+      if (channel.readyState === 'open') {
+        channel.send(message);
+        console.log(`Message ${message} sent to ${channel}`);
+      }
     }
-    this.dataChannel.send(message);
   }
 
-  public onMessage(callback: (message: string) => void): void {
+  public onMessage(callback: (message: string, from: string) => void): void {
     this.onMessageCallback = callback;
   }
 
@@ -89,12 +97,11 @@ export class WebRTCClient {
     this.onIceCandidateCallback = callback;
   }
 
-  public close(): void {
-    if (this.dataChannel) {
-      this.dataChannel.close();
-    }
-    if (this.peerConnection) {
-      this.peerConnection.close();
-    }
+  public setHost(isHost: boolean): void {
+    this.isHost = isHost;
+  }
+
+  public isHostMode(): boolean {
+    return this.isHost;
   }
 }

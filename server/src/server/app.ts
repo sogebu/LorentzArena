@@ -29,16 +29,12 @@ type Message = {
 const CLIENTS_TABLE_NAME = 'RTCSignalingClients';
 const MESSAGES_TABLE_NAME = 'RTCSignalingMessages';
 
-export const app = new Hono();
-app.use('/*', cors());
-
-function generateClientId(): string {
-  return Math.random().toString(36).substring(2, 15);
-}
-
-// クライアント接続
-app.post('/api/connect', async (c) => {
-  const clientId = generateClientId();
+export const app = new Hono().use('/*', cors())
+.post('/api/connect', async (c) => {
+  const clientId = c.req.query('clientId');
+  if (!clientId) {
+    return c.json({ error: 'clientId is required' }, 400);
+  }
   const client: Client = {
     id: clientId,
     lastActive: Date.now(),
