@@ -1,6 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
-import { MyStack } from './stack';
 import { DefaultStackSynthesizer } from 'aws-cdk-lib/core';
+import { MyStack } from './stack';
 
 const app = new cdk.App();
 new MyStack(app, 'WebRTCSignalingStack', {

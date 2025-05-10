@@ -1,19 +1,21 @@
-type DataConnection = {
-  isHost: true,
-  channels: Map<string, RTCDataChannel>
-} | {
-  isHost: false,
-  channel: RTCDataChannel
+type DataChannel =
+  | { type: 'host'; channels: Map<string, RTCDataChannel> }
+  | { type: 'client'; channel: RTCDataChannel }
+  | { type: 'waiting' };
+
+export type WebRTCClientOptions = {
+  onMessage: (message: string, from: string) => void;
 };
 
 export class WebRTCClient {
-  private peerConnection: RTCPeerConnection | null = null;
-  private dataChannels = new Map<string, RTCDataChannel>();
-  private onMessageCallback: ((message: string, from: string) => void) | null = null;
+  private peerConnection: RTCPeerConnection;
+  private dataChannel: DataChannel;
+  private onMessageCallback: (message: string, from: string) => void;
   private onIceCandidateCallback: ((candidate: RTCIceCandidateInit) => void) | null = null;
-  private isHost = false;
 
-  constructor() {
+  constructor(options: WebRTCClientOptions) {
+    this.dataChannel = { type: 'waiting' };
+    this.onMessageCallback = options.onMessage;
     this.peerConnection = new RTCPeerConnection({
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
     });
@@ -25,18 +27,18 @@ export class WebRTCClient {
     };
 
     this.peerConnection.ondatachannel = (event) => {
+      if (this.dataChannel.type !== 'host') {
+        throw new Error('DataChannel is not host');
+      }
       const clientId = event.channel.label;
+      this.dataChannel.channels.set(clientId, event.channel);
       this.setupDataChannel(clientId, event.channel);
     };
   }
 
   private setupDataChannel(clientId: string, channel: RTCDataChannel) {
-    this.dataChannels.set(clientId, channel);
-
     channel.onmessage = (event) => {
-      if (this.onMessageCallback) {
-        this.onMessageCallback(event.data, clientId);
-      }
+      this.onMessageCallback(event.data, clientId);
     };
 
     channel.onopen = () => {
@@ -45,15 +47,17 @@ export class WebRTCClient {
 
     channel.onclose = () => {
       console.log(`DataChannel with ${clientId} is closed`);
-      this.dataChannels.delete(clientId);
+      // TODO データチャンネルを閉じる
     };
   }
 
-  public async createOffer(clientId: string): Promise<RTCSessionDescriptionInit> {
-    if (!this.peerConnection) throw new Error('PeerConnection is not initialized');
-
-    const dataChannel = this.peerConnection.createDataChannel(clientId);
-    this.setupDataChannel(clientId, dataChannel);
+  public async createOffer(targetClientId: string): Promise<RTCSessionDescriptionInit> {
+    if (this.dataChannel.type !== 'waiting') {
+      throw new Error('DataChannel is already set');
+    }
+    const dataChannel = this.peerConnection.createDataChannel(targetClientId);
+    this.dataChannel = { type: 'client', channel: dataChannel };
+    this.setupDataChannel(targetClientId, dataChannel);
 
     const offer = await this.peerConnection.createOffer();
     await this.peerConnection.setLocalDescription(offer);
@@ -61,8 +65,10 @@ export class WebRTCClient {
   }
 
   public async handleOffer(offer: RTCSessionDescriptionInit): Promise<RTCSessionDescriptionInit> {
-    if (!this.peerConnection) throw new Error('PeerConnection is not initialized');
-
+    if (this.dataChannel.type !== 'waiting') {
+      throw new Error('DataChannel is already set');
+    }
+    this.dataChannel = { type: 'host', channels: new Map() };
     await this.peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
     const answer = await this.peerConnection.createAnswer();
     await this.peerConnection.setLocalDescription(answer);
@@ -70,38 +76,29 @@ export class WebRTCClient {
   }
 
   public async handleAnswer(answer: RTCSessionDescriptionInit): Promise<void> {
-    if (!this.peerConnection) throw new Error('PeerConnection is not initialized');
     await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
   }
 
   public async handleIceCandidate(candidate: RTCIceCandidateInit): Promise<void> {
-    if (!this.peerConnection) throw new Error('PeerConnection is not initialized');
     await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-  }
-
-  public sendMessage(message: string): void {
-    for (const channel of this.dataChannels.values()) {
-      console.log(`Channel ${channel}`);
-      if (channel.readyState === 'open') {
-        channel.send(message);
-        console.log(`Message ${message} sent to ${channel}`);
-      }
-    }
-  }
-
-  public onMessage(callback: (message: string, from: string) => void): void {
-    this.onMessageCallback = callback;
   }
 
   public onIceCandidate(callback: (candidate: RTCIceCandidateInit) => void): void {
     this.onIceCandidateCallback = callback;
   }
 
-  public setHost(isHost: boolean): void {
-    this.isHost = isHost;
-  }
-
-  public isHostMode(): boolean {
-    return this.isHost;
+  public sendMessage(message: string): void {
+    switch (this.dataChannel.type) {
+      case 'host':
+        for (const channel of this.dataChannel.channels.values()) {
+          channel.send(message);
+        }
+        break;
+      case 'client':
+        this.dataChannel.channel.send(message);
+        break;
+      case 'waiting':
+        throw new Error('DataChannel is not set');
+    }
   }
 }

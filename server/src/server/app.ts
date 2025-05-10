@@ -1,14 +1,14 @@
-import { Hono } from 'hono';
-import { cors } from 'hono/cors';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
+  DeleteCommand,
   DynamoDBDocumentClient,
+  GetCommand,
   PutCommand,
   QueryCommand,
-  DeleteCommand,
-  GetCommand,
   ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 
 const dynamoClient = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(dynamoClient);
@@ -29,47 +29,13 @@ type Message = {
 const CLIENTS_TABLE_NAME = 'RTCSignalingClients';
 const MESSAGES_TABLE_NAME = 'RTCSignalingMessages';
 
-export const app = new Hono().use('/*', cors())
-.post('/api/connect', async (c) => {
-  const clientId = c.req.query('clientId');
-  if (!clientId) {
-    return c.json({ error: 'clientId is required' }, 400);
-  }
-  const client: Client = {
-    id: clientId,
-    lastActive: Date.now(),
-  };
-
-  await docClient.send(
-    new PutCommand({
-      TableName: CLIENTS_TABLE_NAME,
-      Item: client,
-    }),
-  );
-
-  return c.json({
-    type: 'connected',
-    payload: { clientId },
-  });
-});
+export const app = new Hono().use('/*', cors());
 
 // 接続中のクライアント一覧を取得
 app.get('/api/clients', async (c) => {
   const clientId = c.req.query('clientId');
   if (!clientId) {
     return c.json({ error: 'clientId is required' }, 400);
-  }
-
-  // クライアントの存在確認
-  const client = await docClient.send(
-    new GetCommand({
-      TableName: CLIENTS_TABLE_NAME,
-      Key: { id: clientId },
-    }),
-  );
-
-  if (!client.Item) {
-    return c.json({ error: 'Client not found' }, 404);
   }
 
   // クライアントの最終アクティブ時間を更新

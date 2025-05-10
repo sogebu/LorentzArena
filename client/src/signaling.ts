@@ -5,7 +5,7 @@ type SignalingMessage<T extends string, P> = {
   from: string;
   to: string;
   timestamp: number;
-}
+};
 
 type OfferMessage = SignalingMessage<'offer', { offer: RTCSessionDescriptionInit }>;
 type AnswerMessage = SignalingMessage<'answer', { answer: RTCSessionDescriptionInit }>;
@@ -19,23 +19,16 @@ export type SignalingClientOptions = {
   onIceCandidate: (candidate: RTCIceCandidateInit) => void;
 };
 
-type ConnectState =
-  | 'waiting'
-  | 'offerSend'
-  | 'offerReceive'
-  | 'answerSend'
-  | 'answerReceive'
-  | 'iceSend'
-  | 'iceReceive'
-  | 'connected';
+type ConnectState = 'waiting' | 'offerSend' | 'offerReceive' | 'answerSend' | 'answerReceive' | 'connected';
 
 export class SignalingClient {
   private baseUrl: string;
   private clientId: string;
   private state: ConnectState = 'waiting';
-  private onOfferCallback: ((offer: RTCSessionDescriptionInit, from: string) => void);
-  private onAnswerCallback: ((answer: RTCSessionDescriptionInit) => void);
-  private onIceCandidateCallback: ((candidate: RTCIceCandidateInit) => void);
+  private polling: NodeJS.Timeout | null = null;
+  private onOfferCallback: (offer: RTCSessionDescriptionInit, from: string) => void;
+  private onAnswerCallback: (answer: RTCSessionDescriptionInit) => void;
+  private onIceCandidateCallback: (candidate: RTCIceCandidateInit) => void;
 
   constructor(options: SignalingClientOptions) {
     this.baseUrl = options.baseUrl;
@@ -46,7 +39,7 @@ export class SignalingClient {
   }
 
   public async connect(): Promise<void> {
-    const params = new URLSearchParams({clientId: this.clientId});
+    const params = new URLSearchParams({ clientId: this.clientId });
     const response = await fetch(`${this.baseUrl}/connect?${params}`, {
       method: 'POST',
     });
@@ -56,7 +49,7 @@ export class SignalingClient {
   }
 
   public async getClients(): Promise<string[]> {
-    const params = new URLSearchParams({clientId: this.clientId});
+    const params = new URLSearchParams({ clientId: this.clientId });
     const response = await fetch(`${this.baseUrl}/clients?${params}`);
     if (response.status !== 200) {
       throw new Error('Failed to get clients from signaling server');
@@ -67,9 +60,9 @@ export class SignalingClient {
 
   public async sendOffer(targetClientId: string, offer: RTCSessionDescriptionInit): Promise<void> {
     if (this.state !== 'waiting') {
-      throw new Error('Invalid state');
+      throw new Error(`Invalid state: ${this.state}`);
     }
-    const params = new URLSearchParams({clientId: this.clientId});
+    const params = new URLSearchParams({ clientId: this.clientId });
     const response = await fetch(`${this.baseUrl}/messages?${params}`, {
       method: 'POST',
       headers: {
@@ -90,9 +83,9 @@ export class SignalingClient {
 
   public async sendAnswer(targetClientId: string, answer: RTCSessionDescriptionInit): Promise<void> {
     if (this.state !== 'offerReceive') {
-      throw new Error('Invalid state');
+      throw new Error(`Invalid state: ${this.state}`);
     }
-    const params = new URLSearchParams({clientId: this.clientId});
+    const params = new URLSearchParams({ clientId: this.clientId });
     const response = await fetch(`${this.baseUrl}/messages?${params}`, {
       method: 'POST',
       headers: {
@@ -112,7 +105,7 @@ export class SignalingClient {
   }
 
   public async sendIceCandidate(targetClientId: string, candidate: RTCIceCandidateInit): Promise<void> {
-    const params = new URLSearchParams({clientId: this.clientId});
+    const params = new URLSearchParams({ clientId: this.clientId });
     const response = await fetch(`${this.baseUrl}/messages?${params}`, {
       method: 'POST',
       headers: {
@@ -128,36 +121,42 @@ export class SignalingClient {
     if (response.status !== 200) {
       throw new Error('Failed to send ice candidate to signaling server');
     }
-    this.state = 'iceSend';
   }
 
   public startPolling(): void {
-    setInterval(async () => {
+    if (this.polling) {
+      return;
+    }
+    this.polling = setInterval(async () => {
       const response = await fetch(`${this.baseUrl}/messages?clientId=${this.clientId}`);
+      if (response.status !== 200) {
+        if (this.polling) {
+          clearInterval(this.polling);
+          this.polling = null;
+        }
+        throw new Error('Failed to get messages from signaling server');
+      }
       const messages: (OfferMessage | AnswerMessage | IceCandidateMessage)[] = await response.json();
+      console.log(messages);
       messages.sort((a, b) => a.timestamp - b.timestamp);
 
       for (const message of messages) {
         switch (message.type) {
           case 'offer':
             if (this.state !== 'waiting') {
-              throw new Error('Invalid state');
+              throw new Error(`Invalid state: ${this.state}`);
             }
             this.state = 'offerReceive';
-            this.onOfferCallback(message.payload.offer as RTCSessionDescriptionInit, message.from);
+            this.onOfferCallback(message.payload.offer, message.from);
             break;
           case 'answer':
             if (this.state !== 'offerSend') {
-              throw new Error('Invalid state');
+              throw new Error(`Invalid state: ${this.state}`);
             }
             this.state = 'answerReceive';
             this.onAnswerCallback(message.payload.answer as RTCSessionDescriptionInit);
             break;
           case 'ice':
-            if (this.state !== 'answerSend' &&this.state !== 'answerReceive' && this.state !== 'iceSend') {
-              throw new Error('Invalid state');
-            }
-            this.state = 'iceReceive';
             this.onIceCandidateCallback(message.payload.candidate as RTCIceCandidateInit);
             break;
         }
