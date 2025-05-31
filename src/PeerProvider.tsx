@@ -2,20 +2,17 @@ import { createContext, useContext, useState, type ReactNode } from "react";
 import { PeerManager, type ConnectionStatus } from "./PeerManager";
 import { useMount } from "react-use";
 
-export type Message = { type: "text"; text: string };
+export type Message =
+  | { type: "text"; text: string }
+  | { type: "position"; x: number; y: number };
 
-// まず Context の型定義
-interface PeerContextValue<Message> {
+interface PeerContextValue {
   peerManager: PeerManager<Message> | null;
   connections: ConnectionStatus[];
   myId: string;
 }
 
-// Context を生成（ジェネリクスを使う場合は少し工夫が必要ですが、今回は Message を string に固定例を示します）
-const PeerContext = createContext<PeerContextValue<{
-  type: "text";
-  text: string;
-}> | null>(null);
+const PeerContext = createContext<PeerContextValue | null>(null);
 
 // Context を利用するためのカスタムフック
 export function usePeer() {

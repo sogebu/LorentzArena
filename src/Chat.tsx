@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { usePeer } from "./PeerProvider";
-import { useMount } from "react-use";
 
 const Chat = () => {
   const { peerManager } = usePeer();
