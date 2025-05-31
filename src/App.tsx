@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMount } from "react-use";
-import { PeerManager } from "./PeerManager";
+import { PeerManager, type ConnectionStatus } from "./PeerManager";
 import "./App.css";
 
 function App() {
@@ -11,13 +11,17 @@ function App() {
   const [inputText, setInputText] = useState("");
   const [remoteId, setRemoteId] = useState("");
   const [myId, setMyId] = useState("");
+  const [connections, setConnections] = useState<ConnectionStatus[]>([]);
 
   useMount(() => {
     const pm = new PeerManager(
       `user-${Math.random().toString(36).substr(2, 9)}`,
     );
-    pm.on((id, text) => {
+    pm.onMessage((id, text) => {
       setMessages((prev) => [...prev, { id, text }]);
+    });
+    pm.onConnectionChange((conns) => {
+      setConnections(conns);
     });
     setPeerManager(pm);
     setMyId(pm.id());
@@ -42,6 +46,23 @@ function App() {
       <div className="connection-panel">
         <div className="id-display">
           <p>あなたのID: {myId}</p>
+        </div>
+        <div className="connections-list">
+          <h3>接続中の相手</h3>
+          {connections.length === 0 ? (
+            <p>接続中の相手はいません</p>
+          ) : (
+            <ul>
+              {connections.map((conn) => (
+                <li
+                  key={conn.id}
+                  className={conn.open ? "connected" : "disconnected"}
+                >
+                  {conn.id} ({conn.open ? "接続中" : "切断中"})
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         <div className="connect-form">
           <input

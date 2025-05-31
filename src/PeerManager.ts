@@ -1,9 +1,15 @@
 import Peer, { type DataConnection } from "peerjs";
 
+export type ConnectionStatus = {
+  id: string;
+  open: boolean;
+};
+
 export class PeerManager {
   private peer: Peer;
   private conns = new Map<string, DataConnection>();
-  private onMessage?: (id: string, txt: string) => void;
+  private messageCallback?: (id: string, txt: string) => void;
+  private connectionChangeCallback?: (connections: ConnectionStatus[]) => void;
 
   constructor(id: string) {
     this.peer = new Peer(id, { debug: 2 });
@@ -17,8 +23,27 @@ export class PeerManager {
 
   private register(dc: DataConnection) {
     this.conns.set(dc.peer, dc);
-    dc.on("data", (txt: unknown) => this.onMessage?.(dc.peer, txt as string));
-    dc.on("close", () => this.conns.delete(dc.peer));
+
+    dc.on("open", () => {
+      this.notifyConnectionChange();
+    });
+
+    dc.on("data", (txt: unknown) =>
+      this.messageCallback?.(dc.peer, txt as string),
+    );
+
+    dc.on("close", () => {
+      this.conns.delete(dc.peer);
+      this.notifyConnectionChange();
+    });
+  }
+
+  private notifyConnectionChange() {
+    const connections = Array.from(this.conns.entries()).map(([id, conn]) => ({
+      id,
+      open: conn.open,
+    }));
+    this.connectionChangeCallback?.(connections);
   }
 
   send(txt: string) {
@@ -29,11 +54,22 @@ export class PeerManager {
     }
   }
 
-  on(cb: (id: string, txt: string) => void) {
-    this.onMessage = cb;
+  onMessage(cb: (id: string, txt: string) => void) {
+    this.messageCallback = cb;
+  }
+
+  onConnectionChange(cb: (connections: ConnectionStatus[]) => void) {
+    this.connectionChangeCallback = cb;
   }
 
   id() {
     return this.peer.id;
+  }
+
+  getConnections(): ConnectionStatus[] {
+    return Array.from(this.conns.entries()).map(([id, conn]) => ({
+      id,
+      open: conn.open,
+    }));
   }
 }
