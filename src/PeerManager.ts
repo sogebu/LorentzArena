@@ -8,7 +8,8 @@ export type ConnectionStatus = {
 export class PeerManager<T> {
   private peer: Peer;
   private conns = new Map<string, DataConnection>();
-  private messageCallback?: (id: string, msg: T) => void;
+  private messageCallbacks: Map<string, (id: string, msg: T) => void> =
+    new Map();
   private connectionChangeCallback?: (connections: ConnectionStatus[]) => void;
 
   constructor(id: string) {
@@ -28,7 +29,11 @@ export class PeerManager<T> {
       this.notifyConnectionChange();
     });
 
-    dc.on("data", (msg: unknown) => this.messageCallback?.(dc.peer, msg as T));
+    dc.on("data", (msg: unknown) => {
+      for (const cb of this.messageCallbacks.values()) {
+        cb(dc.peer, msg as T);
+      }
+    });
 
     dc.on("close", () => {
       this.conns.delete(dc.peer);
@@ -52,12 +57,20 @@ export class PeerManager<T> {
     }
   }
 
-  onMessage(cb: (id: string, msg: T) => void) {
-    this.messageCallback = cb;
+  onMessage(id: string, cb: (id: string, msg: T) => void) {
+    this.messageCallbacks.set(id, cb);
+  }
+
+  offMessage(id: string) {
+    this.messageCallbacks.delete(id);
   }
 
   onConnectionChange(cb: (connections: ConnectionStatus[]) => void) {
     this.connectionChangeCallback = cb;
+  }
+
+  destroy() {
+    this.peer.destroy();
   }
 
   id() {
