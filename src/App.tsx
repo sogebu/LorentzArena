@@ -15,7 +15,7 @@ function App() {
 
   useMount(() => {
     const pm = new PeerManager(
-      `user-${Math.random().toString(36).substr(2, 9)}`,
+      `user-${Math.random().toString(36).substring(2, 11)}`,
     );
     pm.onMessage((id, text) => {
       setMessages((prev) => [...prev, { id, text }]);
@@ -96,7 +96,7 @@ function App() {
           type="text"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          onKeyPress={(e) => e.key === "Enter" && handleSend()}
+          onKeyDown={(e) => e.key === "Enter" && handleSend()}
           placeholder="メッセージを入力"
         />
         <button type="button" onClick={handleSend}>
