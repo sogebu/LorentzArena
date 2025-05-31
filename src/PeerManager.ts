@@ -5,10 +5,10 @@ export type ConnectionStatus = {
   open: boolean;
 };
 
-export class PeerManager {
+export class PeerManager<T> {
   private peer: Peer;
   private conns = new Map<string, DataConnection>();
-  private messageCallback?: (id: string, txt: string) => void;
+  private messageCallback?: (id: string, msg: T) => void;
   private connectionChangeCallback?: (connections: ConnectionStatus[]) => void;
 
   constructor(id: string) {
@@ -28,9 +28,7 @@ export class PeerManager {
       this.notifyConnectionChange();
     });
 
-    dc.on("data", (txt: unknown) =>
-      this.messageCallback?.(dc.peer, txt as string),
-    );
+    dc.on("data", (msg: unknown) => this.messageCallback?.(dc.peer, msg as T));
 
     dc.on("close", () => {
       this.conns.delete(dc.peer);
@@ -46,15 +44,15 @@ export class PeerManager {
     this.connectionChangeCallback?.(connections);
   }
 
-  send(txt: string) {
+  send(msg: T) {
     for (const c of this.conns.values()) {
       if (c.open) {
-        c.send(txt);
+        c.send(msg);
       }
     }
   }
 
-  onMessage(cb: (id: string, txt: string) => void) {
+  onMessage(cb: (id: string, msg: T) => void) {
     this.messageCallback = cb;
   }
 

@@ -3,8 +3,12 @@ import { useMount } from "react-use";
 import { PeerManager, type ConnectionStatus } from "./PeerManager";
 import "./App.css";
 
-function App() {
-  const [peerManager, setPeerManager] = useState<PeerManager | null>(null);
+type Message = { type: "text"; text: string };
+
+const App = () => {
+  const [peerManager, setPeerManager] = useState<PeerManager<Message> | null>(
+    null,
+  );
   const [messages, setMessages] = useState<Array<{ id: string; text: string }>>(
     [],
   );
@@ -14,11 +18,13 @@ function App() {
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
 
   useMount(() => {
-    const pm = new PeerManager(
+    const pm = new PeerManager<Message>(
       `user-${Math.random().toString(36).substring(2, 11)}`,
     );
-    pm.onMessage((id, text) => {
-      setMessages((prev) => [...prev, { id, text }]);
+    pm.onMessage((id, msg) => {
+      if (msg.type === "text") {
+        setMessages((prev) => [...prev, { id, text: msg.text }]);
+      }
     });
     pm.onConnectionChange((conns) => {
       setConnections(conns);
@@ -29,7 +35,7 @@ function App() {
 
   const handleSend = () => {
     if (inputText.trim() && peerManager) {
-      peerManager.send(inputText);
+      peerManager.send({ type: "text", text: inputText });
       setMessages((prev) => [...prev, { id: "me", text: inputText }]);
       setInputText("");
     }
@@ -105,6 +111,6 @@ function App() {
       </div>
     </div>
   );
-}
+};
 
 export default App;
