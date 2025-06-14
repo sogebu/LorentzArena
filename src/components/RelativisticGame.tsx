@@ -33,7 +33,7 @@ const calculateDopplerColor = (
 };
 
 // グリッドの設定
-const GRID_SIZE = 50; // ピクセル単位
+const GRID_SIZE = 40; // ピクセル単位（少し密にする）
 const GRID_RANGE = 30; // 中心から何マスまで表示するか
 
 // グリッド点の座標を生成（動的にオフセットを適用）
@@ -68,6 +68,10 @@ const RelativisticGame = () => {
   const animationRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(Date.now());
   const keysPressed = useRef<Set<string>>(new Set());
+  const [screenSize, setScreenSize] = useState({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
 
   // 初期化
   useEffect(() => {
@@ -124,6 +128,16 @@ const RelativisticGame = () => {
       peerManager.offMessage("relativistic");
     };
   }, [peerManager, myId]);
+
+  // ウィンドウリサイズの検出
+  useEffect(() => {
+    const handleResize = () => {
+      setScreenSize({ width: window.innerWidth, height: window.innerHeight });
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // キーボード入力処理
   useEffect(() => {
@@ -239,14 +253,20 @@ const RelativisticGame = () => {
 
     const gridLines: JSX.Element[] = [];
 
-    // 観測者の速度によるローレンツ変換を適用
-    const applyLorentzTransform = (
-      worldPos: Vector3,
-      worldTime: number,
-    ): Vector3 => {
-      // 世界座標系での4元位置
+    // 過去光円錐上の点を計算してローレンツ変換を適用
+    const applyPastLightConeTransform = (worldPos: Vector3): Vector3 => {
+      // 観測者から見た空間的距離
+      const spatialDistance = worldPos.sub(observerPos).length();
+
+      // 光が観測者に届くまでの時間（過去にさかのぼる）
+      const lightTravelTime = spatialDistance;
+
+      // グリッド点が光を発した時刻（過去の時刻）
+      const emissionTime = observerPhaseSpace.coordinateTime - lightTravelTime;
+
+      // 過去の時刻での4元位置
       const worldPos4 = new Vector4(
-        worldTime,
+        emissionTime,
         worldPos.x,
         worldPos.y,
         worldPos.z,
@@ -267,53 +287,73 @@ const RelativisticGame = () => {
       return transformedPos4.spatial();
     };
 
-    // 横線を描画
-    for (let i = 0; i < gridPoints.length; i++) {
-      for (let j = 0; j < gridPoints[i].length - 1; j++) {
-        const pos1 = gridPoints[i][j];
-        const pos2 = gridPoints[i][j + 1];
+    // まず、すべてのグリッド点を過去光円錐上で変換
+    const transformedPoints: Vector3[][] = [];
 
-        // ローレンツ変換を適用（現在時刻での位置として変換）
-        const currentTime = observerPhaseSpace.coordinateTime;
-        const transformedPos1 = applyLorentzTransform(pos1, currentTime);
-        const transformedPos2 = applyLorentzTransform(pos2, currentTime);
+    for (let i = 0; i < gridPoints.length; i++) {
+      const transformedRow: Vector3[] = [];
+      for (let j = 0; j < gridPoints[i].length; j++) {
+        const transformedPoint = applyPastLightConeTransform(gridPoints[i][j]);
+        transformedRow.push(transformedPoint);
+      }
+      transformedPoints.push(transformedRow);
+    }
+
+    // 速度に応じてグリッドの基本色を計算
+    const velocity = observerVel.length();
+    const gamma = observerPhaseSpace.gamma;
+    const baseGridOpacity = Math.max(0.3, 0.8 - velocity * 0.5);
+    const baseGridColor = velocity > 0.5 ? "#666" : "#444";
+
+    // 横線を描画（変換済みの点を使用）
+    for (let i = 0; i < transformedPoints.length; i++) {
+      for (let j = 0; j < transformedPoints[i].length - 1; j++) {
+        const pos1 = transformedPoints[i][j];
+        const pos2 = transformedPoints[i][j + 1];
+
+        // 元のグリッド点の距離に基づいて色を調整（過去光円錐効果）
+        const originalPos = gridPoints[i][j];
+        const distance = originalPos.sub(observerPos).length();
+        const distanceFactor = Math.exp(-distance * 0.5); // 距離による減衰
+        const gridOpacity = baseGridOpacity * distanceFactor;
 
         gridLines.push(
           <line
             key={`h-${i}-${j}`}
-            x1={transformedPos1.x * LIGHT_SPEED + 400}
-            y1={transformedPos1.y * LIGHT_SPEED + 300}
-            x2={transformedPos2.x * LIGHT_SPEED + 400}
-            y2={transformedPos2.y * LIGHT_SPEED + 300}
-            stroke="#444"
+            x1={pos1.x * LIGHT_SPEED + screenSize.width / 2}
+            y1={pos1.y * LIGHT_SPEED + screenSize.height / 2}
+            x2={pos2.x * LIGHT_SPEED + screenSize.width / 2}
+            y2={pos2.y * LIGHT_SPEED + screenSize.height / 2}
+            stroke={baseGridColor}
             strokeWidth="1"
-            opacity="0.8"
+            opacity={gridOpacity}
           />,
         );
       }
     }
 
-    // 縦線を描画
-    for (let i = 0; i < gridPoints.length - 1; i++) {
-      for (let j = 0; j < gridPoints[i].length; j++) {
-        const pos1 = gridPoints[i][j];
-        const pos2 = gridPoints[i + 1][j];
+    // 縦線を描画（変換済みの点を使用）
+    for (let i = 0; i < transformedPoints.length - 1; i++) {
+      for (let j = 0; j < transformedPoints[i].length; j++) {
+        const pos1 = transformedPoints[i][j];
+        const pos2 = transformedPoints[i + 1][j];
 
-        // ローレンツ変換を適用（現在時刻での位置として変換）
-        const currentTime = observerPhaseSpace.coordinateTime;
-        const transformedPos1 = applyLorentzTransform(pos1, currentTime);
-        const transformedPos2 = applyLorentzTransform(pos2, currentTime);
+        // 元のグリッド点の距離に基づいて色を調整（過去光円錐効果）
+        const originalPos = gridPoints[i][j];
+        const distance = originalPos.sub(observerPos).length();
+        const distanceFactor = Math.exp(-distance * 0.5); // 距離による減衰
+        const gridOpacity = baseGridOpacity * distanceFactor;
 
         gridLines.push(
           <line
             key={`v-${i}-${j}`}
-            x1={transformedPos1.x * LIGHT_SPEED + 400}
-            y1={transformedPos1.y * LIGHT_SPEED + 300}
-            x2={transformedPos2.x * LIGHT_SPEED + 400}
-            y2={transformedPos2.y * LIGHT_SPEED + 300}
-            stroke="#444"
+            x1={pos1.x * LIGHT_SPEED + screenSize.width / 2}
+            y1={pos1.y * LIGHT_SPEED + screenSize.height / 2}
+            x2={pos2.x * LIGHT_SPEED + screenSize.width / 2}
+            y2={pos2.y * LIGHT_SPEED + screenSize.height / 2}
+            stroke={baseGridColor}
             strokeWidth="1"
-            opacity="0.8"
+            opacity={gridOpacity}
           />,
         );
       }
@@ -330,7 +370,7 @@ const RelativisticGame = () => {
           zIndex: 0,
           pointerEvents: "none",
         }}
-        viewBox="0 0 800 600"
+        viewBox={`0 0 ${screenSize.width} ${screenSize.height}`}
         preserveAspectRatio="xMidYMid meet"
       >
         <title>Relativistic grid</title>
@@ -343,9 +383,8 @@ const RelativisticGame = () => {
     <div
       style={{
         position: "relative",
-        width: "800px",
-        height: "600px",
-        border: "2px solid #333",
+        width: "100vw",
+        height: "100vh",
         backgroundColor: "#000",
         overflow: "hidden",
       }}
@@ -395,7 +434,7 @@ const RelativisticGame = () => {
         if (player.id === myId) {
           // 自機は現在の状態を使用
           displayPhaseSpace = player.phaseSpace;
-          displayPos = { x: 400, y: 300 };
+          displayPos = { x: screenSize.width / 2, y: screenSize.height / 2 };
         } else {
           // 他プレイヤーは過去光円錐との交点を使用
           displayPhaseSpace =
@@ -403,8 +442,8 @@ const RelativisticGame = () => {
             player.phaseSpace;
           const relativePos = displayPhaseSpace.position.sub(observerPos);
           displayPos = {
-            x: relativePos.x * LIGHT_SPEED + 400,
-            y: relativePos.y * LIGHT_SPEED + 300,
+            x: relativePos.x * LIGHT_SPEED + screenSize.width / 2,
+            y: relativePos.y * LIGHT_SPEED + screenSize.height / 2,
           };
         }
 
