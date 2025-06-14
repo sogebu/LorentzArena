@@ -1,6 +1,32 @@
 import { useEffect, useRef, useState, type JSX } from "react";
 import { usePeer } from "../hooks/usePeer";
-import { Vector3, Vector4, PhaseSpace, WorldLine, Matrix4 } from "../physics";
+import {
+  type Vector3,
+  type PhaseSpace,
+  type WorldLine,
+  createVector3,
+  createVector4,
+  lengthVector3,
+  gammaVector3,
+  lengthSquaredVector3,
+  subVector3,
+  scaleVector3,
+  vector3Zero,
+  phaseSpaceFromPosition3Velocity3,
+  createWorldLine,
+  appendWorldLine,
+  pastLightConeIntersectionWorldLine,
+  evolvePhaseSpace,
+  getPositionPhaseSpace,
+  getVelocityPhaseSpace,
+  getGammaPhaseSpace,
+  getCoordinateTimePhaseSpace,
+  getProperTimePhaseSpace,
+  lorentzBoost,
+  multiplyVector4Matrix4,
+  subVector4,
+  spatialVector4,
+} from "../physics";
 
 type RelativisticPlayer = {
   id: string;
@@ -17,14 +43,14 @@ const calculateDopplerColor = (
   velocity: Vector3,
   baseColor: string,
 ): string => {
-  const beta = velocity.length();
+  const beta = lengthVector3(velocity);
 
   // 速度が0の場合は基本色を返す
   if (beta === 0) {
     return baseColor === "blue" ? "rgb(128, 128, 255)" : "rgb(255, 128, 128)";
   }
 
-  const gamma = velocity.gamma();
+  const gamma = gammaVector3(velocity);
 
   // 簡略化されたドップラー効果
   // 接近: 青方偏移、離脱: 赤方偏移
@@ -54,7 +80,7 @@ const createGridLines = (offsetX: number, offsetY: number) => {
   for (let i = -visibleRange; i <= visibleRange; i++) {
     const line: Vector3[] = [];
     for (let j = -visibleRange; j <= visibleRange; j += 1 / GRID_SUBDIVISION) {
-      const position = new Vector3(
+      const position = createVector3(
         ((j + offsetX) * GRID_SIZE) / LIGHT_SPEED,
         ((i + offsetY) * GRID_SIZE) / LIGHT_SPEED,
         0,
@@ -68,7 +94,7 @@ const createGridLines = (offsetX: number, offsetY: number) => {
   for (let j = -visibleRange; j <= visibleRange; j++) {
     const line: Vector3[] = [];
     for (let i = -visibleRange; i <= visibleRange; i += 1 / GRID_SUBDIVISION) {
-      const position = new Vector3(
+      const position = createVector3(
         ((j + offsetX) * GRID_SIZE) / LIGHT_SPEED,
         ((i + offsetY) * GRID_SIZE) / LIGHT_SPEED,
         0,
@@ -106,13 +132,13 @@ const RelativisticGame = () => {
         return prev;
       }
 
-      const initialPhaseSpace = PhaseSpace.fromPosition3Velocity3(
-        Vector3.zero(),
-        Vector3.zero(),
+      const initialPhaseSpace = phaseSpaceFromPosition3Velocity3(
+        vector3Zero(),
+        vector3Zero(),
         0,
       );
-      const worldLine = new WorldLine();
-      worldLine.append(initialPhaseSpace);
+      let worldLine = createWorldLine();
+      worldLine = appendWorldLine(worldLine, initialPhaseSpace);
 
       const next = new Map(prev);
       next.set(myId, {
@@ -134,16 +160,16 @@ const RelativisticGame = () => {
       if (msg.type === "phaseSpace") {
         setPlayers((prev) => {
           const next = new Map(prev);
-          const phaseSpace = PhaseSpace.fromPosition3Velocity3(
-            new Vector3(msg.position.x, msg.position.y, msg.position.z),
-            new Vector3(msg.velocity.x, msg.velocity.y, msg.velocity.z),
+          const phaseSpace = phaseSpaceFromPosition3Velocity3(
+            createVector3(msg.position.x, msg.position.y, msg.position.z),
+            createVector3(msg.velocity.x, msg.velocity.y, msg.velocity.z),
             msg.coordinateTime,
           );
 
           // 既存のプレイヤーのワールドラインに追加、または新規作成
           const existing = prev.get(id);
-          const worldLine = existing?.worldLine || new WorldLine();
-          worldLine.append(phaseSpace);
+          let worldLine = existing?.worldLine || createWorldLine();
+          worldLine = appendWorldLine(worldLine, phaseSpace);
 
           next.set(id, {
             id,
@@ -232,15 +258,23 @@ const RelativisticGame = () => {
           if (keysPressed.current.has("ArrowUp")) ay -= accel;
           if (keysPressed.current.has("ArrowDown")) ay += accel;
 
-          const acceleration = new Vector3(ax, ay, 0);
+          const acceleration = createVector3(ax, ay, 0);
 
           // 相対論的運動方程式で更新
           try {
-            const newPhaseSpace = myPlayer.phaseSpace.evolve(acceleration, dt);
-            myPlayer.worldLine.append(newPhaseSpace);
+            const newPhaseSpace = evolvePhaseSpace(
+              myPlayer.phaseSpace,
+              acceleration,
+              dt,
+            );
+            const updatedWorldLine = appendWorldLine(
+              myPlayer.worldLine,
+              newPhaseSpace,
+            );
             next.set(myId, {
               ...myPlayer,
               phaseSpace: newPhaseSpace,
+              worldLine: updatedWorldLine,
             });
 
             // 他のプレイヤーに送信
@@ -248,16 +282,16 @@ const RelativisticGame = () => {
               peerManager.send({
                 type: "phaseSpace",
                 position: {
-                  x: newPhaseSpace.position.x,
-                  y: newPhaseSpace.position.y,
-                  z: newPhaseSpace.position.z,
+                  x: getPositionPhaseSpace(newPhaseSpace).x,
+                  y: getPositionPhaseSpace(newPhaseSpace).y,
+                  z: getPositionPhaseSpace(newPhaseSpace).z,
                 },
                 velocity: {
-                  x: newPhaseSpace.velocity.x,
-                  y: newPhaseSpace.velocity.y,
-                  z: newPhaseSpace.velocity.z,
+                  x: getVelocityPhaseSpace(newPhaseSpace).x,
+                  y: getVelocityPhaseSpace(newPhaseSpace).y,
+                  z: getVelocityPhaseSpace(newPhaseSpace).z,
                 },
-                coordinateTime: newPhaseSpace.coordinateTime,
+                coordinateTime: getCoordinateTimePhaseSpace(newPhaseSpace),
               });
             }
           } catch (error) {
@@ -287,8 +321,8 @@ const RelativisticGame = () => {
 
     const observerPhaseSpace = myPlayer.phaseSpace;
     const observerPos4 = observerPhaseSpace.position4;
-    const observerVel = observerPhaseSpace.velocity;
-    const observerPos = observerPhaseSpace.position;
+    const observerVel = getVelocityPhaseSpace(observerPhaseSpace);
+    const observerPos = getPositionPhaseSpace(observerPhaseSpace);
 
     // プレイヤーの位置に基づいてグリッドのオフセットを計算
     const gridOffsetX = Math.floor((observerPos.x * LIGHT_SPEED) / GRID_SIZE);
@@ -305,16 +339,17 @@ const RelativisticGame = () => {
     // 過去光円錐上の点を計算してローレンツ変換を適用
     const applyPastLightConeTransform = (worldPos: Vector3): Vector3 => {
       // 観測者から見た空間的距離
-      const spatialDistance = worldPos.sub(observerPos).length();
+      const spatialDistance = lengthVector3(subVector3(worldPos, observerPos));
 
       // 光が観測者に届くまでの時間（過去にさかのぼる）
       const lightTravelTime = spatialDistance;
 
       // グリッド点が光を発した時刻（過去の時刻）
-      const emissionTime = observerPhaseSpace.coordinateTime - lightTravelTime;
+      const emissionTime =
+        getCoordinateTimePhaseSpace(observerPhaseSpace) - lightTravelTime;
 
       // 過去の時刻での4元位置
-      const worldPos4 = new Vector4(
+      const worldPos4 = createVector4(
         emissionTime,
         worldPos.x,
         worldPos.y,
@@ -322,18 +357,21 @@ const RelativisticGame = () => {
       );
 
       // 観測者の静止系への変換
-      if (observerVel.lengthSquared() === 0) {
-        return worldPos.sub(observerPhaseSpace.position);
+      if (lengthSquaredVector3(observerVel) === 0) {
+        return subVector3(worldPos, getPositionPhaseSpace(observerPhaseSpace));
       }
 
       // 観測者の速度の逆向きでローレンツ変換（観測者の静止系への変換）
-      const boostToObserver = Matrix4.lorentzBoost(observerVel.scale(-1));
+      const boostToObserver = lorentzBoost(scaleVector3(observerVel, -1));
 
       // 観測者の位置を原点に移動してから変換
-      const relativePos4 = worldPos4.sub(observerPos4);
-      const transformedPos4 = boostToObserver.multiplyVector4(relativePos4);
+      const relativePos4 = subVector4(worldPos4, observerPos4);
+      const transformedPos4 = multiplyVector4Matrix4(
+        boostToObserver,
+        relativePos4,
+      );
 
-      return transformedPos4.spatial();
+      return spatialVector4(transformedPos4);
     };
 
     // 横線を過去光円錐上で変換
@@ -359,7 +397,7 @@ const RelativisticGame = () => {
     }
 
     // 速度に応じてグリッドの基本色を計算
-    const velocity = observerVel.length();
+    const velocity = lengthVector3(observerVel);
     const baseGridOpacity = Math.max(0.3, 0.8 - velocity * 0.5);
     const baseGridColor = velocity > 0.5 ? "#666" : "#444";
 
@@ -374,7 +412,7 @@ const RelativisticGame = () => {
 
         // 元の点の距離に基づいて色を調整（過去光円錐効果）
         const originalPos = originalLine[j];
-        const distance = originalPos.sub(observerPos).length();
+        const distance = lengthVector3(subVector3(originalPos, observerPos));
         const distanceFactor = Math.exp(-distance * 0.5); // 距離による減衰
         const gridOpacity = baseGridOpacity * distanceFactor;
 
@@ -404,7 +442,7 @@ const RelativisticGame = () => {
 
         // 元の点の距離に基づいて色を調整（過去光円錐効果）
         const originalPos = originalLine[j];
-        const distance = originalPos.sub(observerPos).length();
+        const distance = lengthVector3(subVector3(originalPos, observerPos));
         const distanceFactor = Math.exp(-distance * 0.5); // 距離による減衰
         const gridOpacity = baseGridOpacity * distanceFactor;
 
@@ -492,8 +530,10 @@ const RelativisticGame = () => {
       {myId &&
         (() => {
           const myPlayer = myId ? players.get(myId) : undefined;
-          const vel = myPlayer?.phaseSpace.velocity || Vector3.zero();
-          const gamma = myPlayer?.phaseSpace.gamma || 1;
+          const vel = myPlayer
+            ? getVelocityPhaseSpace(myPlayer.phaseSpace)
+            : vector3Zero();
+          const gamma = myPlayer ? getGammaPhaseSpace(myPlayer.phaseSpace) : 1;
           const color = myPlayer?.color || "blue";
           const contractionFactor = 1 / gamma;
           const angle = Math.atan2(vel.y, vel.x);
@@ -529,7 +569,7 @@ const RelativisticGame = () => {
                 }}
               >
                 You
-                <br />v = {(vel.length() * 100).toFixed(1)}% c
+                <br />v = {(lengthVector3(vel) * 100).toFixed(1)}% c
                 <br />γ = {gamma.toFixed(2)}
               </div>
             </div>
@@ -544,20 +584,23 @@ const RelativisticGame = () => {
         if (!myPlayer) return null;
         // 観測者の4元位置
         const observerPos4 = myPlayer.phaseSpace.position4;
-        const observerPos = myPlayer.phaseSpace.position;
+        const observerPos = getPositionPhaseSpace(myPlayer.phaseSpace);
 
         // 他プレイヤーは過去光円錐との交点を使用
         const displayPhaseSpace =
-          player.worldLine.pastLightConeIntersection(observerPos4) ||
+          pastLightConeIntersectionWorldLine(player.worldLine, observerPos4) ||
           player.phaseSpace;
-        const relativePos = displayPhaseSpace.position.sub(observerPos);
+        const relativePos = subVector3(
+          getPositionPhaseSpace(displayPhaseSpace),
+          observerPos,
+        );
         const displayPos = {
           x: relativePos.x * LIGHT_SPEED + screenSize.width / 2,
           y: relativePos.y * LIGHT_SPEED + screenSize.height / 2,
         };
 
-        const vel = displayPhaseSpace.velocity;
-        const gamma = displayPhaseSpace.gamma;
+        const vel = getVelocityPhaseSpace(displayPhaseSpace);
+        const gamma = getGammaPhaseSpace(displayPhaseSpace);
 
         // ローレンツ収縮を表現（進行方向に縮む）
         const contractionFactor = 1 / gamma;
@@ -591,7 +634,7 @@ const RelativisticGame = () => {
               }}
             >
               {player.id === myId ? "You" : player.id.substring(0, 8)}
-              <br />v = {(vel.length() * 100).toFixed(1)}% c
+              <br />v = {(lengthVector3(vel) * 100).toFixed(1)}% c
               <br />γ = {gamma.toFixed(2)}
             </div>
           </div>
@@ -602,8 +645,8 @@ const RelativisticGame = () => {
       {(() => {
         const myPlayer = myId ? players.get(myId) : undefined;
         if (!myPlayer) return null;
-        const v = myPlayer.phaseSpace.velocity.length();
-        const gamma = myPlayer.phaseSpace.gamma;
+        const v = lengthVector3(getVelocityPhaseSpace(myPlayer.phaseSpace));
+        const gamma = getGammaPhaseSpace(myPlayer.phaseSpace);
 
         return (
           <div
@@ -619,7 +662,10 @@ const RelativisticGame = () => {
           >
             <div>速度: {(v * 100).toFixed(1)}% c</div>
             <div>ガンマ因子: {gamma.toFixed(3)}</div>
-            <div>固有時間: {myPlayer.phaseSpace.properTime.toFixed(2)}s</div>
+            <div>
+              固有時間:{" "}
+              {getProperTimePhaseSpace(myPlayer.phaseSpace).toFixed(2)}s
+            </div>
           </div>
         );
       })()}
