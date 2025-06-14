@@ -1,12 +1,11 @@
-import { createContext, useState, type ReactNode } from "react";
+import { createContext, useState, useEffect, type ReactNode } from "react";
 import { PeerManager } from "../services/PeerManager";
 import type { ConnectionStatus, Message } from "../types";
-import { useMount } from "react-use";
 
 interface PeerContextValue {
   peerManager: PeerManager<Message> | null;
   connections: ConnectionStatus[];
-  myId: string;
+  myId: string | null;
 }
 
 export const PeerContext = createContext<PeerContextValue | null>(null);
@@ -21,15 +20,56 @@ export const PeerProvider = ({ children }: PeerProviderProps) => {
     null,
   );
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
-  const [myId, setMyId] = useState<string>("");
+  const [myId, setMyId] = useState<string | null>(null);
 
-  useMount(() => {
+  useEffect(() => {
     // マウント時に PeerManager を生成し、イベントハンドラを登録
     const randomId = `user-${Math.random().toString(36).substring(2, 11)}`;
     const pm = new PeerManager<Message>(randomId);
 
+    // myIdを設定
+    setMyId(randomId);
+
     pm.onConnectionChange((conns) => {
       setConnections(conns);
+    });
+
+    // ホスト用のメッセージハンドラ
+    pm.onMessage("host", (senderId, msg) => {
+      if (pm.getIsHost()) {
+        if (msg.type === "requestPeerList") {
+          // ホストはピアリストを送信
+          const peerIds = pm.getConnectedPeerIds();
+          pm.sendTo(senderId, { type: "peerList", peers: peerIds });
+
+          // 他のピアに新規接続者を通知
+          for (const peerId of peerIds) {
+            if (peerId !== senderId) {
+              pm.sendTo(peerId, {
+                type: "peerList",
+                peers: [...peerIds, senderId],
+              });
+            }
+          }
+        }
+      }
+    });
+
+    // クライアント用のメッセージハンドラ
+    pm.onMessage("client", (_, msg) => {
+      if (!pm.getIsHost() && msg.type === "peerList") {
+        // ピアリストを受信したら、他のピアに接続
+        const hostId = pm.getHostId();
+        for (const peerId of msg.peers) {
+          if (
+            peerId !== pm.id() &&
+            peerId !== hostId &&
+            !pm.getConnections().some((c) => c.id === peerId)
+          ) {
+            pm.connect(peerId);
+          }
+        }
+      }
     });
 
     setPeerManager(pm);
@@ -39,7 +79,7 @@ export const PeerProvider = ({ children }: PeerProviderProps) => {
       // クリーンアップ（必要に応じて）
       pm.destroy();
     };
-  });
+  }, []);
 
   return (
     <PeerContext.Provider value={{ peerManager, connections, myId }}>
