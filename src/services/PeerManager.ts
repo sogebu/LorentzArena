@@ -101,7 +101,7 @@ export class PeerManager<T> {
   // 特定のピアにメッセージを送信
   sendTo(peerId: string, msg: T) {
     const conn = this.conns.get(peerId);
-    if (conn && conn.open) {
+    if (conn?.open) {
       conn.send(msg);
     }
   }

@@ -40,29 +40,45 @@ const calculateDopplerColor = (
 
 // グリッドの設定
 const GRID_SIZE = 40; // ピクセル単位（少し密にする）
+const GRID_SUBDIVISION = 4; // 各グリッドセルを何分割するか（パフォーマンスと滑らかさのバランス）
 
-// グリッド点の座標を生成（動的にオフセットを適用）
-const createGridPoints = (offsetX: number, offsetY: number): Vector3[][] => {
-  const points: Vector3[][] = [];
+// グリッド線上の点の座標を生成（動的にオフセットを適用）
+const createGridLines = (offsetX: number, offsetY: number) => {
+  const horizontalLines: Vector3[][] = [];
+  const verticalLines: Vector3[][] = [];
 
   // 画面に表示される範囲を計算
   const visibleRange = 10; // 画面に表示するグリッドの範囲
 
+  // 横線の生成（各横線上に補間点を配置）
   for (let i = -visibleRange; i <= visibleRange; i++) {
-    const row: Vector3[] = [];
-    for (let j = -visibleRange; j <= visibleRange; j++) {
-      // 各グリッド点の位置（ワールド座標）
+    const line: Vector3[] = [];
+    for (let j = -visibleRange; j <= visibleRange; j += 1 / GRID_SUBDIVISION) {
       const position = new Vector3(
         ((j + offsetX) * GRID_SIZE) / LIGHT_SPEED,
         ((i + offsetY) * GRID_SIZE) / LIGHT_SPEED,
         0,
       );
-      row.push(position);
+      line.push(position);
     }
-    points.push(row);
+    horizontalLines.push(line);
   }
 
-  return points;
+  // 縦線の生成（各縦線上に補間点を配置）
+  for (let j = -visibleRange; j <= visibleRange; j++) {
+    const line: Vector3[] = [];
+    for (let i = -visibleRange; i <= visibleRange; i += 1 / GRID_SUBDIVISION) {
+      const position = new Vector3(
+        ((j + offsetX) * GRID_SIZE) / LIGHT_SPEED,
+        ((i + offsetY) * GRID_SIZE) / LIGHT_SPEED,
+        0,
+      );
+      line.push(position);
+    }
+    verticalLines.push(line);
+  }
+
+  return { horizontalLines, verticalLines };
 };
 
 const RelativisticGame = () => {
@@ -70,7 +86,6 @@ const RelativisticGame = () => {
   const [players, setPlayers] = useState<Map<string, RelativisticPlayer>>(
     new Map(),
   );
-  const [isInitialized, setIsInitialized] = useState(false);
   const animationRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(Date.now());
   const keysPressed = useRef<Set<string>>(new Set());
@@ -78,6 +93,8 @@ const RelativisticGame = () => {
     width: window.innerWidth,
     height: window.innerHeight,
   });
+  const [fps, setFps] = useState(0);
+  const fpsRef = useRef({ frameCount: 0, lastTime: performance.now() });
 
   // 初期化
   useEffect(() => {
@@ -104,7 +121,6 @@ const RelativisticGame = () => {
         worldLine,
         color: "blue",
       });
-      setIsInitialized(true);
       return next;
     });
   }, [myId]);
@@ -187,6 +203,20 @@ const RelativisticGame = () => {
       const dt = (currentTime - lastTimeRef.current) / 1000; // 秒単位
       lastTimeRef.current = currentTime;
 
+      // FPS計算
+      const now = performance.now();
+      fpsRef.current.frameCount++;
+      const elapsed = now - fpsRef.current.lastTime;
+
+      if (elapsed >= 1000) {
+        const calculatedFps = Math.round(
+          (fpsRef.current.frameCount * 1000) / elapsed,
+        );
+        setFps(calculatedFps);
+        fpsRef.current.frameCount = 0;
+        fpsRef.current.lastTime = now;
+      }
+
       setPlayers((prev) => {
         const next = new Map(prev);
         const myPlayer = next.get(myId);
@@ -252,7 +282,7 @@ const RelativisticGame = () => {
 
   // グリッドラインをレンダリング
   const renderGrid = () => {
-    const myPlayer = players.get(myId);
+    const myPlayer = myId ? players.get(myId) : undefined;
     if (!myPlayer) return null;
 
     const observerPhaseSpace = myPlayer.phaseSpace;
@@ -264,8 +294,11 @@ const RelativisticGame = () => {
     const gridOffsetX = Math.floor((observerPos.x * LIGHT_SPEED) / GRID_SIZE);
     const gridOffsetY = Math.floor((observerPos.y * LIGHT_SPEED) / GRID_SIZE);
 
-    // 動的にグリッドポイントを生成
-    const gridPoints = createGridPoints(gridOffsetX, gridOffsetY);
+    // 動的にグリッド線を生成
+    const { horizontalLines, verticalLines } = createGridLines(
+      gridOffsetX,
+      gridOffsetY,
+    );
 
     const gridLines: JSX.Element[] = [];
 
@@ -303,16 +336,26 @@ const RelativisticGame = () => {
       return transformedPos4.spatial();
     };
 
-    // まず、すべてのグリッド点を過去光円錐上で変換
-    const transformedPoints: Vector3[][] = [];
-
-    for (let i = 0; i < gridPoints.length; i++) {
-      const transformedRow: Vector3[] = [];
-      for (let j = 0; j < gridPoints[i].length; j++) {
-        const transformedPoint = applyPastLightConeTransform(gridPoints[i][j]);
-        transformedRow.push(transformedPoint);
+    // 横線を過去光円錐上で変換
+    const transformedHorizontalLines: Vector3[][] = [];
+    for (const line of horizontalLines) {
+      const transformedLine: Vector3[] = [];
+      for (const point of line) {
+        const transformedPoint = applyPastLightConeTransform(point);
+        transformedLine.push(transformedPoint);
       }
-      transformedPoints.push(transformedRow);
+      transformedHorizontalLines.push(transformedLine);
+    }
+
+    // 縦線を過去光円錐上で変換
+    const transformedVerticalLines: Vector3[][] = [];
+    for (const line of verticalLines) {
+      const transformedLine: Vector3[] = [];
+      for (const point of line) {
+        const transformedPoint = applyPastLightConeTransform(point);
+        transformedLine.push(transformedPoint);
+      }
+      transformedVerticalLines.push(transformedLine);
     }
 
     // 速度に応じてグリッドの基本色を計算
@@ -320,14 +363,17 @@ const RelativisticGame = () => {
     const baseGridOpacity = Math.max(0.3, 0.8 - velocity * 0.5);
     const baseGridColor = velocity > 0.5 ? "#666" : "#444";
 
-    // 横線を描画（変換済みの点を使用）
-    for (let i = 0; i < transformedPoints.length; i++) {
-      for (let j = 0; j < transformedPoints[i].length - 1; j++) {
-        const pos1 = transformedPoints[i][j];
-        const pos2 = transformedPoints[i][j + 1];
+    // 横線を描画（変換済みの線を使用）
+    for (let i = 0; i < transformedHorizontalLines.length; i++) {
+      const line = transformedHorizontalLines[i];
+      const originalLine = horizontalLines[i];
 
-        // 元のグリッド点の距離に基づいて色を調整（過去光円錐効果）
-        const originalPos = gridPoints[i][j];
+      for (let j = 0; j < line.length - 1; j++) {
+        const pos1 = line[j];
+        const pos2 = line[j + 1];
+
+        // 元の点の距離に基づいて色を調整（過去光円錐効果）
+        const originalPos = originalLine[j];
         const distance = originalPos.sub(observerPos).length();
         const distanceFactor = Math.exp(-distance * 0.5); // 距離による減衰
         const gridOpacity = baseGridOpacity * distanceFactor;
@@ -347,14 +393,17 @@ const RelativisticGame = () => {
       }
     }
 
-    // 縦線を描画（変換済みの点を使用）
-    for (let i = 0; i < transformedPoints.length - 1; i++) {
-      for (let j = 0; j < transformedPoints[i].length; j++) {
-        const pos1 = transformedPoints[i][j];
-        const pos2 = transformedPoints[i + 1][j];
+    // 縦線を描画（変換済みの線を使用）
+    for (let i = 0; i < transformedVerticalLines.length; i++) {
+      const line = transformedVerticalLines[i];
+      const originalLine = verticalLines[i];
 
-        // 元のグリッド点の距離に基づいて色を調整（過去光円錐効果）
-        const originalPos = gridPoints[i][j];
+      for (let j = 0; j < line.length - 1; j++) {
+        const pos1 = line[j];
+        const pos2 = line[j + 1];
+
+        // 元の点の距離に基づいて色を調整（過去光円錐効果）
+        const originalPos = originalLine[j];
         const distance = originalPos.sub(observerPos).length();
         const distanceFactor = Math.exp(-distance * 0.5); // 距離による減衰
         const gridOpacity = baseGridOpacity * distanceFactor;
@@ -419,6 +468,11 @@ const RelativisticGame = () => {
           矢印キーで移動 (光速の{((1 / LIGHT_SPEED) * 100).toFixed(1)}%/s
           の加速度)
         </div>
+        <div
+          style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
+        >
+          FPS: {fps}
+        </div>
       </div>
 
       <div
@@ -437,7 +491,7 @@ const RelativisticGame = () => {
       {/* 自機を常に表示 */}
       {myId &&
         (() => {
-          const myPlayer = players.get(myId);
+          const myPlayer = myId ? players.get(myId) : undefined;
           const vel = myPlayer?.phaseSpace.velocity || Vector3.zero();
           const gamma = myPlayer?.phaseSpace.gamma || 1;
           const color = myPlayer?.color || "blue";
@@ -486,7 +540,7 @@ const RelativisticGame = () => {
       {Array.from(players.values()).map((player) => {
         if (player.id === myId) return null; // 自機はスキップ
 
-        const myPlayer = players.get(myId);
+        const myPlayer = myId ? players.get(myId) : undefined;
         if (!myPlayer) return null;
         // 観測者の4元位置
         const observerPos4 = myPlayer.phaseSpace.position4;
@@ -546,7 +600,7 @@ const RelativisticGame = () => {
 
       {/* 速度計 */}
       {(() => {
-        const myPlayer = players.get(myId);
+        const myPlayer = myId ? players.get(myId) : undefined;
         if (!myPlayer) return null;
         const v = myPlayer.phaseSpace.velocity.length();
         const gamma = myPlayer.phaseSpace.gamma;
