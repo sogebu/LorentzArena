@@ -6,7 +6,7 @@ import { useMount } from "react-use";
 interface PeerContextValue {
   peerManager: PeerManager<Message> | null;
   connections: ConnectionStatus[];
-  myId: string;
+  myId: string | null;
 }
 
 export const PeerContext = createContext<PeerContextValue | null>(null);
@@ -21,12 +21,15 @@ export const PeerProvider = ({ children }: PeerProviderProps) => {
     null,
   );
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
-  const [myId, setMyId] = useState<string>("");
+  const [myId, setMyId] = useState<string | null>(null);
 
   useMount(() => {
     // マウント時に PeerManager を生成し、イベントハンドラを登録
     const randomId = `user-${Math.random().toString(36).substring(2, 11)}`;
     const pm = new PeerManager<Message>(randomId);
+
+    // myIdを設定
+    setMyId(randomId);
 
     pm.onConnectionChange((conns) => {
       setConnections(conns);

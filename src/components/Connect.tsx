@@ -56,7 +56,7 @@ const Connect = () => {
         <>
           <div className="id-display">
             <p style={{ margin: "5px 0", fontSize: "0.9em" }}>
-              あなたのID: {myId}
+              あなたのID: {myId || "接続中..."}
             </p>
             {mode !== "none" && (
               <p style={{ margin: "5px 0", fontSize: "0.9em" }}>

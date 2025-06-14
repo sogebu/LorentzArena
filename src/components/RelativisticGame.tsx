@@ -18,11 +18,17 @@ const calculateDopplerColor = (
   baseColor: string,
 ): string => {
   const beta = velocity.length();
+
+  // 速度が0の場合は基本色を返す
+  if (beta === 0) {
+    return baseColor === "blue" ? "rgb(128, 128, 255)" : "rgb(255, 128, 128)";
+  }
+
   const gamma = velocity.gamma();
 
   // 簡略化されたドップラー効果
   // 接近: 青方偏移、離脱: 赤方偏移
-  const dopplerFactor = gamma * (1 - (beta * velocity.x) / velocity.length());
+  const dopplerFactor = gamma * (1 - (beta * velocity.x) / beta);
 
   if (baseColor === "blue") {
     const intensity = Math.max(0, Math.min(255, 128 * dopplerFactor));
@@ -64,6 +70,7 @@ const RelativisticGame = () => {
   const [players, setPlayers] = useState<Map<string, RelativisticPlayer>>(
     new Map(),
   );
+  const [isInitialized, setIsInitialized] = useState(false);
   const animationRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(Date.now());
   const keysPressed = useRef<Set<string>>(new Set());
@@ -74,18 +81,22 @@ const RelativisticGame = () => {
 
   // 初期化
   useEffect(() => {
-    if (!peerManager || !myId) return;
+    if (!myId) return;
 
-    // 自分のプレイヤーを初期化
-    const initialPhaseSpace = PhaseSpace.fromPosition3Velocity3(
-      Vector3.zero(),
-      Vector3.zero(),
-      0,
-    );
-    const worldLine = new WorldLine();
-    worldLine.append(initialPhaseSpace);
-
+    // 自分のプレイヤーを初期化（まだ存在しない場合のみ）
     setPlayers((prev) => {
+      if (prev.has(myId)) {
+        return prev;
+      }
+
+      const initialPhaseSpace = PhaseSpace.fromPosition3Velocity3(
+        Vector3.zero(),
+        Vector3.zero(),
+        0,
+      );
+      const worldLine = new WorldLine();
+      worldLine.append(initialPhaseSpace);
+
       const next = new Map(prev);
       next.set(myId, {
         id: myId,
@@ -93,8 +104,14 @@ const RelativisticGame = () => {
         worldLine,
         color: "blue",
       });
+      setIsInitialized(true);
       return next;
     });
+  }, [myId]);
+
+  // メッセージ受信処理
+  useEffect(() => {
+    if (!peerManager || !myId) return;
 
     // メッセージ受信処理
     peerManager.onMessage("relativistic", (id, msg) => {
@@ -417,33 +434,73 @@ const RelativisticGame = () => {
         {renderGrid()}
       </div>
 
+      {/* 自機を常に表示 */}
+      {myId &&
+        (() => {
+          const myPlayer = players.get(myId);
+          const vel = myPlayer?.phaseSpace.velocity || Vector3.zero();
+          const gamma = myPlayer?.phaseSpace.gamma || 1;
+          const color = myPlayer?.color || "blue";
+          const contractionFactor = 1 / gamma;
+          const angle = Math.atan2(vel.y, vel.x);
+
+          return (
+            <div
+              key="my-player"
+              style={{
+                position: "absolute",
+                left: screenSize.width / 2,
+                top: screenSize.height / 2,
+                width: "40px",
+                height: "40px",
+                backgroundColor: myPlayer
+                  ? calculateDopplerColor(vel, color)
+                  : "blue",
+                borderRadius: "50%",
+                transform: `translate(-50%, -50%) rotate(${angle}rad) scaleX(${contractionFactor})`,
+                boxShadow: `0 0 ${20 * gamma}px ${myPlayer ? calculateDopplerColor(vel, color) : "blue"}`,
+                transition: "none",
+                zIndex: 10,
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  top: "-20px",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  color: "white",
+                  fontSize: "10px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                You
+                <br />v = {(vel.length() * 100).toFixed(1)}% c
+                <br />γ = {gamma.toFixed(2)}
+              </div>
+            </div>
+          );
+        })()}
+
+      {/* 他のプレイヤー */}
       {Array.from(players.values()).map((player) => {
+        if (player.id === myId) return null; // 自機はスキップ
+
         const myPlayer = players.get(myId);
         if (!myPlayer) return null;
-
         // 観測者の4元位置
         const observerPos4 = myPlayer.phaseSpace.position4;
         const observerPos = myPlayer.phaseSpace.position;
 
-        // 表示する位相空間（過去光円錐との交点）
-        let displayPhaseSpace: PhaseSpace;
-        let displayPos: { x: number; y: number };
-
-        if (player.id === myId) {
-          // 自機は現在の状態を使用
-          displayPhaseSpace = player.phaseSpace;
-          displayPos = { x: screenSize.width / 2, y: screenSize.height / 2 };
-        } else {
-          // 他プレイヤーは過去光円錐との交点を使用
-          displayPhaseSpace =
-            player.worldLine.pastLightConeIntersection(observerPos4) ||
-            player.phaseSpace;
-          const relativePos = displayPhaseSpace.position.sub(observerPos);
-          displayPos = {
-            x: relativePos.x * LIGHT_SPEED + screenSize.width / 2,
-            y: relativePos.y * LIGHT_SPEED + screenSize.height / 2,
-          };
-        }
+        // 他プレイヤーは過去光円錐との交点を使用
+        const displayPhaseSpace =
+          player.worldLine.pastLightConeIntersection(observerPos4) ||
+          player.phaseSpace;
+        const relativePos = displayPhaseSpace.position.sub(observerPos);
+        const displayPos = {
+          x: relativePos.x * LIGHT_SPEED + screenSize.width / 2,
+          y: relativePos.y * LIGHT_SPEED + screenSize.height / 2,
+        };
 
         const vel = displayPhaseSpace.velocity;
         const gamma = displayPhaseSpace.gamma;
