@@ -45,8 +45,8 @@ const createGridPoints = (): Vector3[][] => {
     for (let j = -GRID_RANGE; j <= GRID_RANGE; j++) {
       // 各グリッド点の位置（ワールド座標）
       const position = new Vector3(
-        (i * GRID_SIZE) / LIGHT_SPEED,
-        (j * GRID_SIZE) / LIGHT_SPEED,
+        (j * GRID_SIZE) / LIGHT_SPEED, // x座標はjを使う
+        (i * GRID_SIZE) / LIGHT_SPEED, // y座標はiを使う
         0,
       );
       row.push(position);
@@ -309,24 +309,20 @@ const RelativisticGame = () => {
       }
     }
 
-    // 原点マーカーを追加（デバッグ用）
-    const currentTime = observerPhaseSpace.coordinateTime;
-    const originTransformed = applyLorentzTransform(
-      Vector3.zero(),
-      currentTime,
-    );
-    gridLines.push(
-      <circle
-        key="origin"
-        cx={originTransformed.x * LIGHT_SPEED + 400}
-        cy={originTransformed.y * LIGHT_SPEED + 300}
-        r="5"
-        fill="red"
-      />,
-    );
-
     return (
-      <svg style={{ position: "absolute", width: "100%", height: "100%" }}>
+      <svg
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          zIndex: 0,
+          pointerEvents: "none",
+        }}
+        viewBox="0 0 800 600"
+        preserveAspectRatio="xMidYMid meet"
+      >
         <title>Relativistic grid</title>
         {gridLines}
       </svg>
@@ -361,7 +357,18 @@ const RelativisticGame = () => {
         </div>
       </div>
 
-      {renderGrid()}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          width: "100%",
+          height: "100%",
+          pointerEvents: "none",
+        }}
+      >
+        {renderGrid()}
+      </div>
 
       {Array.from(players.values()).map((player) => {
         const myPlayer = players.get(myId);
