@@ -23,6 +23,53 @@ export class Matrix4 {
   }
 
   /**
+   * ローレンツブースト変換行列を生成（4元速度から）
+   * @param velocity4 4元速度ベクトル（u = (γ, γvx, γvy, γvz)）
+   */
+  static lorentzBoostFrom4Velocity(velocity4: Vector4): Matrix4 {
+    const ut = velocity4.t;
+    const ux = velocity4.x;
+    const uy = velocity4.y;
+    const uz = velocity4.z;
+
+    const r = ux * ux + uy * uy + uz * uz;
+
+    if (r === 0) {
+      return Matrix4.identity();
+    }
+
+    const gamma = ut;
+    const m = new Matrix4();
+
+    // Based on LSBattle's implementation
+    // Row 0 (time)
+    m.set(0, 0, gamma);
+    m.set(0, 1, -ux);
+    m.set(0, 2, -uy);
+    m.set(0, 3, -uz);
+
+    // Row 1 (x)
+    m.set(1, 0, -ux);
+    m.set(1, 1, (gamma * ux * ux + uy * uy + uz * uz) / r);
+    m.set(1, 2, ((gamma - 1) * ux * uy) / r);
+    m.set(1, 3, ((gamma - 1) * ux * uz) / r);
+
+    // Row 2 (y)
+    m.set(2, 0, -uy);
+    m.set(2, 1, ((gamma - 1) * ux * uy) / r);
+    m.set(2, 2, (ux * ux + gamma * uy * uy + uz * uz) / r);
+    m.set(2, 3, ((gamma - 1) * uy * uz) / r);
+
+    // Row 3 (z)
+    m.set(3, 0, -uz);
+    m.set(3, 1, ((gamma - 1) * ux * uz) / r);
+    m.set(3, 2, ((gamma - 1) * uy * uz) / r);
+    m.set(3, 3, (ux * ux + uy * uy + gamma * uz * uz) / r);
+
+    return m;
+  }
+
+  /**
    * ローレンツブースト変換行列を生成
    * @param velocity 速度ベクトル（v/c単位）
    */
@@ -39,35 +86,8 @@ export class Matrix4 {
     }
 
     const gamma = 1 / Math.sqrt(1 - v2);
-    const factor = (gamma - 1) / v2;
-
-    const m = new Matrix4();
-
-    // 時間成分
-    m.set(0, 0, gamma);
-    m.set(0, 1, -gamma * v.x);
-    m.set(0, 2, -gamma * v.y);
-    m.set(0, 3, -gamma * v.z);
-
-    // x成分
-    m.set(1, 0, -gamma * v.x);
-    m.set(1, 1, 1 + factor * v.x * v.x);
-    m.set(1, 2, factor * v.x * v.y);
-    m.set(1, 3, factor * v.x * v.z);
-
-    // y成分
-    m.set(2, 0, -gamma * v.y);
-    m.set(2, 1, factor * v.y * v.x);
-    m.set(2, 2, 1 + factor * v.y * v.y);
-    m.set(2, 3, factor * v.y * v.z);
-
-    // z成分
-    m.set(3, 0, -gamma * v.z);
-    m.set(3, 1, factor * v.z * v.x);
-    m.set(3, 2, factor * v.z * v.y);
-    m.set(3, 3, 1 + factor * v.z * v.z);
-
-    return m;
+    const velocity4 = new Vector4(gamma, gamma * v.x, gamma * v.y, gamma * v.z);
+    return Matrix4.lorentzBoostFrom4Velocity(velocity4);
   }
 
   /**

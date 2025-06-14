@@ -2,76 +2,132 @@ import { Vector3, Vector4 } from "./vector";
 import { Matrix4 } from "./matrix";
 
 /**
- * 相対論的位相空間（位置と速度）
+ * 相対論的位相空間（4元位置と4元速度）
  */
 export class PhaseSpace {
-  constructor(
-    public position: Vector3,
-    public velocity: Vector3,
-    public properTime = 0,
-  ) {
+  public position4: Vector4;
+  public velocity4: Vector4;
+
+  constructor(position4: Vector4, velocity4: Vector4) {
+    this.position4 = position4;
+    // 4元速度を正規化（u·u = -1）
+    this.velocity4 = velocity4.normalizeVelocity4();
+  }
+
+  /**
+   * 3次元位置と3次元速度から初期化
+   */
+  static fromPosition3Velocity3(
+    position: Vector3,
+    velocity: Vector3,
+    coordinateTime = 0,
+  ): PhaseSpace {
     if (velocity.lengthSquared() >= 1) {
       throw new Error("速度が光速を超えています");
     }
+
+    const gamma = velocity.gamma();
+    const position4 = new Vector4(
+      coordinateTime,
+      position.x,
+      position.y,
+      position.z,
+    );
+    const velocity4 = new Vector4(
+      gamma,
+      gamma * velocity.x,
+      gamma * velocity.y,
+      gamma * velocity.z,
+    );
+
+    return new PhaseSpace(position4, velocity4);
+  }
+
+  /**
+   * 3次元位置を取得
+   */
+  get position(): Vector3 {
+    return this.position4.spatial();
+  }
+
+  /**
+   * 3次元速度を取得
+   */
+  get velocity(): Vector3 {
+    const gamma = this.velocity4.t;
+    return new Vector3(
+      this.velocity4.x / gamma,
+      this.velocity4.y / gamma,
+      this.velocity4.z / gamma,
+    );
   }
 
   /**
    * ガンマ因子を取得
    */
   get gamma(): number {
-    return this.velocity.gamma();
+    return this.velocity4.t;
   }
 
   /**
-   * 4元位置ベクトルを取得
+   * 固有時間を取得（worldlineに沿った時間）
    */
-  get position4(): Vector4 {
-    return this.position.toVector4(this.properTime);
+  get properTime(): number {
+    // 簡略化のため、座標時間から計算
+    return this.position4.t / this.gamma;
   }
 
   /**
-   * 4元速度ベクトルを取得
+   * 座標時間を取得
    */
-  get velocity4(): Vector4 {
-    const gamma = this.gamma;
-    return new Vector4(
-      gamma,
-      gamma * this.velocity.x,
-      gamma * this.velocity.y,
-      gamma * this.velocity.z,
-    );
+  get coordinateTime(): number {
+    return this.position4.t;
   }
 
   /**
    * 加速度による時間発展（相対論的運動方程式）
-   * @param acceleration 3次元加速度ベクトル（固有加速度）
+   * @param properAcceleration 固有加速度（瞬間静止系での加速度）
+   * @param dTau 固有時間の変化量
+   */
+  evolveProperTime(properAcceleration: Vector3, dTau: number): PhaseSpace {
+    // 瞬間静止系での加速度を現在の系に変換
+    const accel4Rest = new Vector4(
+      0,
+      properAcceleration.x,
+      properAcceleration.y,
+      properAcceleration.z,
+    );
+
+    // 現在の速度でブースト変換
+    const boostMatrix = Matrix4.lorentzBoostFrom4Velocity(this.velocity4);
+    const accel4 = boostMatrix.multiplyVector4(accel4Rest);
+
+    // 4元速度の更新（du/dτ = a）
+    const newVelocity4 = this.velocity4.add(accel4.scale(dTau));
+
+    // 4元速度の正規化を維持
+    const normalizedVelocity4 = newVelocity4.normalizeVelocity4();
+
+    // 位置の更新（dx/dτ = u）
+    const avgVelocity4 = this.velocity4.add(normalizedVelocity4).scale(0.5);
+    const newPosition4 = this.position4.add(avgVelocity4.scale(dTau));
+
+    return new PhaseSpace(newPosition4, normalizedVelocity4);
+  }
+
+  /**
+   * 座標時間での発展
+   * @param acceleration 座標系での加速度
    * @param dt 座標時間の変化量
    */
   evolve(acceleration: Vector3, dt: number): PhaseSpace {
-    // 現在の速度でのガンマ因子
-    const gamma = this.gamma;
+    // 固有時間に変換
+    const dTau = dt / this.gamma;
 
-    // 相対論的な速度更新
-    // a' = a / γ³ (並行成分) + a / γ (垂直成分)
-    // 簡略化のため、低速近似を使用
-    const dv = acceleration.scale(dt / gamma);
-    let newVelocity = this.velocity.add(dv);
+    // 座標系での加速度を固有加速度に変換（近似）
+    const properAccel = acceleration.scale(this.gamma);
 
-    // 速度が光速を超えないように制限
-    const newBeta = newVelocity.length();
-    if (newBeta >= 1) {
-      newVelocity = newVelocity.normalize().scale(0.999);
-    }
-
-    // 位置の更新
-    const avgVelocity = this.velocity.add(newVelocity).scale(0.5);
-    const newPosition = this.position.add(avgVelocity.scale(dt));
-
-    // 固有時間の更新
-    const avgGamma = (gamma + newVelocity.gamma()) / 2;
-    const newProperTime = this.properTime + dt / avgGamma;
-
-    return new PhaseSpace(newPosition, newVelocity, newProperTime);
+    return this.evolveProperTime(properAccel, dTau);
   }
 
   /**
@@ -82,33 +138,24 @@ export class PhaseSpace {
     // ローレンツ変換行列
     const boost = Matrix4.lorentzBoost(observerVelocity);
 
-    // 位置の変換
-    const pos4 = boost.multiplyVector4(this.position4);
-    const newPosition = pos4.spatial();
+    // 位置と速度を変換
+    const newPosition4 = boost.multiplyVector4(this.position4);
+    const newVelocity4 = boost.multiplyVector4(this.velocity4);
 
-    // 速度の合成則
-    // v' = (v - u) / (1 - v·u/c²)
-    // 簡略化のため、ローレンツ変換を使用
-    const vel4 = boost.multiplyVector4(this.velocity4);
-    const newGamma = vel4.t;
-    const newVelocity = new Vector3(
-      vel4.x / newGamma,
-      vel4.y / newGamma,
-      vel4.z / newGamma,
-    );
-
-    // 固有時間は不変
-    return new PhaseSpace(newPosition, newVelocity, this.properTime);
+    return new PhaseSpace(newPosition4, newVelocity4);
   }
 
   /**
-   * 静止系での時間発展
-   * @param dt 固有時間の変化量
-   * @param acceleration 固有加速度
+   * 過去光円錐との交点を計算（観測者が実際に見る位置）
+   * @param _observerPos 観測者の4元位置
+   * @param worldline 対象のワールドライン（時系列）
    */
-  evolveProper(dt: number, acceleration: Vector3): PhaseSpace {
-    // 固有時間での発展は座標時間での発展に変換
-    const coordinateDt = dt * this.gamma;
-    return this.evolve(acceleration, coordinateDt);
+  static pastLightConeIntersection(
+    _observerPos: Vector4,
+    worldline: PhaseSpace[],
+  ): PhaseSpace | null {
+    // 簡略化のため、最新の位置を返す
+    // TODO: 実際の過去光円錐交点計算を実装
+    return worldline[worldline.length - 1] || null;
   }
 }

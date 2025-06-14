@@ -115,7 +115,7 @@ export class Vector4 {
   /** ミンコフスキー内積 */
   lorentzDot(other: Vector4): number {
     return (
-      this.t * other.t - this.x * other.x - this.y * other.y - this.z * other.z
+      this.x * other.x + this.y * other.y + this.z * other.z - this.t * other.t
     );
   }
 
@@ -132,8 +132,22 @@ export class Vector4 {
   /** 時空間隔のタイプを判定 */
   intervalType(): "timelike" | "lightlike" | "spacelike" {
     const s2 = this.intervalSquared();
-    if (s2 > 0) return "timelike";
+    if (s2 < 0) return "timelike";
     if (s2 === 0) return "lightlike";
     return "spacelike";
+  }
+
+  /** 4元速度の正規化（固有時間で微分された速度） */
+  normalizeVelocity4(): Vector4 {
+    // 4元速度の大きさは常に-1（timelike）でなければならない
+    // u·u = -1
+    const spatialVel = this.spatial();
+    const gamma = Math.sqrt(1 + spatialVel.lengthSquared());
+    return new Vector4(gamma, spatialVel.x, spatialVel.y, spatialVel.z);
+  }
+
+  /** 4元速度からガンマ因子を取得 */
+  gamma4(): number {
+    return Math.sqrt(1 + this.spatial().lengthSquared());
   }
 }

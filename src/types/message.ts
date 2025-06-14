@@ -4,7 +4,7 @@ export type Message =
       type: "phaseSpace";
       position: { x: number; y: number; z: number };
       velocity: { x: number; y: number; z: number };
-      properTime: number;
+      coordinateTime: number;
     }
   | {
       type: "peerList";
