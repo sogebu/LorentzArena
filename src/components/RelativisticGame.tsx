@@ -12,7 +12,10 @@ type RelativisticPlayer = {
 const LIGHT_SPEED = 200;
 
 // ドップラー効果による色の計算
-const calculateDopplerColor = (velocity: Vector3, baseColor: string): string => {
+const calculateDopplerColor = (
+  velocity: Vector3,
+  baseColor: string,
+): string => {
   const beta = velocity.length();
   const gamma = velocity.gamma();
 
@@ -26,7 +29,7 @@ const calculateDopplerColor = (velocity: Vector3, baseColor: string): string => 
   }
   const intensity = Math.max(0, Math.min(255, 255 / dopplerFactor));
   return `rgb(255, ${255 - intensity}, ${255 - intensity})`;
-}
+};
 
 const RelativisticGame = () => {
   const { peerManager, myId } = usePeer();

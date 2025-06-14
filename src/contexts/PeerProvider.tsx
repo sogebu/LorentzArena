@@ -32,6 +32,44 @@ export const PeerProvider = ({ children }: PeerProviderProps) => {
       setConnections(conns);
     });
 
+    // ホスト用のメッセージハンドラ
+    pm.onMessage("host", (senderId, msg) => {
+      if (pm.getIsHost()) {
+        if (msg.type === "requestPeerList") {
+          // ホストはピアリストを送信
+          const peerIds = pm.getConnectedPeerIds();
+          pm.sendTo(senderId, { type: "peerList", peers: peerIds });
+
+          // 他のピアに新規接続者を通知
+          for (const peerId of peerIds) {
+            if (peerId !== senderId) {
+              pm.sendTo(peerId, {
+                type: "peerList",
+                peers: [...peerIds, senderId],
+              });
+            }
+          }
+        }
+      }
+    });
+
+    // クライアント用のメッセージハンドラ
+    pm.onMessage("client", (_, msg) => {
+      if (!pm.getIsHost() && msg.type === "peerList") {
+        // ピアリストを受信したら、他のピアに接続
+        const hostId = pm.getHostId();
+        for (const peerId of msg.peers) {
+          if (
+            peerId !== pm.id() &&
+            peerId !== hostId &&
+            !pm.getConnections().some((c) => c.id === peerId)
+          ) {
+            pm.connect(peerId);
+          }
+        }
+      }
+    });
+
     setPeerManager(pm);
     setMyId(pm.id());
 

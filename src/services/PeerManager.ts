@@ -7,6 +7,8 @@ export class PeerManager<T> {
   private messageCallbacks: Map<string, (id: string, msg: T) => void> =
     new Map();
   private connectionChangeCallback?: (connections: ConnectionStatus[]) => void;
+  private isHost = false;
+  private hostId?: string;
 
   constructor(id: string) {
     this.peer = new Peer(id, { debug: 2 });
@@ -78,5 +80,36 @@ export class PeerManager<T> {
       id,
       open: conn.open,
     }));
+  }
+
+  setAsHost() {
+    this.isHost = true;
+  }
+
+  getIsHost(): boolean {
+    return this.isHost;
+  }
+
+  setHostId(hostId: string) {
+    this.hostId = hostId;
+  }
+
+  getHostId(): string | undefined {
+    return this.hostId;
+  }
+
+  // 特定のピアにメッセージを送信
+  sendTo(peerId: string, msg: T) {
+    const conn = this.conns.get(peerId);
+    if (conn && conn.open) {
+      conn.send(msg);
+    }
+  }
+
+  // 接続されているすべてのピアIDを取得
+  getConnectedPeerIds(): string[] {
+    return Array.from(this.conns.entries())
+      .filter(([_, conn]) => conn.open)
+      .map(([id, _]) => id);
   }
 }
