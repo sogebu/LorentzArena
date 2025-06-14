@@ -34,7 +34,6 @@ const calculateDopplerColor = (
 
 // グリッドの設定
 const GRID_SIZE = 40; // ピクセル単位（少し密にする）
-const GRID_RANGE = 30; // 中心から何マスまで表示するか
 
 // グリッド点の座標を生成（動的にオフセットを適用）
 const createGridPoints = (offsetX: number, offsetY: number): Vector3[][] => {
@@ -301,7 +300,6 @@ const RelativisticGame = () => {
 
     // 速度に応じてグリッドの基本色を計算
     const velocity = observerVel.length();
-    const gamma = observerPhaseSpace.gamma;
     const baseGridOpacity = Math.max(0.3, 0.8 - velocity * 0.5);
     const baseGridColor = velocity > 0.5 ? "#666" : "#444";
 
