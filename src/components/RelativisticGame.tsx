@@ -36,17 +36,20 @@ const calculateDopplerColor = (
 const GRID_SIZE = 50; // ピクセル単位
 const GRID_RANGE = 30; // 中心から何マスまで表示するか
 
-// グリッド点の座標を生成
-const createGridPoints = (): Vector3[][] => {
+// グリッド点の座標を生成（動的にオフセットを適用）
+const createGridPoints = (offsetX: number, offsetY: number): Vector3[][] => {
   const points: Vector3[][] = [];
 
-  for (let i = -GRID_RANGE; i <= GRID_RANGE; i++) {
+  // 画面に表示される範囲を計算
+  const visibleRange = 10; // 画面に表示するグリッドの範囲
+
+  for (let i = -visibleRange; i <= visibleRange; i++) {
     const row: Vector3[] = [];
-    for (let j = -GRID_RANGE; j <= GRID_RANGE; j++) {
+    for (let j = -visibleRange; j <= visibleRange; j++) {
       // 各グリッド点の位置（ワールド座標）
       const position = new Vector3(
-        (j * GRID_SIZE) / LIGHT_SPEED, // x座標はjを使う
-        (i * GRID_SIZE) / LIGHT_SPEED, // y座標はiを使う
+        ((j + offsetX) * GRID_SIZE) / LIGHT_SPEED,
+        ((i + offsetY) * GRID_SIZE) / LIGHT_SPEED,
         0,
       );
       row.push(position);
@@ -65,7 +68,6 @@ const RelativisticGame = () => {
   const animationRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(Date.now());
   const keysPressed = useRef<Set<string>>(new Set());
-  const gridPoints = useRef<Vector3[][]>(createGridPoints());
 
   // 初期化
   useEffect(() => {
@@ -226,6 +228,14 @@ const RelativisticGame = () => {
     const observerPhaseSpace = myPlayer.phaseSpace;
     const observerPos4 = observerPhaseSpace.position4;
     const observerVel = observerPhaseSpace.velocity;
+    const observerPos = observerPhaseSpace.position;
+
+    // プレイヤーの位置に基づいてグリッドのオフセットを計算
+    const gridOffsetX = Math.floor((observerPos.x * LIGHT_SPEED) / GRID_SIZE);
+    const gridOffsetY = Math.floor((observerPos.y * LIGHT_SPEED) / GRID_SIZE);
+
+    // 動的にグリッドポイントを生成
+    const gridPoints = createGridPoints(gridOffsetX, gridOffsetY);
 
     const gridLines: JSX.Element[] = [];
 
@@ -258,10 +268,10 @@ const RelativisticGame = () => {
     };
 
     // 横線を描画
-    for (let i = 0; i < gridPoints.current.length; i++) {
-      for (let j = 0; j < gridPoints.current[i].length - 1; j++) {
-        const pos1 = gridPoints.current[i][j];
-        const pos2 = gridPoints.current[i][j + 1];
+    for (let i = 0; i < gridPoints.length; i++) {
+      for (let j = 0; j < gridPoints[i].length - 1; j++) {
+        const pos1 = gridPoints[i][j];
+        const pos2 = gridPoints[i][j + 1];
 
         // ローレンツ変換を適用（現在時刻での位置として変換）
         const currentTime = observerPhaseSpace.coordinateTime;
@@ -284,10 +294,10 @@ const RelativisticGame = () => {
     }
 
     // 縦線を描画
-    for (let i = 0; i < gridPoints.current.length - 1; i++) {
-      for (let j = 0; j < gridPoints.current[i].length; j++) {
-        const pos1 = gridPoints.current[i][j];
-        const pos2 = gridPoints.current[i + 1][j];
+    for (let i = 0; i < gridPoints.length - 1; i++) {
+      for (let j = 0; j < gridPoints[i].length; j++) {
+        const pos1 = gridPoints[i][j];
+        const pos2 = gridPoints[i + 1][j];
 
         // ローレンツ変換を適用（現在時刻での位置として変換）
         const currentTime = observerPhaseSpace.coordinateTime;
