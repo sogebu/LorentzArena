@@ -1,7 +1,6 @@
-import { createContext, useState, type ReactNode } from "react";
+import { createContext, useState, useEffect, type ReactNode } from "react";
 import { PeerManager } from "../services/PeerManager";
 import type { ConnectionStatus, Message } from "../types";
-import { useMount } from "react-use";
 
 interface PeerContextValue {
   peerManager: PeerManager<Message> | null;
@@ -23,7 +22,7 @@ export const PeerProvider = ({ children }: PeerProviderProps) => {
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
   const [myId, setMyId] = useState<string | null>(null);
 
-  useMount(() => {
+  useEffect(() => {
     // マウント時に PeerManager を生成し、イベントハンドラを登録
     const randomId = `user-${Math.random().toString(36).substring(2, 11)}`;
     const pm = new PeerManager<Message>(randomId);
@@ -80,7 +79,7 @@ export const PeerProvider = ({ children }: PeerProviderProps) => {
       // クリーンアップ（必要に応じて）
       pm.destroy();
     };
-  });
+  }, []);
 
   return (
     <PeerContext.Provider value={{ peerManager, connections, myId }}>
