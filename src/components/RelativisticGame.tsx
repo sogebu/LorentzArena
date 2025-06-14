@@ -81,6 +81,10 @@ const RelativisticGame = () => {
   // キーボード入力処理
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 矢印キーの場合はデフォルトの動作（スクロール）を防ぐ
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+        e.preventDefault();
+      }
       keysPressed.current.add(e.key);
     };
 
