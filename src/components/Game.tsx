@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { usePeer } from "../hooks/usePeer";
 import type { Player } from "../types";
 
-export default function Game() {
+const Game = () => {
   const { peerManager, myId } = usePeer();
   const [players, setPlayers] = useState<Player[]>([]);
 
@@ -97,4 +97,6 @@ export default function Game() {
       ))}
     </div>
   );
-}
+};
+
+export default Game;
