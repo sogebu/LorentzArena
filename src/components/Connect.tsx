@@ -1,6 +1,5 @@
 import { useState } from "react";
-import "./App.css";
-import { usePeer } from "./PeerProvider";
+import { usePeer } from "../hooks/usePeer";
 
 const Connect = () => {
   const { peerManager, connections, myId } = usePeer();

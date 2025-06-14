@@ -1,10 +1,7 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
-import { PeerManager, type ConnectionStatus } from "./PeerManager";
+import { createContext, useState, type ReactNode } from "react";
+import { PeerManager } from "../services/PeerManager";
+import type { ConnectionStatus, Message } from "../types";
 import { useMount } from "react-use";
-
-export type Message =
-  | { type: "text"; text: string }
-  | { type: "position"; x: number; y: number };
 
 interface PeerContextValue {
   peerManager: PeerManager<Message> | null;
@@ -12,16 +9,7 @@ interface PeerContextValue {
   myId: string;
 }
 
-const PeerContext = createContext<PeerContextValue | null>(null);
-
-// Context を利用するためのカスタムフック
-export function usePeer() {
-  const ctx = useContext(PeerContext);
-  if (!ctx) {
-    throw new Error("usePeer は PeerProvider の外側では呼び出せません");
-  }
-  return ctx;
-}
+export const PeerContext = createContext<PeerContextValue | null>(null);
 
 interface PeerProviderProps {
   children: ReactNode;

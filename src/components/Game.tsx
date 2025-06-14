@@ -1,11 +1,6 @@
 import { useEffect, useState } from "react";
-import { usePeer } from "./PeerProvider";
-
-type Player = {
-  id: string;
-  x: number;
-  y: number;
-};
+import { usePeer } from "../hooks/usePeer";
+import type { Player } from "../types";
 
 export default function Game() {
   const { peerManager, myId } = usePeer();

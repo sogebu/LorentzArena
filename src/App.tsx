@@ -1,8 +1,8 @@
 import "./App.css";
-import { PeerProvider } from "./PeerProvider";
-import Chat from "./Chat";
-import Connect from "./Connect";
-import Game from "./Game";
+import { PeerProvider } from "./contexts/PeerProvider";
+import Chat from "./components/Chat";
+import Connect from "./components/Connect";
+import Game from "./components/Game";
 
 const App = () => {
   return (

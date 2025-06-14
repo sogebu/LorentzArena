@@ -1,9 +1,5 @@
 import Peer, { type DataConnection } from "peerjs";
-
-export type ConnectionStatus = {
-  id: string;
-  open: boolean;
-};
+import type { ConnectionStatus } from "../types";
 
 export class PeerManager<T> {
   private peer: Peer;

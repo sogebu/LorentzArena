@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { usePeer } from "./PeerProvider";
+import { usePeer } from "../hooks/usePeer";
 
 const Chat = () => {
   const { peerManager } = usePeer();
