@@ -1,40 +1,61 @@
 # CLAUDE.md
 
-このファイルは、このリポジトリでコードを扱う際のClaude Code (claude.ai/code) へのガイダンスを提供します。
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## プロジェクト概要
+## Project Overview
 
-Lorentz Arenaは特殊相対性理論の効果を持つマルチプレイヤー対戦ゲームで、React、TypeScript、PeerJSを使用したピアツーピアネットワーキングで構築されています。
+LorentzArena is a multiplayer arena game that simulates special relativity effects. Players experience Lorentz contraction, time dilation, and Doppler shifts as they move at relativistic speeds. Built with React, TypeScript, and PeerJS for peer-to-peer networking.
 
-## コマンド
+## Commands
 
-### 開発
-- `npm run dev` - Viteで開発サーバーを起動
-- `npm run build` - TypeScriptプロジェクトをビルドし、Viteでバンドル
-- `npm run preview` - プロダクションビルドをプレビュー
+### Development
+- `npm run dev` - Start Vite development server
+- `npm run build` - Build TypeScript project and bundle with Vite
+- `npm run preview` - Preview production build
 
-### コード品質
-- `npm run lint` - Biomeリンターを自動修正付きで実行
-- `npm run format` - Biomeフォーマッターを自動修正付きで実行
+### Code Quality
+- `npm run lint` - Run Biome linter with auto-fix
+- `npm run format` - Run Biome formatter with auto-fix
 
-### デプロイ
-- `npm run deploy` - ビルドしてGitHub Pagesにデプロイ
+### Deployment
+- `npm run deploy` - Build and deploy to GitHub Pages
 
-## アーキテクチャ
+### Analysis
+- `npm run analyze` - Generate bundle size visualization
 
-### ピアツーピア通信
-アプリケーションはプレイヤー間のWebRTC接続を確立するためにPeerJSを使用：
-- `PeerManager` (src/PeerManager.ts) - ピア接続、メッセージハンドリング、接続状態を管理するコアクラス
-- `PeerProvider` (src/PeerProvider.tsx) - PeerManagerをインスタンス化し、コンポーネントに提供するReactコンテキストプロバイダー
-- メッセージタイプはPeerProviderでユニオン型として定義され、現在はテキストメッセージと位置更新をサポート
+## Architecture
 
-### コンポーネント構造
-- `App.tsx` - 他のすべてをPeerProviderでラップするルートコンポーネント
-- `Connect.tsx` - ピア接続UIを処理
-- `Game.tsx` - プレイヤーの移動（矢印キー）とレンダリングを行うメインゲームアリーナ
-- `Chat.tsx` - 接続されたピア間のテキストチャット機能
+### Physics Engine (/src/physics/)
+The physics module uses a function-based factory pattern instead of classes:
+- `vector.ts` - 3D and 4D vector operations
+- `matrix.ts` - Lorentz transformation matrices
+- `mechanics.ts` - Core relativistic physics including phase space (8D: 4D position + 4D velocity), proper time calculations, and Lorentz boosts
+- `worldLine.ts` - Object trajectories through spacetime
 
-### ビルド設定
-- ViteはGitHub Pagesデプロイ用にベースパス `/LorentzArena/` で設定
-- TypeScript設定はアプリとノードコンテキスト用にプロジェクト参照を使用
-- Biomeはダブルクォートと2スペースインデントでリンティングとフォーマッティングに使用
+### Networking Architecture
+Peer-to-peer communication using WebRTC via PeerJS:
+- `PeerManager` (/src/services/PeerManager.ts) - Generic class managing WebRTC connections, message handling, and connection states
+- `PeerProvider` (/src/contexts/PeerProvider.tsx) - React context providing peer connectivity to components
+- Host/Client model where one player coordinates peer discovery
+- Message types: position updates, phase space data, peer list management
+
+### Game Components
+- `RelativisticGame` (/src/components/RelativisticGame.tsx) - Main game arena handling:
+  - Keyboard controls (arrow keys for movement)
+  - Relativistic physics simulation
+  - Grid rendering with Lorentz contraction effects
+  - Doppler color shifting based on relative velocity
+  - Past light cone calculations (players see where objects were, not where they are)
+  - FPS counter for performance monitoring
+
+### Build Configuration
+- Vite configured with base path `/LorentzArena/` for GitHub Pages deployment
+- TypeScript uses project references for app and node contexts
+- Biome configured for double quotes and 2-space indentation
+- React StrictMode enabled for development
+
+### Key Patterns
+- Factory pattern for physics modules (not class-based)
+- Immutable phase space objects (readonly properties)
+- Type-safe message passing between peers using union types
+- Clear separation between physics engine, networking layer, and UI components
