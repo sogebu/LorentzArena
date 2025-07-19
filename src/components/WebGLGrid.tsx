@@ -25,7 +25,7 @@ interface WebGLGridProps {
   GRID_SIZE: number;
 }
 
-const VISIBLE_RANGE = 20; // より広い範囲のグリッドを表示
+const VISIBLE_RANGE = 60; // より広い範囲のグリッドを表示
 const GRID_SUBDIVISION = 4; // グリッドの分割数を増やして滑らかに
 
 // 頂点シェーダー
@@ -147,6 +147,7 @@ const WebGLGrid: React.FC<WebGLGridProps> = ({
     gl.viewport(0, 0, screenSize.width, screenSize.height);
 
     // プログラムを使用
+    // biome-ignore lint/correctness/useHookAtTopLevel: This is WebGL's useProgram method, not a React hook
     gl.useProgram(program);
 
     // アトリビュートとユニフォームの取得
