@@ -104,7 +104,10 @@ const WebGLGrid: React.FC<WebGLGridProps> = ({
     };
 
     const vertexShader = compileShader(vertexShaderSource, gl.VERTEX_SHADER);
-    const fragmentShader = compileShader(fragmentShaderSource, gl.FRAGMENT_SHADER);
+    const fragmentShader = compileShader(
+      fragmentShaderSource,
+      gl.FRAGMENT_SHADER,
+    );
 
     if (!vertexShader || !fragmentShader) return;
 
@@ -169,7 +172,7 @@ const WebGLGrid: React.FC<WebGLGridProps> = ({
     const velocity = lengthVector3(observerVel);
     const gridOpacity = Math.max(0.3, 0.8 - velocity * 0.5);
     const gridColor = velocity > 0.5 ? [0.4, 0.4, 0.4] : [0.27, 0.27, 0.27];
-    
+
     // WebGLの線幅（実装によっては効果がない場合があります）
     gl.lineWidth(1.0);
 
@@ -207,10 +210,11 @@ const WebGLGrid: React.FC<WebGLGridProps> = ({
     // 横線
     for (let i = -VISIBLE_RANGE; i <= VISIBLE_RANGE; i++) {
       const points: { x: number; y: number }[] = [];
-      
+
       // 中心からの距離に応じて分割数を調整（LOD）
       const distFromCenter = Math.abs(i);
-      const subdivision = distFromCenter > VISIBLE_RANGE * 0.6 ? 2 : GRID_SUBDIVISION;
+      const subdivision =
+        distFromCenter > VISIBLE_RANGE * 0.6 ? 2 : GRID_SUBDIVISION;
 
       for (let j = -VISIBLE_RANGE; j <= VISIBLE_RANGE; j += 1 / subdivision) {
         const worldPos = createVector3(
@@ -246,10 +250,11 @@ const WebGLGrid: React.FC<WebGLGridProps> = ({
     // 縦線
     for (let j = -VISIBLE_RANGE; j <= VISIBLE_RANGE; j++) {
       const points: { x: number; y: number }[] = [];
-      
+
       // 中心からの距離に応じて分割数を調整（LOD）
       const distFromCenter = Math.abs(j);
-      const subdivision = distFromCenter > VISIBLE_RANGE * 0.6 ? 2 : GRID_SUBDIVISION;
+      const subdivision =
+        distFromCenter > VISIBLE_RANGE * 0.6 ? 2 : GRID_SUBDIVISION;
 
       for (let i = -VISIBLE_RANGE; i <= VISIBLE_RANGE; i += 1 / subdivision) {
         const worldPos = createVector3(
@@ -289,7 +294,7 @@ const WebGLGrid: React.FC<WebGLGridProps> = ({
     // 描画設定
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    
+
     gl.enableVertexAttribArray(positionLocation);
     gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
     gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
@@ -302,7 +307,6 @@ const WebGLGrid: React.FC<WebGLGridProps> = ({
 
     // 線を描画
     gl.drawArrays(gl.LINES, 0, vertices.length / 2);
-
   }, [observerPhaseSpace, screenSize, LIGHT_SPEED, GRID_SIZE]);
 
   return (

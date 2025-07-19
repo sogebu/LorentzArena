@@ -315,7 +315,6 @@ const RelativisticGame = () => {
         </div>
       </div>
 
-
       <div
         style={{
           position: "absolute",
