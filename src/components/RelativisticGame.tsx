@@ -1,16 +1,14 @@
-import { useEffect, useRef, useState, type JSX } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePeer } from "../hooks/usePeer";
+import WebGLGrid from "./WebGLGrid";
 import {
   type Vector3,
   type PhaseSpace,
   type WorldLine,
   createVector3,
-  createVector4,
   lengthVector3,
   gammaVector3,
-  lengthSquaredVector3,
   subVector3,
-  scaleVector3,
   vector3Zero,
   phaseSpaceFromPosition3Velocity3,
   createWorldLine,
@@ -22,10 +20,6 @@ import {
   getGammaPhaseSpace,
   getCoordinateTimePhaseSpace,
   getProperTimePhaseSpace,
-  lorentzBoost,
-  multiplyVector4Matrix4,
-  subVector4,
-  spatialVector4,
 } from "../physics";
 
 type RelativisticPlayer = {
@@ -65,47 +59,7 @@ const calculateDopplerColor = (
 };
 
 // グリッドの設定
-const GRID_SIZE = 40; // ピクセル単位（少し密にする）
-const GRID_SUBDIVISION = 4; // 各グリッドセルを何分割するか（パフォーマンスと滑らかさのバランス）
-
-// グリッド線上の点の座標を生成（動的にオフセットを適用）
-const createGridLines = (offsetX: number, offsetY: number) => {
-  const horizontalLines: Vector3[][] = [];
-  const verticalLines: Vector3[][] = [];
-
-  // 画面に表示される範囲を計算
-  const visibleRange = 10; // 画面に表示するグリッドの範囲
-
-  // 横線の生成（各横線上に補間点を配置）
-  for (let i = -visibleRange; i <= visibleRange; i++) {
-    const line: Vector3[] = [];
-    for (let j = -visibleRange; j <= visibleRange; j += 1 / GRID_SUBDIVISION) {
-      const position = createVector3(
-        ((j + offsetX) * GRID_SIZE) / LIGHT_SPEED,
-        ((i + offsetY) * GRID_SIZE) / LIGHT_SPEED,
-        0,
-      );
-      line.push(position);
-    }
-    horizontalLines.push(line);
-  }
-
-  // 縦線の生成（各縦線上に補間点を配置）
-  for (let j = -visibleRange; j <= visibleRange; j++) {
-    const line: Vector3[] = [];
-    for (let i = -visibleRange; i <= visibleRange; i += 1 / GRID_SUBDIVISION) {
-      const position = createVector3(
-        ((j + offsetX) * GRID_SIZE) / LIGHT_SPEED,
-        ((i + offsetY) * GRID_SIZE) / LIGHT_SPEED,
-        0,
-      );
-      line.push(position);
-    }
-    verticalLines.push(line);
-  }
-
-  return { horizontalLines, verticalLines };
-};
+const GRID_SIZE = 30; // ピクセル単位（より密なグリッド）
 
 const RelativisticGame = () => {
   const { peerManager, myId } = usePeer();
@@ -314,170 +268,18 @@ const RelativisticGame = () => {
     };
   }, [peerManager, myId]);
 
-  // グリッドラインをレンダリング
+  // グリッドをレンダリング
   const renderGrid = () => {
     const myPlayer = myId ? players.get(myId) : undefined;
     if (!myPlayer) return null;
 
-    const observerPhaseSpace = myPlayer.phaseSpace;
-    const observerPos4 = observerPhaseSpace.position4;
-    const observerVel = getVelocityPhaseSpace(observerPhaseSpace);
-    const observerPos = getPositionPhaseSpace(observerPhaseSpace);
-
-    // プレイヤーの位置に基づいてグリッドのオフセットを計算
-    const gridOffsetX = Math.floor((observerPos.x * LIGHT_SPEED) / GRID_SIZE);
-    const gridOffsetY = Math.floor((observerPos.y * LIGHT_SPEED) / GRID_SIZE);
-
-    // 動的にグリッド線を生成
-    const { horizontalLines, verticalLines } = createGridLines(
-      gridOffsetX,
-      gridOffsetY,
-    );
-
-    const gridLines: JSX.Element[] = [];
-
-    // 過去光円錐上の点を計算してローレンツ変換を適用
-    const applyPastLightConeTransform = (worldPos: Vector3): Vector3 => {
-      // 観測者から見た空間的距離
-      const spatialDistance = lengthVector3(subVector3(worldPos, observerPos));
-
-      // 光が観測者に届くまでの時間（過去にさかのぼる）
-      const lightTravelTime = spatialDistance;
-
-      // グリッド点が光を発した時刻（過去の時刻）
-      const emissionTime =
-        getCoordinateTimePhaseSpace(observerPhaseSpace) - lightTravelTime;
-
-      // 過去の時刻での4元位置
-      const worldPos4 = createVector4(
-        emissionTime,
-        worldPos.x,
-        worldPos.y,
-        worldPos.z,
-      );
-
-      // 観測者の静止系への変換
-      if (lengthSquaredVector3(observerVel) === 0) {
-        return subVector3(worldPos, getPositionPhaseSpace(observerPhaseSpace));
-      }
-
-      // 観測者の速度の逆向きでローレンツ変換（観測者の静止系への変換）
-      const boostToObserver = lorentzBoost(scaleVector3(observerVel, -1));
-
-      // 観測者の位置を原点に移動してから変換
-      const relativePos4 = subVector4(worldPos4, observerPos4);
-      const transformedPos4 = multiplyVector4Matrix4(
-        boostToObserver,
-        relativePos4,
-      );
-
-      return spatialVector4(transformedPos4);
-    };
-
-    // 横線を過去光円錐上で変換
-    const transformedHorizontalLines: Vector3[][] = [];
-    for (const line of horizontalLines) {
-      const transformedLine: Vector3[] = [];
-      for (const point of line) {
-        const transformedPoint = applyPastLightConeTransform(point);
-        transformedLine.push(transformedPoint);
-      }
-      transformedHorizontalLines.push(transformedLine);
-    }
-
-    // 縦線を過去光円錐上で変換
-    const transformedVerticalLines: Vector3[][] = [];
-    for (const line of verticalLines) {
-      const transformedLine: Vector3[] = [];
-      for (const point of line) {
-        const transformedPoint = applyPastLightConeTransform(point);
-        transformedLine.push(transformedPoint);
-      }
-      transformedVerticalLines.push(transformedLine);
-    }
-
-    // 速度に応じてグリッドの基本色を計算
-    const velocity = lengthVector3(observerVel);
-    const baseGridOpacity = Math.max(0.3, 0.8 - velocity * 0.5);
-    const baseGridColor = velocity > 0.5 ? "#666" : "#444";
-
-    // 横線を描画（変換済みの線を使用）
-    for (let i = 0; i < transformedHorizontalLines.length; i++) {
-      const line = transformedHorizontalLines[i];
-      const originalLine = horizontalLines[i];
-
-      for (let j = 0; j < line.length - 1; j++) {
-        const pos1 = line[j];
-        const pos2 = line[j + 1];
-
-        // 元の点の距離に基づいて色を調整（過去光円錐効果）
-        const originalPos = originalLine[j];
-        const distance = lengthVector3(subVector3(originalPos, observerPos));
-        const distanceFactor = Math.exp(-distance * 0.5); // 距離による減衰
-        const gridOpacity = baseGridOpacity * distanceFactor;
-
-        gridLines.push(
-          <line
-            key={`h-${i}-${j}`}
-            x1={pos1.x * LIGHT_SPEED + screenSize.width / 2}
-            y1={pos1.y * LIGHT_SPEED + screenSize.height / 2}
-            x2={pos2.x * LIGHT_SPEED + screenSize.width / 2}
-            y2={pos2.y * LIGHT_SPEED + screenSize.height / 2}
-            stroke={baseGridColor}
-            strokeWidth="1"
-            opacity={gridOpacity}
-          />,
-        );
-      }
-    }
-
-    // 縦線を描画（変換済みの線を使用）
-    for (let i = 0; i < transformedVerticalLines.length; i++) {
-      const line = transformedVerticalLines[i];
-      const originalLine = verticalLines[i];
-
-      for (let j = 0; j < line.length - 1; j++) {
-        const pos1 = line[j];
-        const pos2 = line[j + 1];
-
-        // 元の点の距離に基づいて色を調整（過去光円錐効果）
-        const originalPos = originalLine[j];
-        const distance = lengthVector3(subVector3(originalPos, observerPos));
-        const distanceFactor = Math.exp(-distance * 0.5); // 距離による減衰
-        const gridOpacity = baseGridOpacity * distanceFactor;
-
-        gridLines.push(
-          <line
-            key={`v-${i}-${j}`}
-            x1={pos1.x * LIGHT_SPEED + screenSize.width / 2}
-            y1={pos1.y * LIGHT_SPEED + screenSize.height / 2}
-            x2={pos2.x * LIGHT_SPEED + screenSize.width / 2}
-            y2={pos2.y * LIGHT_SPEED + screenSize.height / 2}
-            stroke={baseGridColor}
-            strokeWidth="1"
-            opacity={gridOpacity}
-          />,
-        );
-      }
-    }
-
     return (
-      <svg
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          zIndex: 0,
-          pointerEvents: "none",
-        }}
-        viewBox={`0 0 ${screenSize.width} ${screenSize.height}`}
-        preserveAspectRatio="xMidYMid meet"
-      >
-        <title>Relativistic grid</title>
-        {gridLines}
-      </svg>
+      <WebGLGrid
+        observerPhaseSpace={myPlayer.phaseSpace}
+        screenSize={screenSize}
+        LIGHT_SPEED={LIGHT_SPEED}
+        GRID_SIZE={GRID_SIZE}
+      />
     );
   };
 
