@@ -9,19 +9,19 @@ LorentzArena is a multiplayer arena game that simulates special relativity effec
 ## Commands
 
 ### Development
-- `npm run dev` - Start Vite development server
-- `npm run build` - Build TypeScript project and bundle with Vite
-- `npm run preview` - Preview production build
+- `pnpm run dev` - Start Vite development server
+- `pnpm run build` - Build TypeScript project and bundle with Vite
+- `pnpm run preview` - Preview production build
 
 ### Code Quality
-- `npm run lint` - Run Biome linter with auto-fix
-- `npm run format` - Run Biome formatter with auto-fix
+- `pnpm run lint` - Run Biome linter with auto-fix
+- `pnpm run format` - Run Biome formatter with auto-fix
 
 ### Deployment
-- `npm run deploy` - Build and deploy to GitHub Pages
+- `pnpm run deploy` - Build and deploy to GitHub Pages
 
 ### Analysis
-- `npm run analyze` - Generate bundle size visualization
+- `pnpm run analyze` - Generate bundle size visualization
 
 ## Architecture
 
