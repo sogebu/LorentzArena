@@ -24,7 +24,7 @@ export const PeerProvider = ({ children }: PeerProviderProps) => {
 
   useEffect(() => {
     // マウント時に PeerManager を生成し、イベントハンドラを登録
-    const randomId = `user-${Math.random().toString(36).substring(2, 11)}`;
+    const randomId = Math.random().toString(36).substring(2, 11);
     const pm = new PeerManager<Message>(randomId);
 
     // myIdを設定
