@@ -362,17 +362,22 @@ const RelativisticGame = () => {
               <div
                 style={{
                   position: "absolute",
-                  top: "-20px",
+                  top: "-30px",
                   left: "50%",
                   transform: "translateX(-50%)",
                   color: "white",
                   fontSize: "10px",
                   whiteSpace: "nowrap",
+                  textShadow: "1px 1px 2px rgba(0,0,0,0.8)",
                 }}
               >
                 You
                 <br />v = {(lengthVector3(vel) * 100).toFixed(1)}% c
                 <br />γ = {gamma.toFixed(2)}
+                <br />τ ={" "}
+                {myPlayer
+                  ? getProperTimePhaseSpace(myPlayer.phaseSpace).toFixed(2)
+                  : "0.00"}
               </div>
             </div>
           );
@@ -427,16 +432,18 @@ const RelativisticGame = () => {
             <div
               style={{
                 position: "absolute",
-                top: "-20px",
+                top: "-30px",
                 left: "50%",
                 transform: "translateX(-50%)",
                 color: "white",
                 fontSize: "10px",
                 whiteSpace: "nowrap",
+                textShadow: "1px 1px 2px rgba(0,0,0,0.8)",
               }}
             >
               {player.id === myId ? "You" : player.id.substring(0, 8)}
               <br />v = {(lengthVector3(vel) * 100).toFixed(1)}% c
+              <br />τ = {getProperTimePhaseSpace(displayPhaseSpace).toFixed(2)}
               <br />γ = {gamma.toFixed(2)}
             </div>
           </div>
