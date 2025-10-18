@@ -2,9 +2,8 @@ export type Message =
   | { type: "position"; x: number; y: number }
   | {
       type: "phaseSpace";
-      position: { x: number; y: number; z: number };
+      position: { t: number; x: number; y: number; z: number };
       velocity: { x: number; y: number; z: number };
-      coordinateTime: number;
     }
   | {
       type: "peerList";

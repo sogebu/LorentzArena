@@ -76,19 +76,10 @@ export const normalizeVector3 = (v: Vector3): Vector3 => {
 };
 
 /**
- * ベータ（v/c）を計算
- */
-export const betaVector3 = (v: Vector3): number => lengthVector3(v);
-
-/**
  * ガンマ因子を計算
  */
-export const gammaVector3 = (v: Vector3): number => {
-  const beta2 = lengthSquaredVector3(v);
-  if (beta2 >= 1) {
-    throw new Error("速度が光速を超えています");
-  }
-  return 1 / Math.sqrt(1 - beta2);
+export const gamma = (u: Vector3): number => {
+  return Math.sqrt(1.0 + lengthSquaredVector3(u));
 };
 
 /**
@@ -157,11 +148,13 @@ export const lorentzDotVector4 = (a: Vector4, b: Vector4): number =>
 export const spatialVector4 = (v: Vector4): Vector3 =>
   createVector3(v.x, v.y, v.z);
 
-/**
- * 固有時間間隔の2乗
- */
-export const intervalSquaredVector4 = (v: Vector4): number =>
-  lorentzDotVector4(v, v);
+export const getVelocity4 = (u: Vector3): Vector4 =>
+  createVector4(
+    gamma(u),
+    u.x,
+    u.y,
+    u.z,
+  );
 
 /**
  * 時空間隔のタイプを判定
@@ -169,27 +162,8 @@ export const intervalSquaredVector4 = (v: Vector4): number =>
 export const intervalTypeVector4 = (
   v: Vector4,
 ): "timelike" | "lightlike" | "spacelike" => {
-  const s2 = intervalSquaredVector4(v);
+  const s2 = lorentzDotVector4(v, v);
   if (s2 < 0) return "timelike";
   if (s2 === 0) return "lightlike";
   return "spacelike";
-};
-
-/**
- * 4元速度の正規化（固有時間で微分された速度）
- */
-export const normalizeVelocity4 = (v: Vector4): Vector4 => {
-  // 4元速度の大きさは常に-1（timelike）でなければならない
-  // u·u = -1
-  const spatialVel = spatialVector4(v);
-  const gamma = Math.sqrt(1 + lengthSquaredVector3(spatialVel));
-  return createVector4(gamma, spatialVel.x, spatialVel.y, spatialVel.z);
-};
-
-/**
- * 4元速度からガンマ因子を取得
- */
-export const gamma4Vector4 = (v: Vector4): number => {
-  const spatial = spatialVector4(v);
-  return Math.sqrt(1 + lengthSquaredVector3(spatial));
 };

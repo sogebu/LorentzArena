@@ -2,8 +2,7 @@ import {
   type Vector3,
   type Vector4,
   createVector4,
-  lengthSquaredVector3,
-  gammaVector3,
+  gamma,
   scaleVector3,
 } from "./vector";
 
@@ -72,73 +71,47 @@ const setMultipleMatrix4 = (
 
 /**
  * ローレンツブースト変換行列を生成（4元速度から）
- * @param velocity4 4元速度ベクトル（u = (γ, γvx, γvy, γvz)）
+ * 世界系→静止系に変換する
  */
-export const lorentzBoostFrom4Velocity = (velocity4: Vector4): Matrix4 => {
-  const ut = velocity4.t;
-  const ux = velocity4.x;
-  const uy = velocity4.y;
-  const uz = velocity4.z;
+export const lorentzBoost = (u: Vector3): Matrix4 => {
+  const ux = u.x;
+  const uy = u.y;
+  const uz = u.z;
+  const ut = gamma(u);
 
-  const r = ux * ux + uy * uy + uz * uz;
+  const u2 = ux * ux + uy * uy + uz * uz;
 
-  if (r === 0) {
+  if (u2 === 0) {
     return matrix4Identity();
   }
 
-  const gamma = ut;
   const data = new Array(16).fill(0);
 
   // Based on LSBattle's implementation
   setMultipleMatrix4(data, [
     // Row 0 (time)
-    [0, 0, gamma],
+    [0, 0, ut],
     [0, 1, -ux],
     [0, 2, -uy],
     [0, 3, -uz],
     // Row 1 (x)
     [1, 0, -ux],
-    [1, 1, (gamma * ux * ux + uy * uy + uz * uz) / r],
-    [1, 2, ((gamma - 1) * ux * uy) / r],
-    [1, 3, ((gamma - 1) * ux * uz) / r],
+    [1, 1, (ut * ux * ux + uy * uy + uz * uz) / u2],
+    [1, 2, ((ut - 1.0) * ux * uy) / u2],
+    [1, 3, ((ut - 1.0) * ux * uz) / u2],
     // Row 2 (y)
     [2, 0, -uy],
-    [2, 1, ((gamma - 1) * ux * uy) / r],
-    [2, 2, (ux * ux + gamma * uy * uy + uz * uz) / r],
-    [2, 3, ((gamma - 1) * uy * uz) / r],
+    [2, 1, ((ut - 1.0) * ux * uy) / u2],
+    [2, 2, (ux * ux + ut * uy * uy + uz * uz) / u2],
+    [2, 3, ((ut - 1.0) * uy * uz) / u2],
     // Row 3 (z)
     [3, 0, -uz],
-    [3, 1, ((gamma - 1) * ux * uz) / r],
-    [3, 2, ((gamma - 1) * uy * uz) / r],
-    [3, 3, (ux * ux + uy * uy + gamma * uz * uz) / r],
+    [3, 1, ((ut - 1.0) * ux * uz) / u2],
+    [3, 2, ((ut - 1.0) * uy * uz) / u2],
+    [3, 3, (ux * ux + uy * uy + ut * uz * uz) / u2],
   ]);
 
   return createMatrix4(data);
-};
-
-/**
- * ローレンツブースト変換行列を生成
- * @param velocity 速度ベクトル（v/c単位）
- */
-export const lorentzBoost = (velocity: Vector3): Matrix4 => {
-  const v2 = lengthSquaredVector3(velocity);
-
-  if (v2 === 0) {
-    return matrix4Identity();
-  }
-
-  if (v2 >= 1) {
-    throw new Error("速度が光速を超えています");
-  }
-
-  const gamma = gammaVector3(velocity);
-  const velocity4 = createVector4(
-    gamma,
-    gamma * velocity.x,
-    gamma * velocity.y,
-    gamma * velocity.z,
-  );
-  return lorentzBoostFrom4Velocity(velocity4);
 };
 
 /**
@@ -147,7 +120,7 @@ export const lorentzBoost = (velocity: Vector3): Matrix4 => {
  */
 export const inverseLorentzBoost = (velocity: Vector3): Matrix4 => {
   // 逆変換は速度の符号を反転するだけ
-  return lorentzBoost(scaleVector3(velocity, -1));
+  return lorentzBoost(scaleVector3(velocity, -1.0));
 };
 
 /**
