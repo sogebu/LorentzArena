@@ -63,8 +63,6 @@ type SceneContentProps = {
 };
 
 const SceneContent = ({ players, myId }: SceneContentProps) => {
-  const cameraRef = useRef<THREE.PerspectiveCamera>(null);
-
   // カメラの位置を自機の未来側に設定
   useFrame(({ camera }) => {
     if (!myId) return;
@@ -140,7 +138,7 @@ const SceneContent = ({ players, myId }: SceneContentProps) => {
         const pos = player.phaseSpace.pos;
         const isMe = player.id === myId;
         const color = hslToThreeColor(player.color);
-        const coneHeight = 4;
+        const coneHeight = 40;
         const coneRadius = coneHeight; // 光速 = 1 の場合、半径 = 高さ
 
         return (
