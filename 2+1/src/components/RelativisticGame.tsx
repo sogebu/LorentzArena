@@ -1,4 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
+import * as THREE from "three";
 import { usePeer } from "../hooks/usePeer";
 import {
   type PhaseSpace,
@@ -14,6 +17,8 @@ import {
   evolvePhaseSpace,
 } from "../physics";
 
+const OFFSET = Date.now() / 1000;
+
 type RelativisticPlayer = {
   id: string;
   // in 世界系
@@ -22,8 +27,8 @@ type RelativisticPlayer = {
   color: string;
 };
 
-// ゲーム内での光速（ピクセル/秒）
-const LIGHT_SPEED = 200;
+// ゲーム内での光速（単位/秒）
+const LIGHT_SPEED = 10;
 
 // IDから色を生成する関数（高彩度で視認性の良い色）
 const getColorFromId = (id: string): string => {
@@ -44,6 +49,137 @@ const getColorFromId = (id: string): string => {
   const lightness = 50 + (Math.abs(hash >> 16) % 16);
 
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+};
+
+// hsl文字列からThree.jsのColorオブジェクトに変換
+const hslToThreeColor = (hslString: string): THREE.Color => {
+  return new THREE.Color(hslString);
+};
+
+// 3Dシーンコンテンツコンポーネント
+type SceneContentProps = {
+  players: Map<string, RelativisticPlayer>;
+  myId: string | null;
+};
+
+const SceneContent = ({ players, myId }: SceneContentProps) => {
+  const cameraRef = useRef<THREE.PerspectiveCamera>(null);
+
+  // カメラの位置を自機の未来側に設定
+  useFrame(({ camera }) => {
+    if (!myId) return;
+    const myPlayer = players.get(myId);
+    if (!myPlayer) return;
+
+    const myPos = myPlayer.phaseSpace.pos;
+    // カメラを自機の若干未来側（+t方向）、少し上から見下ろす位置に配置
+    camera.position.set(myPos.x, myPos.y + 10, myPos.t + 5 - OFFSET);
+    camera.lookAt(myPos.x, myPos.y, myPos.t - OFFSET);
+    camera.up.set(0, 0, 1);
+  });
+
+  return (
+    <>
+      <ambientLight intensity={0.5} />
+      <pointLight position={[10, 10, 10]} intensity={1} />
+
+      {/* 全プレイヤーの world line を描画 */}
+      {Array.from(players.values()).map((player) => {
+        const history = player.worldLine.history;
+        if (history.length < 2) return null;
+
+        const points: THREE.Vector3[] = history.map(
+          (ps) => new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t - OFFSET),
+        );
+
+        const curve = new THREE.CatmullRomCurve3(points);
+        const tubeGeometry = new THREE.TubeGeometry(
+          curve,
+          points.length * 2,
+          0.05,
+          8,
+          false,
+        );
+        const color = hslToThreeColor(player.color);
+
+        return (
+          <mesh key={`worldline-${player.id}`} geometry={tubeGeometry}>
+            <meshStandardMaterial
+              color={color}
+              emissive={color}
+              emissiveIntensity={0.9}
+            />
+          </mesh>
+        );
+      })}
+
+      {/* 各プレイヤーのマーカー */}
+      {Array.from(players.values()).map((player) => {
+        const pos = player.phaseSpace.pos;
+        const isMe = player.id === myId;
+        const color = hslToThreeColor(player.color);
+        const size = isMe ? 0.2 : 0.1;
+
+        return (
+          <mesh
+            key={`player-${player.id}`}
+            position={[pos.x, pos.y, pos.t - OFFSET]}
+          >
+            <sphereGeometry args={[size, 8, 8]} />
+            <meshStandardMaterial
+              color={color}
+              emissive={color}
+              emissiveIntensity={isMe ? 0.8 : 0.5}
+            />
+          </mesh>
+        );
+      })}
+
+      {/* 各プレイヤーの光円錐を描画 */}
+      {Array.from(players.values()).map((player) => {
+        const pos = player.phaseSpace.pos;
+        const isMe = player.id === myId;
+        const color = hslToThreeColor(player.color);
+        const coneHeight = 4;
+        const coneRadius = coneHeight; // 光速 = 1 の場合、半径 = 高さ
+
+        return (
+          <group key={`lightcone-${player.id}`}>
+            {/* 未来光円錐 */}
+            <mesh
+              position={[pos.x, pos.y, pos.t + coneHeight / 2 - OFFSET]}
+              rotation={[-Math.PI / 2, 0.0, 0.0]}
+            >
+              <coneGeometry args={[coneRadius, coneHeight, 32, 1, true]} />
+              <meshBasicMaterial
+                color={color}
+                transparent
+                opacity={isMe ? 0.5 : 0.4}
+                side={THREE.DoubleSide}
+                wireframe
+              />
+            </mesh>
+            {/* 過去光円錐 */}
+            <mesh
+              position={[pos.x, pos.y, pos.t - coneHeight / 2 - OFFSET]}
+              rotation={[Math.PI / 2, 0.0, 0.0]}
+            >
+              <coneGeometry args={[coneRadius, coneHeight, 32, 1, true]} />
+              <meshBasicMaterial
+                color={color}
+                transparent
+                opacity={isMe ? 0.5 : 0.4}
+                side={THREE.DoubleSide}
+                wireframe
+              />
+            </mesh>
+          </group>
+        );
+      })}
+
+      <OrbitControls enableDamping dampingFactor={0.05} />
+    </>
+  );
 };
 
 const RelativisticGame = () => {
@@ -136,7 +272,7 @@ const RelativisticGame = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // 矢印キーの場合はデフォルトの動作（スクロール）を防ぐ
-      if (["ArrowLeft", "ArrowRight"].includes(e.key)) {
+      if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
         e.preventDefault();
       }
       keysPressed.current.add(e.key);
@@ -185,12 +321,15 @@ const RelativisticGame = () => {
         if (myPlayer) {
           // 加速度を計算（キー入力に基づく）
           let ax = 0;
-          const accel = 100 / LIGHT_SPEED; // 加速度 (c/s)
+          let ay = 0;
+          const accel = 4 / LIGHT_SPEED; // 加速度 (c/s)
 
-          if (keysPressed.current.has("ArrowLeft")) ax -= accel;
-          if (keysPressed.current.has("ArrowRight")) ax += accel;
+          if (keysPressed.current.has("ArrowLeft")) ax += accel;
+          if (keysPressed.current.has("ArrowRight")) ax -= accel;
+          if (keysPressed.current.has("ArrowUp")) ay += accel;
+          if (keysPressed.current.has("ArrowDown")) ay -= accel;
 
-          const acceleration = createVector3(ax, 0, 0);
+          const acceleration = createVector3(ax, ay, 0);
 
           // 相対論的運動方程式で更新
           const newPhaseSpace = evolvePhaseSpace(
@@ -233,17 +372,6 @@ const RelativisticGame = () => {
     };
   }, [peerManager, myId]);
 
-  // 時空図での座標変換（自分のプレイヤーを基準とする）
-  const toScreenCoords = (
-    pos: { t: number; x: number },
-    myPos: { t: number; x: number },
-  ) => {
-    return {
-      x: (pos.x - myPos.x) * LIGHT_SPEED + screenSize.width / 2,
-      y: (myPos.t - pos.t) * LIGHT_SPEED + screenSize.height / 2, // 上が未来、下が過去
-    };
-  };
-
   return (
     <div
       style={{
@@ -262,258 +390,17 @@ const RelativisticGame = () => {
           color: "white",
           fontSize: "14px",
           fontFamily: "monospace",
+          zIndex: 100,
         }}
       >
-        <div>相対論的アリーナ (1+1次元 時空図)</div>
-        <div>
-          矢印キーで移動 (光速の{((1 / LIGHT_SPEED) * 100).toFixed(1)}%/s
-          の加速度)
-        </div>
+        <div>相対論的アリーナ (2+1次元 時空図)</div>
+        <div>矢印キーで移動</div>
         <div
           style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
         >
           FPS: {fps}
         </div>
       </div>
-
-      {/* World Lines と時空図の座標軸を SVG で描画 */}
-      {myId &&
-        (() => {
-          const myPlayer = players.get(myId);
-          if (!myPlayer) return null;
-
-          const centerX = screenSize.width / 2;
-          const centerY = screenSize.height / 2;
-
-          return (
-            <svg
-              style={{
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                height: "100%",
-                pointerEvents: "none",
-              }}
-            >
-              {/* 時空図の座標軸 */}
-              {/* x軸（空間軸）*/}
-              <line
-                x1={0}
-                y1={centerY}
-                x2={screenSize.width}
-                y2={centerY}
-                stroke="#333333"
-                strokeWidth={1}
-                strokeDasharray="5,5"
-              />
-              {/* t軸（時間軸）*/}
-              <line
-                x1={centerX}
-                y1={0}
-                x2={centerX}
-                y2={screenSize.height}
-                stroke="#333333"
-                strokeWidth={1}
-                strokeDasharray="5,5"
-              />
-
-              {/* 軸ラベル */}
-              <text
-                x={screenSize.width - 30}
-                y={centerY - 10}
-                fill="#888888"
-                fontSize="14"
-                fontFamily="monospace"
-              >
-                x
-              </text>
-              <text
-                x={centerX + 10}
-                y={20}
-                fill="#888888"
-                fontSize="14"
-                fontFamily="monospace"
-              >
-                t (未来)
-              </text>
-
-              {/* 全プレイヤーの world line を描画 */}
-              {Array.from(players.values()).map((player) => {
-                const history = player.worldLine.history;
-                if (history.length < 2) return null;
-
-                // world line の各点を画面座標に変換
-                const points = history.map((phaseSpace) =>
-                  toScreenCoords(
-                    { t: phaseSpace.pos.t, x: phaseSpace.pos.x },
-                    {
-                      t: myPlayer.phaseSpace.pos.t,
-                      x: myPlayer.phaseSpace.pos.x,
-                    },
-                  ),
-                );
-
-                // 画面外の点を除外して SVG パスを生成
-                const pathData = points.reduce((acc, point, idx) => {
-                  const isVisible =
-                    point.x >= -100 &&
-                    point.x <= screenSize.width + 100 &&
-                    point.y >= -100 &&
-                    point.y <= screenSize.height + 100;
-
-                  if (!isVisible) return acc;
-
-                  if (idx === 0 || acc === "") {
-                    return `M ${point.x} ${point.y}`;
-                  }
-                  return `${acc} L ${point.x} ${point.y}`;
-                }, "");
-
-                if (pathData === "") return null;
-
-                const isMe = player.id === myId;
-
-                return (
-                  <path
-                    key={player.id}
-                    d={pathData}
-                    stroke={player.color}
-                    strokeWidth={isMe ? 3 : 2}
-                    fill="none"
-                    opacity={0.8}
-                  />
-                );
-              })}
-
-              {/* 各プレイヤーの光円錐を描画 */}
-              {Array.from(players.values()).map((player) => {
-                const playerScreenPos = toScreenCoords(
-                  { t: player.phaseSpace.pos.t, x: player.phaseSpace.pos.x },
-                  {
-                    t: myPlayer.phaseSpace.pos.t,
-                    x: myPlayer.phaseSpace.pos.x,
-                  },
-                );
-
-                const isMe = player.id === myId;
-                const coneColor = player.color;
-                const coneOpacity = isMe ? 0.5 : 0.3;
-
-                // 光円錐の長さ（画面の対角線の長さを使用）
-                const coneLength = Math.max(
-                  screenSize.width,
-                  screenSize.height,
-                );
-
-                return (
-                  <g key={`lightcone-${player.id}`}>
-                    {/* 未来の光円錐（右上）*/}
-                    <line
-                      x1={playerScreenPos.x}
-                      y1={playerScreenPos.y}
-                      x2={playerScreenPos.x + coneLength}
-                      y2={playerScreenPos.y - coneLength}
-                      stroke={coneColor}
-                      strokeWidth={isMe ? 1.5 : 1}
-                      strokeDasharray="3,3"
-                      opacity={coneOpacity}
-                    />
-                    {/* 未来の光円錐（左上）*/}
-                    <line
-                      x1={playerScreenPos.x}
-                      y1={playerScreenPos.y}
-                      x2={playerScreenPos.x - coneLength}
-                      y2={playerScreenPos.y - coneLength}
-                      stroke={coneColor}
-                      strokeWidth={isMe ? 1.5 : 1}
-                      strokeDasharray="3,3"
-                      opacity={coneOpacity}
-                    />
-                    {/* 過去の光円錐（右下）*/}
-                    <line
-                      x1={playerScreenPos.x}
-                      y1={playerScreenPos.y}
-                      x2={playerScreenPos.x + coneLength}
-                      y2={playerScreenPos.y + coneLength}
-                      stroke={coneColor}
-                      strokeWidth={isMe ? 1.5 : 1}
-                      strokeDasharray="3,3"
-                      opacity={coneOpacity}
-                    />
-                    {/* 過去の光円錐（左下）*/}
-                    <line
-                      x1={playerScreenPos.x}
-                      y1={playerScreenPos.y}
-                      x2={playerScreenPos.x - coneLength}
-                      y2={playerScreenPos.y + coneLength}
-                      stroke={coneColor}
-                      strokeWidth={isMe ? 1.5 : 1}
-                      strokeDasharray="3,3"
-                      opacity={coneOpacity}
-                    />
-                  </g>
-                );
-              })}
-            </svg>
-          );
-        })()}
-
-      {/* プレイヤーのマーカーを時空図上に表示 */}
-      {myId &&
-        (() => {
-          const myPlayer = players.get(myId);
-          if (!myPlayer) return null;
-
-          return Array.from(players.values()).map((player) => {
-            const screenPos = toScreenCoords(
-              { t: player.phaseSpace.pos.t, x: player.phaseSpace.pos.x },
-              { t: myPlayer.phaseSpace.pos.t, x: myPlayer.phaseSpace.pos.x },
-            );
-
-            const isMe = player.id === myId;
-            const vel = player.phaseSpace.u;
-            const g = gamma(vel);
-
-            return (
-              <div
-                key={player.id}
-                style={{
-                  position: "absolute",
-                  left: screenPos.x,
-                  top: screenPos.y,
-                  width: isMe ? "12px" : "10px",
-                  height: isMe ? "12px" : "10px",
-                  backgroundColor: player.color,
-                  borderRadius: "50%",
-                  transform: "translate(-50%, -50%)",
-                  boxShadow: `0 0 ${isMe ? 12 : 8}px ${player.color}`,
-                  transition: "none",
-                  zIndex: isMe ? 20 : 15,
-                }}
-              >
-                <div
-                  style={{
-                    position: "absolute",
-                    top: isMe ? "-60px" : "-50px",
-                    left: "50%",
-                    transform: "translateX(-50%)",
-                    color: "white",
-                    fontSize: "10px",
-                    whiteSpace: "nowrap",
-                    textShadow: "1px 1px 2px rgba(0,0,0,0.8)",
-                  }}
-                >
-                  {isMe ? "You" : player.id.substring(0, 8)}
-                  <br />x = {player.phaseSpace.pos.x.toFixed(2)}
-                  <br />v = {(lengthVector3(vel) * 100).toFixed(1)}% c
-                  <br />γ = {g.toFixed(2)}
-                  <br />τ = {player.phaseSpace.pos.t.toFixed(2)}
-                </div>
-              </div>
-            );
-          });
-        })()}
 
       {/* 速度計 */}
       {(() => {
@@ -532,14 +419,25 @@ const RelativisticGame = () => {
               fontSize: "14px",
               fontFamily: "monospace",
               textAlign: "right",
+              zIndex: 100,
             }}
           >
             <div>速度: {(v * 100).toFixed(1)}% c</div>
             <div>ガンマ因子: {g.toFixed(3)}</div>
-            <div>固有時間: {myPlayer.phaseSpace.pos.t.toFixed(2)}s</div>
+            <div>
+              固有時間: {(myPlayer.phaseSpace.pos.t - OFFSET).toFixed(2)}s
+            </div>
+            <div>
+              位置: ({myPlayer.phaseSpace.pos.x.toFixed(2)},{" "}
+              {myPlayer.phaseSpace.pos.y.toFixed(2)})
+            </div>
           </div>
         );
       })()}
+
+      <Canvas camera={{ position: [0, 0, 0], fov: 75 }}>
+        <SceneContent players={players} myId={myId} />
+      </Canvas>
     </div>
   );
 };
