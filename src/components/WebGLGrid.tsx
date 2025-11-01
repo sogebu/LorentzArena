@@ -9,9 +9,6 @@ import {
   lengthSquaredVector3,
   subVector3,
   scaleVector3,
-  getPositionPhaseSpace,
-  getVelocityPhaseSpace,
-  getCoordinateTimePhaseSpace,
   lorentzBoost,
   multiplyVector4Matrix4,
   subVector4,
@@ -161,9 +158,9 @@ const WebGLGrid: React.FC<WebGLGridProps> = ({
     const positionBuffer = gl.createBuffer();
 
     // 観測者の状態を取得
-    const observerPos4 = observerPhaseSpace.position4;
-    const observerVel = getVelocityPhaseSpace(observerPhaseSpace);
-    const observerPos = getPositionPhaseSpace(observerPhaseSpace);
+    const observerPos4 = observerPhaseSpace.pos;
+    const observerVel = observerPhaseSpace.u;
+    const observerPos = observerPhaseSpace.pos;
 
     // グリッドオフセット
     const gridOffsetX = Math.floor((observerPos.x * LIGHT_SPEED) / GRID_SIZE);
@@ -181,8 +178,7 @@ const WebGLGrid: React.FC<WebGLGridProps> = ({
     const applyPastLightConeTransform = (worldPos: Vector3): Vector3 => {
       const spatialDistance = lengthVector3(subVector3(worldPos, observerPos));
       const lightTravelTime = spatialDistance;
-      const emissionTime =
-        getCoordinateTimePhaseSpace(observerPhaseSpace) - lightTravelTime;
+      const emissionTime =        observerPhaseSpace.pos.t - lightTravelTime;
 
       const worldPos4 = createVector4(
         emissionTime,

@@ -149,12 +149,7 @@ export const spatialVector4 = (v: Vector4): Vector3 =>
   createVector3(v.x, v.y, v.z);
 
 export const getVelocity4 = (u: Vector3): Vector4 =>
-  createVector4(
-    gamma(u),
-    u.x,
-    u.y,
-    u.z,
-  );
+  createVector4(gamma(u), u.x, u.y, u.z);
 
 /**
  * 時空間隔のタイプを判定

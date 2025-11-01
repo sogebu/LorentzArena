@@ -8,10 +8,7 @@ import {
   scaleVector3,
   scaleVector4,
 } from "./vector";
-import {
-  inverseLorentzBoost,
-  multiplyVector4Matrix4,
-} from "./matrix";
+import { inverseLorentzBoost, multiplyVector4Matrix4 } from "./matrix";
 
 /**
  * 相対論的位相空間（4元位置と4元速度）型
@@ -24,7 +21,10 @@ export type PhaseSpace = {
 /**
  * 相対論的位相空間を作成
  */
-export const createPhaseSpace = (  pos: Vector4,  u: Vector3): PhaseSpace => ({  pos,  u });
+export const createPhaseSpace = (pos: Vector4, u: Vector3): PhaseSpace => ({
+  pos,
+  u,
+});
 
 /**
  * 加速度による時間発展（相対論的運動方程式）
@@ -53,10 +53,7 @@ export const evolvePhaseSpace = (
   const newU = addVector3(ps.u, scaleVector3(accel4, dTau));
 
   // 位置の更新（dx/dτ = u）
-  const newPos = addVector4(
-    ps.pos,
-    scaleVector4(getVelocity4(newU), dTau),
-  );
+  const newPos = addVector4(ps.pos, scaleVector4(getVelocity4(newU), dTau));
 
   return createPhaseSpace(newPos, newU);
 };

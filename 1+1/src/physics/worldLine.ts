@@ -1,8 +1,4 @@
-import {
-  type Vector4,
-  subVector4,
-  lorentzDotVector4,
-} from "./vector";
+import { type Vector4, subVector4, lorentzDotVector4 } from "./vector";
 import type { PhaseSpace } from "./mechanics";
 
 /**
@@ -70,14 +66,14 @@ const findLightlikeIntersectionTime = (
   // -> (x0 - t*dx))^2 = 0
   // -> dx^2 t^2 - 2*dx*x0*t + x0^2 = 0
   // -> a*t^2 - 2*b*t + c = 0
-  
+
   const dx = subVector4(pos2, pos1);
   const x0 = subVector4(observerPos, pos1);
-  
+
   // 2次方程式: a*t^2 - 2*b*t + c = 0
-  const a = lorentzDotVector4(dx, dx);  // 負
-  const b = lorentzDotVector4(dx, x0);  // 負
-  const c = lorentzDotVector4(x0, x0);  // 負
+  const a = lorentzDotVector4(dx, dx); // 負
+  const b = lorentzDotVector4(dx, x0); // 負
+  const c = lorentzDotVector4(x0, x0); // 負
 
   // 判別式
   const discriminant = b * b - a * c;
@@ -142,7 +138,8 @@ export const pastLightConeIntersectionWorldLine = (
     // 履歴が1つしかない場合、それが過去光円錐内にあるかチェック
     const state = wl.history[0];
     const separation = subVector4(observerPosition, state.pos);
-    if (separation.t > 0) { // 観測者の過去
+    if (separation.t > 0) {
+      // 観測者の過去
       return state;
     }
     return null;
@@ -156,7 +153,7 @@ export const pastLightConeIntersectionWorldLine = (
   for (let i = wl.history.length - 1; i > startIdx; i--) {
     const state = wl.history[i];
     const prevState = wl.history[i - 1];
-    
+
     // 両端点が観測者の過去にあるかチェック
     const sep1 = subVector4(prevState.pos, observerPosition);
     const sep2 = subVector4(state.pos, observerPosition);

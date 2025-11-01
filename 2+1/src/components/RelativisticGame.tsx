@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
+import * as THREE from "three";
 import { usePeer } from "../hooks/usePeer";
-import WebGLGrid from "./WebGLGrid";
 import {
-  type Vector3,
   type PhaseSpace,
   type WorldLine,
   createVector3,
@@ -11,12 +12,12 @@ import {
   gamma,
   createWorldLine,
   appendWorldLine,
-  pastLightConeIntersectionWorldLine,
   createPhaseSpace,
   createVector4,
   evolvePhaseSpace,
-  subVector4,
 } from "../physics";
+
+const OFFSET = Date.now() / 1000;
 
 type RelativisticPlayer = {
   id: string;
@@ -26,37 +27,158 @@ type RelativisticPlayer = {
   color: string;
 };
 
-// ゲーム内での光速（ピクセル/秒）
-const LIGHT_SPEED = 200;
+// ゲーム内での光速（単位/秒）
+const LIGHT_SPEED = 10;
 
-// ドップラー効果による色の計算
-const calculateDopplerColor = (
-  velocity: Vector3,
-  baseColor: string,
-): string => {
-  const beta = lengthVector3(velocity);
-
-  // 速度が0の場合は基本色を返す
-  if (beta === 0) {
-    return baseColor === "blue" ? "rgb(128, 128, 255)" : "rgb(255, 128, 128)";
+// IDから色を生成する関数（高彩度で視認性の良い色）
+const getColorFromId = (id: string): string => {
+  // IDをハッシュ化して数値に変換
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = id.charCodeAt(i) + ((hash << 5) - hash);
+    hash = hash & hash; // 32bit整数に変換
   }
 
-  const g = gamma(velocity);
+  // ハッシュ値から色相（Hue）を決定（0-360度）
+  const hue = Math.abs(hash) % 360;
 
-  // 簡略化されたドップラー効果
-  // 接近: 青方偏移、離脱: 赤方偏移
-  const dopplerFactor = g * (1 - (beta * velocity.x) / beta);
+  // 高彩度（85-100%）で視認性を確保
+  const saturation = 85 + (Math.abs(hash >> 8) % 16);
 
-  if (baseColor === "blue") {
-    const intensity = Math.max(0, Math.min(255, 128 * dopplerFactor));
-    return `rgb(${intensity}, ${intensity}, 255)`;
-  }
-  const intensity = Math.max(0, Math.min(255, 255 / dopplerFactor));
-  return `rgb(255, ${255 - intensity}, ${255 - intensity})`;
+  // 明度は中程度（50-65%）で見やすく
+  const lightness = 50 + (Math.abs(hash >> 16) % 16);
+
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 };
 
-// グリッドの設定
-const GRID_SIZE = 30; // ピクセル単位（より密なグリッド）
+// hsl文字列からThree.jsのColorオブジェクトに変換
+const hslToThreeColor = (hslString: string): THREE.Color => {
+  return new THREE.Color(hslString);
+};
+
+// 3Dシーンコンテンツコンポーネント
+type SceneContentProps = {
+  players: Map<string, RelativisticPlayer>;
+  myId: string | null;
+};
+
+const SceneContent = ({ players, myId }: SceneContentProps) => {
+  // カメラの位置を自機の未来側に設定
+  useFrame(({ camera }) => {
+    if (!myId) return;
+    const myPlayer = players.get(myId);
+    if (!myPlayer) return;
+
+    const myPos = myPlayer.phaseSpace.pos;
+    // カメラを自機の若干未来側（+t方向）、少し上から見下ろす位置に配置
+    camera.position.set(myPos.x, myPos.y + 10, myPos.t + 5 - OFFSET);
+    camera.lookAt(myPos.x, myPos.y, myPos.t - OFFSET);
+    camera.up.set(0, 0, 1);
+  });
+
+  return (
+    <>
+      <ambientLight intensity={0.5} />
+      <pointLight position={[10, 10, 10]} intensity={1} />
+
+      {/* 全プレイヤーの world line を描画 */}
+      {Array.from(players.values()).map((player) => {
+        const history = player.worldLine.history;
+        if (history.length < 2) return null;
+
+        const points: THREE.Vector3[] = history.map(
+          (ps) => new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t - OFFSET),
+        );
+
+        const curve = new THREE.CatmullRomCurve3(points);
+        const tubeGeometry = new THREE.TubeGeometry(
+          curve,
+          points.length * 2,
+          0.05,
+          8,
+          false,
+        );
+        const color = hslToThreeColor(player.color);
+
+        return (
+          <mesh key={`worldline-${player.id}`} geometry={tubeGeometry}>
+            <meshStandardMaterial
+              color={color}
+              emissive={color}
+              emissiveIntensity={0.9}
+            />
+          </mesh>
+        );
+      })}
+
+      {/* 各プレイヤーのマーカー */}
+      {Array.from(players.values()).map((player) => {
+        const pos = player.phaseSpace.pos;
+        const isMe = player.id === myId;
+        const color = hslToThreeColor(player.color);
+        const size = isMe ? 0.2 : 0.1;
+
+        return (
+          <mesh
+            key={`player-${player.id}`}
+            position={[pos.x, pos.y, pos.t - OFFSET]}
+          >
+            <sphereGeometry args={[size, 8, 8]} />
+            <meshStandardMaterial
+              color={color}
+              emissive={color}
+              emissiveIntensity={isMe ? 0.8 : 0.5}
+            />
+          </mesh>
+        );
+      })}
+
+      {/* 各プレイヤーの光円錐を描画 */}
+      {Array.from(players.values()).map((player) => {
+        const pos = player.phaseSpace.pos;
+        const isMe = player.id === myId;
+        const color = hslToThreeColor(player.color);
+        const coneHeight = 40;
+        const coneRadius = coneHeight; // 光速 = 1 の場合、半径 = 高さ
+
+        return (
+          <group key={`lightcone-${player.id}`}>
+            {/* 未来光円錐 */}
+            <mesh
+              position={[pos.x, pos.y, pos.t + coneHeight / 2 - OFFSET]}
+              rotation={[-Math.PI / 2, 0.0, 0.0]}
+            >
+              <coneGeometry args={[coneRadius, coneHeight, 32, 1, true]} />
+              <meshBasicMaterial
+                color={color}
+                transparent
+                opacity={isMe ? 0.5 : 0.4}
+                side={THREE.DoubleSide}
+                wireframe
+              />
+            </mesh>
+            {/* 過去光円錐 */}
+            <mesh
+              position={[pos.x, pos.y, pos.t - coneHeight / 2 - OFFSET]}
+              rotation={[Math.PI / 2, 0.0, 0.0]}
+            >
+              <coneGeometry args={[coneRadius, coneHeight, 32, 1, true]} />
+              <meshBasicMaterial
+                color={color}
+                transparent
+                opacity={isMe ? 0.5 : 0.4}
+                side={THREE.DoubleSide}
+                wireframe
+              />
+            </mesh>
+          </group>
+        );
+      })}
+
+      <OrbitControls enableDamping dampingFactor={0.05} />
+    </>
+  );
+};
 
 const RelativisticGame = () => {
   const { peerManager, myId } = usePeer();
@@ -84,10 +206,7 @@ const RelativisticGame = () => {
       }
 
       const initialPhaseSpace = createPhaseSpace(
-        createVector4(
-          Date.now() / 1000,
-          0.0,0.0,0.0,
-        ),
+        createVector4(Date.now() / 1000, 0.0, 0.0, 0.0),
         vector3Zero(),
       );
       let worldLine = createWorldLine();
@@ -98,7 +217,7 @@ const RelativisticGame = () => {
         id: myId,
         phaseSpace: initialPhaseSpace,
         worldLine,
-        color: "blue",
+        color: getColorFromId(myId),
       });
       return next;
     });
@@ -113,11 +232,8 @@ const RelativisticGame = () => {
       if (msg.type === "phaseSpace") {
         setPlayers((prev) => {
           const next = new Map(prev);
-          
-          const phaseSpace = createPhaseSpace(
-            msg.position,
-            msg.velocity,
-          );
+
+          const phaseSpace = createPhaseSpace(msg.position, msg.velocity);
 
           // 既存のプレイヤーのワールドラインに追加、または新規作成
           const existing = prev.get(id);
@@ -128,7 +244,7 @@ const RelativisticGame = () => {
             id,
             phaseSpace,
             worldLine,
-            color: "red",
+            color: existing?.color || getColorFromId(id), // 既存の色を保持
           });
           return next;
         });
@@ -154,7 +270,7 @@ const RelativisticGame = () => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // 矢印キーの場合はデフォルトの動作（スクロール）を防ぐ
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+      if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
         e.preventDefault();
       }
       keysPressed.current.add(e.key);
@@ -204,12 +320,12 @@ const RelativisticGame = () => {
           // 加速度を計算（キー入力に基づく）
           let ax = 0;
           let ay = 0;
-          const accel = 100 / LIGHT_SPEED; // 加速度 (c/s)
+          const accel = 4 / LIGHT_SPEED; // 加速度 (c/s)
 
-          if (keysPressed.current.has("ArrowLeft")) ax -= accel;
-          if (keysPressed.current.has("ArrowRight")) ax += accel;
-          if (keysPressed.current.has("ArrowUp")) ay -= accel;
-          if (keysPressed.current.has("ArrowDown")) ay += accel;
+          if (keysPressed.current.has("ArrowLeft")) ax += accel;
+          if (keysPressed.current.has("ArrowRight")) ax -= accel;
+          if (keysPressed.current.has("ArrowUp")) ay += accel;
+          if (keysPressed.current.has("ArrowDown")) ay -= accel;
 
           const acceleration = createVector3(ax, ay, 0);
 
@@ -254,21 +370,6 @@ const RelativisticGame = () => {
     };
   }, [peerManager, myId]);
 
-  // グリッドをレンダリング
-  const renderGrid = () => {
-    const myPlayer = myId ? players.get(myId) : undefined;
-    if (!myPlayer) return null;
-
-    return (
-      <WebGLGrid
-        observerPhaseSpace={myPlayer.phaseSpace}
-        screenSize={screenSize}
-        LIGHT_SPEED={LIGHT_SPEED}
-        GRID_SIZE={GRID_SIZE}
-      />
-    );
-  };
-
   return (
     <div
       style={{
@@ -287,148 +388,17 @@ const RelativisticGame = () => {
           color: "white",
           fontSize: "14px",
           fontFamily: "monospace",
+          zIndex: 100,
         }}
       >
-        <div>相対論的アリーナ</div>
-        <div>
-          矢印キーで移動 (光速の{((1 / LIGHT_SPEED) * 100).toFixed(1)}%/s
-          の加速度)
-        </div>
+        <div>相対論的アリーナ (2+1次元 時空図)</div>
+        <div>矢印キーで移動</div>
         <div
           style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
         >
           FPS: {fps}
         </div>
       </div>
-
-      <div
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100%",
-          pointerEvents: "none",
-        }}
-      >
-        {renderGrid()}
-      </div>
-
-      {/* 自機を常に表示 */}
-      {myId &&
-        (() => {
-          const myPlayer = myId ? players.get(myId) : undefined;
-          const vel = myPlayer?.phaseSpace.u ?? vector3Zero();
-          const g = gamma(vel);
-          const color = myPlayer?.color || "blue";
-          const contractionFactor = 1 / g;
-          const angle = Math.atan2(vel.y, vel.x);
-
-          return (
-            <div
-              key="my-player"
-              style={{
-                position: "absolute",
-                left: screenSize.width / 2,
-                top: screenSize.height / 2,
-                width: "40px",
-                height: "40px",
-                backgroundColor: myPlayer
-                  ? calculateDopplerColor(vel, color)
-                  : "blue",
-                borderRadius: "50%",
-                transform: `translate(-50%, -50%) rotate(${angle}rad) scaleX(${contractionFactor})`,
-                boxShadow: `0 0 ${20 * g}px ${myPlayer ? calculateDopplerColor(vel, color) : "blue"}`,
-                transition: "none",
-                zIndex: 10,
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  top: "-30px",
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  color: "white",
-                  fontSize: "10px",
-                  whiteSpace: "nowrap",
-                  textShadow: "1px 1px 2px rgba(0,0,0,0.8)",
-                }}
-              >
-                You
-                <br />v = {(lengthVector3(vel) * 100).toFixed(1)}% c
-                <br />γ = {g.toFixed(2)}
-                <br />τ ={" "}
-                {myPlayer
-                  ? myPlayer.phaseSpace.pos.t.toFixed(2)
-                  : "0.00"}
-              </div>
-            </div>
-          );
-        })()}
-
-      {/* 他のプレイヤー */}
-      {Array.from(players.values()).map((player) => {
-        if (player.id === myId) return null; // 自機はスキップ
-
-        const myPlayer = myId ? players.get(myId) : undefined;
-        if (!myPlayer) return null;
-
-        // 他プレイヤーは過去光円錐との交点を使用
-        const displayPhaseSpace = pastLightConeIntersectionWorldLine(player.worldLine, myPlayer.phaseSpace.pos);
-        if (!displayPhaseSpace) return null;
-        const relativePos = subVector4(
-          displayPhaseSpace.pos,
-          myPlayer.phaseSpace.pos,
-        );
-        const displayPos = {
-          x: relativePos.x * LIGHT_SPEED + screenSize.width / 2,
-          y: relativePos.y * LIGHT_SPEED + screenSize.height / 2,
-        };
-
-        const u = displayPhaseSpace.u;
-        const g = gamma(u);
-
-        // ローレンツ収縮を表現（進行方向に縮む）
-        const contractionFactor = 1 / g;
-        const angle = Math.atan2(u.y, u.x);
-
-        return (
-          <div
-            key={player.id}
-            style={{
-              position: "absolute",
-              left: displayPos.x,
-              top: displayPos.y,
-              width: "40px",
-              height: "40px",
-              backgroundColor: calculateDopplerColor(myPlayer.phaseSpace.u, player.color),
-              borderRadius: "50%",
-              transform: `translate(-50%, -50%) rotate(${angle}rad) scaleX(${contractionFactor})`,
-              boxShadow: `0 0 ${20 * g}px ${calculateDopplerColor(u, player.color)}`,
-              transition: "none",
-            }}
-          >
-            <div
-              style={{
-                position: "absolute",
-                top: "-30px",
-                left: "50%",
-                transform: "translateX(-50%)",
-                color: "white",
-                fontSize: "10px",
-                whiteSpace: "nowrap",
-                textShadow: "1px 1px 2px rgba(0,0,0,0.8)",
-              }}
-            >
-              {player.id === myId ? "You" : player.id.substring(0, 8)}
-              <br />v = {(lengthVector3(u) * 100).toFixed(1)}% c
-              <br />τ = {displayPhaseSpace.pos.t.toFixed(2)}
-              <br />γ = {g.toFixed(2)}
-            </div>
-          </div>
-        );
-      })}
 
       {/* 速度計 */}
       {(() => {
@@ -447,17 +417,25 @@ const RelativisticGame = () => {
               fontSize: "14px",
               fontFamily: "monospace",
               textAlign: "right",
+              zIndex: 100,
             }}
           >
             <div>速度: {(v * 100).toFixed(1)}% c</div>
             <div>ガンマ因子: {g.toFixed(3)}</div>
             <div>
-              固有時間:{" "}
-              {myPlayer.phaseSpace.pos.t.toFixed(2)}s
+              固有時間: {(myPlayer.phaseSpace.pos.t - OFFSET).toFixed(2)}s
+            </div>
+            <div>
+              位置: ({myPlayer.phaseSpace.pos.x.toFixed(2)},{" "}
+              {myPlayer.phaseSpace.pos.y.toFixed(2)})
             </div>
           </div>
         );
       })()}
+
+      <Canvas camera={{ position: [0, 0, 0], fov: 75 }}>
+        <SceneContent players={players} myId={myId} />
+      </Canvas>
     </div>
   );
 };
