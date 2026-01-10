@@ -17,6 +17,7 @@ import {
   evolvePhaseSpace,
   lorentzDotVector4,
   subVector4,
+  pastLightConeIntersectionWorldLine,
 } from "../physics";
 
 const OFFSET = Date.now() / 1000;
@@ -176,6 +177,44 @@ const SceneContent = ({ players, myId }: SceneContentProps) => {
           </group>
         );
       })}
+
+      {/* 自分の過去光円錐と他プレイヤーの世界線の交点（または最新点） */}
+      {myId &&
+        (() => {
+          const myPlayer = players.get(myId);
+          if (!myPlayer) return null;
+
+          return Array.from(players.values())
+            .filter((player) => player.id !== myId)
+            .map((player) => {
+              const intersection = pastLightConeIntersectionWorldLine(
+                player.worldLine,
+                myPlayer.phaseSpace.pos,
+              );
+              // 交点がない場合は世界線の最新点を使用
+              const displayState =
+                intersection ||
+                player.worldLine.history[player.worldLine.history.length - 1];
+              if (!displayState) return null;
+
+              const pos = displayState.pos;
+              const color = hslToThreeColor(player.color);
+
+              return (
+                <mesh
+                  key={`intersection-${player.id}`}
+                  position={[pos.x, pos.y, pos.t]}
+                >
+                  <sphereGeometry args={[0.3, 16, 16]} />
+                  <meshStandardMaterial
+                    color={color}
+                    emissive={color}
+                    emissiveIntensity={1.0}
+                  />
+                </mesh>
+              );
+            });
+        })()}
 
       <OrbitControls enableDamping dampingFactor={0.05} />
     </>
@@ -437,7 +476,7 @@ const RelativisticGame = () => {
             <div>速度: {(v * 100).toFixed(1)}% c</div>
             <div>ガンマ因子: {g.toFixed(3)}</div>
             <div>
-              固有時間: {(myPlayer.phaseSpace.pos.t - OFFSET).toFixed(2)}s
+              固有時間: {(myPlayer.phaseSpace.pos.t).toFixed(2)}s
             </div>
             <div>
               位置: ({myPlayer.phaseSpace.pos.x.toFixed(2)},{" "}

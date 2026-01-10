@@ -14,6 +14,7 @@ import {
   evolvePhaseSpace,
   lorentzDotVector4,
   subVector4,
+  pastLightConeIntersectionWorldLine,
 } from "../physics";
 
 type RelativisticPlayer = {
@@ -184,6 +185,7 @@ const RelativisticGame = () => {
         const myPlayer = prev.get(myId);
         if (!myPlayer) return prev;
         // 他の誰かの未来光円錐を未来側に超えてしまうと因果律の守護者に時間停止を喰らう
+        // 1歩分超えることは許容しないとデッドロックになりやすい
         for (const [id, player] of prev) {
           if (id === myId) continue;
           if (player.phaseSpace.pos.t > myPlayer.phaseSpace.pos.t) continue;
@@ -464,6 +466,42 @@ const RelativisticGame = () => {
                   </g>
                 );
               })}
+
+              {/* 自分の過去光円錐と他プレイヤーの世界線の交点（または最新点） */}
+              {Array.from(players.values())
+                .filter((player) => player.id !== myId)
+                .map((player) => {
+                  const intersection = pastLightConeIntersectionWorldLine(
+                    player.worldLine,
+                    myPlayer.phaseSpace.pos,
+                  );
+                  // 交点がない場合は世界線の最新点を使用
+                  const displayState =
+                    intersection ||
+                    player.worldLine.history[player.worldLine.history.length - 1];
+                  if (!displayState) return null;
+
+                  const screenPos = toScreenCoords(
+                    { t: displayState.pos.t, x: displayState.pos.x },
+                    {
+                      t: myPlayer.phaseSpace.pos.t,
+                      x: myPlayer.phaseSpace.pos.x,
+                    },
+                  );
+
+                  return (
+                    <circle
+                      key={`intersection-${player.id}`}
+                      cx={screenPos.x}
+                      cy={screenPos.y}
+                      r={8}
+                      fill={player.color}
+                      opacity={0.9}
+                      stroke="white"
+                      strokeWidth={2}
+                    />
+                  );
+                })}
             </svg>
           );
         })()}

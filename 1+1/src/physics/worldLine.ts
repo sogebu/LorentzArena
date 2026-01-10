@@ -100,13 +100,13 @@ const findRelevantInterval = (
   let left = 0;
   let right = history.length - 1;
 
-  // 全ての履歴が未来にある場合
-  if (history[right].pos.t > observerTime) {
+  // 全ての履歴が未来にある場合（最古でさえ未来）
+  if (history[0].pos.t > observerTime) {
     return null;
   }
 
-  // 全ての履歴が過去にある場合
-  if (history[0].pos.t <= observerTime) {
+  // 全ての履歴が過去にある場合（最新でさえ過去）→ 全区間を探索
+  if (history[right].pos.t <= observerTime) {
     return 0;
   }
 
