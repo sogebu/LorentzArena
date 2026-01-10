@@ -15,6 +15,8 @@ import {
   createPhaseSpace,
   createVector4,
   evolvePhaseSpace,
+  lorentzDotVector4,
+  subVector4,
 } from "../physics";
 
 const OFFSET = Date.now() / 1000;
@@ -71,8 +73,8 @@ const SceneContent = ({ players, myId }: SceneContentProps) => {
 
     const myPos = myPlayer.phaseSpace.pos;
     // カメラを自機の若干未来側（+t方向）、少し上から見下ろす位置に配置
-    camera.position.set(myPos.x, myPos.y + 10, myPos.t + 5 - OFFSET);
-    camera.lookAt(myPos.x, myPos.y, myPos.t - OFFSET);
+    camera.position.set(myPos.x, myPos.y + 10, myPos.t + 5);
+    camera.lookAt(myPos.x, myPos.y, myPos.t);
     camera.up.set(0, 0, 1);
   });
 
@@ -87,7 +89,7 @@ const SceneContent = ({ players, myId }: SceneContentProps) => {
         if (history.length < 2) return null;
 
         const points: THREE.Vector3[] = history.map(
-          (ps) => new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t - OFFSET),
+          (ps) => new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t),
         );
 
         const curve = new THREE.CatmullRomCurve3(points);
@@ -121,7 +123,7 @@ const SceneContent = ({ players, myId }: SceneContentProps) => {
         return (
           <mesh
             key={`player-${player.id}`}
-            position={[pos.x, pos.y, pos.t - OFFSET]}
+            position={[pos.x, pos.y, pos.t]}
           >
             <sphereGeometry args={[size, 8, 8]} />
             <meshStandardMaterial
@@ -145,7 +147,7 @@ const SceneContent = ({ players, myId }: SceneContentProps) => {
           <group key={`lightcone-${player.id}`}>
             {/* 未来光円錐 */}
             <mesh
-              position={[pos.x, pos.y, pos.t + coneHeight / 2 - OFFSET]}
+              position={[pos.x, pos.y, pos.t + coneHeight / 2]}
               rotation={[-Math.PI / 2, 0.0, 0.0]}
             >
               <coneGeometry args={[coneRadius, coneHeight, 32, 1, true]} />
@@ -159,7 +161,7 @@ const SceneContent = ({ players, myId }: SceneContentProps) => {
             </mesh>
             {/* 過去光円錐 */}
             <mesh
-              position={[pos.x, pos.y, pos.t - coneHeight / 2 - OFFSET]}
+              position={[pos.x, pos.y, pos.t - coneHeight / 2]}
               rotation={[Math.PI / 2, 0.0, 0.0]}
             >
               <coneGeometry args={[coneRadius, coneHeight, 32, 1, true]} />
@@ -206,7 +208,7 @@ const RelativisticGame = () => {
       }
 
       const initialPhaseSpace = createPhaseSpace(
-        createVector4(Date.now() / 1000, 0.0, 0.0, 0.0),
+        createVector4(Date.now() / 1000 - OFFSET, Math.random() * 10, Math.random() * 10, 0.0),
         vector3Zero(),
       );
       let worldLine = createWorldLine();
@@ -313,46 +315,58 @@ const RelativisticGame = () => {
       }
 
       setPlayers((prev) => {
+        const myPlayer = prev.get(myId);
+        if (!myPlayer) return prev;
+        // 他の誰かの未来光円錐を未来側に超えてしまうと因果律の守護者に時間停止を喰らう
+        for (const [id, player] of prev) {
+          if (id === myId) continue;
+          if (player.phaseSpace.pos.t > myPlayer.phaseSpace.pos.t) continue;
+          const diff = subVector4(player.phaseSpace.pos, myPlayer.phaseSpace.pos);
+          const l = lorentzDotVector4(diff, diff);
+          if (l < 0) return prev;
+        }
+
         const next = new Map(prev);
-        const myPlayer = next.get(myId);
 
-        if (myPlayer) {
-          // 加速度を計算（キー入力に基づく）
-          let ax = 0;
-          let ay = 0;
-          const accel = 4 / LIGHT_SPEED; // 加速度 (c/s)
+        // 加速度を計算（キー入力に基づく）
+        let ax = 0;
+        let ay = 0;
+        const accel = 4 / LIGHT_SPEED; // 加速度 (c/s)
 
-          if (keysPressed.current.has("ArrowLeft")) ax += accel;
-          if (keysPressed.current.has("ArrowRight")) ax -= accel;
-          if (keysPressed.current.has("ArrowUp")) ay += accel;
-          if (keysPressed.current.has("ArrowDown")) ay -= accel;
+        if (keysPressed.current.has("ArrowLeft")) ax += accel;
+        if (keysPressed.current.has("ArrowRight")) ax -= accel;
+        if (keysPressed.current.has("ArrowUp")) ay += accel;
+        if (keysPressed.current.has("ArrowDown")) ay -= accel;
 
-          const acceleration = createVector3(ax, ay, 0);
+        const mu = 0.5;
+        ax -= myPlayer.phaseSpace.u.x * mu;
+        ay -= myPlayer.phaseSpace.u.y * mu;
 
-          // 相対論的運動方程式で更新
-          const newPhaseSpace = evolvePhaseSpace(
-            myPlayer.phaseSpace,
-            acceleration,
-            dTau,
-          );
-          const updatedWorldLine = appendWorldLine(
-            myPlayer.worldLine,
-            newPhaseSpace,
-          );
-          next.set(myId, {
-            ...myPlayer,
-            phaseSpace: newPhaseSpace,
-            worldLine: updatedWorldLine,
+        const acceleration = createVector3(ax, ay, 0);
+
+        // 相対論的運動方程式で更新
+        const newPhaseSpace = evolvePhaseSpace(
+          myPlayer.phaseSpace,
+          acceleration,
+          dTau,
+        );
+        const updatedWorldLine = appendWorldLine(
+          myPlayer.worldLine,
+          newPhaseSpace,
+        );
+        next.set(myId, {
+          ...myPlayer,
+          phaseSpace: newPhaseSpace,
+          worldLine: updatedWorldLine,
+        });
+
+        // 他のプレイヤーに送信
+        if (peerManager) {
+          peerManager.send({
+            type: "phaseSpace",
+            position: newPhaseSpace.pos,
+            velocity: newPhaseSpace.u,
           });
-
-          // 他のプレイヤーに送信
-          if (peerManager) {
-            peerManager.send({
-              type: "phaseSpace",
-              position: newPhaseSpace.pos,
-              velocity: newPhaseSpace.u,
-            });
-          }
         }
 
         return next;

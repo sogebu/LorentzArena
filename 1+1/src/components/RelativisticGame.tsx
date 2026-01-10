@@ -12,6 +12,8 @@ import {
   createPhaseSpace,
   createVector4,
   evolvePhaseSpace,
+  lorentzDotVector4,
+  subVector4,
 } from "../physics";
 
 type RelativisticPlayer = {
@@ -72,7 +74,7 @@ const RelativisticGame = () => {
       }
 
       const initialPhaseSpace = createPhaseSpace(
-        createVector4(Date.now() / 1000, 0.0, 0.0, 0.0),
+        createVector4(Date.now() / 1000, Math.random() * 10, 0.0, 0.0),
         vector3Zero(),
       );
       let worldLine = createWorldLine();
@@ -179,43 +181,50 @@ const RelativisticGame = () => {
       }
 
       setPlayers((prev) => {
+        const myPlayer = prev.get(myId);
+        if (!myPlayer) return prev;
+        // 他の誰かの未来光円錐を未来側に超えてしまうと因果律の守護者に時間停止を喰らう
+        for (const [id, player] of prev) {
+          if (id === myId) continue;
+          if (player.phaseSpace.pos.t > myPlayer.phaseSpace.pos.t) continue;
+          const diff = subVector4(player.phaseSpace.pos, myPlayer.phaseSpace.pos);
+          const l = lorentzDotVector4(diff, diff);
+          if (l < 0) return prev;
+        }
+
         const next = new Map(prev);
-        const myPlayer = next.get(myId);
+        // 加速度を計算（キー入力に基づく）
+        let ax = 0;
+        const accel = 100 / LIGHT_SPEED; // 加速度 (c/s)
 
-        if (myPlayer) {
-          // 加速度を計算（キー入力に基づく）
-          let ax = 0;
-          const accel = 100 / LIGHT_SPEED; // 加速度 (c/s)
+        if (keysPressed.current.has("ArrowLeft")) ax -= accel;
+        if (keysPressed.current.has("ArrowRight")) ax += accel;
 
-          if (keysPressed.current.has("ArrowLeft")) ax -= accel;
-          if (keysPressed.current.has("ArrowRight")) ax += accel;
+        const acceleration = createVector3(ax, 0, 0);
 
-          const acceleration = createVector3(ax, 0, 0);
+        // 相対論的運動方程式で更新
+        const newPhaseSpace = evolvePhaseSpace(
+          myPlayer.phaseSpace,
+          acceleration,
+          dTau,
+        );
+        const updatedWorldLine = appendWorldLine(
+          myPlayer.worldLine,
+          newPhaseSpace,
+        );
+        next.set(myId, {
+          ...myPlayer,
+          phaseSpace: newPhaseSpace,
+          worldLine: updatedWorldLine,
+        });
 
-          // 相対論的運動方程式で更新
-          const newPhaseSpace = evolvePhaseSpace(
-            myPlayer.phaseSpace,
-            acceleration,
-            dTau,
-          );
-          const updatedWorldLine = appendWorldLine(
-            myPlayer.worldLine,
-            newPhaseSpace,
-          );
-          next.set(myId, {
-            ...myPlayer,
-            phaseSpace: newPhaseSpace,
-            worldLine: updatedWorldLine,
+        // 他のプレイヤーに送信
+        if (peerManager) {
+          peerManager.send({
+            type: "phaseSpace",
+            position: newPhaseSpace.pos,
+            velocity: newPhaseSpace.u,
           });
-
-          // 他のプレイヤーに送信
-          if (peerManager) {
-            peerManager.send({
-              type: "phaseSpace",
-              position: newPhaseSpace.pos,
-              velocity: newPhaseSpace.u,
-            });
-          }
         }
 
         return next;
