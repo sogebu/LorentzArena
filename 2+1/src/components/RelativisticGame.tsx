@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { usePeer } from "../hooks/usePeer";
@@ -53,20 +53,118 @@ const getColorFromId = (id: string): string => {
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 };
 
-// hsl文字列からThree.jsのColorオブジェクトに変換
-const hslToThreeColor = (hslString: string): THREE.Color => {
-  return new THREE.Color(hslString);
+// Color キャッシュ
+const colorCache = new Map<string, THREE.Color>();
+const getThreeColor = (hslString: string): THREE.Color => {
+  let color = colorCache.get(hslString);
+  if (!color) {
+    color = new THREE.Color(hslString);
+    colorCache.set(hslString, color);
+  }
+  return color;
+};
+
+// 共有ジオメトリ（シングルトン）
+const sharedGeometries = {
+  playerSphere: new THREE.SphereGeometry(1, 8, 8),
+  intersectionSphere: new THREE.SphereGeometry(0.3, 16, 16),
+  lightCone: new THREE.ConeGeometry(40, 40, 32, 1, true),
+};
+
+// Material キャッシュ（プレイヤーID + タイプごと）
+const materialCache = new Map<string, THREE.Material>();
+const getMaterial = (
+  key: string,
+  factory: () => THREE.Material
+): THREE.Material => {
+  let mat = materialCache.get(key);
+  if (!mat) {
+    mat = factory();
+    materialCache.set(key, mat);
+  }
+  return mat;
+};
+
+// デバッグ用: キャッシュサイズの監視（ブラウザコンソールで window.debugCaches を参照）
+if (typeof window !== "undefined") {
+  (window as unknown as Record<string, unknown>).debugCaches = {
+    colorCache,
+    materialCache,
+    sharedGeometries,
+  };
+}
+
+// WorldLineRenderer コンポーネント - 個別のワールドラインを描画
+const WorldLineRenderer = ({ player }: { player: RelativisticPlayer }) => {
+  const [geometry, setGeometry] = useState<THREE.TubeGeometry | null>(null);
+  const prevLengthRef = useRef<number>(0);
+
+  const history = player.worldLine.history;
+  const historyLength = history.length;
+
+  // history.length が変わったときだけ geometry を再生成
+  useEffect(() => {
+    if (historyLength < 2) return;
+    if (historyLength === prevLengthRef.current) return;
+
+    const points: THREE.Vector3[] = history.map(
+      (ps) => new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t),
+    );
+
+    const curve = new THREE.CatmullRomCurve3(points);
+    const tubeGeometry = new THREE.TubeGeometry(
+      curve,
+      Math.min(points.length * 2, 1000),
+      0.05,
+      8,
+      false,
+    );
+
+    setGeometry((prev) => {
+      // 古い geometry を破棄
+      if (prev) {
+        prev.dispose();
+      }
+      return tubeGeometry;
+    });
+    prevLengthRef.current = historyLength;
+  }, [history, historyLength]);
+
+  // アンマウント時に geometry を破棄
+  useEffect(() => {
+    return () => {
+      setGeometry((prev) => {
+        if (prev) {
+          prev.dispose();
+        }
+        return null;
+      });
+    };
+  }, []);
+
+  const color = getThreeColor(player.color);
+  const material = getMaterial(`worldline-${player.id}`, () =>
+    new THREE.MeshStandardMaterial({
+      color: color,
+      emissive: color,
+      emissiveIntensity: 0.9,
+    })
+  );
+
+  if (!geometry) return null;
+
+  return <mesh geometry={geometry} material={material} />;
 };
 
 // 3Dシーンコンテンツコンポーネント
 type SceneContentProps = {
   players: Map<string, RelativisticPlayer>;
   myId: string | null;
-  cameraYaw: number; // カメラのxy平面内での向き（ラジアン）
-  cameraTimeOffset: number; // カメラの時間軸方向オフセット（負=過去側、正=未来側）
+  cameraYawRef: React.RefObject<number>; // カメラのxy平面内での向き（ラジアン）
+  cameraTimeOffsetRef: React.RefObject<number>; // カメラの時間軸方向オフセット（負=過去側、正=未来側）
 };
 
-const SceneContent = ({ players, myId, cameraYaw, cameraTimeOffset }: SceneContentProps) => {
+const SceneContent = ({ players, myId, cameraYawRef, cameraTimeOffsetRef }: SceneContentProps) => {
   // カメラの位置をプレイヤー位置から計算
   useFrame(({ camera }) => {
     if (!myId) return;
@@ -77,6 +175,8 @@ const SceneContent = ({ players, myId, cameraYaw, cameraTimeOffset }: SceneConte
     // カメラの距離（xy平面内）
     const cameraDistance = 15;
     // カメラ位置: プレイヤー位置から cameraYaw 方向に離れた位置、時間軸は cameraTimeOffset 分ずらす
+    const cameraYaw = cameraYawRef.current;
+    const cameraTimeOffset = cameraTimeOffsetRef.current;
     const camX = myPos.x - Math.cos(cameraYaw) * cameraDistance;
     const camY = myPos.y - Math.sin(cameraYaw) * cameraDistance;
     const camT = myPos.t + cameraTimeOffset;
@@ -86,70 +186,59 @@ const SceneContent = ({ players, myId, cameraYaw, cameraTimeOffset }: SceneConte
     camera.up.set(0, 0, 1);
   });
 
+  // プレイヤーリストをメモ化
+  const playerList = useMemo(() => Array.from(players.values()), [players]);
+
   return (
     <>
       <ambientLight intensity={0.5} />
       <pointLight position={[10, 10, 10]} intensity={1} />
 
       {/* 全プレイヤーの world line を描画 */}
-      {Array.from(players.values()).map((player) => {
-        const history = player.worldLine.history;
-        if (history.length < 2) return null;
-
-        const points: THREE.Vector3[] = history.map(
-          (ps) => new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t),
-        );
-
-        const curve = new THREE.CatmullRomCurve3(points);
-        const tubeGeometry = new THREE.TubeGeometry(
-          curve,
-          points.length * 2,
-          0.05,
-          8,
-          false,
-        );
-        const color = hslToThreeColor(player.color);
-
-        return (
-          <mesh key={`worldline-${player.id}`} geometry={tubeGeometry}>
-            <meshStandardMaterial
-              color={color}
-              emissive={color}
-              emissiveIntensity={0.9}
-            />
-          </mesh>
-        );
-      })}
+      {playerList.map((player) => (
+        <WorldLineRenderer key={`worldline-${player.id}`} player={player} />
+      ))}
 
       {/* 各プレイヤーのマーカー */}
-      {Array.from(players.values()).map((player) => {
+      {playerList.map((player) => {
         const pos = player.phaseSpace.pos;
         const isMe = player.id === myId;
-        const color = hslToThreeColor(player.color);
+        const color = getThreeColor(player.color);
         const size = isMe ? 0.2 : 0.1;
+        const material = getMaterial(`player-${player.id}-${isMe}`, () =>
+          new THREE.MeshStandardMaterial({
+            color: color,
+            emissive: color,
+            emissiveIntensity: isMe ? 0.8 : 0.5,
+          })
+        );
 
         return (
           <mesh
             key={`player-${player.id}`}
             position={[pos.x, pos.y, pos.t]}
-          >
-            <sphereGeometry args={[size, 8, 8]} />
-            <meshStandardMaterial
-              color={color}
-              emissive={color}
-              emissiveIntensity={isMe ? 0.8 : 0.5}
-            />
-          </mesh>
+            scale={[size, size, size]}
+            geometry={sharedGeometries.playerSphere}
+            material={material}
+          />
         );
       })}
 
       {/* 各プレイヤーの光円錐を描画 */}
-      {Array.from(players.values()).map((player) => {
+      {playerList.map((player) => {
         const pos = player.phaseSpace.pos;
         const isMe = player.id === myId;
-        const color = hslToThreeColor(player.color);
+        const color = getThreeColor(player.color);
         const coneHeight = 40;
-        const coneRadius = coneHeight; // 光速 = 1 の場合、半径 = 高さ
+        const coneMaterial = getMaterial(`lightcone-${player.id}-${isMe}`, () =>
+          new THREE.MeshBasicMaterial({
+            color: color,
+            transparent: true,
+            opacity: isMe ? 0.5 : 0.4,
+            side: THREE.DoubleSide,
+            wireframe: true,
+          })
+        );
 
         return (
           <group key={`lightcone-${player.id}`}>
@@ -157,30 +246,16 @@ const SceneContent = ({ players, myId, cameraYaw, cameraTimeOffset }: SceneConte
             <mesh
               position={[pos.x, pos.y, pos.t + coneHeight / 2]}
               rotation={[-Math.PI / 2, 0.0, 0.0]}
-            >
-              <coneGeometry args={[coneRadius, coneHeight, 32, 1, true]} />
-              <meshBasicMaterial
-                color={color}
-                transparent
-                opacity={isMe ? 0.5 : 0.4}
-                side={THREE.DoubleSide}
-                wireframe
-              />
-            </mesh>
+              geometry={sharedGeometries.lightCone}
+              material={coneMaterial}
+            />
             {/* 過去光円錐 */}
             <mesh
               position={[pos.x, pos.y, pos.t - coneHeight / 2]}
               rotation={[Math.PI / 2, 0.0, 0.0]}
-            >
-              <coneGeometry args={[coneRadius, coneHeight, 32, 1, true]} />
-              <meshBasicMaterial
-                color={color}
-                transparent
-                opacity={isMe ? 0.5 : 0.4}
-                side={THREE.DoubleSide}
-                wireframe
-              />
-            </mesh>
+              geometry={sharedGeometries.lightCone}
+              material={coneMaterial}
+            />
           </group>
         );
       })}
@@ -191,7 +266,7 @@ const SceneContent = ({ players, myId, cameraYaw, cameraTimeOffset }: SceneConte
           const myPlayer = players.get(myId);
           if (!myPlayer) return null;
 
-          return Array.from(players.values())
+          return playerList
             .filter((player) => player.id !== myId)
             .map((player) => {
               const intersection = pastLightConeIntersectionWorldLine(
@@ -205,20 +280,22 @@ const SceneContent = ({ players, myId, cameraYaw, cameraTimeOffset }: SceneConte
               if (!displayState) return null;
 
               const pos = displayState.pos;
-              const color = hslToThreeColor(player.color);
+              const color = getThreeColor(player.color);
+              const material = getMaterial(`intersection-${player.id}`, () =>
+                new THREE.MeshStandardMaterial({
+                  color: color,
+                  emissive: color,
+                  emissiveIntensity: 1.0,
+                })
+              );
 
               return (
                 <mesh
                   key={`intersection-${player.id}`}
                   position={[pos.x, pos.y, pos.t]}
-                >
-                  <sphereGeometry args={[0.3, 16, 16]} />
-                  <meshStandardMaterial
-                    color={color}
-                    emissive={color}
-                    emissiveIntensity={1.0}
-                  />
-                </mesh>
+                  geometry={sharedGeometries.intersectionSphere}
+                  material={material}
+                />
               );
             });
         })()}
@@ -235,17 +312,15 @@ const RelativisticGame = () => {
   const animationRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(Date.now());
   const keysPressed = useRef<Set<string>>(new Set());
-  const [screenSize, setScreenSize] = useState({
+  const [_screenSize, setScreenSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
   });
   const [fps, setFps] = useState(0);
   const fpsRef = useRef({ frameCount: 0, lastTime: performance.now() });
-  // カメラ制御用の状態
+  // カメラ制御用の状態（ref のみで管理し、不要な再レンダーを防ぐ）
   const cameraYawRef = useRef(0); // xy平面内でのカメラの向き（ラジアン）
   const cameraTimeOffsetRef = useRef(-5); // 時間軸方向のオフセット（負=過去側から見る）
-  const [cameraYaw, setCameraYaw] = useState(0);
-  const [cameraTimeOffset, setCameraTimeOffset] = useState(-5);
 
   // 初期化
   useEffect(() => {
@@ -387,10 +462,6 @@ const RelativisticGame = () => {
       if (keysPressed.current.has("ArrowDown")) {
         cameraTimeOffsetRef.current += timeOffsetSpeed * dTau; // 未来側へ移動 → 過去が見える
       }
-
-      // カメラ状態をReactステートに反映
-      setCameraYaw(cameraYawRef.current);
-      setCameraTimeOffset(cameraTimeOffsetRef.current);
 
       setPlayers((prev) => {
         const myPlayer = prev.get(myId);
@@ -542,7 +613,7 @@ const RelativisticGame = () => {
       })()}
 
       <Canvas camera={{ position: [0, 0, 0], fov: 75 }}>
-        <SceneContent players={players} myId={myId} cameraYaw={cameraYaw} cameraTimeOffset={cameraTimeOffset} />
+        <SceneContent players={players} myId={myId} cameraYawRef={cameraYawRef} cameraTimeOffsetRef={cameraTimeOffsetRef} />
       </Canvas>
     </div>
   );
