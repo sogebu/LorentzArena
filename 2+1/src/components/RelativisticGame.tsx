@@ -29,8 +29,20 @@ type RelativisticPlayer = {
   color: string;
 };
 
-// ゲーム内での光速（単位/秒）
-const LIGHT_SPEED = 10;
+type Laser = {
+  readonly id: string;
+  readonly playerId: string;
+  readonly emissionPos: { t: number; x: number; y: number; z: number };
+  readonly direction: { x: number; y: number; z: number };
+  readonly range: number;
+  readonly color: string;
+};
+
+// レーザーの射程
+const LASER_RANGE = 10;
+
+// レーザーの最大数（メモリ管理）
+const MAX_LASERS = 1000;
 
 // IDから色を生成する関数（高彩度で視認性の良い色）
 const getColorFromId = (id: string): string => {
@@ -49,6 +61,19 @@ const getColorFromId = (id: string): string => {
 
   // 明度は中程度（50-65%）で見やすく
   const lightness = 50 + (Math.abs(hash >> 16) % 16);
+
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+};
+
+// プレイヤーの色からレーザーの色を生成（より明るく、彩度を上げる）
+const getLaserColor = (playerColor: string): string => {
+  // HSL形式をパース: hsl(hue, saturation%, lightness%)
+  const match = playerColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
+  if (!match) return playerColor;
+
+  const hue = Number.parseInt(match[1], 10);
+  const saturation = Math.min(100, Number.parseInt(match[2], 10) + 10); // 彩度を上げる
+  const lightness = Math.min(90, Number.parseInt(match[3], 10) + 25); // 明度を上げて明るく
 
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 };
@@ -151,15 +176,56 @@ const WorldLineRenderer = ({ player }: { player: RelativisticPlayer }) => {
   return <mesh geometry={geometry} material={material} />;
 };
 
+// LaserRenderer コンポーネント - 個別のレーザーを描画
+const LaserRenderer = ({ laser }: { laser: Laser }) => {
+  const geometry = useMemo(() => {
+    // 開始点: (emissionPos.x, emissionPos.y, emissionPos.t)
+    const startPoint = new THREE.Vector3(
+      laser.emissionPos.x,
+      laser.emissionPos.y,
+      laser.emissionPos.t
+    );
+    // 終了点: (x + range*dx, y + range*dy, t + range/LIGHT_SPEED)
+    const endPoint = new THREE.Vector3(
+      laser.emissionPos.x + laser.range * laser.direction.x,
+      laser.emissionPos.y + laser.range * laser.direction.y,
+      laser.emissionPos.t + laser.range,
+    );
+    const curve = new THREE.LineCurve3(startPoint, endPoint);
+    return new THREE.TubeGeometry(curve, 2, 0.05, 8, false);
+  }, [laser]);
+
+  const color = useMemo(() => getThreeColor(laser.color), [laser.color]);
+  const material = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: true,
+        opacity: 0.8,
+      }),
+    [color]
+  );
+
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+      material.dispose();
+    };
+  }, [geometry, material]);
+
+  return <mesh geometry={geometry} material={material} />;
+};
+
 // 3Dシーンコンテンツコンポーネント
 type SceneContentProps = {
   players: Map<string, RelativisticPlayer>;
   myId: string | null;
+  lasers: Laser[];
   cameraYawRef: React.RefObject<number>; // カメラのxy平面内での向き（ラジアン）
   cameraPitchRef: React.RefObject<number>; // カメラの仰角（ラジアン、0=水平、正=上から見下ろす）
 };
 
-const SceneContent = ({ players, myId, cameraYawRef, cameraPitchRef }: SceneContentProps) => {
+const SceneContent = ({ players, myId, lasers, cameraYawRef, cameraPitchRef }: SceneContentProps) => {
   // カメラの位置をプレイヤー位置から計算（球面座標）
   useFrame(({ camera }) => {
     if (!myId) return;
@@ -296,6 +362,10 @@ const SceneContent = ({ players, myId, cameraYawRef, cameraPitchRef }: SceneCont
             });
         })()}
 
+      {/* レーザーを描画 */}
+      {lasers.map((laser) => (
+        <LaserRenderer key={laser.id} laser={laser} />
+      ))}
     </>
   );
 };
@@ -305,9 +375,12 @@ const RelativisticGame = () => {
   const [players, setPlayers] = useState<Map<string, RelativisticPlayer>>(
     new Map(),
   );
+  const [lasers, setLasers] = useState<Laser[]>([]);
   const animationRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(Date.now());
   const keysPressed = useRef<Set<string>>(new Set());
+  const lastLaserTimeRef = useRef<number>(0); // レーザー発射クールダウン用
+  const playersRef = useRef<Map<string, RelativisticPlayer>>(new Map()); // ゲームループ用
   const [_screenSize, setScreenSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -346,6 +419,11 @@ const RelativisticGame = () => {
     });
   }, [myId]);
 
+  // playersRef を最新のplayers状態に同期
+  useEffect(() => {
+    playersRef.current = players;
+  }, [players]);
+
   // メッセージ受信処理
   useEffect(() => {
     if (!peerManager || !myId) return;
@@ -371,6 +449,28 @@ const RelativisticGame = () => {
             color: existing?.color || getColorFromId(playerId), // 既存の色を保持
           });
           return next;
+        });
+      } else if (msg.type === "laser") {
+        // 他プレイヤーからのレーザーを追加
+        const receivedLaser: Laser = {
+          id: msg.id,
+          playerId: msg.playerId,
+          emissionPos: msg.emissionPos,
+          direction: msg.direction,
+          range: msg.range,
+          color: msg.color,
+        };
+        setLasers((prev) => {
+          // 重複チェック
+          if (prev.some((l) => l.id === receivedLaser.id)) {
+            return prev;
+          }
+          const updated = [...prev, receivedLaser];
+          // 最大数を超えたら古いものを削除
+          if (updated.length > MAX_LASERS) {
+            return updated.slice(updated.length - MAX_LASERS);
+          }
+          return updated;
         });
       }
     });
@@ -399,8 +499,8 @@ const RelativisticGame = () => {
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 矢印キーとW/Sキーの場合はデフォルトの動作（スクロール）を防ぐ
-      if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "w", "W", "s", "S"].includes(e.key)) {
+      // 矢印キーとW/Sキーとスペースキーの場合はデフォルトの動作（スクロール）を防ぐ
+      if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "w", "W", "s", "S", " "].includes(e.key)) {
         e.preventDefault();
       }
       keysPressed.current.add(normalizeKey(e.key));
@@ -461,6 +561,63 @@ const RelativisticGame = () => {
         cameraPitchRef.current = Math.max(pitchMin, cameraPitchRef.current - pitchSpeed * dTau);
       }
 
+      // レーザー発射（スペースキー）
+      const laserCooldown = 100; // ミリ秒
+      if (keysPressed.current.has(" ") && currentTime - lastLaserTimeRef.current > laserCooldown) {
+        const myPlayer = playersRef.current.get(myId);
+        if (myPlayer) {
+          lastLaserTimeRef.current = currentTime;
+
+          // カメラyawから方向を計算
+          const dx = Math.cos(cameraYawRef.current);
+          const dy = Math.sin(cameraYawRef.current);
+
+          const newLaser: Laser = {
+            id: `${myId}-${currentTime}`,
+            playerId: myId,
+            emissionPos: {
+              t: myPlayer.phaseSpace.pos.t,
+              x: myPlayer.phaseSpace.pos.x,
+              y: myPlayer.phaseSpace.pos.y,
+              z: 0,
+            },
+            direction: { x: dx, y: dy, z: 0 },
+            range: LASER_RANGE,
+            color: getLaserColor(myPlayer.color),
+          };
+
+          // ローカルで追加
+          setLasers((prev) => {
+            const updated = [...prev, newLaser];
+            // 最大数を超えたら古いものを削除
+            if (updated.length > MAX_LASERS) {
+              return updated.slice(updated.length - MAX_LASERS);
+            }
+            return updated;
+          });
+
+          // ネットワーク送信
+          const laserMsg = {
+            type: "laser" as const,
+            id: newLaser.id,
+            playerId: newLaser.playerId,
+            emissionPos: newLaser.emissionPos,
+            direction: newLaser.direction,
+            range: newLaser.range,
+            color: newLaser.color,
+          };
+
+          if (peerManager.getIsHost()) {
+            peerManager.send(laserMsg);
+          } else {
+            const hostId = peerManager.getHostId();
+            if (hostId) {
+              peerManager.sendTo(hostId, laserMsg);
+            }
+          }
+        }
+      }
+
       setPlayers((prev) => {
         const myPlayer = prev.get(myId);
         if (!myPlayer) return prev;
@@ -477,7 +634,7 @@ const RelativisticGame = () => {
 
         // 加速度を計算（W/Sキー入力に基づく、カメラの向きに沿った方向）
         let forwardAccel = 0;
-        const accel = 4 / LIGHT_SPEED; // 加速度 (c/s)
+        const accel = 4 / 10; // 加速度 (c/s)
 
         if (keysPressed.current.has("w")) forwardAccel += accel;
         if (keysPressed.current.has("s")) forwardAccel -= accel;
@@ -570,6 +727,7 @@ const RelativisticGame = () => {
         <div>W/S: 前進/後退</div>
         <div>←/→: カメラ水平回転</div>
         <div>↑/↓: カメラ上下回転</div>
+        <div>Space: レーザー発射</div>
         <div
           style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
         >
@@ -611,7 +769,7 @@ const RelativisticGame = () => {
       })()}
 
       <Canvas camera={{ position: [0, 0, 0], fov: 75 }}>
-        <SceneContent players={players} myId={myId} cameraYawRef={cameraYawRef} cameraPitchRef={cameraPitchRef} />
+        <SceneContent players={players} myId={myId} lasers={lasers} cameraYawRef={cameraYawRef} cameraPitchRef={cameraPitchRef} />
       </Canvas>
     </div>
   );

@@ -12,4 +12,13 @@ export type Message =
     }
   | {
       type: "requestPeerList"; // 新規接続者がホストにピアリストを要求
+    }
+  | {
+      type: "laser";
+      id: string;
+      playerId: string;
+      emissionPos: { t: number; x: number; y: number; z: number };
+      direction: { x: number; y: number; z: number };
+      range: number;
+      color: string;
     };

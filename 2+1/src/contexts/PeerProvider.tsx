@@ -54,6 +54,9 @@ export const PeerProvider = ({ children }: PeerProviderProps) => {
         } else if (msg.type === "phaseSpace") {
           // phaseSpaceメッセージを送信者以外に中継
           pm.broadcast(msg, senderId);
+        } else if (msg.type === "laser") {
+          // laserメッセージを送信者以外に中継
+          pm.broadcast(msg, senderId);
         }
       }
     });
