@@ -51,26 +51,13 @@ export const PeerProvider = ({ children }: PeerProviderProps) => {
               });
             }
           }
+        } else if (msg.type === "phaseSpace") {
+          // phaseSpaceメッセージを送信者以外に中継
+          pm.broadcast(msg, senderId);
         }
       }
     });
 
-    // クライアント用のメッセージハンドラ
-    pm.onMessage("client", (_, msg) => {
-      if (!pm.getIsHost() && msg.type === "peerList") {
-        // ピアリストを受信したら、他のピアに接続
-        const hostId = pm.getHostId();
-        for (const peerId of msg.peers) {
-          if (
-            peerId !== pm.id() &&
-            peerId !== hostId &&
-            !pm.getConnections().some((c) => c.id === peerId)
-          ) {
-            pm.connect(peerId);
-          }
-        }
-      }
-    });
 
     setPeerManager(pm);
     setMyId(pm.id());

@@ -2,6 +2,7 @@ export type Message =
   | { type: "position"; x: number; y: number }
   | {
       type: "phaseSpace";
+      senderId: string;
       position: { t: number; x: number; y: number; z: number };
       velocity: { x: number; y: number; z: number };
     }

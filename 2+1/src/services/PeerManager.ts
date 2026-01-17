@@ -55,6 +55,14 @@ export class PeerManager<T> {
     }
   }
 
+  broadcast(msg: T, excludePeerId?: string) {
+    for (const [id, c] of this.conns.entries()) {
+      if (c.open && id !== excludePeerId) {
+        c.send(msg);
+      }
+    }
+  }
+
   onMessage(id: string, cb: (id: string, msg: T) => void) {
     this.messageCallbacks.set(id, cb);
   }
