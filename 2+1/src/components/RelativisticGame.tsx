@@ -280,23 +280,24 @@ const RelativisticGame = () => {
     if (!peerManager || !myId) return;
 
     // メッセージ受信処理
-    peerManager.onMessage("relativistic", (id, msg) => {
+    peerManager.onMessage("relativistic", (_, msg) => {
       if (msg.type === "phaseSpace") {
+        const playerId = msg.senderId;
         setPlayers((prev) => {
           const next = new Map(prev);
 
           const phaseSpace = createPhaseSpace(msg.position, msg.velocity);
 
           // 既存のプレイヤーのワールドラインに追加、または新規作成
-          const existing = prev.get(id);
+          const existing = prev.get(playerId);
           let worldLine = existing?.worldLine || createWorldLine();
           worldLine = appendWorldLine(worldLine, phaseSpace);
 
-          next.set(id, {
-            id,
+          next.set(playerId, {
+            id: playerId,
             phaseSpace,
             worldLine,
-            color: existing?.color || getColorFromId(id), // 既存の色を保持
+            color: existing?.color || getColorFromId(playerId), // 既存の色を保持
           });
           return next;
         });
@@ -441,11 +442,23 @@ const RelativisticGame = () => {
 
         // 他のプレイヤーに送信
         if (peerManager) {
-          peerManager.send({
-            type: "phaseSpace",
+          const msg = {
+            type: "phaseSpace" as const,
+            senderId: myId,
             position: newPhaseSpace.pos,
             velocity: newPhaseSpace.u,
-          });
+          };
+
+          if (peerManager.getIsHost()) {
+            // ホストは直接全員に送信
+            peerManager.send(msg);
+          } else {
+            // クライアントはホストにのみ送信
+            const hostId = peerManager.getHostId();
+            if (hostId) {
+              peerManager.sendTo(hostId, msg);
+            }
+          }
         }
 
         return next;
