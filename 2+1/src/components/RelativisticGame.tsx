@@ -301,7 +301,7 @@ const SceneContent = ({ players, myId, cameraYawRef, cameraPitchRef }: SceneCont
 };
 
 const RelativisticGame = () => {
-  const { peerManager, myId } = usePeer();
+  const { peerManager, myId, connections } = usePeer();
   const [players, setPlayers] = useState<Map<string, RelativisticPlayer>>(
     new Map(),
   );
@@ -345,6 +345,32 @@ const RelativisticGame = () => {
       return next;
     });
   }, [myId]);
+
+  // 切断したプレイヤーを削除
+  useEffect(() => {
+    if (!myId) return;
+
+    // 接続中のピアIDセット（自分自身を含む）
+    const connectedIds = new Set(connections.map((c) => c.id));
+    connectedIds.add(myId);
+
+    setPlayers((prev) => {
+      const idsToRemove: string[] = [];
+      for (const playerId of prev.keys()) {
+        if (!connectedIds.has(playerId)) {
+          idsToRemove.push(playerId);
+        }
+      }
+
+      if (idsToRemove.length === 0) return prev;
+
+      const next = new Map(prev);
+      for (const id of idsToRemove) {
+        next.delete(id);
+      }
+      return next;
+    });
+  }, [connections, myId]);
 
   // メッセージ受信処理
   useEffect(() => {
