@@ -4,7 +4,7 @@ import { visualizer } from "rollup-plugin-visualizer";
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: "/LorentzArena/2+1",
+  base: "/LorentzArena/",
   plugins: [
     react(),
     visualizer({
