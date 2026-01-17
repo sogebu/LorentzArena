@@ -97,15 +97,11 @@ if (typeof window !== "undefined") {
 // WorldLineRenderer コンポーネント - 個別のワールドラインを描画
 const WorldLineRenderer = ({ player }: { player: RelativisticPlayer }) => {
   const [geometry, setGeometry] = useState<THREE.TubeGeometry | null>(null);
-  const prevLengthRef = useRef<number>(0);
 
   const history = player.worldLine.history;
-  const historyLength = history.length;
 
-  // history.length が変わったときだけ geometry を再生成
   useEffect(() => {
-    if (historyLength < 2) return;
-    if (historyLength === prevLengthRef.current) return;
+    if (history.length < 2) return
 
     const points: THREE.Vector3[] = history.map(
       (ps) => new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t),
@@ -127,8 +123,7 @@ const WorldLineRenderer = ({ player }: { player: RelativisticPlayer }) => {
       }
       return tubeGeometry;
     });
-    prevLengthRef.current = historyLength;
-  }, [history, historyLength]);
+  }, [history]);
 
   // アンマウント時に geometry を破棄
   useEffect(() => {
