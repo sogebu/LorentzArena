@@ -156,25 +156,26 @@ type SceneContentProps = {
   players: Map<string, RelativisticPlayer>;
   myId: string | null;
   cameraYawRef: React.RefObject<number>; // カメラのxy平面内での向き（ラジアン）
-  cameraTimeOffsetRef: React.RefObject<number>; // カメラの時間軸方向オフセット（負=過去側、正=未来側）
+  cameraPitchRef: React.RefObject<number>; // カメラの仰角（ラジアン、0=水平、正=上から見下ろす）
 };
 
-const SceneContent = ({ players, myId, cameraYawRef, cameraTimeOffsetRef }: SceneContentProps) => {
-  // カメラの位置をプレイヤー位置から計算
+const SceneContent = ({ players, myId, cameraYawRef, cameraPitchRef }: SceneContentProps) => {
+  // カメラの位置をプレイヤー位置から計算（球面座標）
   useFrame(({ camera }) => {
     if (!myId) return;
     const myPlayer = players.get(myId);
     if (!myPlayer) return;
 
     const myPos = myPlayer.phaseSpace.pos;
-    // カメラの距離（xy平面内）
+    // カメラの距離（プレイヤーからの距離、固定）
     const cameraDistance = 15;
-    // カメラ位置: プレイヤー位置から cameraYaw 方向に離れた位置、時間軸は cameraTimeOffset 分ずらす
+    // カメラ位置: プレイヤーを中心とした球面上
     const cameraYaw = cameraYawRef.current;
-    const cameraTimeOffset = cameraTimeOffsetRef.current;
-    const camX = myPos.x - Math.cos(cameraYaw) * cameraDistance;
-    const camY = myPos.y - Math.sin(cameraYaw) * cameraDistance;
-    const camT = myPos.t + cameraTimeOffset;
+    const cameraPitch = cameraPitchRef.current;
+    // 球面座標からデカルト座標へ変換
+    const camX = myPos.x - Math.cos(cameraYaw) * Math.cos(cameraPitch) * cameraDistance;
+    const camY = myPos.y - Math.sin(cameraYaw) * Math.cos(cameraPitch) * cameraDistance;
+    const camT = myPos.t - Math.sin(cameraPitch) * cameraDistance;
 
     camera.position.set(camX, camY, camT);
     camera.lookAt(myPos.x, myPos.y, myPos.t);
@@ -315,7 +316,7 @@ const RelativisticGame = () => {
   const fpsRef = useRef({ frameCount: 0, lastTime: performance.now() });
   // カメラ制御用の状態（ref のみで管理し、不要な再レンダーを防ぐ）
   const cameraYawRef = useRef(0); // xy平面内でのカメラの向き（ラジアン）
-  const cameraTimeOffsetRef = useRef(-5); // 時間軸方向のオフセット（負=過去側から見る）
+  const cameraPitchRef = useRef(Math.PI / 6); // 仰角（ラジアン、0=水平、正=上から見下ろす）初期値は30度
 
   // 初期化
   useEffect(() => {
@@ -441,9 +442,11 @@ const RelativisticGame = () => {
         fpsRef.current.lastTime = now;
       }
 
-      // カメラ制御: 左右キーでyaw回転、上下キーで時間軸オフセット
+      // カメラ制御: 左右キーでyaw回転、上下キーでpitch回転（プレイヤーを中心に球面上を移動）
       const yawSpeed = 1.5; // rad/s
-      const timeOffsetSpeed = 10; // units/s
+      const pitchSpeed = 1.0; // rad/s
+      const pitchMin = -Math.PI * 89 / 180; // 下限（-89度）
+      const pitchMax = Math.PI * 89 / 180; // 上限（+89度）
 
       if (keysPressed.current.has("ArrowLeft")) {
         cameraYawRef.current += yawSpeed * dTau;
@@ -452,10 +455,10 @@ const RelativisticGame = () => {
         cameraYawRef.current -= yawSpeed * dTau;
       }
       if (keysPressed.current.has("ArrowUp")) {
-        cameraTimeOffsetRef.current -= timeOffsetSpeed * dTau; // 過去側へ移動 → 未来が見える
+        cameraPitchRef.current = Math.min(pitchMax, cameraPitchRef.current + pitchSpeed * dTau);
       }
       if (keysPressed.current.has("ArrowDown")) {
-        cameraTimeOffsetRef.current += timeOffsetSpeed * dTau; // 未来側へ移動 → 過去が見える
+        cameraPitchRef.current = Math.max(pitchMin, cameraPitchRef.current - pitchSpeed * dTau);
       }
 
       setPlayers((prev) => {
@@ -565,8 +568,8 @@ const RelativisticGame = () => {
       >
         <div>相対論的アリーナ (2+1次元 時空図)</div>
         <div>W/S: 前進/後退</div>
-        <div>←/→: カメラ回転</div>
-        <div>↑/↓: 時間軸移動</div>
+        <div>←/→: カメラ水平回転</div>
+        <div>↑/↓: カメラ上下回転</div>
         <div
           style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
         >
@@ -608,7 +611,7 @@ const RelativisticGame = () => {
       })()}
 
       <Canvas camera={{ position: [0, 0, 0], fov: 75 }}>
-        <SceneContent players={players} myId={myId} cameraYawRef={cameraYawRef} cameraTimeOffsetRef={cameraTimeOffsetRef} />
+        <SceneContent players={players} myId={myId} cameraYawRef={cameraYawRef} cameraPitchRef={cameraPitchRef} />
       </Canvas>
     </div>
   );
