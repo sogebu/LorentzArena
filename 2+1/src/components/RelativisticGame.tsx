@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
 import { usePeer } from "../hooks/usePeer";
 import {
@@ -63,18 +62,26 @@ const hslToThreeColor = (hslString: string): THREE.Color => {
 type SceneContentProps = {
   players: Map<string, RelativisticPlayer>;
   myId: string | null;
+  cameraYaw: number; // カメラのxy平面内での向き（ラジアン）
+  cameraTimeOffset: number; // カメラの時間軸方向オフセット（負=過去側、正=未来側）
 };
 
-const SceneContent = ({ players, myId }: SceneContentProps) => {
-  // カメラの位置を自機の未来側に設定
+const SceneContent = ({ players, myId, cameraYaw, cameraTimeOffset }: SceneContentProps) => {
+  // カメラの位置をプレイヤー位置から計算
   useFrame(({ camera }) => {
     if (!myId) return;
     const myPlayer = players.get(myId);
     if (!myPlayer) return;
 
     const myPos = myPlayer.phaseSpace.pos;
-    // カメラを自機の若干未来側（+t方向）、少し上から見下ろす位置に配置
-    camera.position.set(myPos.x, myPos.y + 10, myPos.t + 5);
+    // カメラの距離（xy平面内）
+    const cameraDistance = 15;
+    // カメラ位置: プレイヤー位置から cameraYaw 方向に離れた位置、時間軸は cameraTimeOffset 分ずらす
+    const camX = myPos.x - Math.cos(cameraYaw) * cameraDistance;
+    const camY = myPos.y - Math.sin(cameraYaw) * cameraDistance;
+    const camT = myPos.t + cameraTimeOffset;
+
+    camera.position.set(camX, camY, camT);
     camera.lookAt(myPos.x, myPos.y, myPos.t);
     camera.up.set(0, 0, 1);
   });
@@ -216,7 +223,6 @@ const SceneContent = ({ players, myId }: SceneContentProps) => {
             });
         })()}
 
-      <OrbitControls enableDamping dampingFactor={0.05} />
     </>
   );
 };
@@ -235,6 +241,11 @@ const RelativisticGame = () => {
   });
   const [fps, setFps] = useState(0);
   const fpsRef = useRef({ frameCount: 0, lastTime: performance.now() });
+  // カメラ制御用の状態
+  const cameraYawRef = useRef(0); // xy平面内でのカメラの向き（ラジアン）
+  const cameraTimeOffsetRef = useRef(-5); // 時間軸方向のオフセット（負=過去側から見る）
+  const [cameraYaw, setCameraYaw] = useState(0);
+  const [cameraTimeOffset, setCameraTimeOffset] = useState(-5);
 
   // 初期化
   useEffect(() => {
@@ -309,16 +320,22 @@ const RelativisticGame = () => {
 
   // キーボード入力処理
   useEffect(() => {
+    const normalizeKey = (key: string) => {
+      // 矢印キーはそのまま、それ以外は小文字に
+      if (key.startsWith("Arrow")) return key;
+      return key.toLowerCase();
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 矢印キーの場合はデフォルトの動作（スクロール）を防ぐ
-      if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(e.key)) {
+      // 矢印キーとW/Sキーの場合はデフォルトの動作（スクロール）を防ぐ
+      if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "w", "W", "s", "S"].includes(e.key)) {
         e.preventDefault();
       }
-      keysPressed.current.add(e.key);
+      keysPressed.current.add(normalizeKey(e.key));
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
-      keysPressed.current.delete(e.key);
+      keysPressed.current.delete(normalizeKey(e.key));
     };
 
     window.addEventListener("keydown", handleKeyDown);
@@ -353,6 +370,27 @@ const RelativisticGame = () => {
         fpsRef.current.lastTime = now;
       }
 
+      // カメラ制御: 左右キーでyaw回転、上下キーで時間軸オフセット
+      const yawSpeed = 1.5; // rad/s
+      const timeOffsetSpeed = 10; // units/s
+
+      if (keysPressed.current.has("ArrowLeft")) {
+        cameraYawRef.current += yawSpeed * dTau;
+      }
+      if (keysPressed.current.has("ArrowRight")) {
+        cameraYawRef.current -= yawSpeed * dTau;
+      }
+      if (keysPressed.current.has("ArrowUp")) {
+        cameraTimeOffsetRef.current -= timeOffsetSpeed * dTau; // 過去側へ移動 → 未来が見える
+      }
+      if (keysPressed.current.has("ArrowDown")) {
+        cameraTimeOffsetRef.current += timeOffsetSpeed * dTau; // 未来側へ移動 → 過去が見える
+      }
+
+      // カメラ状態をReactステートに反映
+      setCameraYaw(cameraYawRef.current);
+      setCameraTimeOffset(cameraTimeOffsetRef.current);
+
       setPlayers((prev) => {
         const myPlayer = prev.get(myId);
         if (!myPlayer) return prev;
@@ -367,21 +405,23 @@ const RelativisticGame = () => {
 
         const next = new Map(prev);
 
-        // 加速度を計算（キー入力に基づく）
-        let ax = 0;
-        let ay = 0;
+        // 加速度を計算（W/Sキー入力に基づく、カメラの向きに沿った方向）
+        let forwardAccel = 0;
         const accel = 4 / LIGHT_SPEED; // 加速度 (c/s)
 
-        if (keysPressed.current.has("ArrowLeft")) ax += accel;
-        if (keysPressed.current.has("ArrowRight")) ax -= accel;
-        if (keysPressed.current.has("ArrowUp")) ay += accel;
-        if (keysPressed.current.has("ArrowDown")) ay -= accel;
+        if (keysPressed.current.has("w")) forwardAccel += accel;
+        if (keysPressed.current.has("s")) forwardAccel -= accel;
 
+        // カメラの向き（yaw）から前進方向を計算
+        const ax = Math.cos(cameraYawRef.current) * forwardAccel;
+        const ay = Math.sin(cameraYawRef.current) * forwardAccel;
+
+        // 摩擦
         const mu = 0.5;
-        ax -= myPlayer.phaseSpace.u.x * mu;
-        ay -= myPlayer.phaseSpace.u.y * mu;
+        const frictionX = -myPlayer.phaseSpace.u.x * mu;
+        const frictionY = -myPlayer.phaseSpace.u.y * mu;
 
-        const acceleration = createVector3(ax, ay, 0);
+        const acceleration = createVector3(ax + frictionX, ay + frictionY, 0);
 
         // 相対論的運動方程式で更新
         const newPhaseSpace = evolvePhaseSpace(
@@ -445,7 +485,9 @@ const RelativisticGame = () => {
         }}
       >
         <div>相対論的アリーナ (2+1次元 時空図)</div>
-        <div>矢印キーで移動</div>
+        <div>W/S: 前進/後退</div>
+        <div>←/→: カメラ回転</div>
+        <div>↑/↓: 時間軸移動</div>
         <div
           style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
         >
@@ -487,7 +529,7 @@ const RelativisticGame = () => {
       })()}
 
       <Canvas camera={{ position: [0, 0, 0], fov: 75 }}>
-        <SceneContent players={players} myId={myId} />
+        <SceneContent players={players} myId={myId} cameraYaw={cameraYaw} cameraTimeOffset={cameraTimeOffset} />
       </Canvas>
     </div>
   );
