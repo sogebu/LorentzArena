@@ -178,7 +178,7 @@ const WebGLGrid: React.FC<WebGLGridProps> = ({
     const applyPastLightConeTransform = (worldPos: Vector3): Vector3 => {
       const spatialDistance = lengthVector3(subVector3(worldPos, observerPos));
       const lightTravelTime = spatialDistance;
-      const emissionTime =        observerPhaseSpace.pos.t - lightTravelTime;
+      const emissionTime = observerPhaseSpace.pos.t - lightTravelTime;
 
       const worldPos4 = createVector4(
         emissionTime,

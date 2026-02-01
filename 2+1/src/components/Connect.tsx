@@ -1,11 +1,27 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { usePeer } from "../hooks/usePeer";
 
 const Connect = () => {
-  const { peerManager, connections, myId } = usePeer();
+  const { peerManager, connections, myId, peerStatus, networkingEnv } =
+    usePeer();
   const [remoteId, setRemoteId] = useState("");
   const [mode, setMode] = useState<"none" | "host" | "client">("none");
   const [isMinimized, setIsMinimized] = useState(false);
+
+  const peerStatusText = useMemo(() => {
+    switch (peerStatus.status) {
+      case "open":
+        return "シグナリング: 接続OK";
+      case "connecting":
+        return "シグナリング: 接続中...";
+      case "disconnected":
+        return "シグナリング: 切断";
+      case "error":
+        return `シグナリング: エラー${peerStatus.type ? `(${peerStatus.type})` : ""} ${peerStatus.message}`;
+      default:
+        return "シグナリング: 状態不明";
+    }
+  }, [peerStatus]);
 
   const handleStartAsHost = () => {
     if (peerManager) {
@@ -20,7 +36,7 @@ const Connect = () => {
       peerManager.connect(remoteId);
       setMode("client");
 
-      // ホストに接続後、ピアリストを要求
+      // 互換のため残しているが、2+1 は基本的にホスト中継型で peerList は必須ではない。
       setTimeout(() => {
         peerManager.sendTo(remoteId, { type: "requestPeerList" });
       }, 1000);
@@ -56,13 +72,46 @@ const Connect = () => {
         <>
           <div className="id-display">
             <p style={{ margin: "5px 0", fontSize: "0.9em" }}>
-              あなたのID: {myId || "接続中..."}
+              あなたのID: {myId || "生成中..."}
             </p>
+            <p style={{ margin: "5px 0", fontSize: "0.85em", opacity: 0.9 }}>
+              {peerStatusText}
+            </p>
+
+            {peerStatus.status === "error" && (
+              <p
+                style={{
+                  margin: "6px 0 0",
+                  fontSize: "0.8em",
+                  opacity: 0.85,
+                }}
+              >
+                学校/社内ネットワークだと WebRTC が塞がれていることがあります。
+                `docs/NETWORKING.ja.md` を参照してください。
+              </p>
+            )}
+
             {mode !== "none" && (
-              <p style={{ margin: "5px 0", fontSize: "0.9em" }}>
+              <p style={{ margin: "8px 0 0", fontSize: "0.9em" }}>
                 モード: {mode === "host" ? "ホスト" : "クライアント"}
               </p>
             )}
+
+            <details style={{ marginTop: "8px" }}>
+              <summary style={{ cursor: "pointer", fontSize: "0.85em" }}>
+                ネットワーク設定（env）
+              </summary>
+              <div
+                style={{ fontSize: "0.8em", opacity: 0.9, marginTop: "6px" }}
+              >
+                <div>PeerServer host: {networkingEnv.peerHost}</div>
+                <div>PeerServer port: {networkingEnv.peerPort}</div>
+                <div>PeerServer path: {networkingEnv.peerPath}</div>
+                <div>PeerServer secure: {networkingEnv.peerSecure}</div>
+                <div>ICE servers: {networkingEnv.iceServers}</div>
+                <div>ICE transport: {networkingEnv.iceTransportPolicy}</div>
+              </div>
+            </details>
           </div>
 
           {mode === "none" && (
@@ -97,8 +146,8 @@ const Connect = () => {
                       key={conn.id}
                       className={conn.open ? "connected" : "disconnected"}
                     >
-                      {conn.id} ({conn.open ? "接続中" : "切断中"})
-                      {mode === "host" &&
+                      {conn.id} ({conn.open ? "接続中" : "接続準備中/失敗"})
+                      {mode === "client" &&
                         conn.id === peerManager?.getHostId() &&
                         " (ホスト)"}
                     </li>

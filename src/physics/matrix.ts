@@ -7,18 +7,36 @@ import {
 } from "./vector";
 
 /**
- * 4x4行列型（ローレンツ変換用）
+ * Lorentz transformation matrices (4x4).
+ *
+ * English:
+ *   - Matrices are stored in a flat array (row-major): data[row*4 + col].
+ *   - `lorentzBoost(u)` builds a boost matrix from a spatial part of 4-velocity.
+ *
+ * 日本語:
+ *   - 4x4 行列を一次元配列（row-major: data[row*4 + col]）で保持します。
+ *   - `lorentzBoost(u)` は 4元速度の空間成分からローレンツブースト行列を生成します。
+ */
+
+/**
+ * 4x4 matrix type.
+ * JP: 4x4行列型（ローレンツ変換用）。
  */
 export type Matrix4 = {
   readonly data: readonly number[];
 };
 
 /**
- * 4x4行列を作成
+ * Create a Matrix4.
+ *
+ * English: If `data` is omitted, initializes with zeros.
+ * 日本語: `data` 省略時はゼロ埋め行列。
  */
 export const createMatrix4 = (data?: number[]): Matrix4 => {
   if (data && data.length !== 16) {
-    throw new Error("Matrix4には16個の要素が必要です");
+    throw new Error(
+      "Matrix4には16個の要素が必要です / Matrix4 needs 16 elements",
+    );
   }
   return {
     data: data || new Array(16).fill(0),
@@ -26,7 +44,8 @@ export const createMatrix4 = (data?: number[]): Matrix4 => {
 };
 
 /**
- * 単位行列を作成
+ * Identity matrix.
+ * JP: 単位行列。
  */
 export const matrix4Identity = (): Matrix4 => {
   const data = new Array(16).fill(0);
@@ -38,13 +57,15 @@ export const matrix4Identity = (): Matrix4 => {
 };
 
 /**
- * 行列の要素を取得
+ * Get element (row, col).
+ * JP: 行列の要素を取得。
  */
 export const getMatrix4 = (m: Matrix4, row: number, col: number): number =>
   m.data[row * 4 + col];
 
 /**
- * 行列の要素を設定（新しい行列を返す）
+ * Set element (row, col) and return a new matrix.
+ * JP: 行列の要素を設定（新しい行列を返す）。
  */
 export const setMatrix4 = (
   m: Matrix4,
@@ -58,7 +79,8 @@ export const setMatrix4 = (
 };
 
 /**
- * 複数の要素を一度に設定（効率的な更新）
+ * Set multiple elements on a raw data array (in-place).
+ * JP: 複数の要素をまとめて設定（内部ユーティリティ）。
  */
 const setMultipleMatrix4 = (
   data: number[],
@@ -70,8 +92,15 @@ const setMultipleMatrix4 = (
 };
 
 /**
- * ローレンツブースト変換行列を生成（4元速度から）
- * 世界系→静止系に変換する
+ * Lorentz boost matrix from spatial part of 4-velocity.
+ *
+ * English:
+ *   - Returns a matrix that transforms **world frame → comoving frame**.
+ *   - When |u| = 0, returns identity.
+ *
+ * 日本語:
+ *   - 世界系 → 静止系（共動系）への変換行列。
+ *   - |u| = 0 なら単位行列。
  */
 export const lorentzBoost = (u: Vector3): Matrix4 => {
   const ux = u.x;
@@ -87,7 +116,8 @@ export const lorentzBoost = (u: Vector3): Matrix4 => {
 
   const data = new Array(16).fill(0);
 
-  // Based on LSBattle's implementation
+  // Based on LSBattle's implementation.
+  // This is a compact form of the standard boost matrix written in terms of 4-velocity.
   setMultipleMatrix4(data, [
     // Row 0 (time)
     [0, 0, ut],
@@ -115,16 +145,18 @@ export const lorentzBoost = (u: Vector3): Matrix4 => {
 };
 
 /**
- * 逆ローレンツブースト変換行列を生成
- * @param velocity 速度ベクトル（v/c単位）
+ * Inverse Lorentz boost.
+ *
+ * English: For this boost form, inverse is obtained by flipping the velocity sign.
+ * 日本語: この形では速度（u）の符号反転で逆変換になります。
  */
 export const inverseLorentzBoost = (velocity: Vector3): Matrix4 => {
-  // 逆変換は速度の符号を反転するだけ
   return lorentzBoost(scaleVector3(velocity, -1.0));
 };
 
 /**
- * 4次元ベクトルとの積
+ * Multiply Matrix4 × Vector4.
+ * JP: 4x4行列と4次元ベクトルの積。
  */
 export const multiplyVector4Matrix4 = (m: Matrix4, v: Vector4): Vector4 =>
   createVector4(
@@ -147,7 +179,8 @@ export const multiplyVector4Matrix4 = (m: Matrix4, v: Vector4): Vector4 =>
   );
 
 /**
- * 行列同士の積
+ * Multiply Matrix4 × Matrix4.
+ * JP: 行列同士の積。
  */
 export const multiplyMatrix4 = (a: Matrix4, b: Matrix4): Matrix4 => {
   const data = new Array(16);
@@ -164,7 +197,8 @@ export const multiplyMatrix4 = (a: Matrix4, b: Matrix4): Matrix4 => {
 };
 
 /**
- * 転置行列
+ * Transpose.
+ * JP: 転置行列。
  */
 export const transposeMatrix4 = (m: Matrix4): Matrix4 => {
   const data = new Array(16);

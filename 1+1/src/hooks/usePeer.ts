@@ -1,10 +1,16 @@
 import { useContext } from "react";
 import { PeerContext } from "../contexts/PeerProvider";
 
+/**
+ * React hook to access the PeerJS networking context.
+ *
+ * English: Throws if used outside <PeerProvider>.
+ * 日本語: <PeerProvider> の外で呼ぶと例外になります。
+ */
 export const usePeer = () => {
-  const ctx = useContext(PeerContext);
-  if (!ctx) {
-    throw new Error("usePeer は PeerProvider の外側では呼び出せません");
+  const context = useContext(PeerContext);
+  if (!context) {
+    throw new Error("usePeer must be used within a PeerProvider");
   }
-  return ctx;
+  return context;
 };

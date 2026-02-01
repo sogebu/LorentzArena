@@ -2,7 +2,20 @@ import { type Vector4, subVector4, lorentzDotVector4 } from "./vector";
 import type { PhaseSpace } from "./mechanics";
 
 /**
- * ワールドライン
+ * World line utilities (history of PhaseSpace snapshots).
+ *
+ * English:
+ *   - A world line is a discretized trajectory through spacetime.
+ *   - We use it to compute “what you can see” via a past-light-cone intersection.
+ *
+ * 日本語:
+ *   - ワールドラインは位相空間スナップショットの時系列（時空間上の軌跡の離散近似）です。
+ *   - 過去光円錐との交点を求めることで「見える位置」を計算します。
+ */
+
+/**
+ * WorldLine stores a finite history of PhaseSpace samples.
+ * JP: ワールドライン（履歴付き）。
  */
 export type WorldLine = {
   readonly history: PhaseSpace[];
@@ -10,7 +23,8 @@ export type WorldLine = {
 };
 
 /**
- * ワールドラインを作成
+ * Create a WorldLine.
+ * JP: ワールドラインを作成。
  */
 export const createWorldLine = (maxHistorySize = 1000): WorldLine => ({
   history: [],
@@ -18,7 +32,10 @@ export const createWorldLine = (maxHistorySize = 1000): WorldLine => ({
 });
 
 /**
- * 位相空間の状態を記録
+ * Append a PhaseSpace snapshot.
+ *
+ * English: Keeps history length under `maxHistorySize`.
+ * 日本語: `maxHistorySize` を超えたら古いものを捨てます。
  */
 export const appendWorldLine = (
   wl: WorldLine,
@@ -26,7 +43,6 @@ export const appendWorldLine = (
 ): WorldLine => {
   const newHistory = [...wl.history, phaseSpace];
 
-  // 履歴サイズの制限
   if (newHistory.length > wl.maxHistorySize) {
     newHistory.shift();
   }
@@ -38,85 +54,72 @@ export const appendWorldLine = (
 };
 
 /**
- * 現在の状態を取得
+ * Get the latest state.
+ * JP: 現在（最新）の状態を取得。
  */
 export const getCurrentWorldLine = (wl: WorldLine): PhaseSpace | null =>
   wl.history[wl.history.length - 1] || null;
 
 /**
- * 履歴全体を取得
+ * Get the full trajectory (copy).
+ * JP: 履歴全体を取得（コピー）。
  */
 export const getTrajectoryWorldLine = (wl: WorldLine): PhaseSpace[] => [
   ...wl.history,
 ];
 
 /**
- * 2つの状態間で光的分離となる時刻を求める
- * 世界線上の2点間を線形補間し、観測者の過去光円錐と交差する点を見つける
+ * Solve for t in [0,1] where the line segment intersects the observer's past light cone.
+ *
+ * We find t such that:
+ *   (observerPos - (pos1 + t*(pos2-pos1)))^2 = 0
+ * under the Minkowski metric.
  */
-const findLightlikeIntersectionTime = (
+const findLightlikeIntersectionParam = (
   pos1: Vector4,
   pos2: Vector4,
   observerPos: Vector4,
 ): number => {
-  // pos1 + t*(pos2 - pos1) が観測者の過去光円錐上にある t を求める
-  // 条件: (observerPos - (pos1 + t*(pos2 - pos1)))^2 = 0
-  //    x0 = observerPos - pos1
-  //    dx = pos2 - pos1
-  // -> (x0 - t*dx))^2 = 0
-  // -> dx^2 t^2 - 2*dx*x0*t + x0^2 = 0
-  // -> a*t^2 - 2*b*t + c = 0
-
   const dx = subVector4(pos2, pos1);
   const x0 = subVector4(observerPos, pos1);
 
-  // 2次方程式: a*t^2 - 2*b*t + c = 0
-  const a = lorentzDotVector4(dx, dx); // 負
-  const b = lorentzDotVector4(dx, x0); // 負
-  const c = lorentzDotVector4(x0, x0); // 負
+  // Quadratic: a t^2 - 2 b t + c = 0
+  const a = lorentzDotVector4(dx, dx);
+  const b = lorentzDotVector4(dx, x0);
+  const c = lorentzDotVector4(x0, x0);
 
-  // 判別式
   const discriminant = b * b - a * c;
-  if (discriminant < 0) {
-    return -1; // 実数解なし
-  }
+  if (discriminant < 0) return -1;
 
-  // 解の公式
   const sqrtDiscriminant = Math.sqrt(discriminant);
-  // a < 0 なので (b+√D)/a が過去側
+  // Choose the solution that corresponds to the past-light-cone intersection.
   return (b + sqrtDiscriminant) / a;
 };
 
 /**
- * 二分探索で適切な区間を見つける
- * 観測者の座標時間より前の最新の状態を探す
+ * Find the latest index k such that history[k].pos.t <= t.
+ * Returns -1 if all samples are in the future (history[0].pos.t > t).
  */
-const findRelevantInterval = (
+const findLatestIndexAtOrBeforeTime = (
   history: PhaseSpace[],
-  observerTime: number,
-): number | null => {
-  if (history.length === 0) return null;
+  t: number,
+): number => {
+  if (history.length === 0) return -1;
+
+  // History is stored in increasing time order (oldest → newest).
+  if (history[0].pos.t > t) return -1;
+  if (history[history.length - 1].pos.t <= t) return history.length - 1;
 
   let left = 0;
   let right = history.length - 1;
 
-  // 全ての履歴が未来にある場合（最古でさえ未来）
-  if (history[0].pos.t > observerTime) {
-    return null;
-  }
-
-  // 全ての履歴が過去にある場合（最新でさえ過去）→ 全区間を探索
-  if (history[right].pos.t <= observerTime) {
-    return 0;
-  }
-
-  // 二分探索で境界を見つける
-  while (left < right) {
+  // Invariant: history[left].t <= t < history[right].t
+  while (right - left > 1) {
     const mid = Math.floor((left + right) / 2);
-    if (history[mid].pos.t <= observerTime) {
-      right = mid;
+    if (history[mid].pos.t <= t) {
+      left = mid;
     } else {
-      left = mid + 1;
+      right = mid;
     }
   }
 
@@ -124,61 +127,67 @@ const findRelevantInterval = (
 };
 
 /**
- * 観測者の過去光円錐とワールドラインの交点を求める
- * @param wl ワールドライン
- * @param observerPosition 観測者の4元位置
- * @returns 交点での位相空間状態（観測者が実際に見る状態）
+ * Past light-cone intersection between an observer event and a world line.
+ *
+ * English:
+ *   - Walks the world line from newest to oldest and looks for the first segment
+ *     that intersects the observer's past light cone.
+ *   - Returns an *approximate* PhaseSpace (currently no interpolation).
+ *
+ * 日本語:
+ *   - 世界線を最新→過去へ辿り、過去光円錐と交差する区間を探します。
+ *   - 返す PhaseSpace は暫定（現在は補間していません）。
  */
 export const pastLightConeIntersectionWorldLine = (
   wl: WorldLine,
   observerPosition: Vector4,
 ): PhaseSpace | null => {
-  if (wl.history.length === 0) return null;
-  if (wl.history.length === 1) {
-    // 履歴が1つしかない場合、それが過去光円錐内にあるかチェック
-    const state = wl.history[0];
-    const separation = subVector4(observerPosition, state.pos);
-    if (separation.t > 0) {
-      // 観測者の過去
-      return state;
-    }
-    return null;
-  }
+  const history = wl.history;
+  if (history.length === 0) return null;
 
-  // 二分探索で関連する区間を見つける
-  const startIdx = findRelevantInterval(wl.history, observerPosition.t);
-  if (startIdx === null) return null;
+  // We may have samples slightly "in the future" compared to the observer's t due to clock drift.
+  // Start from the newest sample that is at/before observer time, but include one future sample
+  // to cover the boundary segment.
+  const lastPastIdx = findLatestIndexAtOrBeforeTime(
+    history,
+    observerPosition.t,
+  );
+  if (lastPastIdx < 0) return null;
 
-  // 見つかった区間内で逆順に探索（最新から過去へ）
-  for (let i = wl.history.length - 1; i > startIdx; i--) {
-    const state = wl.history[i];
-    const prevState = wl.history[i - 1];
+  const startIdx = Math.min(history.length - 1, lastPastIdx + 1);
 
-    // 両端点が観測者の過去にあるかチェック
-    const sep1 = subVector4(prevState.pos, observerPosition);
-    const sep2 = subVector4(state.pos, observerPosition);
+  for (let i = startIdx; i >= 1; i--) {
+    const state = history[i];
+    const prevState = history[i - 1];
 
-    if (sep1.t >= 0 && sep2.t >= 0) {
-      continue; // 両方とも未来にある
+    // If both endpoints are not in the observer's past, skip.
+    // We use separation = observer - event; separation.t > 0 means "event is in the past".
+    const sepPrev = subVector4(observerPosition, prevState.pos);
+    const sepCurr = subVector4(observerPosition, state.pos);
+
+    if (sepPrev.t <= 0 && sepCurr.t <= 0) {
+      continue;
     }
 
-    // 区間内で過去光円錐との交点を探す
-    const t = findLightlikeIntersectionTime(
+    const tParam = findLightlikeIntersectionParam(
       prevState.pos,
       state.pos,
       observerPosition,
     );
 
-    if (t >= 0 && t <= 1) {
-      // TODO: 補完
+    if (tParam >= 0 && tParam <= 1) {
+      // TODO: interpolate PhaseSpace between prevState and state using tParam.
+      // For now we return the older endpoint as an approximation.
       return prevState;
     }
   }
-  return null; // 過去光円錐との交点なし
+
+  return null;
 };
 
 /**
- * 履歴をクリア
+ * Clear history.
+ * JP: 履歴をクリア。
  */
 export const clearWorldLine = (wl: WorldLine): WorldLine => ({
   ...wl,
