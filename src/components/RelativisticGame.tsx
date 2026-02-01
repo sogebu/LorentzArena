@@ -18,6 +18,20 @@ import {
   subVector4,
 } from "../physics";
 
+/**
+ * RelativisticGame (1+1 spacetime).
+ *
+ * English:
+ *   - Renders a spacetime diagram style arena using a WebGL grid.
+ *   - Uses a past-light-cone intersection so players appear where you *can* see them.
+ *   - Multiplayer state is synced via PeerJS (WebRTC). The root app uses a mesh: peers connect to the host and then connect to each other.
+ *
+ * 日本語:
+ *   - WebGL のグリッドで時空図っぽいアリーナを描画します。
+ *   - 過去光円錐との交点で「見える位置」を計算し、見た目の位置がずれます。
+ *   - マルチプレイ同期は PeerJS（WebRTC）。root アプリはメッシュ寄りで、ホスト経由で peerList を受け取りつつ相互接続もします。
+ */
+
 type RelativisticPlayer = {
   id: string;
   // in 世界系
@@ -84,10 +98,7 @@ const RelativisticGame = () => {
       }
 
       const initialPhaseSpace = createPhaseSpace(
-        createVector4(
-          Date.now() / 1000,
-          0.0,0.0,0.0,
-        ),
+        createVector4(Date.now() / 1000, 0.0, 0.0, 0.0),
         vector3Zero(),
       );
       let worldLine = createWorldLine();
@@ -113,11 +124,8 @@ const RelativisticGame = () => {
       if (msg.type === "phaseSpace") {
         setPlayers((prev) => {
           const next = new Map(prev);
-          
-          const phaseSpace = createPhaseSpace(
-            msg.position,
-            msg.velocity,
-          );
+
+          const phaseSpace = createPhaseSpace(msg.position, msg.velocity);
 
           // 既存のプレイヤーのワールドラインに追加、または新規作成
           const existing = prev.get(id);
@@ -359,9 +367,7 @@ const RelativisticGame = () => {
                 <br />v = {(lengthVector3(vel) * 100).toFixed(1)}% c
                 <br />γ = {g.toFixed(2)}
                 <br />τ ={" "}
-                {myPlayer
-                  ? myPlayer.phaseSpace.pos.t.toFixed(2)
-                  : "0.00"}
+                {myPlayer ? myPlayer.phaseSpace.pos.t.toFixed(2) : "0.00"}
               </div>
             </div>
           );
@@ -375,7 +381,10 @@ const RelativisticGame = () => {
         if (!myPlayer) return null;
 
         // 他プレイヤーは過去光円錐との交点を使用
-        const displayPhaseSpace = pastLightConeIntersectionWorldLine(player.worldLine, myPlayer.phaseSpace.pos);
+        const displayPhaseSpace = pastLightConeIntersectionWorldLine(
+          player.worldLine,
+          myPlayer.phaseSpace.pos,
+        );
         if (!displayPhaseSpace) return null;
         const relativePos = subVector4(
           displayPhaseSpace.pos,
@@ -402,7 +411,10 @@ const RelativisticGame = () => {
               top: displayPos.y,
               width: "40px",
               height: "40px",
-              backgroundColor: calculateDopplerColor(myPlayer.phaseSpace.u, player.color),
+              backgroundColor: calculateDopplerColor(
+                myPlayer.phaseSpace.u,
+                player.color,
+              ),
               borderRadius: "50%",
               transform: `translate(-50%, -50%) rotate(${angle}rad) scaleX(${contractionFactor})`,
               boxShadow: `0 0 ${20 * g}px ${calculateDopplerColor(u, player.color)}`,
@@ -451,10 +463,7 @@ const RelativisticGame = () => {
           >
             <div>速度: {(v * 100).toFixed(1)}% c</div>
             <div>ガンマ因子: {g.toFixed(3)}</div>
-            <div>
-              固有時間:{" "}
-              {myPlayer.phaseSpace.pos.t.toFixed(2)}s
-            </div>
+            <div>固有時間: {myPlayer.phaseSpace.pos.t.toFixed(2)}s</div>
           </div>
         );
       })()}

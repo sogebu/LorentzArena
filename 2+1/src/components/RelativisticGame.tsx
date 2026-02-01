@@ -19,6 +19,20 @@ import {
   pastLightConeIntersectionWorldLine,
 } from "../physics";
 
+/**
+ * RelativisticGame (2+1 spacetime).
+ *
+ * English:
+ *   - Renders an x-y-time arena in 3D using three.js (@react-three/fiber).
+ *   - Time coordinate t is mapped to the Z axis for visualization.
+ *   - Multiplayer state is synced via PeerJS (WebRTC). In this app, clients send to the host and the host relays.
+ *
+ * 日本語:
+ *   - x-y-t のアリーナを three.js（@react-three/fiber）で 3D 表示します。
+ *   - 可視化のため、時間座標 t を Z 軸に割り当てています。
+ *   - マルチプレイ同期は PeerJS（WebRTC）。このアプリは基本的にホスト中継型です。
+ */
+
 const OFFSET = Date.now() / 1000;
 
 type RelativisticPlayer = {
@@ -100,7 +114,7 @@ const sharedGeometries = {
 const materialCache = new Map<string, THREE.Material>();
 const getMaterial = (
   key: string,
-  factory: () => THREE.Material
+  factory: () => THREE.Material,
 ): THREE.Material => {
   let mat = materialCache.get(key);
   if (!mat) {
@@ -126,7 +140,7 @@ const WorldLineRenderer = ({ player }: { player: RelativisticPlayer }) => {
   const history = player.worldLine.history;
 
   useEffect(() => {
-    if (history.length < 2) return
+    if (history.length < 2) return;
 
     const points: THREE.Vector3[] = history.map(
       (ps) => new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t),
@@ -163,12 +177,14 @@ const WorldLineRenderer = ({ player }: { player: RelativisticPlayer }) => {
   }, []);
 
   const color = getThreeColor(player.color);
-  const material = getMaterial(`worldline-${player.id}`, () =>
-    new THREE.MeshStandardMaterial({
-      color: color,
-      emissive: color,
-      emissiveIntensity: 0.9,
-    })
+  const material = getMaterial(
+    `worldline-${player.id}`,
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: color,
+        emissive: color,
+        emissiveIntensity: 0.9,
+      }),
   );
 
   if (!geometry) return null;
@@ -183,7 +199,7 @@ const LaserRenderer = ({ laser }: { laser: Laser }) => {
     const startPoint = new THREE.Vector3(
       laser.emissionPos.x,
       laser.emissionPos.y,
-      laser.emissionPos.t
+      laser.emissionPos.t,
     );
     // 終了点: (x + range*dx, y + range*dy, t + range/LIGHT_SPEED)
     const endPoint = new THREE.Vector3(
@@ -203,7 +219,7 @@ const LaserRenderer = ({ laser }: { laser: Laser }) => {
         transparent: true,
         opacity: 0.8,
       }),
-    [color]
+    [color],
   );
 
   useEffect(() => {
@@ -225,7 +241,13 @@ type SceneContentProps = {
   cameraPitchRef: React.RefObject<number>; // カメラの仰角（ラジアン、0=水平、正=上から見下ろす）
 };
 
-const SceneContent = ({ players, myId, lasers, cameraYawRef, cameraPitchRef }: SceneContentProps) => {
+const SceneContent = ({
+  players,
+  myId,
+  lasers,
+  cameraYawRef,
+  cameraPitchRef,
+}: SceneContentProps) => {
   // カメラの位置をプレイヤー位置から計算（球面座標）
   useFrame(({ camera }) => {
     if (!myId) return;
@@ -239,8 +261,10 @@ const SceneContent = ({ players, myId, lasers, cameraYawRef, cameraPitchRef }: S
     const cameraYaw = cameraYawRef.current;
     const cameraPitch = cameraPitchRef.current;
     // 球面座標からデカルト座標へ変換
-    const camX = myPos.x - Math.cos(cameraYaw) * Math.cos(cameraPitch) * cameraDistance;
-    const camY = myPos.y - Math.sin(cameraYaw) * Math.cos(cameraPitch) * cameraDistance;
+    const camX =
+      myPos.x - Math.cos(cameraYaw) * Math.cos(cameraPitch) * cameraDistance;
+    const camY =
+      myPos.y - Math.sin(cameraYaw) * Math.cos(cameraPitch) * cameraDistance;
     const camT = myPos.t - Math.sin(cameraPitch) * cameraDistance;
 
     camera.position.set(camX, camY, camT);
@@ -267,12 +291,14 @@ const SceneContent = ({ players, myId, lasers, cameraYawRef, cameraPitchRef }: S
         const isMe = player.id === myId;
         const color = getThreeColor(player.color);
         const size = isMe ? 0.2 : 0.1;
-        const material = getMaterial(`player-${player.id}-${isMe}`, () =>
-          new THREE.MeshStandardMaterial({
-            color: color,
-            emissive: color,
-            emissiveIntensity: isMe ? 0.8 : 0.5,
-          })
+        const material = getMaterial(
+          `player-${player.id}-${isMe}`,
+          () =>
+            new THREE.MeshStandardMaterial({
+              color: color,
+              emissive: color,
+              emissiveIntensity: isMe ? 0.8 : 0.5,
+            }),
         );
 
         return (
@@ -292,14 +318,16 @@ const SceneContent = ({ players, myId, lasers, cameraYawRef, cameraPitchRef }: S
         const isMe = player.id === myId;
         const color = getThreeColor(player.color);
         const coneHeight = 40;
-        const coneMaterial = getMaterial(`lightcone-${player.id}-${isMe}`, () =>
-          new THREE.MeshBasicMaterial({
-            color: color,
-            transparent: true,
-            opacity: isMe ? 0.5 : 0.4,
-            side: THREE.DoubleSide,
-            wireframe: true,
-          })
+        const coneMaterial = getMaterial(
+          `lightcone-${player.id}-${isMe}`,
+          () =>
+            new THREE.MeshBasicMaterial({
+              color: color,
+              transparent: true,
+              opacity: isMe ? 0.5 : 0.4,
+              side: THREE.DoubleSide,
+              wireframe: true,
+            }),
         );
 
         return (
@@ -343,12 +371,14 @@ const SceneContent = ({ players, myId, lasers, cameraYawRef, cameraPitchRef }: S
 
               const pos = displayState.pos;
               const color = getThreeColor(player.color);
-              const material = getMaterial(`intersection-${player.id}`, () =>
-                new THREE.MeshStandardMaterial({
-                  color: color,
-                  emissive: color,
-                  emissiveIntensity: 1.0,
-                })
+              const material = getMaterial(
+                `intersection-${player.id}`,
+                () =>
+                  new THREE.MeshStandardMaterial({
+                    color: color,
+                    emissive: color,
+                    emissiveIntensity: 1.0,
+                  }),
               );
 
               return (
@@ -402,7 +432,12 @@ const RelativisticGame = () => {
       }
 
       const initialPhaseSpace = createPhaseSpace(
-        createVector4(Date.now() / 1000 - OFFSET, Math.random() * 10, Math.random() * 10, 0.0),
+        createVector4(
+          Date.now() / 1000 - OFFSET,
+          Math.random() * 10,
+          Math.random() * 10,
+          0.0,
+        ),
         vector3Zero(),
       );
       let worldLine = createWorldLine();
@@ -526,7 +561,19 @@ const RelativisticGame = () => {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // 矢印キーとW/Sキーとスペースキーの場合はデフォルトの動作（スクロール）を防ぐ
-      if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "w", "W", "s", "S", " "].includes(e.key)) {
+      if (
+        [
+          "ArrowLeft",
+          "ArrowRight",
+          "ArrowUp",
+          "ArrowDown",
+          "w",
+          "W",
+          "s",
+          "S",
+          " ",
+        ].includes(e.key)
+      ) {
         e.preventDefault();
       }
       keysPressed.current.add(normalizeKey(e.key));
@@ -571,8 +618,8 @@ const RelativisticGame = () => {
       // カメラ制御: 左右キーでyaw回転、上下キーでpitch回転（プレイヤーを中心に球面上を移動）
       const yawSpeed = 1.5; // rad/s
       const pitchSpeed = 1.0; // rad/s
-      const pitchMin = -Math.PI * 89.9 / 180; // 下限
-      const pitchMax = Math.PI * 89.9 / 180; // 上限
+      const pitchMin = (-Math.PI * 89.9) / 180; // 下限
+      const pitchMax = (Math.PI * 89.9) / 180; // 上限
 
       if (keysPressed.current.has("ArrowLeft")) {
         cameraYawRef.current += yawSpeed * dTau;
@@ -581,15 +628,24 @@ const RelativisticGame = () => {
         cameraYawRef.current -= yawSpeed * dTau;
       }
       if (keysPressed.current.has("ArrowUp")) {
-        cameraPitchRef.current = Math.min(pitchMax, cameraPitchRef.current + pitchSpeed * dTau);
+        cameraPitchRef.current = Math.min(
+          pitchMax,
+          cameraPitchRef.current + pitchSpeed * dTau,
+        );
       }
       if (keysPressed.current.has("ArrowDown")) {
-        cameraPitchRef.current = Math.max(pitchMin, cameraPitchRef.current - pitchSpeed * dTau);
+        cameraPitchRef.current = Math.max(
+          pitchMin,
+          cameraPitchRef.current - pitchSpeed * dTau,
+        );
       }
 
       // レーザー発射（スペースキー）
       const laserCooldown = 100; // ミリ秒
-      if (keysPressed.current.has(" ") && currentTime - lastLaserTimeRef.current > laserCooldown) {
+      if (
+        keysPressed.current.has(" ") &&
+        currentTime - lastLaserTimeRef.current > laserCooldown
+      ) {
         const myPlayer = playersRef.current.get(myId);
         if (myPlayer) {
           lastLaserTimeRef.current = currentTime;
@@ -651,7 +707,10 @@ const RelativisticGame = () => {
         for (const [id, player] of prev) {
           if (id === myId) continue;
           if (player.phaseSpace.pos.t > myPlayer.phaseSpace.pos.t) continue;
-          const diff = subVector4(player.phaseSpace.pos, myPlayer.phaseSpace.pos);
+          const diff = subVector4(
+            player.phaseSpace.pos,
+            myPlayer.phaseSpace.pos,
+          );
           const l = lorentzDotVector4(diff, diff);
           if (l < 0) return prev;
         }
@@ -783,9 +842,7 @@ const RelativisticGame = () => {
           >
             <div>速度: {(v * 100).toFixed(1)}% c</div>
             <div>ガンマ因子: {g.toFixed(3)}</div>
-            <div>
-              固有時間: {(myPlayer.phaseSpace.pos.t).toFixed(2)}s
-            </div>
+            <div>固有時間: {myPlayer.phaseSpace.pos.t.toFixed(2)}s</div>
             <div>
               位置: ({myPlayer.phaseSpace.pos.x.toFixed(2)},{" "}
               {myPlayer.phaseSpace.pos.y.toFixed(2)})
@@ -795,7 +852,13 @@ const RelativisticGame = () => {
       })()}
 
       <Canvas camera={{ position: [0, 0, 0], fov: 75 }}>
-        <SceneContent players={players} myId={myId} lasers={lasers} cameraYawRef={cameraYawRef} cameraPitchRef={cameraPitchRef} />
+        <SceneContent
+          players={players}
+          myId={myId}
+          lasers={lasers}
+          cameraYawRef={cameraYawRef}
+          cameraPitchRef={cameraPitchRef}
+        />
       </Canvas>
     </div>
   );
