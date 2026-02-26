@@ -58,23 +58,23 @@ const LASER_RANGE = 10;
 // レーザーの最大数（メモリ管理）
 const MAX_LASERS = 1000;
 
+// 32bit FNV-1a hash（IDカラー生成用）
+const hashString32 = (input: string): number => {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+};
+
 // IDから色を生成する関数（高彩度で視認性の良い色）
 const getColorFromId = (id: string): string => {
-  // IDをハッシュ化して数値に変換
-  let hash = 0;
-  for (let i = 0; i < id.length; i++) {
-    hash = id.charCodeAt(i) + ((hash << 5) - hash);
-    hash = hash & hash; // 32bit整数に変換
-  }
-
-  // ハッシュ値から色相（Hue）を決定（0-360度）
-  const hue = Math.abs(hash) % 360;
-
-  // 高彩度（85-100%）で視認性を確保
-  const saturation = 85 + (Math.abs(hash >> 8) % 16);
-
-  // 明度は中程度（50-65%）で見やすく
-  const lightness = 50 + (Math.abs(hash >> 16) % 16);
+  const hash = hashString32(id);
+  // 連番・類似IDでも色相が偏りにくいように黄金角で拡散
+  const hue = Math.floor(((hash * 137.50776405) % 360 + 360) % 360);
+  const saturation = 80 + ((hash >> 8) % 17); // 80-96%
+  const lightness = 50 + ((hash >> 16) % 14); // 50-63%
 
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 };
@@ -106,7 +106,9 @@ const getThreeColor = (hslString: string): THREE.Color => {
 // 共有ジオメトリ（シングルトン）
 const sharedGeometries = {
   playerSphere: new THREE.SphereGeometry(1, 8, 8),
-  intersectionSphere: new THREE.SphereGeometry(0.3, 16, 16),
+  intersectionSphere: new THREE.SphereGeometry(0.45, 16, 16),
+  intersectionCore: new THREE.SphereGeometry(0.15, 12, 12),
+  intersectionRing: new THREE.TorusGeometry(0.7, 0.07, 12, 24),
   lightCone: new THREE.ConeGeometry(40, 40, 32, 1, true),
 };
 
@@ -290,25 +292,41 @@ const SceneContent = ({
         const pos = player.phaseSpace.pos;
         const isMe = player.id === myId;
         const color = getThreeColor(player.color);
-        const size = isMe ? 0.2 : 0.1;
+        const size = isMe ? 0.42 : 0.34;
         const material = getMaterial(
-          `player-${player.id}-${isMe}`,
+          `player-core-${player.id}-${isMe}`,
           () =>
             new THREE.MeshStandardMaterial({
               color: color,
               emissive: color,
-              emissiveIntensity: isMe ? 0.8 : 0.5,
+              emissiveIntensity: isMe ? 1.0 : 0.75,
+              roughness: 0.3,
+              metalness: 0.1,
+            }),
+        );
+        const haloMaterial = getMaterial(
+          `player-halo-${player.id}-${isMe}`,
+          () =>
+            new THREE.MeshBasicMaterial({
+              color: color,
+              transparent: true,
+              opacity: isMe ? 0.32 : 0.22,
             }),
         );
 
         return (
-          <mesh
-            key={`player-${player.id}`}
-            position={[pos.x, pos.y, pos.t]}
-            scale={[size, size, size]}
-            geometry={sharedGeometries.playerSphere}
-            material={material}
-          />
+          <group key={`player-${player.id}`} position={[pos.x, pos.y, pos.t]}>
+            <mesh
+              scale={[size, size, size]}
+              geometry={sharedGeometries.playerSphere}
+              material={material}
+            />
+            <mesh
+              scale={[size * 1.8, size * 1.8, size * 1.8]}
+              geometry={sharedGeometries.playerSphere}
+              material={haloMaterial}
+            />
+          </group>
         );
       })}
 
@@ -350,7 +368,7 @@ const SceneContent = ({
         );
       })}
 
-      {/* 自分の過去光円錐と他プレイヤーの世界線の交点（または最新点） */}
+      {/* 自分の過去光円錐と他プレイヤーの世界線の交点 */}
       {myId &&
         (() => {
           const myPlayer = players.get(myId);
@@ -363,31 +381,55 @@ const SceneContent = ({
                 player.worldLine,
                 myPlayer.phaseSpace.pos,
               );
-              // 交点がない場合は世界線の最新点を使用
-              const displayState =
-                intersection ||
-                player.worldLine.history[player.worldLine.history.length - 1];
-              if (!displayState) return null;
+              if (!intersection) return null;
 
-              const pos = displayState.pos;
+              const pos = intersection.pos;
               const color = getThreeColor(player.color);
-              const material = getMaterial(
-                `intersection-${player.id}`,
+              const markerMaterial = getMaterial(
+                `intersection-marker-${player.id}`,
                 () =>
                   new THREE.MeshStandardMaterial({
                     color: color,
                     emissive: color,
-                    emissiveIntensity: 1.0,
+                    emissiveIntensity: 1.15,
+                  }),
+              );
+              const coreMaterial = getMaterial(
+                `intersection-core-${player.id}`,
+                () =>
+                  new THREE.MeshBasicMaterial({
+                    color: new THREE.Color("#ffffff"),
+                  }),
+              );
+              const ringMaterial = getMaterial(
+                `intersection-ring-${player.id}`,
+                () =>
+                  new THREE.MeshBasicMaterial({
+                    color: color,
+                    transparent: true,
+                    opacity: 0.9,
+                    side: THREE.DoubleSide,
                   }),
               );
 
               return (
-                <mesh
+                <group
                   key={`intersection-${player.id}`}
                   position={[pos.x, pos.y, pos.t]}
-                  geometry={sharedGeometries.intersectionSphere}
-                  material={material}
-                />
+                >
+                  <mesh
+                    geometry={sharedGeometries.intersectionSphere}
+                    material={markerMaterial}
+                  />
+                  <mesh
+                    geometry={sharedGeometries.intersectionCore}
+                    material={coreMaterial}
+                  />
+                  <mesh
+                    geometry={sharedGeometries.intersectionRing}
+                    material={ringMaterial}
+                  />
+                </group>
               );
             });
         })()}
