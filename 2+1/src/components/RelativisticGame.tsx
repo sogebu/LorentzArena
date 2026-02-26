@@ -56,7 +56,7 @@ type Laser = {
 };
 
 // レーザーの射程
-const LASER_RANGE = 10;
+const LASER_RANGE = 20;
 
 // レーザーの最大数（メモリ管理）
 const MAX_LASERS = 1000;
