@@ -13,6 +13,12 @@ pnpm install
 pnpm dev
 ```
 
+Visualization cues:
+- Player colors are generated deterministically from peer IDs (high-separation palette).
+- Markers are shown for:
+  - intersections of **your past light cone** with other players' world lines
+  - intersections of **your past light cone** with other players' laser world-lines
+
 Networking notes:
 - Multiplayer uses PeerJS/WebRTC.
 - Some networks (school/enterprise) block P2P. In that case use **WS Relay mode**.
@@ -68,6 +74,12 @@ For public deployment (`wss://...:443`), see:
 pnpm install
 pnpm dev
 ```
+
+可視化について:
+- プレイヤー色は peer ID から決定論的に生成（色分離を強化）。
+- 次の交点にマーカーを表示します:
+  - **自分の過去光円錐** と他プレイヤー world line の交点
+  - **自分の過去光円錐** と他プレイヤー laser world-line の交点
 
 通信について:
 - PeerJS/WebRTC を使っています。

@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { usePeer } from "../hooks/usePeer";
 import {
   type PhaseSpace,
+  type Vector4,
   type WorldLine,
   createVector3,
   lengthVector3,
@@ -92,6 +93,79 @@ const getLaserColor = (playerColor: string): string => {
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 };
 
+/**
+ * Find intersection of "observer past light cone" and a laser world-line segment.
+ *
+ * English:
+ *   - Laser trajectory is modeled as a spacetime segment:
+ *       X(lambda) = start + lambda * (end - start), lambda in [0, 1]
+ *   - We solve lorentzDot(observer - X, observer - X) = 0 and keep the past solution.
+ *
+ * 日本語:
+ *   - レーザー軌跡を時空区間として扱い、
+ *       X(lambda) = start + lambda * (end - start), lambda in [0, 1]
+ *   - lorentzDot(observer - X, observer - X) = 0 を解いて、
+ *     観測者より過去にある解のみ採用します。
+ */
+const pastLightConeIntersectionLaser = (
+  laser: Laser,
+  observerPos: Vector4,
+): Vector4 | null => {
+  const start = createVector4(
+    laser.emissionPos.t,
+    laser.emissionPos.x,
+    laser.emissionPos.y,
+    laser.emissionPos.z,
+  );
+  const end = createVector4(
+    laser.emissionPos.t + laser.range,
+    laser.emissionPos.x + laser.direction.x * laser.range,
+    laser.emissionPos.y + laser.direction.y * laser.range,
+    laser.emissionPos.z + laser.direction.z * laser.range,
+  );
+
+  const delta = subVector4(end, start);
+  const separationAtStart = subVector4(observerPos, start);
+
+  // a*lambda^2 + b*lambda + c = 0
+  const a = lorentzDotVector4(delta, delta);
+  const b = -2 * lorentzDotVector4(separationAtStart, delta);
+  const c = lorentzDotVector4(separationAtStart, separationAtStart);
+
+  const EPS = 1e-9;
+  const candidates: number[] = [];
+
+  // Laser segment is (almost) lightlike, so treat near-linear case robustly.
+  if (Math.abs(a) < EPS) {
+    if (Math.abs(b) < EPS) return null;
+    candidates.push(-c / b);
+  } else {
+    const discriminant = b * b - 4 * a * c;
+    if (discriminant < 0) return null;
+    const sqrtDiscriminant = Math.sqrt(Math.max(0, discriminant));
+    candidates.push((-b - sqrtDiscriminant) / (2 * a));
+    candidates.push((-b + sqrtDiscriminant) / (2 * a));
+  }
+
+  let best: Vector4 | null = null;
+  for (const lambda of candidates) {
+    if (lambda < -EPS || lambda > 1 + EPS) continue;
+    const t = Math.min(1, Math.max(0, lambda));
+    const point = createVector4(
+      start.t + delta.t * t,
+      start.x + delta.x * t,
+      start.y + delta.y * t,
+      start.z + delta.z * t,
+    );
+
+    // We only want events in observer's past.
+    if (observerPos.t - point.t <= EPS) continue;
+    if (!best || point.t > best.t) best = point;
+  }
+
+  return best;
+};
+
 // Color キャッシュ
 const colorCache = new Map<string, THREE.Color>();
 const getThreeColor = (hslString: string): THREE.Color => {
@@ -109,6 +183,8 @@ const sharedGeometries = {
   intersectionSphere: new THREE.SphereGeometry(0.45, 16, 16),
   intersectionCore: new THREE.SphereGeometry(0.15, 12, 12),
   intersectionRing: new THREE.TorusGeometry(0.7, 0.07, 12, 24),
+  laserIntersectionSphere: new THREE.OctahedronGeometry(0.4, 0),
+  laserIntersectionRing: new THREE.TorusGeometry(0.95, 0.06, 12, 24),
   lightCone: new THREE.ConeGeometry(40, 40, 32, 1, true),
 };
 
@@ -276,6 +352,53 @@ const SceneContent = ({
 
   // プレイヤーリストをメモ化
   const playerList = useMemo(() => Array.from(players.values()), [players]);
+  const myPlayer = useMemo(
+    () => (myId ? players.get(myId) ?? null : null),
+    [players, myId],
+  );
+  const worldLineIntersections = useMemo(() => {
+    if (!myPlayer || !myId) return [];
+
+    return playerList
+      .filter((player) => player.id !== myId)
+      .map((player) => {
+        const intersection = pastLightConeIntersectionWorldLine(
+          player.worldLine,
+          myPlayer.phaseSpace.pos,
+        );
+        if (!intersection) return null;
+        return {
+          playerId: player.id,
+          color: player.color,
+          pos: intersection.pos,
+        };
+      })
+      .filter(
+        (
+          value,
+        ): value is { playerId: string; color: string; pos: Vector4 } =>
+          value !== null,
+      );
+  }, [myPlayer, myId, playerList]);
+  const laserIntersections = useMemo(() => {
+    if (!myPlayer || !myId) return [];
+
+    return lasers
+      .filter((laser) => laser.playerId !== myId)
+      .map((laser) => {
+        const intersection = pastLightConeIntersectionLaser(
+          laser,
+          myPlayer.phaseSpace.pos,
+        );
+        if (!intersection) return null;
+        return { laser, pos: intersection };
+      })
+      .filter(
+        (
+          value,
+        ): value is { laser: Laser; pos: Vector4 } => value !== null,
+      );
+  }, [lasers, myPlayer, myId]);
 
   return (
     <>
@@ -369,70 +492,110 @@ const SceneContent = ({
       })}
 
       {/* 自分の過去光円錐と他プレイヤーの世界線の交点 */}
-      {myId &&
-        (() => {
-          const myPlayer = players.get(myId);
-          if (!myPlayer) return null;
+      {worldLineIntersections.map(({ playerId, color: colorText, pos }) => {
+        const color = getThreeColor(colorText);
+        const markerMaterial = getMaterial(
+          `intersection-marker-${playerId}`,
+          () =>
+            new THREE.MeshStandardMaterial({
+              color: color,
+              emissive: color,
+              emissiveIntensity: 1.15,
+            }),
+        );
+        const coreMaterial = getMaterial(
+          `intersection-core-${playerId}`,
+          () =>
+            new THREE.MeshBasicMaterial({
+              color: new THREE.Color("#ffffff"),
+            }),
+        );
+        const ringMaterial = getMaterial(
+          `intersection-ring-${playerId}`,
+          () =>
+            new THREE.MeshBasicMaterial({
+              color: color,
+              transparent: true,
+              opacity: 0.9,
+              side: THREE.DoubleSide,
+            }),
+        );
 
-          return playerList
-            .filter((player) => player.id !== myId)
-            .map((player) => {
-              const intersection = pastLightConeIntersectionWorldLine(
-                player.worldLine,
-                myPlayer.phaseSpace.pos,
-              );
-              if (!intersection) return null;
+        return (
+          <group key={`intersection-${playerId}`} position={[pos.x, pos.y, pos.t]}>
+            <mesh
+              geometry={sharedGeometries.intersectionSphere}
+              material={markerMaterial}
+            />
+            <mesh
+              geometry={sharedGeometries.intersectionCore}
+              material={coreMaterial}
+            />
+            <mesh
+              geometry={sharedGeometries.intersectionRing}
+              material={ringMaterial}
+            />
+          </group>
+        );
+      })}
 
-              const pos = intersection.pos;
-              const color = getThreeColor(player.color);
-              const markerMaterial = getMaterial(
-                `intersection-marker-${player.id}`,
-                () =>
-                  new THREE.MeshStandardMaterial({
-                    color: color,
-                    emissive: color,
-                    emissiveIntensity: 1.15,
-                  }),
-              );
-              const coreMaterial = getMaterial(
-                `intersection-core-${player.id}`,
-                () =>
-                  new THREE.MeshBasicMaterial({
-                    color: new THREE.Color("#ffffff"),
-                  }),
-              );
-              const ringMaterial = getMaterial(
-                `intersection-ring-${player.id}`,
-                () =>
-                  new THREE.MeshBasicMaterial({
-                    color: color,
-                    transparent: true,
-                    opacity: 0.9,
-                    side: THREE.DoubleSide,
-                  }),
-              );
+      {/* 相手レーザーと自分の過去光円錐の交点 */}
+      {laserIntersections.map(({ laser, pos }) => {
+        const color = getThreeColor(laser.color);
+        const markerMaterial = getMaterial(
+          `laser-intersection-marker-${laser.color}`,
+          () =>
+            new THREE.MeshStandardMaterial({
+              color: color,
+              emissive: color,
+              emissiveIntensity: 1.2,
+              roughness: 0.25,
+              metalness: 0.1,
+            }),
+        );
+        const coreMaterial = getMaterial(
+          "laser-intersection-core",
+          () =>
+            new THREE.MeshBasicMaterial({
+              color: new THREE.Color("#ffffff"),
+            }),
+        );
+        const ringMaterial = getMaterial(
+          `laser-intersection-ring-${laser.color}`,
+          () =>
+            new THREE.MeshBasicMaterial({
+              color: color,
+              transparent: true,
+              opacity: 0.95,
+              side: THREE.DoubleSide,
+            }),
+        );
 
-              return (
-                <group
-                  key={`intersection-${player.id}`}
-                  position={[pos.x, pos.y, pos.t]}
-                >
-                  <mesh
-                    geometry={sharedGeometries.intersectionSphere}
-                    material={markerMaterial}
-                  />
-                  <mesh
-                    geometry={sharedGeometries.intersectionCore}
-                    material={coreMaterial}
-                  />
-                  <mesh
-                    geometry={sharedGeometries.intersectionRing}
-                    material={ringMaterial}
-                  />
-                </group>
-              );
-            });
-        })()}
+        return (
+          <group
+            key={`laser-intersection-${laser.id}`}
+            position={[pos.x, pos.y, pos.t]}
+          >
+            <mesh
+              geometry={sharedGeometries.laserIntersectionSphere}
+              material={markerMaterial}
+            />
+            <mesh
+              geometry={sharedGeometries.intersectionCore}
+              material={coreMaterial}
+            />
+            <mesh
+              geometry={sharedGeometries.laserIntersectionRing}
+              material={ringMaterial}
+            />
+            <mesh
+              rotation={[Math.PI / 2, 0, 0]}
+              geometry={sharedGeometries.laserIntersectionRing}
+              material={ringMaterial}
+            />
+          </group>
+        );
+      })}
 
       {/* レーザーを描画 */}
       {lasers.map((laser) => (
