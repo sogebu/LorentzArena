@@ -14,6 +14,8 @@ pnpm dev
 ```
 
 Visualization cues:
+- Default view is in your instantaneous rest frame.
+- Uncheck the in-game checkbox to switch back to world-frame display.
 - Player colors are generated deterministically from peer IDs (high-separation palette).
 - Markers are shown for:
   - intersections of **your past light cone** with other players' world lines
@@ -76,6 +78,8 @@ pnpm dev
 ```
 
 可視化について:
+- デフォルト表示は「自分の瞬間静止系」です。
+- ゲーム内チェックボックスを外すと世界系表示に切り替わります。
 - プレイヤー色は peer ID から決定論的に生成（色分離を強化）。
 - 次の交点にマーカーを表示します:
   - **自分の過去光円錐** と他プレイヤー world line の交点

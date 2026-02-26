@@ -15,7 +15,9 @@ import {
   createPhaseSpace,
   createVector4,
   evolvePhaseSpace,
+  lorentzBoost,
   lorentzDotVector4,
+  multiplyVector4Matrix4,
   subVector4,
   pastLightConeIntersectionWorldLine,
 } from "../physics";
@@ -166,6 +168,26 @@ const pastLightConeIntersectionLaser = (
   return best;
 };
 
+/**
+ * Convert a world-frame event into display coordinates.
+ *
+ * English:
+ *   - When `observerBoost` is present, we display in the observer's instantaneous rest frame.
+ *   - Otherwise, we keep world-frame coordinates.
+ *
+ * 日本語:
+ *   - `observerBoost` がある場合は観測者の瞬間静止系で表示します。
+ *   - ない場合は世界系のまま表示します。
+ */
+const transformEventForDisplay = (
+  worldEvent: Vector4,
+  observerPos: Vector4 | null,
+  observerBoost: ReturnType<typeof lorentzBoost> | null,
+): Vector4 => {
+  if (!observerPos || !observerBoost) return worldEvent;
+  return multiplyVector4Matrix4(observerBoost, subVector4(worldEvent, observerPos));
+};
+
 // Color キャッシュ
 const colorCache = new Map<string, THREE.Color>();
 const getThreeColor = (hslString: string): THREE.Color => {
@@ -211,7 +233,17 @@ if (typeof window !== "undefined") {
 }
 
 // WorldLineRenderer コンポーネント - 個別のワールドラインを描画
-const WorldLineRenderer = ({ player }: { player: RelativisticPlayer }) => {
+type WorldLineRendererProps = {
+  player: RelativisticPlayer;
+  observerPos: Vector4 | null;
+  observerBoost: ReturnType<typeof lorentzBoost> | null;
+};
+
+const WorldLineRenderer = ({
+  player,
+  observerPos,
+  observerBoost,
+}: WorldLineRendererProps) => {
   const [geometry, setGeometry] = useState<THREE.TubeGeometry | null>(null);
 
   const history = player.worldLine.history;
@@ -220,7 +252,10 @@ const WorldLineRenderer = ({ player }: { player: RelativisticPlayer }) => {
     if (history.length < 2) return;
 
     const points: THREE.Vector3[] = history.map(
-      (ps) => new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t),
+      (ps) => {
+        const pos = transformEventForDisplay(ps.pos, observerPos, observerBoost);
+        return new THREE.Vector3(pos.x, pos.y, pos.t);
+      },
     );
 
     const curve = new THREE.CatmullRomCurve3(points);
@@ -239,7 +274,7 @@ const WorldLineRenderer = ({ player }: { player: RelativisticPlayer }) => {
       }
       return tubeGeometry;
     });
-  }, [history]);
+  }, [history, observerPos, observerBoost]);
 
   // アンマウント時に geometry を破棄
   useEffect(() => {
@@ -269,21 +304,18 @@ const WorldLineRenderer = ({ player }: { player: RelativisticPlayer }) => {
   return <mesh geometry={geometry} material={material} />;
 };
 
+type DisplayLaser = {
+  readonly id: string;
+  readonly color: string;
+  readonly start: Vector4;
+  readonly end: Vector4;
+};
+
 // LaserRenderer コンポーネント - 個別のレーザーを描画
-const LaserRenderer = ({ laser }: { laser: Laser }) => {
+const LaserRenderer = ({ laser }: { laser: DisplayLaser }) => {
   const geometry = useMemo(() => {
-    // 開始点: (emissionPos.x, emissionPos.y, emissionPos.t)
-    const startPoint = new THREE.Vector3(
-      laser.emissionPos.x,
-      laser.emissionPos.y,
-      laser.emissionPos.t,
-    );
-    // 終了点: (x + range*dx, y + range*dy, t + range/LIGHT_SPEED)
-    const endPoint = new THREE.Vector3(
-      laser.emissionPos.x + laser.range * laser.direction.x,
-      laser.emissionPos.y + laser.range * laser.direction.y,
-      laser.emissionPos.t + laser.range,
-    );
+    const startPoint = new THREE.Vector3(laser.start.x, laser.start.y, laser.start.t);
+    const endPoint = new THREE.Vector3(laser.end.x, laser.end.y, laser.end.t);
     const curve = new THREE.LineCurve3(startPoint, endPoint);
     return new THREE.TubeGeometry(curve, 2, 0.05, 8, false);
   }, [laser]);
@@ -314,6 +346,7 @@ type SceneContentProps = {
   players: Map<string, RelativisticPlayer>;
   myId: string | null;
   lasers: Laser[];
+  showInRestFrame: boolean;
   cameraYawRef: React.RefObject<number>; // カメラのxy平面内での向き（ラジアン）
   cameraPitchRef: React.RefObject<number>; // カメラの仰角（ラジアン、0=水平、正=上から見下ろす）
 };
@@ -322,16 +355,52 @@ const SceneContent = ({
   players,
   myId,
   lasers,
+  showInRestFrame,
   cameraYawRef,
   cameraPitchRef,
 }: SceneContentProps) => {
+  // プレイヤーリストをメモ化
+  const playerList = useMemo(() => Array.from(players.values()), [players]);
+  const myPlayer = useMemo(
+    () => (myId ? players.get(myId) ?? null : null),
+    [players, myId],
+  );
+  const observerPos = myPlayer?.phaseSpace.pos ?? null;
+  const observerBoost = useMemo(
+    () => (showInRestFrame && myPlayer ? lorentzBoost(myPlayer.phaseSpace.u) : null),
+    [showInRestFrame, myPlayer],
+  );
+  const displayLasers = useMemo<DisplayLaser[]>(() => {
+    return lasers.map((laser) => {
+      const worldStart = createVector4(
+        laser.emissionPos.t,
+        laser.emissionPos.x,
+        laser.emissionPos.y,
+        laser.emissionPos.z,
+      );
+      const worldEnd = createVector4(
+        laser.emissionPos.t + laser.range,
+        laser.emissionPos.x + laser.direction.x * laser.range,
+        laser.emissionPos.y + laser.direction.y * laser.range,
+        laser.emissionPos.z + laser.direction.z * laser.range,
+      );
+
+      return {
+        id: laser.id,
+        color: laser.color,
+        start: transformEventForDisplay(worldStart, observerPos, observerBoost),
+        end: transformEventForDisplay(worldEnd, observerPos, observerBoost),
+      };
+    });
+  }, [lasers, observerPos, observerBoost]);
+
   // カメラの位置をプレイヤー位置から計算（球面座標）
   useFrame(({ camera }) => {
-    if (!myId) return;
-    const myPlayer = players.get(myId);
     if (!myPlayer) return;
 
-    const myPos = myPlayer.phaseSpace.pos;
+    const targetX = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.x;
+    const targetY = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.y;
+    const targetT = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.t;
     // カメラの距離（プレイヤーからの距離、固定）
     const cameraDistance = 15;
     // カメラ位置: プレイヤーを中心とした球面上
@@ -339,22 +408,15 @@ const SceneContent = ({
     const cameraPitch = cameraPitchRef.current;
     // 球面座標からデカルト座標へ変換
     const camX =
-      myPos.x - Math.cos(cameraYaw) * Math.cos(cameraPitch) * cameraDistance;
+      targetX - Math.cos(cameraYaw) * Math.cos(cameraPitch) * cameraDistance;
     const camY =
-      myPos.y - Math.sin(cameraYaw) * Math.cos(cameraPitch) * cameraDistance;
-    const camT = myPos.t - Math.sin(cameraPitch) * cameraDistance;
+      targetY - Math.sin(cameraYaw) * Math.cos(cameraPitch) * cameraDistance;
+    const camT = targetT - Math.sin(cameraPitch) * cameraDistance;
 
     camera.position.set(camX, camY, camT);
-    camera.lookAt(myPos.x, myPos.y, myPos.t);
+    camera.lookAt(targetX, targetY, targetT);
     camera.up.set(0, 0, 1);
   });
-
-  // プレイヤーリストをメモ化
-  const playerList = useMemo(() => Array.from(players.values()), [players]);
-  const myPlayer = useMemo(
-    () => (myId ? players.get(myId) ?? null : null),
-    [players, myId],
-  );
   const worldLineIntersections = useMemo(() => {
     if (!myPlayer || !myId) return [];
 
@@ -369,7 +431,11 @@ const SceneContent = ({
         return {
           playerId: player.id,
           color: player.color,
-          pos: intersection.pos,
+          pos: transformEventForDisplay(
+            intersection.pos,
+            observerPos,
+            observerBoost,
+          ),
         };
       })
       .filter(
@@ -378,7 +444,7 @@ const SceneContent = ({
         ): value is { playerId: string; color: string; pos: Vector4 } =>
           value !== null,
       );
-  }, [myPlayer, myId, playerList]);
+  }, [myPlayer, myId, playerList, observerPos, observerBoost]);
   const laserIntersections = useMemo(() => {
     if (!myPlayer || !myId) return [];
 
@@ -390,14 +456,17 @@ const SceneContent = ({
           myPlayer.phaseSpace.pos,
         );
         if (!intersection) return null;
-        return { laser, pos: intersection };
+        return {
+          laser,
+          pos: transformEventForDisplay(intersection, observerPos, observerBoost),
+        };
       })
       .filter(
         (
           value,
         ): value is { laser: Laser; pos: Vector4 } => value !== null,
       );
-  }, [lasers, myPlayer, myId]);
+  }, [lasers, myPlayer, myId, observerPos, observerBoost]);
 
   return (
     <>
@@ -406,12 +475,21 @@ const SceneContent = ({
 
       {/* 全プレイヤーの world line を描画 */}
       {playerList.map((player) => (
-        <WorldLineRenderer key={`worldline-${player.id}`} player={player} />
+        <WorldLineRenderer
+          key={`worldline-${player.id}`}
+          player={player}
+          observerPos={observerPos}
+          observerBoost={observerBoost}
+        />
       ))}
 
       {/* 各プレイヤーのマーカー */}
       {playerList.map((player) => {
-        const pos = player.phaseSpace.pos;
+        const pos = transformEventForDisplay(
+          player.phaseSpace.pos,
+          observerPos,
+          observerBoost,
+        );
         const isMe = player.id === myId;
         const color = getThreeColor(player.color);
         const size = isMe ? 0.42 : 0.34;
@@ -454,7 +532,11 @@ const SceneContent = ({
 
       {/* 各プレイヤーの光円錐を描画 */}
       {playerList.map((player) => {
-        const pos = player.phaseSpace.pos;
+        const pos = transformEventForDisplay(
+          player.phaseSpace.pos,
+          observerPos,
+          observerBoost,
+        );
         const isMe = player.id === myId;
         const color = getThreeColor(player.color);
         const coneHeight = 40;
@@ -567,7 +649,7 @@ const SceneContent = ({
       })}
 
       {/* レーザーを描画 */}
-      {lasers.map((laser) => (
+      {displayLasers.map((laser) => (
         <LaserRenderer key={laser.id} laser={laser} />
       ))}
     </>
@@ -580,6 +662,7 @@ const RelativisticGame = () => {
     new Map(),
   );
   const [lasers, setLasers] = useState<Laser[]>([]);
+  const [showInRestFrame, setShowInRestFrame] = useState(true);
   const animationRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(Date.now());
   const keysPressed = useRef<Set<string>>(new Set());
@@ -987,6 +1070,25 @@ const RelativisticGame = () => {
         <div>←/→: カメラ水平回転</div>
         <div>↑/↓: カメラ上下回転</div>
         <div>Space: レーザー発射</div>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            marginTop: "6px",
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={showInRestFrame}
+            onChange={(e) => setShowInRestFrame(e.target.checked)}
+          />
+          <span>自分の静止系で表示</span>
+        </label>
+        <div style={{ opacity: 0.9 }}>
+          表示系: {showInRestFrame ? "自分の静止系（デフォルト）" : "世界系"}
+        </div>
         <div
           style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
         >
@@ -1030,6 +1132,7 @@ const RelativisticGame = () => {
           players={players}
           myId={myId}
           lasers={lasers}
+          showInRestFrame={showInRestFrame}
           cameraYawRef={cameraYawRef}
           cameraPitchRef={cameraPitchRef}
         />
