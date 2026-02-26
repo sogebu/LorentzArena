@@ -183,8 +183,7 @@ const sharedGeometries = {
   intersectionSphere: new THREE.SphereGeometry(0.45, 16, 16),
   intersectionCore: new THREE.SphereGeometry(0.15, 12, 12),
   intersectionRing: new THREE.TorusGeometry(0.7, 0.07, 12, 24),
-  laserIntersectionSphere: new THREE.OctahedronGeometry(0.4, 0),
-  laserIntersectionRing: new THREE.TorusGeometry(0.95, 0.06, 12, 24),
+  laserIntersectionDot: new THREE.SphereGeometry(0.25, 12, 12),
   lightCone: new THREE.ConeGeometry(40, 40, 32, 1, true),
 };
 
@@ -542,32 +541,15 @@ const SceneContent = ({
       {/* 相手レーザーと自分の過去光円錐の交点 */}
       {laserIntersections.map(({ laser, pos }) => {
         const color = getThreeColor(laser.color);
-        const markerMaterial = getMaterial(
-          `laser-intersection-marker-${laser.color}`,
+        const dotMaterial = getMaterial(
+          `laser-intersection-dot-${laser.color}`,
           () =>
             new THREE.MeshStandardMaterial({
               color: color,
               emissive: color,
-              emissiveIntensity: 1.2,
+              emissiveIntensity: 1.1,
               roughness: 0.25,
               metalness: 0.1,
-            }),
-        );
-        const coreMaterial = getMaterial(
-          "laser-intersection-core",
-          () =>
-            new THREE.MeshBasicMaterial({
-              color: new THREE.Color("#ffffff"),
-            }),
-        );
-        const ringMaterial = getMaterial(
-          `laser-intersection-ring-${laser.color}`,
-          () =>
-            new THREE.MeshBasicMaterial({
-              color: color,
-              transparent: true,
-              opacity: 0.95,
-              side: THREE.DoubleSide,
             }),
         );
 
@@ -577,21 +559,8 @@ const SceneContent = ({
             position={[pos.x, pos.y, pos.t]}
           >
             <mesh
-              geometry={sharedGeometries.laserIntersectionSphere}
-              material={markerMaterial}
-            />
-            <mesh
-              geometry={sharedGeometries.intersectionCore}
-              material={coreMaterial}
-            />
-            <mesh
-              geometry={sharedGeometries.laserIntersectionRing}
-              material={ringMaterial}
-            />
-            <mesh
-              rotation={[Math.PI / 2, 0, 0]}
-              geometry={sharedGeometries.laserIntersectionRing}
-              material={ringMaterial}
+              geometry={sharedGeometries.laserIntersectionDot}
+              material={dotMaterial}
             />
           </group>
         );
