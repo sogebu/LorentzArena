@@ -19,7 +19,7 @@ Visualization cues:
 - Player colors are generated deterministically from peer IDs (high-separation palette).
 - Markers are shown for:
   - intersections of **your past light cone** with other players' world lines
-  - intersections of **your past light cone** with other players' laser world-lines
+  - intersections of **your past light cone** with laser world-lines (including your own)
 
 Networking notes:
 - Multiplayer uses PeerJS/WebRTC.
@@ -83,7 +83,7 @@ pnpm dev
 - プレイヤー色は peer ID から決定論的に生成（色分離を強化）。
 - 次の交点にマーカーを表示します:
   - **自分の過去光円錐** と他プレイヤー world line の交点
-  - **自分の過去光円錐** と他プレイヤー laser world-line の交点
+  - **自分の過去光円錐** と laser world-line（自分のレーザー含む）の交点
 
 通信について:
 - PeerJS/WebRTC を使っています。

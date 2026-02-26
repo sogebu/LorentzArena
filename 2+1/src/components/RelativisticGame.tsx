@@ -449,7 +449,6 @@ const SceneContent = ({
     if (!myPlayer || !myId) return [];
 
     return lasers
-      .filter((laser) => laser.playerId !== myId)
       .map((laser) => {
         const intersection = pastLightConeIntersectionLaser(
           laser,
@@ -620,7 +619,7 @@ const SceneContent = ({
         );
       })}
 
-      {/* 相手レーザーと自分の過去光円錐の交点 */}
+      {/* 各レーザーと自分の過去光円錐の交点（自分のレーザーも含む） */}
       {laserIntersections.map(({ laser, pos }) => {
         const color = getThreeColor(laser.color);
         const dotMaterial = getMaterial(
