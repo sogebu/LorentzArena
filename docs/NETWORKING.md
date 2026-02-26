@@ -121,7 +121,49 @@ This fixes signaling reachability, but it does *not* replace TURN.
 
 If you need “it works everywhere” and can accept server bandwidth costs, a WebSocket relay is often the simplest.
 
-This repo currently focuses on WebRTC (P2P). If you add a server-relay mode, you’ll avoid most NAT problems.
+`2+1/` now includes a WS relay mode:
+
+0) one-command local start (recommended):
+
+```bash
+cd 2+1
+pnpm dev:wsrelay
+```
+
+1) install relay deps (first time only)
+
+```bash
+cd 2+1
+pnpm relay:install
+```
+
+2) run relay server manually
+
+```bash
+cd 2+1
+pnpm relay:dev
+```
+
+3) set client env
+
+```bash
+VITE_NETWORK_TRANSPORT=wsrelay
+VITE_WS_RELAY_URL=ws://localhost:8787
+```
+
+4) start app and connect using host/client flow as usual
+
+This avoids most NAT/P2P failures (at the cost of relay server bandwidth).
+
+For university/enterprise networks, prefer public `wss://...:443` relay:
+
+- deploy guide: `2+1/relay-deploy/README.md`
+- client setting:
+
+```bash
+VITE_NETWORK_TRANSPORT=auto
+VITE_WS_RELAY_URL=wss://relay.example.com
+```
 
 ---
 
@@ -129,4 +171,3 @@ This repo currently focuses on WebRTC (P2P). If you add a server-relay mode, you
 
 - If it works on a phone hotspot but not on school Wi‑Fi: it’s almost certainly the network.
 - If you need a classroom demo: deploy a TURN server with TLS/443 and configure clients via `.env.local`.
-

@@ -15,7 +15,48 @@ pnpm dev
 
 Networking notes:
 - Multiplayer uses PeerJS/WebRTC.
-- Some networks (school/enterprise) block P2P. See `../docs/NETWORKING.md`.
+- Some networks (school/enterprise) block P2P. In that case use **WS Relay mode**.
+
+### WS Relay mode (for restrictive networks)
+
+0) One-command local start (recommended):
+
+```bash
+pnpm dev:wsrelay
+```
+
+This starts both relay server and Vite with relay env (`auto` + localhost URL).
+
+1) (First time only) install relay deps:
+
+```bash
+pnpm relay:install
+```
+
+2) Start relay server:
+
+```bash
+pnpm relay:dev
+```
+
+3) Create `.env.local`:
+
+```bash
+VITE_NETWORK_TRANSPORT=wsrelay
+VITE_WS_RELAY_URL=ws://localhost:8787
+```
+
+4) Run app:
+
+```bash
+pnpm dev
+```
+
+`VITE_NETWORK_TRANSPORT=auto` also works. It starts with PeerJS and auto-fallbacks to WS Relay on signaling errors.
+
+For public deployment (`wss://...:443`), see:
+
+- `relay-deploy/README.md`
 
 ## 日本語
 
@@ -30,4 +71,45 @@ pnpm dev
 
 通信について:
 - PeerJS/WebRTC を使っています。
-- 学校・企業 Wi‑Fi だと P2P が塞がれて動かないことがあります。`../docs/NETWORKING.ja.md` を参照してください。
+- 学校・企業 Wi‑Fi だと P2P が塞がれて動かないことがあります。その場合は **WS Relay モード** を使ってください。
+
+### WS Relay モード（厳しいネットワーク向け）
+
+0) まずは1コマンド起動（推奨）:
+
+```bash
+pnpm dev:wsrelay
+```
+
+relay サーバと Vite を relay 用 env（`auto` + localhost URL）で同時起動します。
+
+1) （初回のみ）relay 依存をインストール:
+
+```bash
+pnpm relay:install
+```
+
+2) 中継サーバを起動:
+
+```bash
+pnpm relay:dev
+```
+
+3) `.env.local` を作成:
+
+```bash
+VITE_NETWORK_TRANSPORT=wsrelay
+VITE_WS_RELAY_URL=ws://localhost:8787
+```
+
+4) アプリ起動:
+
+```bash
+pnpm dev
+```
+
+`VITE_NETWORK_TRANSPORT=auto` でも動きます。PeerJS で始めて、シグナリング失敗時は WS Relay へ自動切替します。
+
+公開用（`wss://...:443`）の手順は以下:
+
+- `relay-deploy/README.md`

@@ -13,6 +13,7 @@
 import type { PeerOptions } from "peerjs";
 
 type StringMap = Record<string, string | boolean | undefined>;
+export type NetworkTransportMode = "peerjs" | "wsrelay" | "auto";
 
 const parseBoolean = (value: string | undefined): boolean | undefined => {
   if (value === undefined) return undefined;
@@ -20,6 +21,15 @@ const parseBoolean = (value: string | undefined): boolean | undefined => {
   if (v === "true" || v === "1" || v === "yes") return true;
   if (v === "false" || v === "0" || v === "no") return false;
   return undefined;
+};
+
+const parseTransportMode = (
+  value: string | undefined,
+): NetworkTransportMode => {
+  const v = value?.trim().toLowerCase();
+  if (v === "wsrelay" || v === "ws" || v === "websocket") return "wsrelay";
+  if (v === "auto") return "auto";
+  return "peerjs";
 };
 
 const parseNumber = (value: string | undefined): number | undefined => {
@@ -48,6 +58,8 @@ const parseJson = <T>(value: string | undefined): T | undefined => {
  * - VITE_PEERJS_DEBUG
  * - VITE_WEBRTC_ICE_SERVERS (JSON string; RTCIceServer[])
  * - VITE_WEBRTC_ICE_TRANSPORT_POLICY ("all" | "relay")
+ * - VITE_NETWORK_TRANSPORT ("peerjs" | "wsrelay" | "auto")
+ * - VITE_WS_RELAY_URL
  */
 export const buildPeerOptionsFromEnv = (
   env: StringMap = import.meta.env as unknown as StringMap,
@@ -91,6 +103,32 @@ export const buildPeerOptionsFromEnv = (
 };
 
 /**
+ * Get preferred network transport from env.
+ *
+ * - peerjs: use WebRTC/PeerJS
+ * - wsrelay: force WebSocket relay
+ * - auto: start with PeerJS and fallback to WS relay on signaling errors
+ */
+export const getNetworkTransportModeFromEnv = (
+  env: StringMap = import.meta.env as unknown as StringMap,
+): NetworkTransportMode => {
+  return parseTransportMode(env.VITE_NETWORK_TRANSPORT as string | undefined);
+};
+
+/**
+ * WebSocket relay URL for restrictive networks.
+ * Example: wss://your-relay.example.com
+ */
+export const getWsRelayUrlFromEnv = (
+  env: StringMap = import.meta.env as unknown as StringMap,
+): string | undefined => {
+  const raw = env.VITE_WS_RELAY_URL as string | undefined;
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+/**
  * A small, human-readable snapshot of relevant networking env variables.
  *
  * English: Useful for showing current networking configuration in the UI.
@@ -99,6 +137,7 @@ export const buildPeerOptionsFromEnv = (
 export const getNetworkingEnvSummary = (
   env: StringMap = import.meta.env as unknown as StringMap,
 ) => {
+  const wsRelayUrl = getWsRelayUrlFromEnv(env);
   return {
     peerHost: (env.VITE_PEERJS_HOST as string | undefined) ?? "(default)",
     peerPort: (env.VITE_PEERJS_PORT as string | undefined) ?? "(default)",
@@ -110,5 +149,7 @@ export const getNetworkingEnvSummary = (
     iceTransportPolicy:
       (env.VITE_WEBRTC_ICE_TRANSPORT_POLICY as string | undefined) ??
       "(default)",
+    preferredTransport: getNetworkTransportModeFromEnv(env),
+    wsRelayUrl: wsRelayUrl ?? "(unset)",
   };
 };

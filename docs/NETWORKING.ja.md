@@ -119,7 +119,49 @@ VITE_PEERJS_SECURE=true
 
 「とにかくどこでも動いてほしい」なら、P2P を捨ててサーバ中継にするのが最強です。
 
+`2+1/` には WS Relay モードを追加済みです。
+
+0) 1コマンド起動（推奨）:
+
+```bash
+cd 2+1
+pnpm dev:wsrelay
+```
+
+1) relay 依存をインストール（初回のみ）:
+
+```bash
+cd 2+1
+pnpm relay:install
+```
+
+2) 手動で中継サーバ起動:
+
+```bash
+cd 2+1
+pnpm relay:dev
+```
+
+3) クライアント env 設定:
+
+```bash
+VITE_NETWORK_TRANSPORT=wsrelay
+VITE_WS_RELAY_URL=ws://localhost:8787
+```
+
+4) 通常のホスト/クライアント手順で接続
+
 帯域コストは増えますが、NAT/Firewall 問題の多くが消えます。
+
+大学/企業ネットワークでは `wss://...:443` 公開 relay を推奨:
+
+- デプロイ手順: `2+1/relay-deploy/README.md`
+- クライアント設定:
+
+```bash
+VITE_NETWORK_TRANSPORT=auto
+VITE_WS_RELAY_URL=wss://relay.example.com
+```
 
 ---
 

@@ -45,14 +45,25 @@ pnpm install
 pnpm dev
 ```
 
+2+1 app (relay one-command start):
+
+```bash
+cd 2+1
+pnpm install
+pnpm dev:wsrelay
+```
+
 ### Networking (important)
 
-Networking is **peer-to-peer (WebRTC data channels)** via PeerJS.
+Networking supports:
+
+- **PeerJS/WebRTC (P2P)** via PeerJS
+- **WS Relay mode** (client-server relay; useful on restrictive networks)
 
 That means:
 
-- You need a “signaling server” (PeerServer) to exchange offers/answers.
-- You may need a **TURN relay** on restrictive networks (schools / corporate Wi‑Fi / symmetric NAT / UDP blocked).
+- With PeerJS: you need a signaling server (PeerServer) and possibly TURN on restrictive networks.
+- With WS Relay mode: gameplay messages are relayed through a WebSocket server.
 
 If multiplayer works at home but fails at school, read:
 
@@ -83,7 +94,22 @@ VITE_WEBRTC_ICE_TRANSPORT_POLICY=relay
 
 # PeerJS debug logs: 0 (none) - 3 (verbose)
 VITE_PEERJS_DEBUG=2
+
+# Transport mode: peerjs | wsrelay | auto
+# auto = start on PeerJS and fallback to WS Relay on signaling error
+VITE_NETWORK_TRANSPORT=auto
+
+# WebSocket relay URL (used when wsrelay mode is selected)
+# Example (local):
+# VITE_WS_RELAY_URL=ws://localhost:8787
+# Example (public 443/TLS):
+# VITE_WS_RELAY_URL=wss://relay.example.com
+VITE_WS_RELAY_URL=
 ```
+
+For production relay deployment over `wss://:443`, see:
+
+- `2+1/relay-deploy/README.md`
 
 ### Deploy
 
@@ -140,14 +166,25 @@ pnpm install
 pnpm dev
 ```
 
+2+1（relay を同時起動する1コマンド）:
+
+```bash
+cd 2+1
+pnpm install
+pnpm dev:wsrelay
+```
+
 ### 通信まわり（重要）
 
-通信は **PeerJS を使った P2P（WebRTC データチャネル）**です。
+通信方式は次の2つに対応しています。
+
+- **PeerJS/WebRTC の P2P**
+- **WS Relay モード**（クライアント・サーバ中継、制限ネットワーク向け）
 
 つまり:
 
-- オファー/アンサーを交換するための「シグナリングサーバ（PeerServer）」が必要
-- 学校や社内 Wi‑Fi、対称 NAT、UDP 制限などだと **TURN リレー**が必要になることがある
+- PeerJS 方式では「シグナリングサーバ（PeerServer）」が必要で、環境によっては TURN が必要
+- WS Relay 方式では WebSocket サーバ経由でゲーム通信を中継
 
 家だと動くのに学校だと動かない場合は、まずここを読んでください。
 
@@ -178,7 +215,22 @@ VITE_WEBRTC_ICE_TRANSPORT_POLICY=relay
 
 # PeerJS のデバッグログ: 0（なし）〜 3（詳細）
 VITE_PEERJS_DEBUG=2
+
+# 通信方式: peerjs | wsrelay | auto
+# auto = PeerJS で開始し、シグナリング失敗時に WS Relay へ自動切替
+VITE_NETWORK_TRANSPORT=auto
+
+# WS Relay 用 URL（wsrelay モード時に使用）
+# 例（ローカル）:
+# VITE_WS_RELAY_URL=ws://localhost:8787
+# 例（公開/TLS 443）:
+# VITE_WS_RELAY_URL=wss://relay.example.com
+VITE_WS_RELAY_URL=
 ```
+
+公開 relay を `wss://:443` で立てる場合は以下を参照:
+
+- `2+1/relay-deploy/README.md`
 
 ### デプロイ
 
