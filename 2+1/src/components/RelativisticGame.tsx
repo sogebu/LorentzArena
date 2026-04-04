@@ -100,20 +100,19 @@ const MAX_LASERS = 1000;
 const HIT_RADIUS = 0.5;
 
 /**
- * Check if a laser hits a world line (spatial proximity at simultaneous world-frame time).
+ * Find the hit position where a laser intersects a world line.
+ * Returns the world-frame hit position (on the player's worldline), or null if no hit.
  *
  * Laser trajectory: L(λ) = emissionPos + λ * (dir, 1),  λ ∈ [0, range]
  * World line segment: W(μ) = p1 + μ * (p2 - p1),  μ ∈ [0, 1]
- *
- * Solve L.t = W.t for simultaneous time, then check spatial distance.
  */
-const checkLaserHit = (
+const findLaserHitPosition = (
   laser: Laser,
   worldLine: WorldLine,
   hitRadius: number,
-): boolean => {
+): { t: number; x: number; y: number; z: number } | null => {
   const history = worldLine.history;
-  if (history.length < 2) return false;
+  if (history.length < 2) return null;
 
   const eT = laser.emissionPos.t;
   const eX = laser.emissionPos.x;
@@ -127,44 +126,32 @@ const checkLaserHit = (
     const p1 = history[i - 1].pos;
     const p2 = history[i].pos;
 
-    // World line segment: W(μ) = p1 + μ * (p2 - p1)
     const wdT = p2.t - p1.t;
     const wdX = p2.x - p1.x;
     const wdY = p2.y - p1.y;
 
-    // Laser time: L.t = eT + λ
-    // World line time: W.t = p1.t + μ * wdT
-    // Simultaneous: eT + λ = p1.t + μ * wdT
-
-    // For each world line segment, sweep μ ∈ [0,1]:
-    //   λ(μ) = (p1.t + μ * wdT) - eT
-    //   Spatial distance² at that time:
-    //     dx = (eX + dX * λ) - (p1.x + μ * wdX)
-    //     dy = (eY + dY * λ) - (p1.y + μ * wdY)
-    //     dist² = dx² + dy²
-
-    // Check endpoints μ=0 and μ=1, plus the analytical minimum
-
-    const checkAtMu = (mu: number): boolean => {
-      if (mu < 0 || mu > 1) return false;
+    const checkAtMu = (mu: number): { t: number; x: number; y: number; z: number } | null => {
+      if (mu < 0 || mu > 1) return null;
       const lambda = p1.t + mu * wdT - eT;
-      if (lambda < 0 || lambda > range) return false;
+      if (lambda < 0 || lambda > range) return null;
 
       const dx = eX + dX * lambda - (p1.x + mu * wdX);
       const dy = eY + dY * lambda - (p1.y + mu * wdY);
-      return dx * dx + dy * dy <= r2;
+      if (dx * dx + dy * dy > r2) return null;
+
+      // ヒット位置はプレイヤーのワールドライン上の点
+      return {
+        t: p1.t + mu * wdT,
+        x: p1.x + mu * wdX,
+        y: p1.y + mu * wdY,
+        z: 0,
+      };
     };
 
-    // Check segment endpoints
-    if (checkAtMu(0) || checkAtMu(1)) return true;
-
-    // Analytical minimum: d(dist²)/dμ = 0
-    // dist²(μ) = (eX + dX*(p1.t + μ*wdT - eT) - p1.x - μ*wdX)² + (same for y)²
-    // Let A = eX + dX*(p1.t - eT) - p1.x,  a = dX*wdT - wdX
-    //     B = eY + dY*(p1.t - eT) - p1.y,  b = dY*wdT - wdY
-    // dist²(μ) = (A + a*μ)² + (B + b*μ)²
-    // d/dμ = 2a(A + a*μ) + 2b(B + b*μ) = 0
-    // μ* = -(a*A + b*B) / (a² + b²)
+    const hit0 = checkAtMu(0);
+    if (hit0) return hit0;
+    const hit1 = checkAtMu(1);
+    if (hit1) return hit1;
 
     const lambda0 = p1.t - eT;
     const A = eX + dX * lambda0 - p1.x;
@@ -175,11 +162,12 @@ const checkLaserHit = (
     const denom = a * a + b * b;
     if (denom > 1e-12) {
       const muStar = -(a * A + b * B) / denom;
-      if (checkAtMu(muStar)) return true;
+      const hitStar = checkAtMu(muStar);
+      if (hitStar) return hitStar;
     }
   }
 
-  return false;
+  return null;
 };
 
 // 32bit FNV-1a hash（IDカラー生成用）
@@ -510,7 +498,7 @@ const WorldLineRenderer = ({
 
   const color = getThreeColor(player.color);
   const material = getMaterial(
-    `worldline-${player.id}`,
+    `worldline-${player.id}-${player.color}`,
     () =>
       new THREE.MeshStandardMaterial({
         color: color,
@@ -1139,33 +1127,64 @@ const SceneContent = ({
         />
       ))}
 
-      {/* 永続デブリの過去光円錐交差マーカー */}
+      {/* 永続デブリの世界線 + 過去光円錐交差マーカー */}
       {myPlayer && playerList.flatMap((player) =>
-        player.debrisRecords.flatMap((debris, di) =>
-          debris.particles.map((p, pi) => {
-            // デブリの worldLine は無限に伸びる直線。観測者の過去光円錐との交差を計算
-            const deathEvent = createVector4(debris.deathPos.t, debris.deathPos.x, debris.deathPos.y, 0);
-            // maxLambda は観測者の現在時刻までの時間差（十分大きく）
-            const maxLambda = Math.max(0, myPlayer.phaseSpace.pos.t - debris.deathPos.t);
-            if (maxLambda < 0.01) return null;
+        player.debrisRecords.flatMap((debris, di) => {
+          const deathEvent = createVector4(debris.deathPos.t, debris.deathPos.x, debris.deathPos.y, 0);
+          const maxLambda = Math.max(0, myPlayer.phaseSpace.pos.t - debris.deathPos.t);
+          if (maxLambda < 0.5) return [];
+          const debrisColor = getThreeColor(debris.color);
+
+          return debris.particles.flatMap((p, pi) => {
+            const elements: React.ReactNode[] = [];
+
+            // デブリの世界線チューブ（始点 → 観測者の時刻まで）
+            const startDisplay = transformEventForDisplay(deathEvent, observerPos, observerBoost);
+            const endWorld = createVector4(
+              debris.deathPos.t + maxLambda,
+              debris.deathPos.x + p.dx * maxLambda,
+              debris.deathPos.y + p.dy * maxLambda,
+              0,
+            );
+            const endDisplay = transformEventForDisplay(endWorld, observerPos, observerBoost);
+            elements.push(
+              <line key={`debris-line-${player.id}-${di}-${pi}`}>
+                <bufferGeometry>
+                  <bufferAttribute
+                    attach="attributes-position"
+                    array={new Float32Array([
+                      startDisplay.x, startDisplay.y, startDisplay.t,
+                      endDisplay.x, endDisplay.y, endDisplay.t,
+                    ])}
+                    count={2}
+                    itemSize={3}
+                  />
+                </bufferGeometry>
+                <lineBasicMaterial color={debrisColor} transparent opacity={0.15} />
+              </line>,
+            );
+
+            // 過去光円錐との交差マーカー
             const intersection = pastLightConeIntersectionDebris(
               deathEvent, p.dx, p.dy, maxLambda, myPlayer.phaseSpace.pos,
             );
-            if (!intersection) return null;
-            const displayPos = transformEventForDisplay(intersection, observerPos, observerBoost);
-            const debrisColor = getThreeColor(debris.color);
-            return (
-              <mesh
-                key={`debris-${player.id}-${di}-${pi}`}
-                position={[displayPos.x, displayPos.y, displayPos.t]}
-                scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
-                geometry={sharedGeometries.explosionParticle}
-              >
-                <meshBasicMaterial color={debrisColor} transparent opacity={0.7} />
-              </mesh>
-            );
-          }).filter(Boolean),
-        ),
+            if (intersection) {
+              const displayPos = transformEventForDisplay(intersection, observerPos, observerBoost);
+              elements.push(
+                <mesh
+                  key={`debris-${player.id}-${di}-${pi}`}
+                  position={[displayPos.x, displayPos.y, displayPos.t]}
+                  scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
+                  geometry={sharedGeometries.explosionParticle}
+                >
+                  <meshBasicMaterial color={debrisColor} transparent opacity={0.7} />
+                </mesh>,
+              );
+            }
+
+            return elements;
+          });
+        }),
       )}
 
       {/* スポーンエフェクトを描画 */}
@@ -1742,7 +1761,7 @@ const RelativisticGame = () => {
         const currentPlayers = playersRef.current;
         const currentLasers = lasersRef.current;
         const hitLaserIds: string[] = [];
-        const kills: { victimId: string; killerId: string }[] = [];
+        const kills: { victimId: string; killerId: string; hitPos: { t: number; x: number; y: number; z: number } }[] = [];
 
         // 全プレイヤーの最小 t を取得（レーザー期限切れ判定用）
         let minPlayerT = Number.POSITIVE_INFINITY;
@@ -1767,8 +1786,9 @@ const RelativisticGame = () => {
             if (playerId === laser.playerId) continue; // 自分のレーザーは除外
             if (killedThisFrame.has(playerId)) continue; // 既にこのフレームでキル済み
             if (deadPlayersRef.current.has(playerId)) continue; // リスポーン待ち中
-            if (checkLaserHit(laser, player.worldLine, HIT_RADIUS)) {
-              kills.push({ victimId: playerId, killerId: laser.playerId });
+            const hitPos = findLaserHitPosition(laser, player.worldLine, HIT_RADIUS);
+            if (hitPos) {
+              kills.push({ victimId: playerId, killerId: laser.playerId, hitPos });
               hitLaserIds.push(laser.id);
               killedThisFrame.add(playerId);
               break; // 1レーザーにつき1キルまで
@@ -1799,11 +1819,8 @@ const RelativisticGame = () => {
           }
 
           // キル通知 → 爆発エフェクト → 遅延リスポーン
-          for (const { victimId, killerId } of kills) {
+          for (const { victimId, killerId, hitPos } of kills) {
             const victim = currentPlayers.get(victimId);
-            const deathPos = victim
-              ? { t: victim.phaseSpace.pos.t, x: victim.phaseSpace.pos.x, y: victim.phaseSpace.pos.y, z: 0 }
-              : { t: 0, x: 0, y: 0, z: 0 };
 
             // 死亡プレイヤーとして登録（リスポーンまで当たり判定から除外）
             deadPlayersRef.current.add(victimId);
@@ -1830,11 +1847,10 @@ const RelativisticGame = () => {
               const pastWorldLines = v.worldLine.history.length > 1
                 ? [...v.pastWorldLines, v.worldLine].slice(-MAX_PAST_WORLDLINES)
                 : v.pastWorldLines;
-              const dp = { t: v.phaseSpace.pos.t, x: v.phaseSpace.pos.x, y: v.phaseSpace.pos.y, z: 0 };
               const debrisParticles = generateExplosionParticles();
               const debrisRecords = [
                 ...v.debrisRecords,
-                { deathPos: dp, particles: debrisParticles, color: v.color },
+                { deathPos: hitPos, particles: debrisParticles, color: v.color },
               ].slice(-MAX_PAST_WORLDLINES);
               let worldLine = createWorldLine();
               worldLine = appendWorldLine(worldLine, v.phaseSpace);
@@ -1843,10 +1859,10 @@ const RelativisticGame = () => {
               return next;
             });
 
-            // ローカルで爆発エフェクト追加
+            // ローカルで爆発エフェクト追加（レーザーが当たった時空点から）
             setExplosions((prev) => [
               ...prev,
-              { id: `${victimId}-${Date.now()}`, pos: deathPos, color: victim?.color ?? "white", startTime: Date.now() },
+              { id: `${victimId}-${Date.now()}`, pos: hitPos, color: victim?.color ?? "white", startTime: Date.now() },
             ]);
 
             // 遅延リスポーン
