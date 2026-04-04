@@ -1,6 +1,6 @@
 # Lorentz Arena
 
-**Also available in: [Japanese (日本語)](#japanese)**
+**Also available in: [Japanese](#japanese)**
 
 Lorentz Arena is a small multiplayer arena experiment where **special relativity is a gameplay mechanic**.
 
