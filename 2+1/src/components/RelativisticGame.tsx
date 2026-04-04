@@ -440,6 +440,24 @@ const LaserRenderer = ({ laser }: { laser: DisplayLaser }) => {
   return <mesh geometry={geometry} material={material} />;
 };
 
+// 爆発パーティクルの方向を事前生成（未来光円錐内をランダムに飛散）
+const EXPLOSION_PARTICLE_COUNT = 30;
+const generateExplosionParticles = () => {
+  const particles: { dx: number; dy: number; speed: number; size: number }[] = [];
+  for (let i = 0; i < EXPLOSION_PARTICLE_COUNT; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    // speed < 1 (光速未満) → 未来光円錐の内側を進む
+    const speed = 0.2 + Math.random() * 0.7; // 0.2c ~ 0.9c
+    particles.push({
+      dx: Math.cos(angle) * speed,
+      dy: Math.sin(angle) * speed,
+      speed,
+      size: 0.1 + Math.random() * 0.25,
+    });
+  }
+  return particles;
+};
+
 // 爆発エフェクトコンポーネント
 const ExplosionRenderer = ({
   explosion,
@@ -450,67 +468,48 @@ const ExplosionRenderer = ({
   observerPos: Vector4 | null;
   observerBoost: ReturnType<typeof lorentzBoost> | null;
 }) => {
+  // パーティクル方向をメモ化（爆発ごとに固定）
+  const particles = useMemo(() => generateExplosionParticles(), []);
+
   const elapsed = Date.now() - explosion.startTime;
   const progress = Math.min(elapsed / EXPLOSION_DURATION, 1);
-  // 膨張して消えるパーティクル
-  const scale = 1 + progress * 5;
-  const opacity = 1 - progress;
+  const opacity = 1 - progress * progress; // 二乗で急速にフェード
 
-  const worldPos = createVector4(
-    explosion.pos.t,
-    explosion.pos.x,
-    explosion.pos.y,
-    explosion.pos.z,
-  );
-  const displayPos = transformEventForDisplay(worldPos, observerPos, observerBoost);
   const color = useMemo(() => getThreeColor(explosion.color), [explosion.color]);
 
   if (opacity <= 0) return null;
 
+  // 経過した世界系時間（c=1 単位で、時空図上の距離に対応）
+  const dt = progress * 8; // 最大8単位先の未来まで飛散
+
   return (
-    <group position={[displayPos.x, displayPos.y, displayPos.t]}>
-      {/* 外側の光球 */}
-      <mesh scale={[scale * 2, scale * 2, scale * 2]}>
-        <sphereGeometry args={[0.5, 16, 16]} />
-        <meshBasicMaterial
-          color={color}
-          transparent
-          opacity={opacity * 0.3}
-        />
-      </mesh>
-      {/* 内側のコア */}
-      <mesh scale={[scale, scale, scale]}>
-        <sphereGeometry args={[0.5, 16, 16]} />
-        <meshBasicMaterial
-          color="white"
-          transparent
-          opacity={opacity * 0.8}
-        />
-      </mesh>
-      {/* スパイク（放射状の光線） */}
-      {[0, 1, 2, 3, 4, 5].map((i) => {
-        const angle = (i / 6) * Math.PI * 2;
-        const spikeLen = scale * 3;
+    <>
+      {particles.map((p, i) => {
+        // 各パーティクルの世界系時空位置: 死亡イベント + (dt, dx*dt, dy*dt, 0)
+        // speed < 1 なので未来光円錐の内側（時間的領域）を進む
+        const worldPos = createVector4(
+          explosion.pos.t + dt,
+          explosion.pos.x + p.dx * dt,
+          explosion.pos.y + p.dy * dt,
+          0,
+        );
+        const displayPos = transformEventForDisplay(worldPos, observerPos, observerBoost);
+
         return (
           <mesh
             key={i}
-            position={[
-              Math.cos(angle) * spikeLen * 0.5,
-              Math.sin(angle) * spikeLen * 0.5,
-              0,
-            ]}
-            rotation={[0, 0, angle]}
+            position={[displayPos.x, displayPos.y, displayPos.t]}
           >
-            <boxGeometry args={[spikeLen, 0.08, 0.08]} />
+            <sphereGeometry args={[p.size, 6, 6]} />
             <meshBasicMaterial
-              color={color}
+              color={i % 5 === 0 ? "white" : color}
               transparent
-              opacity={opacity * 0.6}
+              opacity={opacity * (0.5 + p.size)}
             />
           </mesh>
         );
       })}
-    </group>
+    </>
   );
 };
 
@@ -852,7 +851,7 @@ const RelativisticGame = () => {
   const [explosions, setExplosions] = useState<Explosion[]>([]);
   const scoresRef = useRef<Record<string, number>>({});
   const [showInRestFrame, setShowInRestFrame] = useState(true);
-  const [useOrthographic, setUseOrthographic] = useState(false);
+  const [useOrthographic, setUseOrthographic] = useState(true);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTimeRef = useRef<number>(Date.now());
   const keysPressed = useRef<Set<string>>(new Set());
