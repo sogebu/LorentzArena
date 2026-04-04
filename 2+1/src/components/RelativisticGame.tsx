@@ -72,6 +72,9 @@ const EXPLOSION_DURATION = 1000;
 // リスポーン遅延（ミリ秒）
 const RESPAWN_DELAY = 1000;
 
+// 過去の世界線の保持上限
+const MAX_PAST_WORLDLINES = 5;
+
 // レーザーの最大数（メモリ管理）
 const MAX_LASERS = 1000;
 
@@ -307,6 +310,7 @@ const sharedGeometries = {
   intersectionRing: new THREE.TorusGeometry(0.7, 0.07, 12, 24),
   laserIntersectionDot: new THREE.SphereGeometry(0.25, 12, 12),
   lightCone: new THREE.ConeGeometry(40, 40, 32, 1, true),
+  explosionParticle: new THREE.SphereGeometry(1, 6, 6), // スケールで size 調整
 };
 
 // Material キャッシュ（プレイヤーID + タイプごと）
@@ -500,8 +504,9 @@ const ExplosionRenderer = ({
           <mesh
             key={i}
             position={[displayPos.x, displayPos.y, displayPos.t]}
+            scale={[p.size, p.size, p.size]}
+            geometry={sharedGeometries.explosionParticle}
           >
-            <sphereGeometry args={[p.size, 6, 6]} />
             <meshBasicMaterial
               color={i % 5 === 0 ? "white" : color}
               transparent
@@ -873,6 +878,7 @@ const RelativisticGame = () => {
   const lasersRef = useRef<Laser[]>([]); // ゲームループ用（当たり判定）
   const timeSyncedRef = useRef<boolean>(false); // syncTime 受信済みフラグ（クライアント用）
   const processedLasersRef = useRef<Set<string>>(new Set()); // 判定済みレーザーID
+  const deadUntilRef = useRef<number>(0); // 死亡中は Date.now() < deadUntil
   const [_screenSize, setScreenSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -1053,7 +1059,7 @@ const RelativisticGame = () => {
           let worldLine = createWorldLine();
           worldLine = appendWorldLine(worldLine, respawnPhaseSpace);
           const pastWorldLines = player.worldLine.history.length > 1
-            ? [...player.pastWorldLines, player.worldLine]
+            ? [...player.pastWorldLines, player.worldLine].slice(-MAX_PAST_WORLDLINES)
             : player.pastWorldLines;
           const next = new Map(prev);
           next.set(msg.playerId, { ...player, phaseSpace: respawnPhaseSpace, worldLine, pastWorldLines });
@@ -1063,10 +1069,11 @@ const RelativisticGame = () => {
         scoresRef.current = msg.scores;
         setScores(msg.scores);
       } else if (msg.type === "kill") {
-        // 自分が死んだら画面フラッシュ
+        // 自分が死んだら画面フラッシュ + 物理停止
         if (msg.victimId === myId) {
           setDeathFlash(true);
           setTimeout(() => setDeathFlash(false), 600);
+          deadUntilRef.current = Date.now() + RESPAWN_DELAY;
         }
         // 自分がキラーならキル通知
         if (msg.killerId === myId && msg.victimId !== myId) {
@@ -1201,9 +1208,13 @@ const RelativisticGame = () => {
         );
       }
 
+      // 死亡中は物理更新・レーザー発射・ネットワーク送信をスキップ
+      const isDead = currentTime < deadUntilRef.current;
+
       // レーザー発射（スペースキー）
       const laserCooldown = 100; // ミリ秒
       if (
+        !isDead &&
         keysPressed.current.has(" ") &&
         currentTime - lastLaserTimeRef.current > laserCooldown
       ) {
@@ -1261,7 +1272,9 @@ const RelativisticGame = () => {
         }
       }
 
-      setPlayers((prev) => {
+      if (isDead) {
+        // 死亡中: 当たり判定のみ実行（物理更新・送信はスキップ）
+      } else setPlayers((prev) => {
         const myPlayer = prev.get(myId);
         if (!myPlayer) return prev;
         // 他の誰かの未来光円錐を未来側に超えてしまうと因果律の守護者に時間停止を喰らう
@@ -1354,6 +1367,7 @@ const RelativisticGame = () => {
           }
         }
 
+        const killedThisFrame = new Set<string>(); // 同フレーム二重キル防止
         for (const laser of currentLasers) {
           if (processedLasersRef.current.has(laser.id)) continue;
 
@@ -1366,9 +1380,11 @@ const RelativisticGame = () => {
 
           for (const [playerId, player] of currentPlayers) {
             if (playerId === laser.playerId) continue; // 自分のレーザーは除外
+            if (killedThisFrame.has(playerId)) continue; // 既にこのフレームでキル済み
             if (checkLaserHit(laser, player.worldLine, HIT_RADIUS)) {
               kills.push({ victimId: playerId, killerId: laser.playerId });
               hitLaserIds.push(laser.id);
+              killedThisFrame.add(playerId);
               break; // 1レーザーにつき1キルまで
             }
           }
@@ -1406,10 +1422,11 @@ const RelativisticGame = () => {
             // kill 通知をブロードキャスト
             peerManager.send({ type: "kill" as const, victimId, killerId });
 
-            // 自分が死んだら画面フラッシュ
+            // 自分が死んだら画面フラッシュ + 物理停止
             if (victimId === myId) {
               setDeathFlash(true);
               setTimeout(() => setDeathFlash(false), 600);
+              deadUntilRef.current = Date.now() + RESPAWN_DELAY;
             }
             // 自分がキラーならキル通知
             if (killerId === myId && victimId !== myId) {
@@ -1447,7 +1464,7 @@ const RelativisticGame = () => {
                 let worldLine = createWorldLine();
                 worldLine = appendWorldLine(worldLine, respawnPhaseSpace);
                 const pastWorldLines = v.worldLine.history.length > 1
-                  ? [...v.pastWorldLines, v.worldLine]
+                  ? [...v.pastWorldLines, v.worldLine].slice(-MAX_PAST_WORLDLINES)
                   : v.pastWorldLines;
                 const next = new Map(prev);
                 next.set(victimId, { ...v, phaseSpace: respawnPhaseSpace, worldLine, pastWorldLines });
