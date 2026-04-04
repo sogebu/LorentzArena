@@ -781,8 +781,8 @@ const RelativisticGame = () => {
       const initialPhaseSpace = createPhaseSpace(
         createVector4(
           Date.now() / 1000 - OFFSET,
-          Math.random() * 10,
-          Math.random() * 10,
+          Math.random() * 100,
+          Math.random() * 100,
           0.0,
         ),
         vector3Zero(),
@@ -1252,8 +1252,8 @@ const RelativisticGame = () => {
           for (const { victimId, killerId } of kills) {
             const respawnPos = {
               t: hostT,
-              x: Math.random() * 10,
-              y: Math.random() * 10,
+              x: Math.random() * 100,
+              y: Math.random() * 100,
               z: 0,
             };
 
@@ -1342,7 +1342,7 @@ const RelativisticGame = () => {
         >
           FPS: {fps}
         </div>
-        <div style={{ marginTop: "2px", fontSize: "10px", opacity: 0.5 }}>
+        <div style={{ marginTop: "2px", fontSize: "13px", opacity: 0.6 }}>
           build: {__BUILD_TIME__}
         </div>
         {Object.keys(scores).length > 0 && (
