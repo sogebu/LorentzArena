@@ -1393,7 +1393,7 @@ const RelativisticGame = () => {
           return updated;
         });
       } else if (msg.type === "respawn") {
-        // リスポーン: 現在の worldLine を退避し、新しい worldLine で再開
+        // リスポーン: 新しい位置で worldLine を開始（退避は kill 時に済み）
         setPlayers((prev) => {
           const player = prev.get(msg.playerId);
           if (!player) return prev;
@@ -1403,18 +1403,8 @@ const RelativisticGame = () => {
           );
           let worldLine = createWorldLine();
           worldLine = appendWorldLine(worldLine, respawnPhaseSpace);
-          const pastWorldLines = player.worldLine.history.length > 1
-            ? [...player.pastWorldLines, player.worldLine].slice(-MAX_PAST_WORLDLINES)
-            : player.pastWorldLines;
-          // 死亡時のデブリを永続記録
-          const deathPos = { t: player.phaseSpace.pos.t, x: player.phaseSpace.pos.x, y: player.phaseSpace.pos.y, z: 0 };
-          const debrisParticles = generateExplosionParticles();
-          const debrisRecords = [
-            ...player.debrisRecords,
-            { deathPos, particles: debrisParticles, color: player.color },
-          ].slice(-MAX_PAST_WORLDLINES);
           const next = new Map(prev);
-          next.set(msg.playerId, { ...player, phaseSpace: respawnPhaseSpace, worldLine, pastWorldLines, debrisRecords });
+          next.set(msg.playerId, { ...player, phaseSpace: respawnPhaseSpace, worldLine });
           return next;
         });
         // スポーンエフェクト
@@ -1444,6 +1434,25 @@ const RelativisticGame = () => {
           setKillNotification({ victimName: msg.victimId.slice(0, 6), color: v?.color ?? "white" });
           setTimeout(() => setKillNotification(null), 1500);
         }
+        // kill 時点で worldLine を退避 + デブリ記録（respawn を待たない）
+        setPlayers((prev) => {
+          const victim = prev.get(msg.victimId);
+          if (!victim) return prev;
+          const pastWorldLines = victim.worldLine.history.length > 1
+            ? [...victim.pastWorldLines, victim.worldLine].slice(-MAX_PAST_WORLDLINES)
+            : victim.pastWorldLines;
+          const deathPos = { t: victim.phaseSpace.pos.t, x: victim.phaseSpace.pos.x, y: victim.phaseSpace.pos.y, z: 0 };
+          const debrisParticles = generateExplosionParticles();
+          const debrisRecords = [
+            ...victim.debrisRecords,
+            { deathPos, particles: debrisParticles, color: victim.color },
+          ].slice(-MAX_PAST_WORLDLINES);
+          let worldLine = createWorldLine();
+          worldLine = appendWorldLine(worldLine, victim.phaseSpace);
+          const next = new Map(prev);
+          next.set(msg.victimId, { ...victim, worldLine, pastWorldLines, debrisRecords });
+          return next;
+        });
         // 爆発エフェクトを追加
         const victim = playersRef.current.get(msg.victimId);
         if (victim) {
@@ -1814,6 +1823,26 @@ const RelativisticGame = () => {
               setTimeout(() => setKillNotification(null), 1500);
             }
 
+            // ローカルで worldLine 退避 + デブリ記録（kill 時点で即座に）
+            setPlayers((prev) => {
+              const v = prev.get(victimId);
+              if (!v) return prev;
+              const pastWorldLines = v.worldLine.history.length > 1
+                ? [...v.pastWorldLines, v.worldLine].slice(-MAX_PAST_WORLDLINES)
+                : v.pastWorldLines;
+              const dp = { t: v.phaseSpace.pos.t, x: v.phaseSpace.pos.x, y: v.phaseSpace.pos.y, z: 0 };
+              const debrisParticles = generateExplosionParticles();
+              const debrisRecords = [
+                ...v.debrisRecords,
+                { deathPos: dp, particles: debrisParticles, color: v.color },
+              ].slice(-MAX_PAST_WORLDLINES);
+              let worldLine = createWorldLine();
+              worldLine = appendWorldLine(worldLine, v.phaseSpace);
+              const next = new Map(prev);
+              next.set(victimId, { ...v, worldLine, pastWorldLines, debrisRecords });
+              return next;
+            });
+
             // ローカルで爆発エフェクト追加
             setExplosions((prev) => [
               ...prev,
@@ -1834,7 +1863,7 @@ const RelativisticGame = () => {
               deadPlayersRef.current.delete(victimId);
               peerManager.send({ type: "respawn" as const, playerId: victimId, position: respawnPos });
 
-              // ローカルでもリスポーン適用（worldLine を退避して切断）
+              // ローカルでもリスポーン適用（退避は kill 時に済み）
               setPlayers((prev) => {
                 const v = prev.get(victimId);
                 if (!v) return prev;
@@ -1844,17 +1873,8 @@ const RelativisticGame = () => {
                 );
                 let worldLine = createWorldLine();
                 worldLine = appendWorldLine(worldLine, respawnPhaseSpace);
-                const pastWorldLines = v.worldLine.history.length > 1
-                  ? [...v.pastWorldLines, v.worldLine].slice(-MAX_PAST_WORLDLINES)
-                  : v.pastWorldLines;
-                const deathPos = { t: v.phaseSpace.pos.t, x: v.phaseSpace.pos.x, y: v.phaseSpace.pos.y, z: 0 };
-                const debrisParticles = generateExplosionParticles();
-                const debrisRecords = [
-                  ...v.debrisRecords,
-                  { deathPos, particles: debrisParticles, color: v.color },
-                ].slice(-MAX_PAST_WORLDLINES);
                 const next = new Map(prev);
-                next.set(victimId, { ...v, phaseSpace: respawnPhaseSpace, worldLine, pastWorldLines, debrisRecords });
+                next.set(victimId, { ...v, phaseSpace: respawnPhaseSpace, worldLine });
                 return next;
               });
 
