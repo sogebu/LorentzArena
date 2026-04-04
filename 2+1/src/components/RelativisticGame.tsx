@@ -76,8 +76,8 @@ const SPAWN_EFFECT_DURATION = 1500;
 // レーザーの射程
 const LASER_RANGE = 20;
 
-// 爆発エフェクトの持続時間（ミリ秒）
-const EXPLOSION_DURATION = 1000;
+// 爆発エフェクトの持続時間（ミリ秒）— 過去光円錐に届くまで十分長く
+const EXPLOSION_DURATION = 5000;
 
 // リスポーン遅延（ミリ秒）
 const RESPAWN_DELAY = 1000;
@@ -654,7 +654,7 @@ const ExplosionRenderer = ({
   if (opacity <= 0) return null;
 
   // 経過した世界系時間（c=1 単位で、時空図上の距離に対応）
-  const dt = progress * 8; // 最大8単位先の未来まで飛散
+  const dt = progress * 20; // 最大20単位先の未来まで飛散
 
   const deathEvent = createVector4(
     explosion.pos.t,
