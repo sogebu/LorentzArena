@@ -1129,7 +1129,7 @@ const RelativisticGame = () => {
 
         // 加速度を計算（W/Sキー入力に基づく、カメラの向きに沿った方向）
         let forwardAccel = 0;
-        const accel = 4 / 10; // 加速度 (c/s)
+        const accel = 8 / 10; // 加速度 (c/s)
 
         if (keysPressed.current.has("w")) forwardAccel += accel;
         if (keysPressed.current.has("s")) forwardAccel -= accel;
