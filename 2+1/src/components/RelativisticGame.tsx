@@ -55,8 +55,21 @@ type Laser = {
   readonly color: string;
 };
 
+type Explosion = {
+  readonly id: string;
+  readonly pos: { t: number; x: number; y: number; z: number };
+  readonly color: string;
+  readonly startTime: number; // Date.now()
+};
+
 // レーザーの射程
 const LASER_RANGE = 20;
+
+// 爆発エフェクトの持続時間（ミリ秒）
+const EXPLOSION_DURATION = 1000;
+
+// リスポーン遅延（ミリ秒）
+const RESPAWN_DELAY = 1000;
 
 // レーザーの最大数（メモリ管理）
 const MAX_LASERS = 1000;
@@ -427,12 +440,88 @@ const LaserRenderer = ({ laser }: { laser: DisplayLaser }) => {
   return <mesh geometry={geometry} material={material} />;
 };
 
+// 爆発エフェクトコンポーネント
+const ExplosionRenderer = ({
+  explosion,
+  observerPos,
+  observerBoost,
+}: {
+  explosion: Explosion;
+  observerPos: Vector4 | null;
+  observerBoost: ReturnType<typeof lorentzBoost> | null;
+}) => {
+  const elapsed = Date.now() - explosion.startTime;
+  const progress = Math.min(elapsed / EXPLOSION_DURATION, 1);
+  // 膨張して消えるパーティクル
+  const scale = 1 + progress * 5;
+  const opacity = 1 - progress;
+
+  const worldPos = createVector4(
+    explosion.pos.t,
+    explosion.pos.x,
+    explosion.pos.y,
+    explosion.pos.z,
+  );
+  const displayPos = transformEventForDisplay(worldPos, observerPos, observerBoost);
+  const color = useMemo(() => getThreeColor(explosion.color), [explosion.color]);
+
+  if (opacity <= 0) return null;
+
+  return (
+    <group position={[displayPos.x, displayPos.y, displayPos.t]}>
+      {/* 外側の光球 */}
+      <mesh scale={[scale * 2, scale * 2, scale * 2]}>
+        <sphereGeometry args={[0.5, 16, 16]} />
+        <meshBasicMaterial
+          color={color}
+          transparent
+          opacity={opacity * 0.3}
+        />
+      </mesh>
+      {/* 内側のコア */}
+      <mesh scale={[scale, scale, scale]}>
+        <sphereGeometry args={[0.5, 16, 16]} />
+        <meshBasicMaterial
+          color="white"
+          transparent
+          opacity={opacity * 0.8}
+        />
+      </mesh>
+      {/* スパイク（放射状の光線） */}
+      {[0, 1, 2, 3, 4, 5].map((i) => {
+        const angle = (i / 6) * Math.PI * 2;
+        const spikeLen = scale * 3;
+        return (
+          <mesh
+            key={i}
+            position={[
+              Math.cos(angle) * spikeLen * 0.5,
+              Math.sin(angle) * spikeLen * 0.5,
+              0,
+            ]}
+            rotation={[0, 0, angle]}
+          >
+            <boxGeometry args={[spikeLen, 0.08, 0.08]} />
+            <meshBasicMaterial
+              color={color}
+              transparent
+              opacity={opacity * 0.6}
+            />
+          </mesh>
+        );
+      })}
+    </group>
+  );
+};
+
 // 3Dシーンコンテンツコンポーネント
 type SceneContentProps = {
   players: Map<string, RelativisticPlayer>;
   myId: string | null;
   lasers: Laser[];
+  explosions: Explosion[];
   showInRestFrame: boolean;
+  useOrthographic: boolean;
   cameraYawRef: React.RefObject<number>; // カメラのxy平面内での向き（ラジアン）
   cameraPitchRef: React.RefObject<number>; // カメラの仰角（ラジアン、0=水平、正=上から見下ろす）
 };
@@ -441,7 +530,9 @@ const SceneContent = ({
   players,
   myId,
   lasers,
+  explosions,
   showInRestFrame,
+  useOrthographic,
   cameraYawRef,
   cameraPitchRef,
 }: SceneContentProps) => {
@@ -488,7 +579,7 @@ const SceneContent = ({
     const targetY = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.y;
     const targetT = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.t;
     // カメラの距離（プレイヤーからの距離、固定）
-    const cameraDistance = 15;
+    const cameraDistance = useOrthographic ? 100 : 15;
     // カメラ位置: プレイヤーを中心とした球面上
     const cameraYaw = cameraYawRef.current;
     const cameraPitch = cameraPitchRef.current;
@@ -737,6 +828,16 @@ const SceneContent = ({
       {displayLasers.map((laser) => (
         <LaserRenderer key={laser.id} laser={laser} />
       ))}
+
+      {/* 爆発エフェクトを描画 */}
+      {explosions.map((explosion) => (
+        <ExplosionRenderer
+          key={explosion.id}
+          explosion={explosion}
+          observerPos={observerPos}
+          observerBoost={observerBoost}
+        />
+      ))}
     </>
   );
 };
@@ -748,9 +849,11 @@ const RelativisticGame = () => {
   );
   const [lasers, setLasers] = useState<Laser[]>([]);
   const [scores, setScores] = useState<Record<string, number>>({});
+  const [explosions, setExplosions] = useState<Explosion[]>([]);
   const scoresRef = useRef<Record<string, number>>({});
   const [showInRestFrame, setShowInRestFrame] = useState(true);
-  const animationRef = useRef<number>(0);
+  const [useOrthographic, setUseOrthographic] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTimeRef = useRef<number>(Date.now());
   const keysPressed = useRef<Set<string>>(new Set());
   const lastLaserTimeRef = useRef<number>(0); // レーザー発射クールダウン用
@@ -942,8 +1045,21 @@ const RelativisticGame = () => {
       } else if (msg.type === "score") {
         scoresRef.current = msg.scores;
         setScores(msg.scores);
+      } else if (msg.type === "kill") {
+        // 爆発エフェクトを追加
+        const victim = playersRef.current.get(msg.victimId);
+        if (victim) {
+          setExplosions((prev) => [
+            ...prev,
+            {
+              id: `${msg.victimId}-${Date.now()}`,
+              pos: { t: victim.phaseSpace.pos.t, x: victim.phaseSpace.pos.x, y: victim.phaseSpace.pos.y, z: 0 },
+              color: victim.color,
+              startTime: Date.now(),
+            },
+          ]);
+        }
       }
-      // "kill" は現時点ではログのみ（将来エフェクト追加可）
     });
 
     return () => {
@@ -1008,8 +1124,15 @@ const RelativisticGame = () => {
 
     const gameLoop = () => {
       const currentTime = Date.now();
-      const dTau = (currentTime - lastTimeRef.current) / 1000; // フレーム差分=固有時の増加量
+      const rawDTau = (currentTime - lastTimeRef.current) / 1000;
+      const dTau = Math.min(rawDTau, 0.1); // 上限100ms（タブ復帰時の巨大ジャンプ防止）
       lastTimeRef.current = currentTime;
+
+      // 期限切れの爆発エフェクトを削除
+      setExplosions((prev) => {
+        const alive = prev.filter((e) => currentTime - e.startTime < EXPLOSION_DURATION);
+        return alive.length === prev.length ? prev : alive;
+      });
 
       // FPS計算
       const now = performance.now();
@@ -1245,49 +1368,64 @@ const RelativisticGame = () => {
             processedLasersRef.current.add(id);
           }
 
-          // キル・リスポーン・スコアをブロードキャスト & ローカル適用
-          const hostPlayer = currentPlayers.get(myId);
-          const hostT = hostPlayer?.phaseSpace.pos.t ?? 0;
-
+          // キル通知 → 爆発エフェクト → 遅延リスポーン
           for (const { victimId, killerId } of kills) {
-            const respawnPos = {
-              t: hostT,
-              x: Math.random() * 100,
-              y: Math.random() * 100,
-              z: 0,
-            };
+            const victim = currentPlayers.get(victimId);
+            const deathPos = victim
+              ? { t: victim.phaseSpace.pos.t, x: victim.phaseSpace.pos.x, y: victim.phaseSpace.pos.y, z: 0 }
+              : { t: 0, x: 0, y: 0, z: 0 };
 
+            // kill 通知をブロードキャスト（爆発位置つき）
             peerManager.send({ type: "kill" as const, victimId, killerId });
-            peerManager.send({ type: "respawn" as const, playerId: victimId, position: respawnPos });
 
-            // ローカルでもリスポーン適用
-            setPlayers((prev) => {
-              const victim = prev.get(victimId);
-              if (!victim) return prev;
-              const respawnPhaseSpace = createPhaseSpace(
-                createVector4(respawnPos.t, respawnPos.x, respawnPos.y, respawnPos.z),
-                vector3Zero(),
-              );
-              let worldLine = createWorldLine();
-              worldLine = appendWorldLine(worldLine, respawnPhaseSpace);
-              const next = new Map(prev);
-              next.set(victimId, { ...victim, phaseSpace: respawnPhaseSpace, worldLine });
-              return next;
-            });
+            // ローカルで爆発エフェクト追加
+            setExplosions((prev) => [
+              ...prev,
+              { id: `${victimId}-${Date.now()}`, pos: deathPos, color: victim?.color ?? "white", startTime: Date.now() },
+            ]);
+
+            // 遅延リスポーン
+            setTimeout(() => {
+              const hostPlayer = playersRef.current.get(myId);
+              const hostT = hostPlayer?.phaseSpace.pos.t ?? 0;
+              const respawnPos = {
+                t: hostT,
+                x: Math.random() * 100,
+                y: Math.random() * 100,
+                z: 0,
+              };
+
+              peerManager.send({ type: "respawn" as const, playerId: victimId, position: respawnPos });
+
+              // ローカルでもリスポーン適用
+              setPlayers((prev) => {
+                const v = prev.get(victimId);
+                if (!v) return prev;
+                const respawnPhaseSpace = createPhaseSpace(
+                  createVector4(respawnPos.t, respawnPos.x, respawnPos.y, respawnPos.z),
+                  vector3Zero(),
+                );
+                let worldLine = createWorldLine();
+                worldLine = appendWorldLine(worldLine, respawnPhaseSpace);
+                const next = new Map(prev);
+                next.set(victimId, { ...v, phaseSpace: respawnPhaseSpace, worldLine });
+                return next;
+              });
+            }, RESPAWN_DELAY);
           }
 
           peerManager.send({ type: "score" as const, scores: newScores });
         }
       }
 
-      animationRef.current = requestAnimationFrame(gameLoop);
     };
 
-    animationRef.current = requestAnimationFrame(gameLoop);
+    // setInterval を使用（requestAnimationFrame はタブ非アクティブ時に停止するため）
+    intervalRef.current = setInterval(gameLoop, 16); // ~60fps
 
     return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
       }
     };
   }, [peerManager, myId]);
@@ -1337,6 +1475,21 @@ const RelativisticGame = () => {
         <div style={{ opacity: 0.9 }}>
           表示系: {showInRestFrame ? "自分の静止系（デフォルト）" : "世界系"}
         </div>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={useOrthographic}
+            onChange={(e) => setUseOrthographic(e.target.checked)}
+          />
+          <span>正射影カメラ</span>
+        </label>
         <div
           style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
         >
@@ -1390,16 +1543,33 @@ const RelativisticGame = () => {
         );
       })()}
 
-      <Canvas camera={{ position: [0, 0, 0], fov: 75 }}>
-        <SceneContent
-          players={players}
-          myId={myId}
-          lasers={lasers}
-          showInRestFrame={showInRestFrame}
-          cameraYawRef={cameraYawRef}
-          cameraPitchRef={cameraPitchRef}
-        />
-      </Canvas>
+      {useOrthographic ? (
+        <Canvas key="ortho" orthographic camera={{ zoom: 30, position: [0, 0, 100], near: -10000, far: 10000 }}>
+          <SceneContent
+            players={players}
+            myId={myId}
+            lasers={lasers}
+            explosions={explosions}
+            showInRestFrame={showInRestFrame}
+            useOrthographic={true}
+            cameraYawRef={cameraYawRef}
+            cameraPitchRef={cameraPitchRef}
+          />
+        </Canvas>
+      ) : (
+        <Canvas key="persp" camera={{ position: [0, 0, 0], fov: 75 }}>
+          <SceneContent
+            players={players}
+            myId={myId}
+            lasers={lasers}
+            explosions={explosions}
+            showInRestFrame={showInRestFrame}
+            useOrthographic={false}
+            cameraYawRef={cameraYawRef}
+            cameraPitchRef={cameraPitchRef}
+          />
+        </Canvas>
+      )}
     </div>
   );
 };
