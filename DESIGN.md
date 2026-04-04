@@ -147,9 +147,35 @@
 
 ### デブリ maxLambda: observer 非依存化
 
-- **What**: デブリの過去光円錐交差計算で使う `maxLambda` を `observer.pos.t - death.t`（observer 依存）から固定値 `200` に変更
+- **What**: デブリの過去光円錮交差計算で使う `maxLambda` を `observer.pos.t - death.t`（observer 依存）から固定値 `5` に変更
 - **Why**: デブリ世界線は世界オブジェクトであり、死亡イベントから無限の未来に伸びる直線。過去光円錐との交差は純粋に幾何学的に決まる。`observer.t > intersection.t` の条件が既にカバーしているため、observer の時刻で世界線を切り詰める必要はない。observer 依存だとゴースト中に phaseSpace が止まるとマーカーも止まるバグを生んでいた
 - **教訓**: 世界オブジェクトの計算に observer 固有の値を混入させない。過去光円錐交差の条件は幾何学に任せる
+
+### リスポーン座標時刻: 全プレイヤー最大値
+
+- **What**: リスポーン位置の座標時刻 t を、ホストの時刻ではなく全プレイヤーの `phaseSpace.pos.t` の最大値に設定
+- **Why**: ホストの座標時刻でリスポーンすると、高速で飛んでいた他プレイヤーがリスポーン地点より未来にいる場合、リスポーン直後のプレイヤーが因果律の守護者に引っかかって操作不能になる。全プレイヤーの最大時刻なら、リスポーン後すぐに操作でき、因果律違反も起きない
+- **Tradeoff**: リスポーン地点の座標時刻が「世界系でのゲーム経過時間」より未来にジャンプしうるが、全プレイヤーの相対関係としては整合的
+
+### キル通知の因果律遅延
+
+- **What**: キル通知（KILL テキスト、death flash）を即時表示から、キルイベントの時空点が観測者の過去光円錐に入った時点での表示に変更
+- **Why**: 相対論的に、事象は光が届くまで観測できない。デブリや凍結世界線のマーカーは既に過去光円錐交差で可視性を制御していたが、UI 通知だけ即時だったのは一貫性に欠ける
+- **実装**: `pendingKillEventsRef` に kill イベントを蓄積し、ゲームループ毎に `lorentzDot(hitPos - myPos) <= 0 && myPos.t > hitPos.t` で過去光円錐到達を判定。到達時に death flash / kill notification を発火
+- **自分が死んだ場合**: 自分はキルイベントの時空点にいるので lorentzDot = 0 → 即座に条件成立、事実上即時
+- **Tradeoff**: 遠距離キルほど通知が遅延する。ゲームプレイ上は「光速の遅れ」として自然
+
+### 時間積分: Semi-implicit Euler
+
+- **What**: `evolvePhaseSpace` で位置更新に加速 **後** の新しい速度 `newU` を使用（semi-implicit / symplectic Euler）
+- **Why**: 標準の explicit Euler（旧速度で位置更新）よりエネルギー保存性が良く、相対論的運動での数値安定性が高い。特に摩擦を含む系で振動を抑制する
+- **Tradeoff**: なし（同じ計算コストで精度向上）
+
+### ゴースト 4-velocity: Vector3 → Vector4 変換
+
+- **What**: DeathEvent の `u` フィールドに `phaseSpace.u`（Vector3）を直接保存していたのを `getVelocity4(phaseSpace.u)` で Vector4 に変換して保存
+- **Why**: ゴースト移動で `de.u.t * tau` を計算するが、Vector3 には `.t` がなく `undefined * tau = NaN` になっていた。`getVelocity4` は γ = √(1 + u²) を計算して `(γ, u_x, u_y, u_z)` の 4-velocity を返す
+- **教訓**: 型定義（`u: Vector4`）と実際の値（`phaseSpace.u: Vector3`）の不一致を TypeScript の構造的型付けが見逃す。Vector3 ⊂ Vector4 ではないが、代入時にエラーにならない
 
 ### ホスト権威メッセージの二重処理防止
 

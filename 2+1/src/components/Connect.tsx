@@ -75,7 +75,13 @@ const Connect = () => {
       {!isMinimized && (
         <>
           <div className="id-display">
-            <p style={{ margin: "5px 0", fontSize: "0.95em", fontWeight: "bold" }}>
+            <p
+              style={{
+                margin: "5px 0",
+                fontSize: "0.95em",
+                fontWeight: "bold",
+              }}
+            >
               {phaseText}
             </p>
             <p style={{ margin: "5px 0", fontSize: "0.9em" }}>
@@ -89,18 +95,20 @@ const Connect = () => {
               {peerStatusText}
             </p>
 
-            {peerStatus.status === "error" && peerStatus.type !== "unavailable-id" && (
-              <p
-                style={{
-                  margin: "6px 0 0",
-                  fontSize: "0.8em",
-                  opacity: 0.85,
-                }}
-              >
-                学校/社内ネットワークだと WebRTC が塞がれていることがあります。
-                その場合は通信方式を WS Relay に切り替えてください。
-              </p>
-            )}
+            {peerStatus.status === "error" &&
+              peerStatus.type !== "unavailable-id" && (
+                <p
+                  style={{
+                    margin: "6px 0 0",
+                    fontSize: "0.8em",
+                    opacity: 0.85,
+                  }}
+                >
+                  学校/社内ネットワークだと WebRTC
+                  が塞がれていることがあります。 その場合は通信方式を WS Relay
+                  に切り替えてください。
+                </p>
+              )}
 
             {autoFallbackTriggered && (
               <p
@@ -135,9 +143,7 @@ const Connect = () => {
             <summary style={{ cursor: "pointer", fontSize: "0.85em" }}>
               ▶ ネットワーク設定(env)
             </summary>
-            <div
-              style={{ fontSize: "0.8em", opacity: 0.9, marginTop: "6px" }}
-            >
+            <div style={{ fontSize: "0.8em", opacity: 0.9, marginTop: "6px" }}>
               <div>PeerServer host: {networkingEnv.peerHost}</div>
               <div>PeerServer port: {networkingEnv.peerPort}</div>
               <div>PeerServer path: {networkingEnv.peerPath}</div>

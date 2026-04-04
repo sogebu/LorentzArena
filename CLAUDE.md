@@ -35,6 +35,16 @@ pnpm run format                # Biome formatter
 pnpm run analyze               # バンドルサイズ分析
 ```
 
+### ローカルプレビュー（2+1）
+
+```bash
+cd 2+1 && pnpm dev              # http://localhost:5173/LorentzArena/ で起動
+```
+
+- **マルチプレイテスト**: 同じ URL を複数タブで開く。ルーム分離は `#room=<名前>` で可能
+- **GitHub Pages と ID 衝突回避**: 本番（sogebu.github.io）がルーム `default` を使っているので、localhost テスト時は `#room=test` 等の別ルーム名を使うこと。同じルーム名だと PeerJS ID `la-default` が取られて接続不能になる
+- **preview_start 使用時**: launch.json の `lorentz-arena` を使う。起動後は必ず localhost URL をリンクで出力する（`~/Claude/CLAUDE.md` 規約）。ポートが変わる場合があるのでサーバーログで確認
+
 ### ネットワーク設定
 
 `.env.local`（`2+1/` 直下）で設定:
@@ -125,7 +135,7 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 
 | パラメータ | 値 | 説明 |
 |---|---|---|
-| `SPAWN_RANGE` | 10 | スポーン範囲 x,y ∈ [0, SPAWN_RANGE]（テスト値、本番は 30） |
+| `SPAWN_RANGE` | 30 | スポーン範囲 x,y ∈ [0, SPAWN_RANGE] |
 | `RESPAWN_DELAY` | 10000 ms | 死亡→リスポーンの待機時間 |
 | `SPAWN_EFFECT_DURATION` | 1500 ms | スポーンエフェクト表示時間 |
 | `LASER_RANGE` | 20 | レーザー射程（アフィンパラメータ λ の上限、c=1 で座標時間=空間距離） |

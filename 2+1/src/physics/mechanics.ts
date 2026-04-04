@@ -1,15 +1,15 @@
+import { inverseLorentzBoost, multiplyVector4Matrix4 } from "./matrix";
 import {
-  type Vector3,
-  type Vector4,
-  createVector4,
-  getVelocity4,
   addVector3,
   addVector4,
+  createVector4,
+  getVelocity4,
   scaleVector3,
   scaleVector4,
   spatialVector4,
+  type Vector3,
+  type Vector4,
 } from "./vector";
-import { inverseLorentzBoost, multiplyVector4Matrix4 } from "./matrix";
 
 /**
  * Relativistic mechanics utilities.
@@ -80,8 +80,8 @@ export const evolvePhaseSpace = (
     scaleVector3(spatialVector4(accel4World), dTau),
   );
 
-  // 4) Update position: dx/dτ = u^μ.
-  // JP: 位置の更新（dx/dτ = u^μ）。
+  // 4) Update position: dx/dτ = u^μ (semi-implicit Euler: uses newU, not old ps.u).
+  // JP: 位置の更新（dx/dτ = u^μ、semi-implicit Euler: 加速後の newU を使用）。
   const newPos = addVector4(ps.pos, scaleVector4(getVelocity4(newU), dTau));
 
   return createPhaseSpace(newPos, newU);

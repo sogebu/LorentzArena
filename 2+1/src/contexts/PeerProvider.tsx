@@ -1,11 +1,11 @@
 import {
   createContext,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
 import {
   buildPeerOptionsFromEnv,
@@ -34,7 +34,11 @@ type NetworkManager = PeerManager<Message> | WsRelayManager<Message>;
  *
  * "manual": WS Relay mode or manual override — uses old manual flow.
  */
-type ConnectionPhase = "trying-host" | "connecting-client" | "connected" | "manual";
+type ConnectionPhase =
+  | "trying-host"
+  | "connecting-client"
+  | "connected"
+  | "manual";
 
 interface PeerContextValue {
   peerManager: NetworkManager | null;
@@ -57,6 +61,28 @@ interface PeerProviderProps {
   roomName: string;
 }
 
+/** Basic validation before relaying messages to all peers. */
+const isRelayable = (msg: Message): boolean => {
+  if (!msg || typeof msg !== "object" || typeof msg.type !== "string")
+    return false;
+  if (msg.type === "phaseSpace") {
+    return (
+      typeof msg.senderId === "string" &&
+      msg.position != null &&
+      msg.velocity != null
+    );
+  }
+  if (msg.type === "laser") {
+    return (
+      typeof msg.id === "string" &&
+      typeof msg.playerId === "string" &&
+      msg.emissionPos != null &&
+      msg.direction != null
+    );
+  }
+  return false;
+};
+
 /** Register standard host relay handlers on a PeerManager. */
 const registerHostRelay = (pm: NetworkManager) => {
   pm.onMessage("host", (senderId, msg) => {
@@ -67,13 +93,19 @@ const registerHostRelay = (pm: NetworkManager) => {
       pm.sendTo(senderId, { type: "peerList", peers: peerIds });
       for (const peerId of peerIds) {
         if (peerId !== senderId) {
-          pm.sendTo(peerId, { type: "peerList", peers: [...peerIds, senderId] });
+          pm.sendTo(peerId, {
+            type: "peerList",
+            peers: [...peerIds, senderId],
+          });
         }
       }
       return;
     }
 
-    if (msg.type === "phaseSpace" || msg.type === "laser") {
+    if (
+      (msg.type === "phaseSpace" || msg.type === "laser") &&
+      isRelayable(msg)
+    ) {
       pm.broadcast(msg, senderId);
     }
   });
@@ -86,10 +118,14 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   const [peerStatus, setPeerStatus] = useState<NetworkStatus>({
     status: "connecting",
   });
-  const [connectionPhase, setConnectionPhase] = useState<ConnectionPhase>("trying-host");
+  const [connectionPhase, setConnectionPhase] =
+    useState<ConnectionPhase>("trying-host");
 
   const networkingEnvBase = useMemo(() => getNetworkingEnvSummary(), []);
-  const preferredTransportMode = useMemo(() => getNetworkTransportModeFromEnv(), []);
+  const preferredTransportMode = useMemo(
+    () => getNetworkTransportModeFromEnv(),
+    [],
+  );
   const wsRelayUrl = useMemo(() => getWsRelayUrlFromEnv(), []);
   const localIdRef = useRef(Math.random().toString(36).substring(2, 11));
 
@@ -100,13 +136,14 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     [wsRelayUrl],
   );
 
-  const [activeTransport, setActiveTransportState] =
-    useState<ActiveTransport>(() => {
+  const [activeTransport, setActiveTransportState] = useState<ActiveTransport>(
+    () => {
       if (preferredTransportMode === "wsrelay" && wsRelayUrl) {
         return "wsrelay";
       }
       return "peerjs";
-    });
+    },
+  );
   const [autoFallbackTriggered, setAutoFallbackTriggered] = useState(false);
 
   const setActiveTransport = useCallback(
@@ -154,7 +191,9 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     registerHostRelay(pm);
     setPeerManager(pm);
 
-    return () => { pm.destroy(); };
+    return () => {
+      pm.destroy();
+    };
   }, [activeTransport, wsRelayUrl]);
 
   // PeerJS: Phase 1 — ルーム ID でホスト試行
@@ -176,7 +215,10 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         registerHostRelay(pm);
         setPeerManager(pm);
         setConnectionPhase("connected");
-      } else if (status.status === "error" && status.type === "unavailable-id") {
+      } else if (
+        status.status === "error" &&
+        status.type === "unavailable-id"
+      ) {
         // 既にホストがいる → クライアントモードへ
         owned = false;
         pm.destroy();

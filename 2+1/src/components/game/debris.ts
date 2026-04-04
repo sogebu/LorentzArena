@@ -1,14 +1,15 @@
 import {
-  type Vector4,
   createVector4,
   lorentzDotVector4,
   subVector4,
+  type Vector4,
 } from "../../physics";
 import { EXPLOSION_PARTICLE_COUNT } from "./constants";
 
 // 爆発パーティクルの方向を事前生成（未来光円錐内をランダムに飛散）
 export const generateExplosionParticles = () => {
-  const particles: { dx: number; dy: number; speed: number; size: number }[] = [];
+  const particles: { dx: number; dy: number; speed: number; size: number }[] =
+    [];
   for (let i = 0; i < EXPLOSION_PARTICLE_COUNT; i++) {
     const angle = Math.random() * Math.PI * 2;
     // speed < 1 (光速未満) → 未来光円錐の内側を進む

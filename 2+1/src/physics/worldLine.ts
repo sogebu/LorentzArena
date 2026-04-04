@@ -1,11 +1,11 @@
+import { createPhaseSpace, type PhaseSpace } from "./mechanics";
 import {
-  type Vector4,
-  subVector4,
-  lorentzDotVector4,
   createVector4,
   gamma,
+  lorentzDotVector4,
+  subVector4,
+  type Vector4,
 } from "./vector";
-import { type PhaseSpace, createPhaseSpace } from "./mechanics";
 
 /**
  * World line utilities (history of PhaseSpace snapshots).
@@ -27,6 +27,7 @@ export type WorldLine = {
   readonly history: PhaseSpace[];
   readonly maxHistorySize: number;
   readonly origin: PhaseSpace | null; // 無限の過去に延びる半直線の起点（最初のライフのみ。null なら半直線なし）
+  readonly version: number; // append ごとにインクリメント。描画スロットリング用
 };
 
 /**
@@ -41,6 +42,7 @@ export const createWorldLine = (
   history: [],
   maxHistorySize,
   origin,
+  version: 0,
 });
 
 /**
@@ -86,6 +88,7 @@ export const appendWorldLine = (
   return {
     ...wl,
     history: newHistory,
+    version: wl.version + 1,
   };
 };
 
@@ -124,10 +127,14 @@ const findLightlikeIntersectionParam = (
   const b = lorentzDotVector4(dx, x0);
   const c = lorentzDotVector4(x0, x0);
 
+  // a ≈ 0 なら区間が光的（重複点 or 数値誤差）→ 交差なしとして扱う
+  const EPS = 1e-12;
+  if (Math.abs(a) < EPS) return -1;
+
   const discriminant = b * b - a * c;
   if (discriminant < 0) return -1;
 
-  const sqrtDiscriminant = Math.sqrt(discriminant);
+  const sqrtDiscriminant = Math.sqrt(Math.max(0, discriminant));
   // Choose the solution that corresponds to the past-light-cone intersection.
   return (b + sqrtDiscriminant) / a;
 };
@@ -319,4 +326,5 @@ export const clearWorldLine = (wl: WorldLine): WorldLine => ({
   ...wl,
   history: [],
   origin: null,
+  version: wl.version + 1,
 });

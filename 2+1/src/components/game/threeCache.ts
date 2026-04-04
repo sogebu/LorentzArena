@@ -24,7 +24,9 @@ export const sharedGeometries = {
 
 // デブリマーカー用 material キャッシュ（色ごとに1つ）
 const debrisMaterialCache = new Map<string, THREE.MeshBasicMaterial>();
-export const getDebrisMaterial = (color: THREE.Color): THREE.MeshBasicMaterial => {
+export const getDebrisMaterial = (
+  color: THREE.Color,
+): THREE.MeshBasicMaterial => {
   const key = color.getHexString();
   let mat = debrisMaterialCache.get(key);
   if (!mat) {

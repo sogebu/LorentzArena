@@ -21,16 +21,12 @@ export type MessageHandlerDeps = {
   setLasers: React.Dispatch<React.SetStateAction<Laser[]>>;
   setScores: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   setSpawns: React.Dispatch<React.SetStateAction<SpawnEffect[]>>;
-  setDeathFlash: React.Dispatch<React.SetStateAction<boolean>>;
-  setKillNotification: React.Dispatch<
-    React.SetStateAction<{ victimName: string; color: string } | null>
-  >;
   scoresRef: React.RefObject<Record<string, number>>;
-  playersRef: React.RefObject<Map<string, RelativisticPlayer>>;
   timeSyncedRef: React.MutableRefObject<boolean>;
   pendingColorsRef: React.RefObject<Map<string, string>>;
   handleKill: (
     victimId: string,
+    killerId: string,
     hitPos: { t: number; x: number; y: number; z: number },
   ) => void;
   handleRespawn: (
@@ -52,14 +48,15 @@ const isValidVector4 = (
   isFiniteNumber((v as Record<string, unknown>).y) &&
   isFiniteNumber((v as Record<string, unknown>).z);
 
-const isValidVector3 = (
-  v: unknown,
-): v is { x: number; y: number; z: number } =>
+const isValidVector3 = (v: unknown): v is { x: number; y: number; z: number } =>
   v != null &&
   typeof v === "object" &&
   isFiniteNumber((v as Record<string, unknown>).x) &&
   isFiniteNumber((v as Record<string, unknown>).y) &&
   isFiniteNumber((v as Record<string, unknown>).z);
+
+const isValidString = (v: unknown, maxLen = 200): v is string =>
+  typeof v === "string" && v.length > 0 && v.length <= maxLen;
 
 const isValidColor = (v: unknown): v is string =>
   typeof v === "string" && v.length < 100 && /^(hsl|rgb|#)/i.test(v);
@@ -74,10 +71,7 @@ export const createMessageHandler =
       setPlayers,
       setLasers,
       setScores,
-      setDeathFlash,
-      setKillNotification,
       scoresRef,
-      playersRef,
       timeSyncedRef,
       pendingColorsRef,
       handleKill,
@@ -85,7 +79,11 @@ export const createMessageHandler =
     } = deps;
 
     if (msg.type === "phaseSpace") {
-      if (!isValidVector4(msg.position) || !isValidVector3(msg.velocity))
+      if (
+        !isValidString(msg.senderId) ||
+        !isValidVector4(msg.position) ||
+        !isValidVector3(msg.velocity)
+      )
         return;
       const playerId = msg.senderId;
       setPlayers((prev) => {
@@ -153,10 +151,14 @@ export const createMessageHandler =
       });
     } else if (msg.type === "laser") {
       if (
+        !isValidString(msg.id) ||
+        !isValidString(msg.playerId) ||
         !isValidVector4(msg.emissionPos) ||
         !isValidVector3(msg.direction) ||
         !isFiniteNumber(msg.range) ||
-        msg.range > 1000
+        msg.range <= 0 ||
+        msg.range > 100 ||
+        !isValidColor(msg.color)
       )
         return;
       const receivedLaser: Laser = {
@@ -176,32 +178,36 @@ export const createMessageHandler =
       });
     } else if (msg.type === "respawn") {
       if (peerManager.getIsHost()) return;
-      if (!isValidVector4(msg.position)) return;
+      if (!isValidString(msg.playerId) || !isValidVector4(msg.position)) return;
       handleRespawn(msg.playerId, msg.position);
     } else if (msg.type === "score") {
       if (peerManager.getIsHost()) return;
-      scoresRef.current = msg.scores;
-      setScores(msg.scores);
+      if (
+        !msg.scores ||
+        typeof msg.scores !== "object" ||
+        Array.isArray(msg.scores)
+      )
+        return;
+      // Validate each score entry
+      const scores: Record<string, number> = {};
+      for (const [key, val] of Object.entries(msg.scores)) {
+        if (!isValidString(key) || !isFiniteNumber(val)) return;
+        scores[key] = val as number;
+      }
+      scoresRef.current = scores;
+      setScores(scores);
     } else if (msg.type === "kill") {
       if (peerManager.getIsHost()) return;
-      if (!isValidVector4(msg.hitPos)) return;
-      // UI 副作用
-      if (msg.victimId === myId) {
-        setDeathFlash(true);
-        setTimeout(() => setDeathFlash(false), 600);
-      }
-      if (msg.killerId === myId && msg.victimId !== myId) {
-        const v = playersRef.current.get(msg.victimId);
-        setKillNotification({
-          victimName: msg.victimId.slice(0, 6),
-          color: v?.color ?? "white",
-        });
-        setTimeout(() => setKillNotification(null), 1500);
-      }
-      // データ更新: handleKill で世界線凍結 + デブリ生成 + isDead
-      handleKill(msg.victimId, msg.hitPos);
+      if (
+        !isValidString(msg.victimId) ||
+        !isValidString(msg.killerId) ||
+        !isValidVector4(msg.hitPos)
+      )
+        return;
+      // データ更新 + UI pending: handleKill で一括処理
+      handleKill(msg.victimId, msg.killerId, msg.hitPos);
     } else if (msg.type === "playerColor") {
-      if (!isValidColor(msg.color)) return;
+      if (!isValidString(msg.playerId) || !isValidColor(msg.color)) return;
       pendingColorsRef.current.set(msg.playerId, msg.color);
       setPlayers((prev) => {
         const player = prev.get(msg.playerId);

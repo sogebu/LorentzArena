@@ -34,7 +34,7 @@ export const pickDistinctColor = (
 
   if (existingHues.length === 0) {
     // 最初のプレイヤーはIDから決定
-    const hue = Math.floor(((hash * 137.50776405) % 360 + 360) % 360);
+    const hue = Math.floor((((hash * 137.50776405) % 360) + 360) % 360);
     return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
   }
 
@@ -45,7 +45,10 @@ export const pickDistinctColor = (
   for (let candidate = 0; candidate < 360; candidate += 10) {
     let minDist = 360;
     for (const h of existingHues) {
-      const d = Math.min(Math.abs(candidate - h), 360 - Math.abs(candidate - h));
+      const d = Math.min(
+        Math.abs(candidate - h),
+        360 - Math.abs(candidate - h),
+      );
       if (d < minDist) minDist = d;
     }
     if (minDist > bestMinDist) {

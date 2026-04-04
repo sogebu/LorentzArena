@@ -1,5 +1,6 @@
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import type React from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import {
   createVector4,
@@ -30,6 +31,10 @@ import type {
 
 // WorldLineRenderer コンポーネント - 個別のワールドラインを描画
 
+/** TubeGeometry regeneration interval (in append count).
+ * Higher = fewer geometry rebuilds but choppier world lines. */
+const TUBE_REGEN_INTERVAL = 8;
+
 const WorldLineRenderer = ({
   worldLine: wl,
   color,
@@ -40,6 +45,9 @@ const WorldLineRenderer = ({
   const tubeRef = useRef<THREE.Mesh>(null);
   const halfLineRef = useRef<THREE.Mesh>(null);
 
+  // version を TUBE_REGEN_INTERVAL で量子化して再生成を間引く
+  const geoVersion = Math.floor(wl.version / TUBE_REGEN_INTERVAL);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: geoVersion throttles rebuild; wl.history has actual data
   const tubeGeo = useMemo(() => {
     if (wl.history.length < 2) return null;
     const points = wl.history.map(
@@ -48,7 +56,7 @@ const WorldLineRenderer = ({
     const curve = new THREE.CatmullRomCurve3(points, false, "centripetal", 0.5);
     const segments = Math.max(1, points.length * 2);
     return new THREE.TubeGeometry(curve, segments, 0.04, 6, false);
-  }, [wl.history]);
+  }, [geoVersion]);
 
   const halfLineGeo = useMemo(() => {
     if (!showHalfLine || !wl.origin) return null;
@@ -139,37 +147,200 @@ const SpawnRenderer = ({
   observerPos: Vector4 | null;
   observerBoost: ReturnType<typeof lorentzBoost> | null;
 }) => {
-  const ref = useRef<THREE.Group>(null);
-  const startTime = useRef(spawn.startTime);
+  const elapsed = Date.now() - spawn.startTime;
+  const progress = Math.min(elapsed / SPAWN_EFFECT_DURATION, 1);
+  const opacity = 1 - progress;
 
-  useFrame(() => {
-    const elapsed = Date.now() - startTime.current;
-    if (elapsed >= SPAWN_EFFECT_DURATION || !ref.current) return;
-    const progress = elapsed / SPAWN_EFFECT_DURATION;
-    const scale = 1 + progress * 2;
-    const opacity = 1 - progress;
-    ref.current.scale.set(scale, scale, scale);
-    for (const child of ref.current.children) {
-      if (child instanceof THREE.Mesh) {
-        const mat = child.material as THREE.MeshBasicMaterial;
-        mat.opacity = opacity;
+  const color = useMemo(() => getThreeColor(spawn.color), [spawn.color]);
+
+  if (opacity <= 0) return null;
+
+  const spawnEvent = createVector4(
+    spawn.pos.t,
+    spawn.pos.x,
+    spawn.pos.y,
+    spawn.pos.z,
+  );
+
+  // 5本のリングが時間軸に沿って配置、収縮アニメーション
+  const ringCount = 5;
+  return (
+    <>
+      {Array.from({ length: ringCount }, (_, i) => {
+        const ringProgress = (progress * 3 + i / ringCount) % 1;
+        const ringRadius = (1 - ringProgress) * 4;
+        const ringOpacity = opacity * (1 - ringProgress) * 0.8;
+        const ringT = spawn.pos.t + i * 0.5;
+
+        const worldPos = createVector4(ringT, spawn.pos.x, spawn.pos.y, 0);
+        const displayPos = transformEventForDisplay(
+          worldPos,
+          observerPos,
+          observerBoost,
+        );
+
+        if (ringRadius < 0.1 || ringOpacity < 0.01) return null;
+
+        return (
+          <mesh
+            key={`ring-${spawn.id}-${i}`}
+            position={[displayPos.x, displayPos.y, displayPos.t]}
+            rotation={[Math.PI / 2, 0, 0]}
+          >
+            <torusGeometry args={[ringRadius, 0.06, 8, 24]} />
+            <meshBasicMaterial
+              color={color}
+              transparent
+              opacity={ringOpacity}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+        );
+      })}
+      {/* 中心の光柱（時間軸方向） */}
+      {(() => {
+        const pillarHeight = 6 * (1 - progress * 0.5);
+        const displayPos = transformEventForDisplay(
+          spawnEvent,
+          observerPos,
+          observerBoost,
+        );
+        return (
+          <mesh
+            position={[
+              displayPos.x,
+              displayPos.y,
+              displayPos.t + pillarHeight / 2,
+            ]}
+          >
+            <cylinderGeometry args={[0.08, 0.08, pillarHeight, 6]} />
+            <meshBasicMaterial
+              color={color}
+              transparent
+              opacity={opacity * 0.6}
+            />
+          </mesh>
+        );
+      })()}
+    </>
+  );
+};
+
+// デブリ描画コンポーネント（BufferGeometry のライフサイクル管理）
+const DebrisRenderer = ({
+  debrisRecords,
+  myPlayer,
+  observerPos,
+  observerBoost,
+}: {
+  debrisRecords: SceneContentProps["debrisRecords"];
+  myPlayer: { phaseSpace: { pos: Vector4 }; color: string };
+  observerPos: Vector4 | null;
+  observerBoost: ReturnType<typeof lorentzBoost> | null;
+}) => {
+  const debrisLineGeoRef = useRef<THREE.BufferGeometry | null>(null);
+
+  // dispose on unmount or when debris changes
+  useEffect(() => {
+    return () => {
+      debrisLineGeoRef.current?.dispose();
+      debrisLineGeoRef.current = null;
+    };
+  }, []);
+
+  const lineVertices: number[] = [];
+  const lineColors: number[] = [];
+  const markerElements: React.ReactNode[] = [];
+
+  for (let di = 0; di < debrisRecords.length; di++) {
+    const debris = debrisRecords[di];
+    const deathEvent = createVector4(
+      debris.deathPos.t,
+      debris.deathPos.x,
+      debris.deathPos.y,
+      0,
+    );
+    const maxLambda = 5;
+    const debrisColor = getThreeColor(debris.color);
+    const r = debrisColor.r;
+    const g = debrisColor.g;
+    const b = debrisColor.b;
+
+    const startDisplay = transformEventForDisplay(
+      deathEvent,
+      observerPos,
+      observerBoost,
+    );
+
+    for (let pi = 0; pi < debris.particles.length; pi++) {
+      const p = debris.particles[pi];
+
+      const endWorld = createVector4(
+        debris.deathPos.t + maxLambda,
+        debris.deathPos.x + p.dx * maxLambda,
+        debris.deathPos.y + p.dy * maxLambda,
+        0,
+      );
+      const endDisplay = transformEventForDisplay(
+        endWorld,
+        observerPos,
+        observerBoost,
+      );
+      lineVertices.push(
+        startDisplay.x,
+        startDisplay.y,
+        startDisplay.t,
+        endDisplay.x,
+        endDisplay.y,
+        endDisplay.t,
+      );
+      lineColors.push(r, g, b, r, g, b);
+
+      const intersection = pastLightConeIntersectionDebris(
+        deathEvent,
+        p.dx,
+        p.dy,
+        maxLambda,
+        myPlayer.phaseSpace.pos,
+      );
+      if (intersection) {
+        const displayPos = transformEventForDisplay(
+          intersection,
+          observerPos,
+          observerBoost,
+        );
+        markerElements.push(
+          <mesh
+            key={`debris-${di}-${pi}`}
+            position={[displayPos.x, displayPos.y, displayPos.t]}
+            scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
+            geometry={sharedGeometries.explosionParticle}
+            material={getDebrisMaterial(debrisColor)}
+          />,
+        );
       }
     }
-  });
+  }
 
-  const displayPos = transformEventForDisplay(
-    createVector4(spawn.pos.t, spawn.pos.x, spawn.pos.y, spawn.pos.z),
-    observerPos,
-    observerBoost,
+  if (lineVertices.length === 0) return <>{markerElements}</>;
+
+  // 前回の geometry を dispose して新しいものを作成
+  debrisLineGeoRef.current?.dispose();
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(lineVertices, 3),
   );
-  const color = getThreeColor(spawn.color);
+  geom.setAttribute("color", new THREE.Float32BufferAttribute(lineColors, 3));
+  debrisLineGeoRef.current = geom;
 
   return (
-    <group ref={ref} position={[displayPos.x, displayPos.y, displayPos.t]}>
-      <mesh geometry={sharedGeometries.explosionParticle}>
-        <meshBasicMaterial color={color} transparent opacity={1} />
-      </mesh>
-    </group>
+    <>
+      <lineSegments geometry={geom}>
+        <lineBasicMaterial vertexColors transparent opacity={0.4} />
+      </lineSegments>
+      {markerElements}
+    </>
   );
 };
 
@@ -181,6 +352,7 @@ export const SceneContent = ({
   spawns,
   frozenWorldLines,
   debrisRecords,
+  killNotification,
   showInRestFrame,
   useOrthographic,
   cameraYawRef,
@@ -235,10 +407,8 @@ export const SceneContent = ({
     const yaw = cameraYawRef.current;
     const pitch = cameraPitchRef.current;
     const distance = useOrthographic ? 100 : 15;
-    const camX =
-      targetX + distance * Math.cos(pitch) * Math.cos(yaw + Math.PI);
-    const camY =
-      targetY + distance * Math.cos(pitch) * Math.sin(yaw + Math.PI);
+    const camX = targetX + distance * Math.cos(pitch) * Math.cos(yaw + Math.PI);
+    const camY = targetY + distance * Math.cos(pitch) * Math.sin(yaw + Math.PI);
     const camT = targetT + distance * Math.sin(pitch);
 
     camera.position.set(camX, camY, camT);
@@ -292,7 +462,14 @@ export const SceneContent = ({
     }
 
     return results;
-  }, [myPlayer, myId, playerList, frozenWorldLines, observerPos, observerBoost]);
+  }, [
+    myPlayer,
+    myId,
+    playerList,
+    frozenWorldLines,
+    observerPos,
+    observerBoost,
+  ]);
 
   const laserIntersections = useMemo(() => {
     if (!myPlayer || !myId) return [];
@@ -516,103 +693,51 @@ export const SceneContent = ({
       ))}
 
       {/* デブリの世界線とマーカー（世界オブジェクト） */}
-      {myPlayer &&
+      {myPlayer && (
+        <DebrisRenderer
+          debrisRecords={debrisRecords}
+          myPlayer={myPlayer}
+          observerPos={observerPos}
+          observerBoost={observerBoost}
+        />
+      )}
+
+      {/* キル通知（キル時空点に 3D 表示） */}
+      {killNotification &&
+        observerPos &&
         (() => {
-          const lineVertices: number[] = [];
-          const lineColors: number[] = [];
-          const markerElements: React.ReactNode[] = [];
-
-          for (let di = 0; di < debrisRecords.length; di++) {
-            const debris = debrisRecords[di];
-            const deathEvent = createVector4(
-              debris.deathPos.t,
-              debris.deathPos.x,
-              debris.deathPos.y,
-              0,
-            );
-            // デブリ世界線は世界オブジェクト: 十分大きい範囲で探索
-            // 過去光円錐との交差条件 (observer.t > intersection.t) がカバーするので
-            // observer の時刻に依存する必要はない
-            const maxLambda = 200;
-            const debrisColor = getThreeColor(debris.color);
-            const r = debrisColor.r;
-            const g = debrisColor.g;
-            const b = debrisColor.b;
-
-            const startDisplay = transformEventForDisplay(
-              deathEvent,
-              observerPos,
-              observerBoost,
-            );
-
-            for (let pi = 0; pi < debris.particles.length; pi++) {
-              const p = debris.particles[pi];
-
-              const endWorld = createVector4(
-                debris.deathPos.t + maxLambda,
-                debris.deathPos.x + p.dx * maxLambda,
-                debris.deathPos.y + p.dy * maxLambda,
-                0,
-              );
-              const endDisplay = transformEventForDisplay(
-                endWorld,
-                observerPos,
-                observerBoost,
-              );
-              lineVertices.push(
-                startDisplay.x,
-                startDisplay.y,
-                startDisplay.t,
-                endDisplay.x,
-                endDisplay.y,
-                endDisplay.t,
-              );
-              lineColors.push(r, g, b, r, g, b);
-
-              const intersection = pastLightConeIntersectionDebris(
-                deathEvent,
-                p.dx,
-                p.dy,
-                maxLambda,
-                myPlayer.phaseSpace.pos,
-              );
-              if (intersection) {
-                const displayPos = transformEventForDisplay(
-                  intersection,
-                  observerPos,
-                  observerBoost,
-                );
-                markerElements.push(
-                  <mesh
-                    key={`debris-${di}-${pi}`}
-                    position={[displayPos.x, displayPos.y, displayPos.t]}
-                    scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
-                    geometry={sharedGeometries.explosionParticle}
-                    material={getDebrisMaterial(debrisColor)}
-                  />,
-                );
-              }
-            }
-          }
-
-          if (lineVertices.length === 0) return markerElements;
-
-          const geom = new THREE.BufferGeometry();
-          geom.setAttribute(
-            "position",
-            new THREE.Float32BufferAttribute(lineVertices, 3),
+          const displayPos = transformEventForDisplay(
+            createVector4(
+              killNotification.hitPos.t,
+              killNotification.hitPos.x,
+              killNotification.hitPos.y,
+              killNotification.hitPos.z,
+            ),
+            observerPos,
+            observerBoost,
           );
-          geom.setAttribute(
-            "color",
-            new THREE.Float32BufferAttribute(lineColors, 3),
+          const killColor = getThreeColor(killNotification.color);
+          return (
+            <group position={[displayPos.x, displayPos.y, displayPos.t]}>
+              <mesh>
+                <sphereGeometry args={[1.5, 16, 16]} />
+                <meshBasicMaterial
+                  color={killColor}
+                  transparent
+                  opacity={0.6}
+                />
+              </mesh>
+              <mesh>
+                <ringGeometry args={[1.8, 2.2, 24]} />
+                <meshBasicMaterial
+                  color={killColor}
+                  transparent
+                  opacity={0.8}
+                  side={THREE.DoubleSide}
+                />
+              </mesh>
+            </group>
           );
-
-          return [
-            <lineSegments key="debris-lines" geometry={geom}>
-              <lineBasicMaterial vertexColors transparent opacity={0.4} />
-            </lineSegments>,
-            ...markerElements,
-          ];
         })()}
 
       {/* スポーンエフェクト */}

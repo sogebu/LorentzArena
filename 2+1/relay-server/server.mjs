@@ -1,15 +1,36 @@
 import { WebSocketServer } from "ws";
 
 const port = Number.parseInt(process.env.PORT ?? "8787", 10);
-const wss = new WebSocketServer({ port });
+
+// --- Security limits ---
+const MAX_MESSAGE_SIZE = 16 * 1024; // 16 KB per message
+const MAX_CONNECTIONS = 100; // total concurrent connections
+const RATE_LIMIT_WINDOW_MS = 1000; // 1 second window
+const RATE_LIMIT_MAX_MSGS = 60; // max messages per window
+const HEARTBEAT_INTERVAL_MS = 30_000; // 30s ping interval
+const HEARTBEAT_TIMEOUT_MS = 10_000; // 10s pong timeout
+
+const wss = new WebSocketServer({ port, maxPayload: MAX_MESSAGE_SIZE });
 
 /**
  * clientId -> socketState
- * socketState: { ws, peerId, roomHostId? }
+ * socketState: { ws, peerId, roomHostId?, rateCounter, rateWindowStart, alive }
  */
 const clientsById = new Map();
 const clientsBySocket = new Map();
 const rooms = new Map(); // hostId -> Set<peerId>
+
+// --- Heartbeat ---
+const heartbeatInterval = setInterval(() => {
+  for (const [ws, state] of clientsBySocket) {
+    if (!state.alive) {
+      ws.terminate();
+      continue;
+    }
+    state.alive = false;
+    ws.ping();
+  }
+}, HEARTBEAT_INTERVAL_MS);
 
 const sendJson = (ws, payload) => {
   if (ws.readyState !== 1) return; // 1 = OPEN
@@ -75,15 +96,45 @@ const parse = (raw) => {
   }
 };
 
+/** Returns true if the client exceeds rate limit. */
+const isRateLimited = (state) => {
+  const now = Date.now();
+  if (now - state.rateWindowStart > RATE_LIMIT_WINDOW_MS) {
+    state.rateWindowStart = now;
+    state.rateCounter = 0;
+  }
+  state.rateCounter++;
+  return state.rateCounter > RATE_LIMIT_MAX_MSGS;
+};
+
 wss.on("connection", (ws) => {
+  // Connection limit
+  if (clientsBySocket.size >= MAX_CONNECTIONS) {
+    ws.close(1013, "server full");
+    return;
+  }
+
   const state = {
     ws,
     peerId: undefined,
     roomHostId: undefined,
+    rateCounter: 0,
+    rateWindowStart: Date.now(),
+    alive: true,
   };
   clientsBySocket.set(ws, state);
 
+  ws.on("pong", () => {
+    state.alive = true;
+  });
+
   ws.on("message", (raw) => {
+    // Rate limiting
+    if (isRateLimited(state)) {
+      sendJson(ws, { type: "error", message: "rate limited" });
+      return;
+    }
+
     const msg = parse(raw);
     if (!msg || typeof msg.type !== "string") {
       sendJson(ws, { type: "error", message: "invalid payload" });
@@ -207,4 +258,12 @@ wss.on("connection", (ws) => {
   });
 });
 
-console.log(`[ws-relay] listening on ws://0.0.0.0:${port}`);
+// Graceful shutdown
+const shutdown = () => {
+  clearInterval(heartbeatInterval);
+  wss.close(() => process.exit(0));
+};
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
+
+console.log(`[ws-relay] listening on ws://0.0.0.0:${port} (max ${MAX_CONNECTIONS} clients, ${MAX_MESSAGE_SIZE} bytes/msg, ${RATE_LIMIT_MAX_MSGS} msgs/s)`);

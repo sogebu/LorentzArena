@@ -8,6 +8,7 @@ import {
   createVector4,
   createWorldLine,
   evolvePhaseSpace,
+  getVelocity4,
   lorentzDotVector4,
   subVector4,
   type Vector4,
@@ -23,8 +24,8 @@ import {
   MAX_LASERS,
   OFFSET,
   RESPAWN_DELAY,
-  SPAWN_RANGE,
   SPAWN_EFFECT_DURATION,
+  SPAWN_RANGE,
 } from "./game/constants";
 import { generateExplosionParticles } from "./game/debris";
 import { HUD } from "./game/HUD";
@@ -37,6 +38,7 @@ import type {
   DebrisRecord,
   FrozenWorldLine,
   Laser,
+  PendingKillEvent,
   RelativisticPlayer,
   SpawnEffect,
 } from "./game/types";
@@ -53,6 +55,7 @@ const RelativisticGame = () => {
   const [killNotification, setKillNotification] = useState<{
     victimName: string;
     color: string;
+    hitPos: { t: number; x: number; y: number; z: number };
   } | null>(null);
 
   // 世界オブジェクト（プレイヤーから独立）
@@ -75,10 +78,11 @@ const RelativisticGame = () => {
   const timeSyncedRef = useRef<boolean>(false);
   const processedLasersRef = useRef<Set<string>>(new Set());
   const deadPlayersRef = useRef<Set<string>>(new Set());
-  const respawnTimeoutsRef = useRef<
-    Set<ReturnType<typeof setTimeout>>
-  >(new Set());
+  const respawnTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(
+    new Set(),
+  );
   const pendingColorsRef = useRef<Map<string, string>>(new Map());
+  const pendingKillEventsRef = useRef<PendingKillEvent[]>([]);
   const [_screenSize, setScreenSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -90,9 +94,11 @@ const RelativisticGame = () => {
 
   // Kill 処理: 世界線凍結 + デブリ生成 + isDead 設定
   // ホストのゲームループと messageHandler の両方から呼ばれる
+  // UI 副作用（キル通知・スコア）は pendingKillEvents に積み、過去光円錐到達時に発火
   const handleKill = useCallback(
     (
       victimId: string,
+      killerId: string,
       hitPos: { t: number; x: number; y: number; z: number },
     ) => {
       const victim = playersRef.current.get(victimId);
@@ -118,16 +124,33 @@ const RelativisticGame = () => {
         return [...prev, newDebris].slice(-MAX_DEBRIS);
       });
 
-      // 3. プレイヤーを isDead に（worldLine はクリアされる）
+      // 3. プレイヤーを isDead に
       setPlayers((prev) => applyKill(prev, victimId));
 
       // 4. 自分が殺された場合: ゴーストカメラ用の DeathEvent を設定
       if (victimId === myId) {
         setMyDeathEvent({
           pos: victim.phaseSpace.pos,
-          u: victim.phaseSpace.u,
+          u: getVelocity4(victim.phaseSpace.u), // Vector3 → Vector4（γ を計算）
         });
         ghostTauRef.current = 0;
+      }
+
+      // 5. UI エフェクトを pending に追加（過去光円錐到達時に発火）
+      // 自分が当事者（被害者 or 加害者）の場合のみ
+      if (victimId === myId || killerId === myId) {
+        pendingKillEventsRef.current.push({
+          victimId,
+          killerId,
+          hitPos,
+          victimName: victimId.slice(0, 6),
+          victimColor: victim.color,
+        });
+        // 上限を超えたら最古のイベントを削除（メモリ保護）
+        if (pendingKillEventsRef.current.length > 100) {
+          pendingKillEventsRef.current =
+            pendingKillEventsRef.current.slice(-100);
+        }
       }
     },
     [myId],
@@ -200,7 +223,7 @@ const RelativisticGame = () => {
       });
       return next;
     });
-  }, [myId]);
+  }, [myId, peerManager?.getIsHost]);
 
   // ref を最新の state に同期
   useEffect(() => {
@@ -253,6 +276,7 @@ const RelativisticGame = () => {
       const next = new Map(prev);
       for (const id of idsToRemove) {
         next.delete(id);
+        deadPlayersRef.current.delete(id); // 切断時に dead 状態もクリア
       }
       return next;
     });
@@ -271,10 +295,7 @@ const RelativisticGame = () => {
         setLasers,
         setScores,
         setSpawns,
-        setDeathFlash,
-        setKillNotification,
         scoresRef,
-        playersRef,
         timeSyncedRef,
         pendingColorsRef,
         handleKill,
@@ -378,9 +399,7 @@ const RelativisticGame = () => {
       fpsRef.current.frameCount++;
       const elapsed = now - fpsRef.current.lastTime;
       if (elapsed >= 1000) {
-        setFps(
-          Math.round((fpsRef.current.frameCount * 1000) / elapsed),
-        );
+        setFps(Math.round((fpsRef.current.frameCount * 1000) / elapsed));
         fpsRef.current.frameCount = 0;
         fpsRef.current.lastTime = now;
       }
@@ -408,6 +427,42 @@ const RelativisticGame = () => {
           pitchMin,
           cameraPitchRef.current - pitchSpeed * dTau,
         );
+      }
+
+      // 因果律遅延キル通知: pending kill events の過去光円錐チェック
+      const myPos = playersRef.current.get(myId)?.phaseSpace.pos;
+      if (myPos && pendingKillEventsRef.current.length > 0) {
+        const fired: number[] = [];
+        for (let i = 0; i < pendingKillEventsRef.current.length; i++) {
+          const ev = pendingKillEventsRef.current[i];
+          const diff = subVector4(
+            createVector4(ev.hitPos.t, ev.hitPos.x, ev.hitPos.y, ev.hitPos.z),
+            myPos,
+          );
+          // 過去光円錐内: lorentzDot <= 0（時間的 or 光的）かつ hitPos が過去
+          if (lorentzDotVector4(diff, diff) <= 0 && myPos.t > ev.hitPos.t) {
+            fired.push(i);
+            // 自分が殺された: death flash
+            if (ev.victimId === myId) {
+              setDeathFlash(true);
+              setTimeout(() => setDeathFlash(false), 600);
+            }
+            // 自分が殺した: kill notification（キル時空点に表示）
+            if (ev.killerId === myId && ev.victimId !== myId) {
+              setKillNotification({
+                victimName: ev.victimName,
+                color: ev.victimColor,
+                hitPos: ev.hitPos,
+              });
+              setTimeout(() => setKillNotification(null), 1500);
+            }
+          }
+        }
+        if (fired.length > 0) {
+          pendingKillEventsRef.current = pendingKillEventsRef.current.filter(
+            (_, i) => !fired.includes(i),
+          );
+        }
       }
 
       const isDead = playersRef.current.get(myId)?.isDead ?? false;
@@ -524,11 +579,7 @@ const RelativisticGame = () => {
           const frictionX = -myPlayer.phaseSpace.u.x * mu;
           const frictionY = -myPlayer.phaseSpace.u.y * mu;
 
-          const acceleration = createVector3(
-            ax + frictionX,
-            ay + frictionY,
-            0,
-          );
+          const acceleration = createVector3(ax + frictionX, ay + frictionY, 0);
 
           const newPhaseSpace = evolvePhaseSpace(
             myPlayer.phaseSpace,
@@ -613,7 +664,11 @@ const RelativisticGame = () => {
               HIT_RADIUS,
             );
             if (hitPos) {
-              kills.push({ victimId: playerId, killerId: laser.playerId, hitPos });
+              kills.push({
+                victimId: playerId,
+                killerId: laser.playerId,
+                hitPos,
+              });
               hitLaserIds.push(laser.id);
               killedThisFrame.add(playerId);
               break;
@@ -628,8 +683,13 @@ const RelativisticGame = () => {
             processedLasersRef.current.delete(id);
           }
         }
+        // 安全弁: サイズ上限を超えたらクリア（長時間プレイでの蓄積防止）
+        if (processedLasersRef.current.size > 2000) {
+          processedLasersRef.current.clear();
+        }
 
         if (kills.length > 0) {
+          // ホスト権威: スコアは即時更新 + ブロードキャスト
           const newScores = { ...scoresRef.current };
           for (const { killerId } of kills) {
             newScores[killerId] = (newScores[killerId] || 0) + 1;
@@ -652,30 +712,25 @@ const RelativisticGame = () => {
               hitPos,
             });
 
-            // UI 副作用
-            if (victimId === myId) {
-              setDeathFlash(true);
-              setTimeout(() => setDeathFlash(false), 600);
-            }
-            if (killerId === myId && victimId !== myId) {
-              const victim = currentPlayers.get(victimId);
-              setKillNotification({
-                victimName: victimId.slice(0, 6),
-                color: victim?.color ?? "white",
-              });
-              setTimeout(() => setKillNotification(null), 1500);
-            }
-
-            // データ更新: handleKill で世界線凍結 + デブリ生成 + isDead
-            handleKill(victimId, hitPos);
+            // データ更新 + UI pending: handleKill で一括処理
+            handleKill(victimId, killerId, hitPos);
 
             // 遅延リスポーン
             const timerId = setTimeout(() => {
               respawnTimeoutsRef.current.delete(timerId);
-              const hostPlayer = playersRef.current.get(myId);
-              const hostT = hostPlayer?.phaseSpace.pos.t ?? 0;
+              // 全プレイヤーのうち最も未来の座標時刻でリスポーン
+              // → リスポーン直後に誰かの未来光円錐内に入って因果律の守護者が発動するのを防ぐ
+              let maxT = 0;
+              for (const [, p] of playersRef.current) {
+                if (
+                  Number.isFinite(p.phaseSpace.pos.t) &&
+                  p.phaseSpace.pos.t > maxT
+                ) {
+                  maxT = p.phaseSpace.pos.t;
+                }
+              }
               const respawnPos = {
-                t: hostT,
+                t: maxT,
                 x: Math.random() * SPAWN_RANGE,
                 y: Math.random() * SPAWN_RANGE,
                 z: 0,
@@ -707,7 +762,7 @@ const RelativisticGame = () => {
       }
       respawnTimeoutsRef.current.clear();
     };
-  }, [peerManager, myId, handleKill, handleRespawn]);
+  }, [peerManager, myId, handleKill, handleRespawn, myDeathEvent]);
 
   return (
     <div
@@ -729,7 +784,7 @@ const RelativisticGame = () => {
         useOrthographic={useOrthographic}
         setUseOrthographic={setUseOrthographic}
         deathFlash={deathFlash}
-        killNotification={killNotification}
+        killGlow={killNotification !== null}
         myDeathEvent={myDeathEvent}
         ghostTau={ghostTauRef.current}
       />
@@ -752,6 +807,7 @@ const RelativisticGame = () => {
             spawns={spawns}
             frozenWorldLines={frozenWorldLines}
             debrisRecords={debrisRecords}
+            killNotification={killNotification}
             showInRestFrame={showInRestFrame}
             useOrthographic={true}
             cameraYawRef={cameraYawRef}
@@ -767,6 +823,7 @@ const RelativisticGame = () => {
             spawns={spawns}
             frozenWorldLines={frozenWorldLines}
             debrisRecords={debrisRecords}
+            killNotification={killNotification}
             showInRestFrame={showInRestFrame}
             useOrthographic={false}
             cameraYawRef={cameraYawRef}

@@ -1,5 +1,9 @@
-import type { PhaseSpace, Vector4, WorldLine } from "../../physics";
-import type { lorentzBoost } from "../../physics";
+import type {
+  lorentzBoost,
+  PhaseSpace,
+  Vector4,
+  WorldLine,
+} from "../../physics";
 
 // 死亡時の爆散デブリ（等速直線運動、永続データ）
 export type DebrisRecord = {
@@ -19,6 +23,15 @@ export type FrozenWorldLine = {
 export type DeathEvent = {
   readonly pos: Vector4; // 死亡位置（4元位置）
   readonly u: Vector4; // 死亡時の4元速度（ローレンツブースト計算用）
+};
+
+// キルイベント（過去光円錐到達まで UI 遅延）
+export type PendingKillEvent = {
+  readonly victimId: string;
+  readonly killerId: string;
+  readonly hitPos: { t: number; x: number; y: number; z: number };
+  readonly victimName: string;
+  readonly victimColor: string;
 };
 
 export type RelativisticPlayer = {
@@ -60,6 +73,12 @@ export type WorldLineRendererProps = {
   observerBoost: ReturnType<typeof lorentzBoost> | null;
 };
 
+export type KillNotification3D = {
+  victimName: string;
+  color: string;
+  hitPos: { t: number; x: number; y: number; z: number };
+};
+
 export type SceneContentProps = {
   players: Map<string, RelativisticPlayer>;
   myId: string | null;
@@ -67,6 +86,7 @@ export type SceneContentProps = {
   spawns: SpawnEffect[];
   frozenWorldLines: FrozenWorldLine[];
   debrisRecords: DebrisRecord[];
+  killNotification: KillNotification3D | null;
   showInRestFrame: boolean;
   useOrthographic: boolean;
   cameraYawRef: React.RefObject<number>;

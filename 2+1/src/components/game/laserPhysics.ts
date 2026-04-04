@@ -1,9 +1,9 @@
 import {
-  type Vector4,
-  type WorldLine,
   createVector4,
   lorentzDotVector4,
   subVector4,
+  type Vector4,
+  type WorldLine,
 } from "../../physics";
 import type { Laser } from "./types";
 
@@ -38,7 +38,9 @@ export const findLaserHitPosition = (
     const wdX = p2.x - p1.x;
     const wdY = p2.y - p1.y;
 
-    const checkAtMu = (mu: number): { t: number; x: number; y: number; z: number } | null => {
+    const checkAtMu = (
+      mu: number,
+    ): { t: number; x: number; y: number; z: number } | null => {
       if (mu < 0 || mu > 1) return null;
       const lambda = p1.t + mu * wdT - eT;
       if (lambda < 0 || lambda > range) return null;

@@ -1,7 +1,7 @@
 import "./App.css";
-import { PeerProvider } from "./contexts/PeerProvider";
 import Connect from "./components/Connect";
 import RelativisticGame from "./components/RelativisticGame";
+import { PeerProvider } from "./contexts/PeerProvider";
 
 // URL ハッシュからルーム名を取得: #room=physics101 → "physics101", なし → "default"
 const getRoomName = (): string => {

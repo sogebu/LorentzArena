@@ -1,9 +1,9 @@
 import * as THREE from "three";
 import {
-  type Vector4,
   type lorentzBoost,
   multiplyVector4Matrix4,
   subVector4,
+  type Vector4,
 } from "../../physics";
 
 /**
@@ -23,7 +23,10 @@ export const transformEventForDisplay = (
   observerBoost: ReturnType<typeof lorentzBoost> | null,
 ): Vector4 => {
   if (!observerPos || !observerBoost) return worldEvent;
-  return multiplyVector4Matrix4(observerBoost, subVector4(worldEvent, observerPos));
+  return multiplyVector4Matrix4(
+    observerBoost,
+    subVector4(worldEvent, observerPos),
+  );
 };
 
 /**
@@ -62,10 +65,22 @@ export const buildDisplayMatrix = (
 
   // THREE.js Matrix4 is column-major: set(row, col, value) → elements[col*4+row]
   m.set(
-    get(1, 1), get(1, 2), get(1, 0), tx, // row 0: display x
-    get(2, 1), get(2, 2), get(2, 0), ty, // row 1: display y
-    get(0, 1), get(0, 2), get(0, 0), tz, // row 2: display z (=t')
-    0, 0, 0, 1,                          // row 3: homogeneous
+    get(1, 1),
+    get(1, 2),
+    get(1, 0),
+    tx, // row 0: display x
+    get(2, 1),
+    get(2, 2),
+    get(2, 0),
+    ty, // row 1: display y
+    get(0, 1),
+    get(0, 2),
+    get(0, 0),
+    tz, // row 2: display z (=t')
+    0,
+    0,
+    0,
+    1, // row 3: homogeneous
   );
   return m;
 };

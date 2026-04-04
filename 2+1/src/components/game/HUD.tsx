@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
-import { lengthVector3, gamma } from "../../physics";
+import { useEffect, useMemo, useState } from "react";
+import { gamma, lengthVector3 } from "../../physics";
 import { RESPAWN_DELAY } from "./constants";
 import type { DeathEvent, RelativisticPlayer } from "./types";
 
@@ -15,7 +15,7 @@ type HUDProps = {
   useOrthographic: boolean;
   setUseOrthographic: (v: boolean) => void;
   deathFlash: boolean;
-  killNotification: { victimName: string; color: string } | null;
+  killGlow: boolean;
   myDeathEvent?: DeathEvent | null;
   ghostTau?: number;
 };
@@ -55,10 +55,16 @@ const RespawnCountdown = () => {
 };
 
 export const HUD = ({
-  players, myId, scores, fps,
-  showInRestFrame, setShowInRestFrame,
-  useOrthographic, setUseOrthographic,
-  deathFlash, killNotification,
+  players,
+  myId,
+  scores,
+  fps,
+  showInRestFrame,
+  setShowInRestFrame,
+  useOrthographic,
+  setUseOrthographic,
+  deathFlash,
+  killGlow,
   myDeathEvent,
 }: HUDProps) => {
   const sortedScores = useMemo(
@@ -126,20 +132,25 @@ export const HUD = ({
           build: {__BUILD_TIME__}
         </div>
         {Object.keys(scores).length > 0 && (
-          <div style={{
-            marginTop: "8px",
-            borderTop: "1px solid rgba(255,255,255,0.3)",
-            paddingTop: "6px",
-            transition: "transform 0.15s ease-out",
-            transform: killNotification ? "scale(1.4)" : "scale(1)",
-            transformOrigin: "top left",
-          }}>
+          <div
+            style={{
+              marginTop: "8px",
+              borderTop: "1px solid rgba(255,255,255,0.3)",
+              paddingTop: "6px",
+              transition: "transform 0.15s ease-out",
+              transform: killGlow ? "scale(1.4)" : "scale(1)",
+              transformOrigin: "top left",
+            }}
+          >
             <div style={{ fontWeight: "bold", marginBottom: "2px" }}>Kill</div>
             {sortedScores.map(([id, kills]) => (
-                <div key={id} style={{ color: players.get(id)?.color ?? "white" }}>
-                  {id === myId ? "You" : id.slice(0, 6)}: {kills}
-                </div>
-              ))}
+              <div
+                key={id}
+                style={{ color: players.get(id)?.color ?? "white" }}
+              >
+                {id === myId ? "You" : id.slice(0, 6)}: {kills}
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -212,48 +223,16 @@ export const HUD = ({
           }}
         />
       )}
-      {/* キル通知 */}
-      {killNotification && (
-        <div
-          style={{
-            position: "absolute",
-            top: "30%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            zIndex: 300,
-            pointerEvents: "none",
-            textAlign: "center",
-            animation: "kill-notify 1.5s ease-out forwards",
-          }}
-        >
-          <div style={{
-            fontSize: "48px",
-            fontWeight: "bold",
-            fontFamily: "monospace",
-            color: killNotification.color,
-            textShadow: "0 0 20px rgba(255,215,0,0.8), 0 0 40px rgba(255,215,0,0.4)",
-          }}>
-            KILL
-          </div>
-          <div style={{
-            fontSize: "20px",
-            color: killNotification.color,
-            opacity: 0.9,
-          }}>
-            {killNotification.victimName}
-          </div>
-        </div>
-      )}
-
       {/* 金色ボーダーグロー（キル時） */}
-      {killNotification && (
+      {killGlow && (
         <div
           style={{
             position: "absolute",
             inset: 0,
             zIndex: 199,
             pointerEvents: "none",
-            boxShadow: "inset 0 0 80px rgba(255,215,0,0.5), inset 0 0 30px rgba(255,215,0,0.3)",
+            boxShadow:
+              "inset 0 0 80px rgba(255,215,0,0.5), inset 0 0 30px rgba(255,215,0,0.3)",
             animation: "kill-glow 1.5s ease-out forwards",
           }}
         />

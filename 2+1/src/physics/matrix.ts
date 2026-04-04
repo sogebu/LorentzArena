@@ -1,9 +1,9 @@
 import {
-  type Vector3,
-  type Vector4,
   createVector4,
   gamma,
   scaleVector3,
+  type Vector3,
+  type Vector4,
 } from "./vector";
 
 /**
