@@ -54,7 +54,7 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 - `vector.ts` — 3D/4D ベクトル演算、ミンコフスキー内積 (+,+,+,-)
 - `matrix.ts` — 4x4 ローレンツ変換行列
 - `mechanics.ts` — 相対論的運動方程式、phase space (4元位置 + 4元速度)
-- `worldLine.ts` — 世界線の離散履歴、過去光円錐交差計算、`allowHalfLine` フラグで最初のライフのみ半直線延長
+- `worldLine.ts` — 世界線の離散履歴、過去光円錐交差計算、`origin` フィールドで半直線延長
 
 単位系: c = 1。ファクトリパターン（クラス不使用）。
 
@@ -90,17 +90,17 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 - 正射影/透視投影カメラ切替
 - 自分の静止系/世界系表示切替
 - 当たり判定（ホスト権威、`findLaserHitPosition`）
-- Kill/Respawn: kill → 世界線凍結（`isDead`フラグ）→ ゴースト（等速直線運動）→ 10秒後リスポーン（新 WorldLine、ホストの世界系 t に同期）
-- 死亡の設計哲学: 特別な処理を最小化。世界線は凍結されるだけで描画は継続。デブリも通常通り描画。唯一の特別処理は「死んだ本人が自分のマーカーを見ない」のみ
-- 他プレイヤーから見た死亡: 凍結世界線の過去光円錐交差で自然に見える/見えないが決まる。リスポーン後は新世界線の交差が見えるまで不可視
-- 死亡状態管理: `isDead` フラグ一元管理、`applyKill`/`applyRespawn` 純粋関数（`killRespawn.ts`）
-- DEAD カウントダウン: HUD に死亡中のカウントダウン表示（`lives.length` を key にしてリセット）
+- Kill/Respawn: kill → 世界線を `frozenWorldLines` に移動 + デブリ生成 → ゴースト（DeathEvent ベース等速直線）→ 10秒後リスポーン（新 WorldLine）
+- 世界オブジェクト分離: 死亡で生まれるオブジェクト（凍結世界線、デブリ、ゴースト）はプレイヤーから独立した state。レーザーも同様
+- 死亡の設計哲学: 凍結世界線・デブリは世界オブジェクトとして独立描画。過去光円錐交差で自然に可視性が決まる
+- 死亡状態管理: `isDead` フラグ + `DeathEvent`（ゴーストカメラの決定論的計算）。`handleKill`/`handleRespawn` コールバックで一元化
+- ゴースト UI: 死亡中は青白い半透明オーバーレイ + DEAD カウントダウン。カメラ回転は可能
 - キルスコア + キル通知エフェクト
-- 永続デブリ: 死亡イベントからの等速直線運動パーティクル。世界線は lineSegments でバッチ描画（頂点カラーで死亡プレイヤーの色）。マーカーは過去光円錐交差で表示
-- 世界線管理: `lives: WorldLine[]` で全ライフを管理。kill で凍結、respawn で新 WorldLine を追加
-- 世界線の過去延長: `allowHalfLine` フラグで制御。最初のライフのみ origin から半直線を過去方向に延長。リスポーン後のライフには付けない（`createWorldLine(5000, false)`）
-- ホストによる色割り当て（`playerColor` メッセージで全クライアントに配信）
-- 因果律の守護者: 他プレイヤーの未来光円錐の内側にいる間、全操作を凍結（DESIGN.md 参照）
+- 永続デブリ: 死亡イベントからの等速直線運動パーティクル。lineSegments でバッチ描画。マーカーは過去光円錐交差で表示（maxLambda は固定値、observer 非依存）
+- 世界線管理: `player.worldLine` 1本のみ。過去のライフは `frozenWorldLines[]` に格納
+- 世界線の過去延長: `WorldLine.origin` で制御。最初のライフのみ origin から半直線延長
+- ホストによる色割り当て（初期化時に `pickDistinctColor` + `playerColor` メッセージで配信）
+- 因果律の守護者: 他プレイヤーの未来光円錐内で操作凍結。死亡プレイヤーは除外（DESIGN.md 参照）
 - 光円錐描画: FrontSide 半透明サーフェス（opacity 0.2）+ FrontSide ワイヤーフレーム（opacity 0.3）で手前/奥の区別
 
 ### メッセージタイプ (`2+1/src/types/message.ts`)
@@ -132,7 +132,8 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 | `LASER_COOLDOWN` | 100 ms | レーザー連射間隔 |
 | `HIT_RADIUS` | 0.5 | 当たり判定の半径 |
 | `MAX_LASERS` | 1000 | レーザー保持上限 |
-| `MAX_PAST_WORLDLINES` | 5 | ライフ数上限（`lives[]` の最大長） |
+| `MAX_FROZEN_WORLDLINES` | 20 | 凍結世界線の保持上限（世界オブジェクト） |
+| `MAX_DEBRIS` | 20 | デブリの保持上限（世界オブジェクト） |
 | `EXPLOSION_PARTICLE_COUNT` | 30 | デブリパーティクル数 |
 
 | パラメータ（コード内） | 値 | 説明 |

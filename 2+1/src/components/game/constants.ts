@@ -9,8 +9,11 @@ export const LASER_RANGE = 20;
 // リスポーン遅延（ミリ秒）
 export const RESPAWN_DELAY = 10000;
 
-// 過去の世界線の保持上限
-export const MAX_PAST_WORLDLINES = 5;
+// 凍結世界線の保持上限（世界オブジェクト）
+export const MAX_FROZEN_WORLDLINES = 20;
+
+// デブリの保持上限（世界オブジェクト）
+export const MAX_DEBRIS = 20;
 
 // レーザーの最大数（メモリ管理）
 export const MAX_LASERS = 1000;

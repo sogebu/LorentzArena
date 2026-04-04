@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { lengthVector3, gamma } from "../../physics";
 import { RESPAWN_DELAY } from "./constants";
-import type { RelativisticPlayer } from "./types";
+import type { DeathEvent, RelativisticPlayer } from "./types";
 
 declare const __BUILD_TIME__: string;
 
@@ -16,6 +16,8 @@ type HUDProps = {
   setUseOrthographic: (v: boolean) => void;
   deathFlash: boolean;
   killNotification: { victimName: string; color: string } | null;
+  myDeathEvent?: DeathEvent | null;
+  ghostTau?: number;
 };
 
 const RespawnCountdown = () => {
@@ -57,6 +59,7 @@ export const HUD = ({
   showInRestFrame, setShowInRestFrame,
   useOrthographic, setUseOrthographic,
   deathFlash, killNotification,
+  myDeathEvent,
 }: HUDProps) => {
   const sortedScores = useMemo(
     () => Object.entries(scores).sort(([, a], [, b]) => b - a),
@@ -176,7 +179,24 @@ export const HUD = ({
       {(() => {
         const myPlayer = myId ? players.get(myId) : undefined;
         if (!myPlayer?.isDead) return null;
-        return <RespawnCountdown key={`respawn-${myPlayer.lives.length}`} />;
+        return <RespawnCountdown key={`respawn-${myDeathEvent?.pos.t ?? 0}`} />;
+      })()}
+
+      {/* ゴーストオーバーレイ */}
+      {(() => {
+        const myPlayer = myId ? players.get(myId) : undefined;
+        if (!myPlayer?.isDead) return null;
+        return (
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              backgroundColor: "rgba(100, 130, 180, 0.15)",
+              zIndex: 90,
+              pointerEvents: "none",
+            }}
+          />
+        );
       })()}
 
       {/* 死亡フラッシュ */}

@@ -8,18 +8,26 @@ export type DebrisRecord = {
   readonly color: string;
 };
 
-export type RelativisticPlayer = {
-  id: string;
-  // in 世界系
-  phaseSpace: PhaseSpace;
-  lives: WorldLine[]; // 全ライフ（最後が現在の命）
-  debrisRecords: DebrisRecord[]; // 死亡時の爆散デブリ（永続）
-  color: string;
-  isDead: boolean; // kill 後 respawn 前 = true（世界線凍結中）
+// 世界に残された凍結世界線（死んだプレイヤーの痕跡）
+export type FrozenWorldLine = {
+  readonly worldLine: WorldLine;
+  readonly color: string;
+  readonly showHalfLine: boolean; // 最初のライフのみ true
 };
 
-export const currentLife = (p: RelativisticPlayer): WorldLine =>
-  p.lives[p.lives.length - 1];
+// 死亡イベント（ゴーストカメラの起点）
+export type DeathEvent = {
+  readonly pos: Vector4; // 死亡位置（4元位置）
+  readonly u: Vector4; // 死亡時の4元速度（ローレンツブースト計算用）
+};
+
+export type RelativisticPlayer = {
+  id: string;
+  phaseSpace: PhaseSpace;
+  worldLine: WorldLine; // 現在の命の世界線（1本のみ）
+  color: string;
+  isDead: boolean;
+};
 
 export type Laser = {
   readonly id: string;
@@ -57,6 +65,8 @@ export type SceneContentProps = {
   myId: string | null;
   lasers: Laser[];
   spawns: SpawnEffect[];
+  frozenWorldLines: FrozenWorldLine[];
+  debrisRecords: DebrisRecord[];
   showInRestFrame: boolean;
   useOrthographic: boolean;
   cameraYawRef: React.RefObject<number>;

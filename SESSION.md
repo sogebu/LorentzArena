@@ -2,27 +2,32 @@
 
 ## 現在のステータス
 
-2+1 アプリが対戦可能な状態。GitHub Pages にデプロイ済み。
+2+1 アプリ対戦可能。GitHub Pages デプロイ済み（ただし今回のリファクタリングは未デプロイ）。
 https://sogebu.github.io/LorentzArena/
 
-## 直近の作業（2026-04-04）
+## 直近の作業（2026-04-05）
 
-- **リスポーン半直線の修正**: `allowHalfLine` フラグで制御。リスポーン後のライフは `createWorldLine(5000, false)` で半直線なし
-- **デブリ世界線の描画修正**:
-  - TubeGeometry（重い）→ lineSegments バッチ化（全デブリを1つの BufferGeometry に）
-  - 頂点カラーで死んだプレイヤーの色を反映
-- **リスポーン遅延**: 1秒 → 10秒
-- **DEAD カウントダウン表示**: HUD に死亡中のカウントダウンオーバーレイ（`lives.length` を key にして毎回リセット）
-- **死亡処理の簡素化**: 死亡時の唯一の特別処理は「死んだ本人が自分のマーカーを見ない」のみ。世界線・デブリは通常通り描画。`maxLambda < 0.5` 閾値を撤廃
-- **4軸レビュー修正**:
-  - ハードコード値を定数化（SPAWN_RANGE, LASER_COOLDOWN）
-  - ホストの kill/respawn/score メッセージ二重処理を排除（messageHandler でホスト時 return）
-  - リスポーン setTimeout を ref で追跡、unmount 時クリーンアップ
-  - デブリマーカーの material をキャッシュ化（threeCache.ts の `getDebrisMaterial`）
-  - HUD スコアソートを useMemo 化
-  - ネットワークメッセージにバリデーション追加（isFiniteNumber, isValidVector4, isValidColor 等）
-  - 未使用メッセージタイプ `position` を削除
-- **光円錐の奥行き知覚改善**: FrontSide 半透明サーフェス（opacity 0.2）+ FrontSide ワイヤーフレーム（opacity 0.3）
+### アーキテクチャ: 世界オブジェクト分離
+
+死亡イベントで生まれるオブジェクト（凍結世界線、デブリ、ゴースト）をプレイヤーから分離し、独立した世界オブジェクトとして管理するリファクタリングを実施。
+
+**変更内容:**
+- `RelativisticPlayer` から `lives[]` と `debrisRecords[]` を削除。`worldLine` 1本のみに
+- `FrozenWorldLine[]`, `DebrisRecord[]` を独立 state として管理
+- `DeathEvent` 型を追加。ゴーストカメラは DeathEvent から決定論的に計算
+- `handleKill` / `handleRespawn` コールバックで kill/respawn 処理を一元化
+- デブリの `maxLambda` を observer 非依存の固定値（200）に変更
+
+**バグ修正:**
+- 因果律の守護者が死亡プレイヤーで発動 → `if (player.isDead) continue;` 追加
+- デブリ `maxLambda` が observer.pos.t に依存 → 固定値化（世界オブジェクトなので observer 非依存）
+- ホスト色がクライアントで灰色 → 初期化時に `pickDistinctColor` を呼ぶ
+
+**デバッグログ除去:** SceneContent.tsx, debris.ts のデバッグ用 console.log/warn を全除去。K キー自爆テストも除去。
+
+## 未デプロイ変更
+
+上記リファクタリングは未 push・未デプロイ。テスト後に push → deploy する。
 
 ## 既知の課題
 
@@ -30,6 +35,7 @@ https://sogebu.github.io/LorentzArena/
 
 ## 次にやること
 
-- 各プレイヤーに固有時刻を表示（時間の遅れの実感用）: 生まれた瞬間の世界時刻を基準に、固有時間の経過を足していく。マーカー近くに表示
-- 初期配置範囲を本番値に戻す
-- 3+1 次元への拡張検討（カスタム頂点シェーダーが必要、DESIGN.md に記載済み）
+- ブラウザでマルチプレイヤーテスト（キル → デブリ → リスポーン）
+- 問題なければ commit + push + deploy
+- 各プレイヤーに固有時刻を表示（時間の遅れの実感用）
+- 3+1 次元への拡張検討

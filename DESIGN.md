@@ -49,7 +49,7 @@
 
 - **What**: 死亡時のデブリをアニメーション（Date.now ベース）ではなく、死亡イベント + パーティクル方向の静的データとして永続保存。過去光円錐との交差を毎フレーム計算して描画
 - **Why**: アニメーション爆発は一定時間で消えるが、遠方の観測者の過去光円錐に届く前に消えてしまう。永続データなら光が届くまで待てる
-- **Tradeoff**: 描画コスト（30パーティクル x デブリ数 x 毎フレーム二次方程式）。MAX_PAST_WORLDLINES = 5 で上限
+- **Tradeoff**: 描画コスト（30パーティクル x デブリ数 x 毎フレーム二次方程式）。MAX_DEBRIS = 20 で上限
 
 ### 世界系カメラ: プレイヤー追随（デバッグ用）
 
@@ -72,18 +72,17 @@
 - **Why**: 各クライアントが独立に色を選ぶとタイミングのずれで不一致が起きる。ホストが全プレイヤーの色を知っているので最適な色相選択が可能
 - **Tradeoff**: `playerColor` が `phaseSpace` より先に届くと捨てられる問題 → `pendingColorsRef` で解決
 
-### 世界線管理: lives[] 統合
+### 世界線管理: lives[] 統合 → 廃止（世界オブジェクト分離に移行）
 
-- **What**: `worldLine`（現在の命）+ `pastWorldLines[]`（過去の命）を `lives: WorldLine[]` に統合。最後の要素が現在の命
-- **Why**: kill/respawn のたびに worldLine → pastWorldLines への移動処理が必要で、host/client で重複実装になっていた。1つの配列にすることで状態遷移がシンプルになる
-- **操作**: kill → 世界線凍結（`isDead=true`）、respawn → `lives.push(newWorldLine)` で完全に独立した新世界線を追加
-- **解決済み**: 旧実装では kill 時に空 WorldLine を作成し respawn で最初の点を追加していたため、遅延 phaseSpace が混入して世界線が繋がるバグがあった。isDead フラグ + 凍結方式で解決
+- **What**: ~~`lives: WorldLine[]` に統合~~ → プレイヤーは `worldLine` 1本のみ、過去のライフは `frozenWorldLines[]`（独立 state）に
+- **経緯**: 当初は `lives[]` で全ライフを管理していたが、デブリ・ゴーストと共にプレイヤーに紐づけている設計が因果律バグの遠因に。世界オブジェクト分離により廃止
+- **現在の操作**: kill → worldLine を frozenWorldLines に移動 + isDead=true。respawn → 新 worldLine を作成
 
 ### 世界線の過去延長: origin + 半直線
 
 - **What**: WorldLine に `origin` フィールド（スポーン時の初期 PhaseSpace）を追加。`pastLightConeIntersectionWorldLine` で history を走査して交差が見つからなかった場合、origin から過去方向に等速直線運動の半直線との交差を解析的に計算
 - **Why**: スポーン直後の短い世界線でも、過去光円錐との交差が必ず見つかるようにする。初期位置で静止（または初期速度で等速直線運動）していたと仮定すれば物理的に正しい
-- **描画**: 最初のライフ（`lives[0]`）の origin からのみ半直線を描画。リスポーン後のライフには半直線をつけない（前の命と繋がって見えるのを防止）
+- **描画**: `WorldLine.origin !== null` のもののみ半直線を描画。リスポーン後の worldLine には origin をつけない（前の命と繋がって見えるのを防止）
 - **制約**: history trimming で origin と history[0] の間にギャップが生じうる。origin → history[0] のセグメントでも交差を探す
 
 ### 因果的 trimming
@@ -130,6 +129,27 @@
 - **What**: `messageHandler.ts` で全メッセージタイプに `isFiniteNumber`/`isValidVector4`/`isValidVector3`/`isValidColor` のランタイム検証を追加
 - **Why**: `msg: any` で受け取ったネットワークメッセージの NaN/Infinity 注入防止、playerColor の CSS インジェクション防止
 - **Tradeoff**: 微小なオーバーヘッド。zod 等のスキーマライブラリは導入せず手書きで軽量に
+
+### 因果律の守護者: 死亡プレイヤー除外
+
+- **What**: 因果律チェック（他プレイヤーの未来光円錐内なら操作凍結）から `isDead` プレイヤーを除外
+- **Why**: 死亡中のプレイヤーは phaseSpace をネットワーク送信しないため、座標が死亡時点で凍結される。生存プレイヤーの世界時が進むと、凍結された座標との lorentzDot が timelike（< 0）になり、因果律チェックに引っかかって観測者の時間進行が停止する。結果、デブリマーカーの maxLambda が固定され「出現後に動かない」バグとなっていた
+- **修正**: `if (player.isDead) continue;` を因果律チェックのループに追加。死亡プレイヤーはゲーム世界から離脱しているので因果律の対象外
+- **教訓**: 因果律の守護者は「ゲームに参加しているプレイヤー」に対してのみ有効。phaseSpace が更新されないオブジェクト（死亡、切断等）を含めると偽陽性で時間停止が起きる
+
+### 世界オブジェクト分離: 死亡 = プレイヤーから世界への遷移
+
+- **What**: 死亡イベントで生まれるオブジェクト（凍結世界線、デブリ、ゴースト軌跡）を `RelativisticPlayer` から分離し、独立した state として管理。`lives[]` と `debrisRecords[]` を廃止。プレイヤーは `worldLine` 1本のみ保持
+- **Why**: レーザーは既に独立 state だったが、デブリと凍結世界線だけプレイヤーに紐づいていた。これらは発生した瞬間にプレイヤーと無関係な世界オブジェクトになる。紐づけが因果律の守護者バグの遠因となり、切断したプレイヤーの痕跡が消えるなどの副作用もあった
+- **設計原理**: 世界に放たれた物理オブジェクト（レーザー、デブリ、凍結世界線）はプレイヤーとは独立に存在し続ける。プレイヤーが持つのは「今生きてるライフの世界線」だけ
+- **ゴースト**: 死亡中の「プレイヤー」はカメラ + リスポーンタイマー。DeathEvent（pos + 4-velocity）から等速直線運動を決定論的に計算
+- **Tradeoff**: state が増える（`frozenWorldLines[]`, `debrisRecords[]`, `myDeathEvent`）が、データフローが明確になり各 state の責務が単一に
+
+### デブリ maxLambda: observer 非依存化
+
+- **What**: デブリの過去光円錐交差計算で使う `maxLambda` を `observer.pos.t - death.t`（observer 依存）から固定値 `200` に変更
+- **Why**: デブリ世界線は世界オブジェクトであり、死亡イベントから無限の未来に伸びる直線。過去光円錐との交差は純粋に幾何学的に決まる。`observer.t > intersection.t` の条件が既にカバーしているため、observer の時刻で世界線を切り詰める必要はない。observer 依存だとゴースト中に phaseSpace が止まるとマーカーも止まるバグを生んでいた
+- **教訓**: 世界オブジェクトの計算に observer 固有の値を混入させない。過去光円錐交差の条件は幾何学に任せる
 
 ### ホスト権威メッセージの二重処理防止
 

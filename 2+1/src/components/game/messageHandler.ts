@@ -7,7 +7,6 @@ import {
 } from "../../physics";
 import { pickDistinctColor } from "./colors";
 import { MAX_LASERS } from "./constants";
-import { applyKill, applyRespawn } from "./killRespawn";
 import type { Laser, RelativisticPlayer, SpawnEffect } from "./types";
 
 export type MessageHandlerDeps = {
@@ -30,12 +29,22 @@ export type MessageHandlerDeps = {
   playersRef: React.RefObject<Map<string, RelativisticPlayer>>;
   timeSyncedRef: React.MutableRefObject<boolean>;
   pendingColorsRef: React.RefObject<Map<string, string>>;
+  handleKill: (
+    victimId: string,
+    hitPos: { t: number; x: number; y: number; z: number },
+  ) => void;
+  handleRespawn: (
+    playerId: string,
+    position: { t: number; x: number; y: number; z: number },
+  ) => void;
 };
 
 const isFiniteNumber = (v: unknown): v is number =>
   typeof v === "number" && Number.isFinite(v);
 
-const isValidVector4 = (v: unknown): v is { t: number; x: number; y: number; z: number } =>
+const isValidVector4 = (
+  v: unknown,
+): v is { t: number; x: number; y: number; z: number } =>
   v != null &&
   typeof v === "object" &&
   isFiniteNumber((v as Record<string, unknown>).t) &&
@@ -43,7 +52,9 @@ const isValidVector4 = (v: unknown): v is { t: number; x: number; y: number; z: 
   isFiniteNumber((v as Record<string, unknown>).y) &&
   isFiniteNumber((v as Record<string, unknown>).z);
 
-const isValidVector3 = (v: unknown): v is { x: number; y: number; z: number } =>
+const isValidVector3 = (
+  v: unknown,
+): v is { x: number; y: number; z: number } =>
   v != null &&
   typeof v === "object" &&
   isFiniteNumber((v as Record<string, unknown>).x) &&
@@ -63,17 +74,19 @@ export const createMessageHandler =
       setPlayers,
       setLasers,
       setScores,
-      setSpawns,
       setDeathFlash,
       setKillNotification,
       scoresRef,
       playersRef,
       timeSyncedRef,
       pendingColorsRef,
+      handleKill,
+      handleRespawn,
     } = deps;
 
     if (msg.type === "phaseSpace") {
-      if (!isValidVector4(msg.position) || !isValidVector3(msg.velocity)) return;
+      if (!isValidVector4(msg.position) || !isValidVector3(msg.velocity))
+        return;
       const playerId = msg.senderId;
       setPlayers((prev) => {
         const next = new Map(prev);
@@ -84,17 +97,16 @@ export const createMessageHandler =
         // 死亡中（世界線凍結中）なら phaseSpace を無視
         if (existing?.isDead) return prev;
 
-        const existingLives = existing?.lives || [];
-        const lastLife =
-          existingLives[existingLives.length - 1] ||
-          createWorldLine(5000, phaseSpace); // 新規プレイヤーの最初のライフ: origin 付き
-        const updatedLife = appendWorldLine(lastLife, phaseSpace);
-        const lives =
-          existingLives.length > 0
-            ? [...existingLives.slice(0, -1), updatedLife]
-            : [updatedLife];
+        const existingWorldLine = existing?.worldLine;
+        const worldLine = existingWorldLine
+          ? appendWorldLine(existingWorldLine, phaseSpace)
+          : (() => {
+              let wl = createWorldLine(5000, phaseSpace); // 新規プレイヤー: origin 付き
+              wl = appendWorldLine(wl, phaseSpace);
+              return wl;
+            })();
 
-        // 色の決定: pending にあればそれを使う、なければホストが割り当て
+        // 色の決定
         let color = existing?.color;
         if (!color) {
           const pending = pendingColorsRef.current.get(playerId);
@@ -105,15 +117,14 @@ export const createMessageHandler =
             color = pickDistinctColor(playerId, prev);
             peerManager.send({ type: "playerColor" as const, playerId, color });
           } else {
-            color = "hsl(0, 0%, 70%)"; // 仮色（playerColor 受信まで）
+            color = "hsl(0, 0%, 70%)";
           }
         }
 
         next.set(playerId, {
           id: playerId,
           phaseSpace,
-          lives,
-          debrisRecords: existing?.debrisRecords || [],
+          worldLine,
           color,
           isDead: false,
         });
@@ -134,10 +145,10 @@ export const createMessageHandler =
           ),
           me.phaseSpace.u,
         );
-        let newLife = createWorldLine(5000, synced); // 時刻同期: 最初のライフ、origin 付き
-        newLife = appendWorldLine(newLife, synced);
+        let newWorldLine = createWorldLine(5000, synced);
+        newWorldLine = appendWorldLine(newWorldLine, synced);
         const next = new Map(prev);
-        next.set(myId, { ...me, phaseSpace: synced, lives: [newLife] });
+        next.set(myId, { ...me, phaseSpace: synced, worldLine: newWorldLine });
         return next;
       });
     } else if (msg.type === "laser") {
@@ -159,26 +170,14 @@ export const createMessageHandler =
       setLasers((prev) => {
         if (prev.some((l) => l.id === receivedLaser.id)) return prev;
         const updated = [...prev, receivedLaser];
-        if (updated.length > MAX_LASERS) {
-          return updated.slice(updated.length - MAX_LASERS);
-        }
-        return updated;
+        return updated.length > MAX_LASERS
+          ? updated.slice(updated.length - MAX_LASERS)
+          : updated;
       });
     } else if (msg.type === "respawn") {
       if (peerManager.getIsHost()) return;
       if (!isValidVector4(msg.position)) return;
-      setPlayers((prev) => applyRespawn(prev, msg.playerId, msg.position));
-      // スポーンエフェクト
-      const spawningPlayer = playersRef.current.get(msg.playerId);
-      setSpawns((prev) => [
-        ...prev,
-        {
-          id: `spawn-${msg.playerId}-${Date.now()}`,
-          pos: msg.position,
-          color: spawningPlayer?.color ?? "white",
-          startTime: Date.now(),
-        },
-      ]);
+      handleRespawn(msg.playerId, msg.position);
     } else if (msg.type === "score") {
       if (peerManager.getIsHost()) return;
       scoresRef.current = msg.scores;
@@ -199,8 +198,8 @@ export const createMessageHandler =
         });
         setTimeout(() => setKillNotification(null), 1500);
       }
-      // 状態更新: 世界線凍結 + デブリ + isDead
-      setPlayers((prev) => applyKill(prev, msg.victimId, msg.hitPos));
+      // データ更新: handleKill で世界線凍結 + デブリ生成 + isDead
+      handleKill(msg.victimId, msg.hitPos);
     } else if (msg.type === "playerColor") {
       if (!isValidColor(msg.color)) return;
       pendingColorsRef.current.set(msg.playerId, msg.color);

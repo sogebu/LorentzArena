@@ -1,5 +1,5 @@
 import { useFrame } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import {
   createVector4,
@@ -15,7 +15,11 @@ import {
   transformEventForDisplay,
 } from "./displayTransform";
 import { pastLightConeIntersectionLaser } from "./laserPhysics";
-import { getDebrisMaterial, getThreeColor, sharedGeometries } from "./threeCache";
+import {
+  getDebrisMaterial,
+  getThreeColor,
+  sharedGeometries,
+} from "./threeCache";
 import type {
   DisplayLaser,
   Laser,
@@ -28,141 +32,104 @@ import type {
 
 const WorldLineRenderer = ({
   worldLine: wl,
-  color: colorStr,
+  color,
   showHalfLine,
   observerPos,
   observerBoost,
 }: WorldLineRendererProps) => {
-  const [geometry, setGeometry] = useState<THREE.TubeGeometry | null>(null);
-  const meshRef = useRef<THREE.Mesh>(null);
+  const tubeRef = useRef<THREE.Mesh>(null);
+  const halfLineRef = useRef<THREE.Mesh>(null);
 
-  const history = wl.history;
-  const origin = wl.origin;
-
-  // geometry は世界系座標で生成（history が変わったときだけ再生成）
-  // showHalfLine が true なら origin から過去方向への半直線も含む
-  useEffect(() => {
-    if (history.length < 2 && !(showHalfLine && origin)) {
-      // リスポーン直後など: 古い geometry をクリア
-      setGeometry((prev) => {
-        if (prev) prev.dispose();
-        return null;
-      });
-      return;
-    }
-
-    const points: THREE.Vector3[] = [];
-
-    // 半直線の端点: origin から��去方向に座標時間100単位分（最初の命のみ）
-    if (showHalfLine && origin) {
-      const HALF_LINE_LENGTH = 100; // 座標時間で100単位分
-      const pastEnd = positionAlongStraightWorldLine(origin, HALF_LINE_LENGTH);
-      points.push(new THREE.Vector3(pastEnd.x, pastEnd.y, pastEnd.t));
-
-      // origin 自体が history[0] と異なる場合（trimming 後）origin を追加
-      if (history.length === 0 || origin.pos.t !== history[0].pos.t) {
-        points.push(
-          new THREE.Vector3(origin.pos.x, origin.pos.y, origin.pos.t),
-        );
-      }
-    }
-
-    // history の各点
-    for (const ps of history) {
-      points.push(new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t));
-    }
-
-    if (points.length < 2) {
-      setGeometry((prev) => {
-        if (prev) prev.dispose();
-        return null;
-      });
-      return;
-    }
-
-    const curve = new THREE.CatmullRomCurve3(points);
-    const tubeGeometry = new THREE.TubeGeometry(
-      curve,
-      Math.min(points.length * 2, 1000),
-      0.05,
-      8,
-      false,
+  const tubeGeo = useMemo(() => {
+    if (wl.history.length < 2) return null;
+    const points = wl.history.map(
+      (ps) => new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t),
     );
+    const curve = new THREE.CatmullRomCurve3(points, false, "centripetal", 0.5);
+    const segments = Math.max(1, points.length * 2);
+    return new THREE.TubeGeometry(curve, segments, 0.04, 6, false);
+  }, [wl.history]);
 
-    setGeometry((prev) => {
-      if (prev) prev.dispose();
-      return tubeGeometry;
-    });
-  }, [history, origin, showHalfLine]);
+  const halfLineGeo = useMemo(() => {
+    if (!showHalfLine || !wl.origin) return null;
+    const o = wl.origin;
+    const len = 200;
+    const start = positionAlongStraightWorldLine(o, len);
+    const end = new THREE.Vector3(o.pos.x, o.pos.y, o.pos.t);
+    const startVec = new THREE.Vector3(start.x, start.y, start.t);
+    const curve = new THREE.LineCurve3(startVec, end);
+    return new THREE.TubeGeometry(curve, 2, 0.04, 6, false);
+  }, [showHalfLine, wl.origin]);
 
-  // 表示変換はメッシュの行列として毎フレーム適用（geometry 再生成不要）
+  const displayMatrix = buildDisplayMatrix(observerPos, observerBoost);
   useFrame(() => {
-    if (!meshRef.current) return;
-    const displayMatrix = buildDisplayMatrix(observerPos, observerBoost);
-    meshRef.current.matrix.copy(displayMatrix);
-    meshRef.current.matrixWorldNeedsUpdate = true;
+    if (tubeRef.current) {
+      tubeRef.current.matrix.copy(displayMatrix);
+      tubeRef.current.matrixAutoUpdate = false;
+    }
+    if (halfLineRef.current) {
+      halfLineRef.current.matrix.copy(displayMatrix);
+      halfLineRef.current.matrixAutoUpdate = false;
+    }
   });
 
-  // アンマウント時に geometry を破棄
-  useEffect(() => {
-    return () => {
-      setGeometry((prev) => {
-        if (prev) prev.dispose();
-        return null;
-      });
-    };
-  }, []);
+  const threeColor = getThreeColor(color);
+  return (
+    <>
+      {tubeGeo && (
+        <mesh ref={tubeRef} geometry={tubeGeo}>
+          <meshStandardMaterial
+            color={threeColor}
+            emissive={threeColor}
+            emissiveIntensity={0.4}
+            roughness={0.4}
+            metalness={0.1}
+          />
+        </mesh>
+      )}
+      {halfLineGeo && (
+        <mesh ref={halfLineRef} geometry={halfLineGeo}>
+          <meshStandardMaterial
+            color={threeColor}
+            emissive={threeColor}
+            emissiveIntensity={0.2}
+            roughness={0.5}
+            metalness={0.1}
+            transparent
+            opacity={0.5}
+          />
+        </mesh>
+      )}
+    </>
+  );
+};
 
-  const color = getThreeColor(colorStr);
+// レーザー描画コンポーネント
 
-  if (!geometry) return null;
+const LaserRenderer = ({ laser }: { laser: DisplayLaser }) => {
+  const points = useMemo(
+    () => [
+      new THREE.Vector3(laser.start.x, laser.start.y, laser.start.t),
+      new THREE.Vector3(laser.end.x, laser.end.y, laser.end.t),
+    ],
+    [laser],
+  );
+  const geometry = useMemo(() => {
+    const geo = new THREE.BufferGeometry();
+    geo.setFromPoints(points);
+    return geo;
+  }, [points]);
+  const color = getThreeColor(laser.color);
 
   return (
-    <mesh ref={meshRef} geometry={geometry} matrixAutoUpdate={false}>
-      <meshStandardMaterial
-        color={color}
-        emissive={color}
-        emissiveIntensity={0.9}
-      />
-    </mesh>
+    <lineSegments geometry={geometry}>
+      <lineBasicMaterial color={color} transparent opacity={0.4} />
+    </lineSegments>
   );
 };
 
-// LaserRenderer コンポーネント - 個別のレーザーを���画
-const LaserRenderer = ({ laser }: { laser: DisplayLaser }) => {
-  const geometry = useMemo(() => {
-    const startPoint = new THREE.Vector3(
-      laser.start.x,
-      laser.start.y,
-      laser.start.t,
-    );
-    const endPoint = new THREE.Vector3(laser.end.x, laser.end.y, laser.end.t);
-    const curve = new THREE.LineCurve3(startPoint, endPoint);
-    return new THREE.TubeGeometry(curve, 2, 0.05, 8, false);
-  }, [laser]);
+// スポーンエフェクト描画コンポーネント
 
-  const color = useMemo(() => getThreeColor(laser.color), [laser.color]);
-  const material = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        color: color,
-        transparent: true,
-        opacity: 0.4,
-      }),
-    [color],
-  );
-
-  useEffect(() => {
-    return () => {
-      geometry.dispose();
-      material.dispose();
-    };
-  }, [geometry, material]);
-
-  return <mesh geometry={geometry} material={material} />;
-};
-
-// スポーンエフェクトコンポーネント — 同心円リングが時間軸に沿って脈動
 const SpawnRenderer = ({
   spawn,
   observerPos,
@@ -172,82 +139,37 @@ const SpawnRenderer = ({
   observerPos: Vector4 | null;
   observerBoost: ReturnType<typeof lorentzBoost> | null;
 }) => {
-  const elapsed = Date.now() - spawn.startTime;
-  const progress = Math.min(elapsed / SPAWN_EFFECT_DURATION, 1);
-  const opacity = 1 - progress;
+  const ref = useRef<THREE.Group>(null);
+  const startTime = useRef(spawn.startTime);
 
-  const color = useMemo(() => getThreeColor(spawn.color), [spawn.color]);
+  useFrame(() => {
+    const elapsed = Date.now() - startTime.current;
+    if (elapsed >= SPAWN_EFFECT_DURATION || !ref.current) return;
+    const progress = elapsed / SPAWN_EFFECT_DURATION;
+    const scale = 1 + progress * 2;
+    const opacity = 1 - progress;
+    ref.current.scale.set(scale, scale, scale);
+    for (const child of ref.current.children) {
+      if (child instanceof THREE.Mesh) {
+        const mat = child.material as THREE.MeshBasicMaterial;
+        mat.opacity = opacity;
+      }
+    }
+  });
 
-  if (opacity <= 0) return null;
-
-  const spawnEvent = createVector4(
-    spawn.pos.t,
-    spawn.pos.x,
-    spawn.pos.y,
-    spawn.pos.z,
+  const displayPos = transformEventForDisplay(
+    createVector4(spawn.pos.t, spawn.pos.x, spawn.pos.y, spawn.pos.z),
+    observerPos,
+    observerBoost,
   );
+  const color = getThreeColor(spawn.color);
 
-  // 5本のリングが時間軸に沿って配置、収縮アニメーション
-  const ringCount = 5;
   return (
-    <>
-      {Array.from({ length: ringCount }, (_, i) => {
-        const ringProgress = (progress * 3 + i / ringCount) % 1; // 各リングの位相をずらす
-        const ringRadius = (1 - ringProgress) * 4; // 収縮: 大きい → 小さい
-        const ringOpacity = opacity * (1 - ringProgress) * 0.8;
-        const ringT = spawn.pos.t + i * 0.5; // 時間軸に沿って配置
-
-        const worldPos = createVector4(ringT, spawn.pos.x, spawn.pos.y, 0);
-        const displayPos = transformEventForDisplay(
-          worldPos,
-          observerPos,
-          observerBoost,
-        );
-
-        if (ringRadius < 0.1 || ringOpacity < 0.01) return null;
-
-        return (
-          <mesh
-            key={i}
-            position={[displayPos.x, displayPos.y, displayPos.t]}
-            rotation={[Math.PI / 2, 0, 0]}
-          >
-            <torusGeometry args={[ringRadius, 0.06, 8, 24]} />
-            <meshBasicMaterial
-              color={color}
-              transparent
-              opacity={ringOpacity}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
-        );
-      })}
-      {/* 中心の光柱（時間軸方向） */}
-      {(() => {
-        const pillarHeight = 6 * (1 - progress * 0.5);
-        const displayPos = transformEventForDisplay(
-          spawnEvent,
-          observerPos,
-          observerBoost,
-        );
-        return (
-          <mesh
-            position={[
-              displayPos.x,
-              displayPos.y,
-              displayPos.t + pillarHeight / 2,
-            ]}
-          >
-            <cylinderGeometry args={[0.08, 0.08, pillarHeight, 6]} />
-            <meshBasicMaterial
-              color={color}
-              transparent
-              opacity={opacity * 0.6}
-            />
-          </mesh>
-        );
-      })()}
-    </>
+    <group ref={ref} position={[displayPos.x, displayPos.y, displayPos.t]}>
+      <mesh geometry={sharedGeometries.explosionParticle}>
+        <meshBasicMaterial color={color} transparent opacity={1} />
+      </mesh>
+    </group>
   );
 };
 
@@ -257,12 +179,13 @@ export const SceneContent = ({
   myId,
   lasers,
   spawns,
+  frozenWorldLines,
+  debrisRecords,
   showInRestFrame,
   useOrthographic,
   cameraYawRef,
   cameraPitchRef,
 }: SceneContentProps) => {
-  // プレイヤーリストをメモ化
   const playerList = useMemo(() => Array.from(players.values()), [players]);
   const myPlayer = useMemo(
     () => (myId ? (players.get(myId) ?? null) : null),
@@ -288,7 +211,6 @@ export const SceneContent = ({
         laser.emissionPos.y + laser.direction.y * laser.range,
         laser.emissionPos.z + laser.direction.z * laser.range,
       );
-
       return {
         id: laser.id,
         color: laser.color,
@@ -298,63 +220,82 @@ export const SceneContent = ({
     });
   }, [lasers, observerPos, observerBoost]);
 
-  // カメラの位置をプレイヤー位置から計算（球面座標）
+  // カメラ制御
   useFrame(({ camera }) => {
     if (!myPlayer) return;
+    const playerPos = transformEventForDisplay(
+      myPlayer.phaseSpace.pos,
+      observerPos,
+      observerBoost,
+    );
+    const targetX = playerPos.x;
+    const targetY = playerPos.y;
+    const targetT = playerPos.t;
 
-    // 静止系: 原点追尾、世界系: プレイヤーの世界系座標に追随
-    const targetX = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.x;
-    const targetY = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.y;
-    const targetT = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.t;
-    // カメラの距離（プレイヤーからの距離、固定）
-    const cameraDistance = useOrthographic ? 100 : 15;
-    // カメラ位置: プレイヤーを中心とした球面上
-    const cameraYaw = cameraYawRef.current;
-    const cameraPitch = cameraPitchRef.current;
-    // 球面座標からデカルト座標へ変換
+    const yaw = cameraYawRef.current;
+    const pitch = cameraPitchRef.current;
+    const distance = useOrthographic ? 100 : 15;
     const camX =
-      targetX - Math.cos(cameraYaw) * Math.cos(cameraPitch) * cameraDistance;
+      targetX + distance * Math.cos(pitch) * Math.cos(yaw + Math.PI);
     const camY =
-      targetY - Math.sin(cameraYaw) * Math.cos(cameraPitch) * cameraDistance;
-    const camT = targetT - Math.sin(cameraPitch) * cameraDistance;
+      targetY + distance * Math.cos(pitch) * Math.sin(yaw + Math.PI);
+    const camT = targetT + distance * Math.sin(pitch);
 
     camera.position.set(camX, camY, camT);
     camera.lookAt(targetX, targetY, targetT);
     camera.up.set(0, 0, 1);
   });
+
+  // 世界線の過去光円錐交差（他プレイヤーの現在の worldLine + 凍結世界線）
   const worldLineIntersections = useMemo(() => {
     if (!myPlayer || !myId) return [];
 
-    return playerList
-      .filter((player) => player.id !== myId)
-      .flatMap((player) => {
-        // 全ライフを新→旧の順に検索
-        for (let j = player.lives.length - 1; j >= 0; j--) {
-          const wl = player.lives[j];
-          const intersection = pastLightConeIntersectionWorldLine(
-            wl,
-            myPlayer.phaseSpace.pos,
-          );
-          if (intersection) {
-            return [
-              {
-                playerId: player.id,
-                color: player.color,
-                pos: transformEventForDisplay(
-                  intersection.pos,
-                  observerPos,
-                  observerBoost,
-                ),
-              },
-            ];
-          }
-        }
-        return [];
-      });
-  }, [myPlayer, myId, playerList, observerPos, observerBoost]);
+    const results: { playerId: string; color: string; pos: Vector4 }[] = [];
+
+    // 他プレイヤーの現在の worldLine を検索
+    for (const player of playerList) {
+      if (player.id === myId) continue;
+      const intersection = pastLightConeIntersectionWorldLine(
+        player.worldLine,
+        myPlayer.phaseSpace.pos,
+      );
+      if (intersection) {
+        results.push({
+          playerId: player.id,
+          color: player.color,
+          pos: transformEventForDisplay(
+            intersection.pos,
+            observerPos,
+            observerBoost,
+          ),
+        });
+      }
+    }
+
+    // 凍結世界線も検索
+    for (const fw of frozenWorldLines) {
+      const intersection = pastLightConeIntersectionWorldLine(
+        fw.worldLine,
+        myPlayer.phaseSpace.pos,
+      );
+      if (intersection) {
+        results.push({
+          playerId: `frozen-${fw.worldLine.history[0]?.pos.t ?? 0}`,
+          color: fw.color,
+          pos: transformEventForDisplay(
+            intersection.pos,
+            observerPos,
+            observerBoost,
+          ),
+        });
+      }
+    }
+
+    return results;
+  }, [myPlayer, myId, playerList, frozenWorldLines, observerPos, observerBoost]);
+
   const laserIntersections = useMemo(() => {
     if (!myPlayer || !myId) return [];
-
     return lasers
       .map((laser) => {
         const intersection = pastLightConeIntersectionLaser(
@@ -381,20 +322,28 @@ export const SceneContent = ({
       <ambientLight intensity={0.5} />
       <pointLight position={[10, 10, 10]} intensity={1} />
 
-      {/* 全プレイヤーの全ライフの世界線を描画 */}
+      {/* 凍結世界線（世界オブジェクト）を描画 */}
+      {frozenWorldLines.map((fw, i) => (
+        <WorldLineRenderer
+          key={`frozen-${i}-${fw.worldLine.history[0]?.pos.t ?? 0}`}
+          worldLine={fw.worldLine}
+          color={fw.color}
+          showHalfLine={fw.showHalfLine}
+          observerPos={observerPos}
+          observerBoost={observerBoost}
+        />
+      ))}
+
+      {/* 生存プレイヤーの現在の世界線を描画 */}
       {playerList.map((player) => (
-        <group key={`worldlines-${player.id}`}>
-          {player.lives.map((wl, i) => (
-            <WorldLineRenderer
-              key={`worldline-${player.id}-${i}-${wl.history[0]?.pos.t ?? 0}`}
-              worldLine={wl}
-              color={player.color}
-              showHalfLine={i === 0}
-              observerPos={observerPos}
-              observerBoost={observerBoost}
-            />
-          ))}
-        </group>
+        <WorldLineRenderer
+          key={`worldline-${player.id}`}
+          worldLine={player.worldLine}
+          color={player.color}
+          showHalfLine={player.worldLine.origin !== null}
+          observerPos={observerPos}
+          observerBoost={observerBoost}
+        />
       ))}
 
       {/* 各プレイヤーのマーカー（死亡中の自分のみ非表示） */}
@@ -440,7 +389,7 @@ export const SceneContent = ({
         );
       })}
 
-      {/* 自分の光円錐のみ描画（死亡中も表示 = 幽霊の位置に追随） */}
+      {/* 自分の光円錐のみ描画 */}
       {playerList
         .filter((p) => p.id === myId)
         .map((player) => {
@@ -454,7 +403,6 @@ export const SceneContent = ({
 
           return (
             <group key={`lightcone-${player.id}`}>
-              {/* 未来光円錐 */}
               <mesh
                 position={[pos.x, pos.y, pos.t + coneHeight / 2]}
                 rotation={[-Math.PI / 2, 0.0, 0.0]}
@@ -481,7 +429,6 @@ export const SceneContent = ({
                   wireframe
                 />
               </mesh>
-              {/* 過去光円錐 */}
               <mesh
                 position={[pos.x, pos.y, pos.t - coneHeight / 2]}
                 rotation={[Math.PI / 2, 0.0, 0.0]}
@@ -512,7 +459,7 @@ export const SceneContent = ({
           );
         })}
 
-      {/* 自分の過去光円錐と他プレイヤーの世界線の交点 */}
+      {/* 世界線の過去光円錐交差マーカー */}
       {worldLineIntersections.map(({ playerId, color: colorText, pos }) => {
         const color = getThreeColor(colorText);
         return (
@@ -542,7 +489,7 @@ export const SceneContent = ({
         );
       })}
 
-      {/* 各レーザーと自分の過去光円錐の交点（自分のレーザーも含む） */}
+      {/* レーザー交差マーカー */}
       {laserIntersections.map(({ laser, pos }) => {
         const color = getThreeColor(laser.color);
         return (
@@ -563,89 +510,87 @@ export const SceneContent = ({
         );
       })}
 
-      {/* レーザーを描画 */}
+      {/* レーザー描画 */}
       {displayLasers.map((laser) => (
         <LaserRenderer key={laser.id} laser={laser} />
       ))}
 
-      {/* 永続デブリの世界線（全パーティクルを1つの lineSegments にバッチ化、頂点カラー） */}
+      {/* デブリの世界線とマーカー（世界オブジェクト） */}
       {myPlayer &&
         (() => {
           const lineVertices: number[] = [];
           const lineColors: number[] = [];
           const markerElements: React.ReactNode[] = [];
 
-          for (const player of playerList) {
-            for (let di = 0; di < player.debrisRecords.length; di++) {
-              const debris = player.debrisRecords[di];
-              const deathEvent = createVector4(
-                debris.deathPos.t,
-                debris.deathPos.x,
-                debris.deathPos.y,
-                0,
-              );
-              const maxLambda = Math.max(
-                0,
-                myPlayer.phaseSpace.pos.t - debris.deathPos.t,
-              );
-              if (maxLambda <= 0) continue;
-              const debrisColor = getThreeColor(debris.color);
-              const r = debrisColor.r;
-              const g = debrisColor.g;
-              const b = debrisColor.b;
+          for (let di = 0; di < debrisRecords.length; di++) {
+            const debris = debrisRecords[di];
+            const deathEvent = createVector4(
+              debris.deathPos.t,
+              debris.deathPos.x,
+              debris.deathPos.y,
+              0,
+            );
+            // デブリ世界線は世界オブジェクト: 十分大きい範囲で探索
+            // 過去光円錐との交差条件 (observer.t > intersection.t) がカバーするので
+            // observer の時刻に依存する必要はない
+            const maxLambda = 200;
+            const debrisColor = getThreeColor(debris.color);
+            const r = debrisColor.r;
+            const g = debrisColor.g;
+            const b = debrisColor.b;
 
-              const startDisplay = transformEventForDisplay(
-                deathEvent,
+            const startDisplay = transformEventForDisplay(
+              deathEvent,
+              observerPos,
+              observerBoost,
+            );
+
+            for (let pi = 0; pi < debris.particles.length; pi++) {
+              const p = debris.particles[pi];
+
+              const endWorld = createVector4(
+                debris.deathPos.t + maxLambda,
+                debris.deathPos.x + p.dx * maxLambda,
+                debris.deathPos.y + p.dy * maxLambda,
+                0,
+              );
+              const endDisplay = transformEventForDisplay(
+                endWorld,
                 observerPos,
                 observerBoost,
               );
+              lineVertices.push(
+                startDisplay.x,
+                startDisplay.y,
+                startDisplay.t,
+                endDisplay.x,
+                endDisplay.y,
+                endDisplay.t,
+              );
+              lineColors.push(r, g, b, r, g, b);
 
-              for (let pi = 0; pi < debris.particles.length; pi++) {
-                const p = debris.particles[pi];
-
-                // デブリ世界線の頂点ペア
-                const endWorld = createVector4(
-                  debris.deathPos.t + maxLambda,
-                  debris.deathPos.x + p.dx * maxLambda,
-                  debris.deathPos.y + p.dy * maxLambda,
-                  0,
-                );
-                const endDisplay = transformEventForDisplay(
-                  endWorld,
+              const intersection = pastLightConeIntersectionDebris(
+                deathEvent,
+                p.dx,
+                p.dy,
+                maxLambda,
+                myPlayer.phaseSpace.pos,
+              );
+              if (intersection) {
+                const displayPos = transformEventForDisplay(
+                  intersection,
                   observerPos,
                   observerBoost,
                 );
-                lineVertices.push(
-                  startDisplay.x, startDisplay.y, startDisplay.t,
-                  endDisplay.x, endDisplay.y, endDisplay.t,
+                markerElements.push(
+                  <mesh
+                    key={`debris-${di}-${pi}`}
+                    position={[displayPos.x, displayPos.y, displayPos.t]}
+                    scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
+                    geometry={sharedGeometries.explosionParticle}
+                    material={getDebrisMaterial(debrisColor)}
+                  />,
                 );
-                // 始点・終点に同じ色
-                lineColors.push(r, g, b, r, g, b);
-
-                // 過去光円錐との交差マーカー
-                const intersection = pastLightConeIntersectionDebris(
-                  deathEvent,
-                  p.dx,
-                  p.dy,
-                  maxLambda,
-                  myPlayer.phaseSpace.pos,
-                );
-                if (intersection) {
-                  const displayPos = transformEventForDisplay(
-                    intersection,
-                    observerPos,
-                    observerBoost,
-                  );
-                  markerElements.push(
-                    <mesh
-                      key={`debris-${player.id}-${di}-${pi}`}
-                      position={[displayPos.x, displayPos.y, displayPos.t]}
-                      scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
-                      geometry={sharedGeometries.explosionParticle}
-                      material={getDebrisMaterial(debrisColor)}
-                    />,
-                  );
-                }
               }
             }
           }
@@ -664,17 +609,13 @@ export const SceneContent = ({
 
           return [
             <lineSegments key="debris-lines" geometry={geom}>
-              <lineBasicMaterial
-                vertexColors
-                transparent
-                opacity={0.4}
-              />
+              <lineBasicMaterial vertexColors transparent opacity={0.4} />
             </lineSegments>,
             ...markerElements,
           ];
         })()}
 
-      {/* スポーンエフェクトを描画 */}
+      {/* スポーンエフェクト */}
       {spawns.map((spawn) => (
         <SpawnRenderer
           key={spawn.id}

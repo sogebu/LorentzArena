@@ -1,5 +1,5 @@
 import { Canvas } from "@react-three/fiber";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePeer } from "../hooks/usePeer";
 import {
   appendWorldLine,
@@ -18,33 +18,28 @@ import {
   HIT_RADIUS,
   LASER_COOLDOWN,
   LASER_RANGE,
+  MAX_DEBRIS,
+  MAX_FROZEN_WORLDLINES,
   MAX_LASERS,
   OFFSET,
   RESPAWN_DELAY,
   SPAWN_RANGE,
   SPAWN_EFFECT_DURATION,
 } from "./game/constants";
+import { generateExplosionParticles } from "./game/debris";
 import { HUD } from "./game/HUD";
 import { applyKill, applyRespawn } from "./game/killRespawn";
 import { findLaserHitPosition } from "./game/laserPhysics";
 import { createMessageHandler } from "./game/messageHandler";
 import { SceneContent } from "./game/SceneContent";
-import type { Laser, RelativisticPlayer, SpawnEffect } from "./game/types";
-import { currentLife } from "./game/types";
-
-/**
- * RelativisticGame (2+1 spacetime).
- *
- * English:
- *   - Renders an x-y-time arena in 3D using three.js (@react-three/fiber).
- *   - Time coordinate t is mapped to the Z axis for visualization.
- *   - Multiplayer state is synced via PeerJS (WebRTC). In this app, clients send to the host and the host relays.
- *
- * 日本語:
- *   - x-y-t のアリーナを three.js（@react-three/fiber）で 3D 表示します。
- *   - 可視化のため、時間座標 t を Z 軸に割り当てています。
- *   - マルチプレイ同期は PeerJS（WebRTC）。このアプリは基本的にホスト中継型です。
- */
+import type {
+  DeathEvent,
+  DebrisRecord,
+  FrozenWorldLine,
+  Laser,
+  RelativisticPlayer,
+  SpawnEffect,
+} from "./game/types";
 
 const RelativisticGame = () => {
   const { peerManager, myId, connections } = usePeer();
@@ -59,39 +54,120 @@ const RelativisticGame = () => {
     victimName: string;
     color: string;
   } | null>(null);
+
+  // 世界オブジェクト（プレイヤーから独立）
+  const [frozenWorldLines, setFrozenWorldLines] = useState<FrozenWorldLine[]>(
+    [],
+  );
+  const [debrisRecords, setDebrisRecords] = useState<DebrisRecord[]>([]);
+  const [myDeathEvent, setMyDeathEvent] = useState<DeathEvent | null>(null);
+  const ghostTauRef = useRef<number>(0);
+
   const scoresRef = useRef<Record<string, number>>({});
   const [showInRestFrame, setShowInRestFrame] = useState(true);
   const [useOrthographic, setUseOrthographic] = useState(true);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTimeRef = useRef<number>(Date.now());
   const keysPressed = useRef<Set<string>>(new Set());
-  const lastLaserTimeRef = useRef<number>(0); // レーザー発射クールダウン用
-  const playersRef = useRef<Map<string, RelativisticPlayer>>(new Map()); // ゲームループ用
-  const lasersRef = useRef<Laser[]>([]); // ゲームループ用（当たり判定）
-  const timeSyncedRef = useRef<boolean>(false); // syncTime 受信済みフラグ（クライアント用）
-  const processedLasersRef = useRef<Set<string>>(new Set()); // 判定済みレーザーID
-  const deadPlayersRef = useRef<Set<string>>(new Set()); // リスポーン待ちのプレイヤー（ホスト用、同一フレーム二重キル防止）
-  const respawnTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set()); // リスポーンタイマー追跡
-  const pendingColorsRef = useRef<Map<string, string>>(new Map()); // playerColor が先に届いた場合の一時保存
+  const lastLaserTimeRef = useRef<number>(0);
+  const playersRef = useRef<Map<string, RelativisticPlayer>>(new Map());
+  const lasersRef = useRef<Laser[]>([]);
+  const timeSyncedRef = useRef<boolean>(false);
+  const processedLasersRef = useRef<Set<string>>(new Set());
+  const deadPlayersRef = useRef<Set<string>>(new Set());
+  const respawnTimeoutsRef = useRef<
+    Set<ReturnType<typeof setTimeout>>
+  >(new Set());
+  const pendingColorsRef = useRef<Map<string, string>>(new Map());
   const [_screenSize, setScreenSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
   });
   const [fps, setFps] = useState(0);
   const fpsRef = useRef({ frameCount: 0, lastTime: performance.now() });
-  // カメラ制御用の状態（ref のみで管理し、不要な再レンダーを防ぐ）
-  const cameraYawRef = useRef(0); // xy平面内でのカメラの向き（ラジアン）
-  const cameraPitchRef = useRef(Math.PI / 6); // 仰角（ラジアン、0=水平、正=上から見下ろす）初期値は30度
+  const cameraYawRef = useRef(0);
+  const cameraPitchRef = useRef(Math.PI / 6);
+
+  // Kill 処理: 世界線凍結 + デブリ生成 + isDead 設定
+  // ホストのゲームループと messageHandler の両方から呼ばれる
+  const handleKill = useCallback(
+    (
+      victimId: string,
+      hitPos: { t: number; x: number; y: number; z: number },
+    ) => {
+      const victim = playersRef.current.get(victimId);
+      if (!victim) return;
+
+      // 1. 世界線を凍結して世界オブジェクトに
+      setFrozenWorldLines((prev) => {
+        const frozen: FrozenWorldLine = {
+          worldLine: victim.worldLine,
+          color: victim.color,
+          showHalfLine: victim.worldLine.origin !== null,
+        };
+        return [...prev, frozen].slice(-MAX_FROZEN_WORLDLINES);
+      });
+
+      // 2. デブリ生成
+      setDebrisRecords((prev) => {
+        const newDebris: DebrisRecord = {
+          deathPos: hitPos,
+          particles: generateExplosionParticles(),
+          color: victim.color,
+        };
+        return [...prev, newDebris].slice(-MAX_DEBRIS);
+      });
+
+      // 3. プレイヤーを isDead に（worldLine はクリアされる）
+      setPlayers((prev) => applyKill(prev, victimId));
+
+      // 4. 自分が殺された場合: ゴーストカメラ用の DeathEvent を設定
+      if (victimId === myId) {
+        setMyDeathEvent({
+          pos: victim.phaseSpace.pos,
+          u: victim.phaseSpace.u,
+        });
+        ghostTauRef.current = 0;
+      }
+    },
+    [myId],
+  );
+
+  // Respawn 処理
+  const handleRespawn = useCallback(
+    (
+      playerId: string,
+      position: { t: number; x: number; y: number; z: number },
+    ) => {
+      setPlayers((prev) => applyRespawn(prev, playerId, position));
+
+      // 自分のリスポーン: ゴースト解除
+      if (playerId === myId) {
+        setMyDeathEvent(null);
+        ghostTauRef.current = 0;
+      }
+
+      // スポーンエフェクト
+      const spawningPlayer = playersRef.current.get(playerId);
+      setSpawns((prev) => [
+        ...prev,
+        {
+          id: `spawn-${playerId}-${Date.now()}`,
+          pos: position,
+          color: spawningPlayer?.color ?? "white",
+          startTime: Date.now(),
+        },
+      ]);
+    },
+    [myId],
+  );
 
   // 初期化
   useEffect(() => {
     if (!myId) return;
 
-    // 自分のプレイヤーを初期化（まだ存在しない場合のみ）
     setPlayers((prev) => {
-      if (prev.has(myId)) {
-        return prev;
-      }
+      if (prev.has(myId)) return prev;
 
       const initialPhaseSpace = createPhaseSpace(
         createVector4(
@@ -102,16 +178,24 @@ const RelativisticGame = () => {
         ),
         vector3Zero(),
       );
-      let worldLine = createWorldLine(5000, initialPhaseSpace); // 最初のライフ: origin 付き（過去に半直線延長）
+      let worldLine = createWorldLine(5000, initialPhaseSpace);
       worldLine = appendWorldLine(worldLine, initialPhaseSpace);
+
+      // 色の決定: pending → ホストなら即確定 → 仮色
+      let color = pendingColorsRef.current.get(myId);
+      if (!color && peerManager?.getIsHost()) {
+        color = pickDistinctColor(myId, prev);
+      }
+      if (!color) {
+        color = "hsl(0, 0%, 70%)";
+      }
 
       const next = new Map(prev);
       next.set(myId, {
         id: myId,
         phaseSpace: initialPhaseSpace,
-        lives: [worldLine],
-        debrisRecords: [],
-        color: pendingColorsRef.current.get(myId) ?? "hsl(0, 0%, 70%)", // pending にあれば使う、なければ仮色
+        worldLine,
+        color,
         isDead: false,
       });
       return next;
@@ -131,11 +215,9 @@ const RelativisticGame = () => {
   useEffect(() => {
     if (!myId) return;
 
-    // 接続中のピアIDセット（自分自身を含む）
     const connectedIds = new Set(connections.map((c) => c.id));
     connectedIds.add(myId);
 
-    // ホストの場合: 新 peer に syncTime + 色送信
     if (peerManager?.getIsHost()) {
       const myPlayer = playersRef.current.get(myId);
       if (myPlayer) {
@@ -145,7 +227,6 @@ const RelativisticGame = () => {
               type: "syncTime",
               hostTime: myPlayer.phaseSpace.pos.t,
             });
-            // 既存全プレイヤーの色を新クライアントに送信
             for (const [pid, player] of playersRef.current) {
               peerManager.sendTo(conn.id, {
                 type: "playerColor",
@@ -157,7 +238,6 @@ const RelativisticGame = () => {
         }
       }
     }
-    // open な接続のみ記録（open前に記録すると open時に「既知」扱いされてしまう）
     prevConnectionIdsRef.current = new Set(
       connections.filter((c) => c.open).map((c) => c.id),
     );
@@ -169,9 +249,7 @@ const RelativisticGame = () => {
           idsToRemove.push(playerId);
         }
       }
-
       if (idsToRemove.length === 0) return prev;
-
       const next = new Map(prev);
       for (const id of idsToRemove) {
         next.delete(id);
@@ -199,20 +277,21 @@ const RelativisticGame = () => {
         playersRef,
         timeSyncedRef,
         pendingColorsRef,
+        handleKill,
+        handleRespawn,
       }),
     );
 
     return () => {
       peerManager.offMessage("relativistic");
     };
-  }, [peerManager, myId]);
+  }, [peerManager, myId, handleKill, handleRespawn]);
 
   // ウィンドウリサイズの検出
   useEffect(() => {
     const handleResize = () => {
       setScreenSize({ width: window.innerWidth, height: window.innerHeight });
     };
-
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
@@ -220,13 +299,11 @@ const RelativisticGame = () => {
   // キーボード入力処理
   useEffect(() => {
     const normalizeKey = (key: string) => {
-      // 矢印キーはそのまま、それ以外は小文字に
       if (key.startsWith("Arrow")) return key;
       return key.toLowerCase();
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // 矢印キーとW/Sキーとスペースキーの場合はデフォルトの動作（スクロール）を防ぐ
       if (
         [
           "ArrowLeft",
@@ -265,7 +342,7 @@ const RelativisticGame = () => {
     const gameLoop = () => {
       const currentTime = Date.now();
       const rawDTau = (currentTime - lastTimeRef.current) / 1000;
-      const dTau = Math.min(rawDTau, 0.1); // 上限100ms（タブ復帰時の巨大ジャンプ防止）
+      const dTau = Math.min(rawDTau, 0.1);
       lastTimeRef.current = currentTime;
 
       // ホスト: 自分の色が仮色なら確定させてブロードキャスト
@@ -300,21 +377,19 @@ const RelativisticGame = () => {
       const now = performance.now();
       fpsRef.current.frameCount++;
       const elapsed = now - fpsRef.current.lastTime;
-
       if (elapsed >= 1000) {
-        const calculatedFps = Math.round(
-          (fpsRef.current.frameCount * 1000) / elapsed,
+        setFps(
+          Math.round((fpsRef.current.frameCount * 1000) / elapsed),
         );
-        setFps(calculatedFps);
         fpsRef.current.frameCount = 0;
         fpsRef.current.lastTime = now;
       }
 
-      // カメラ制御: 左右キーでyaw回転、上下キーでpitch回転（プレイヤーを中心に球面上を移動）
-      const yawSpeed = 0.8; // rad/s
-      const pitchSpeed = 0.5; // rad/s
-      const pitchMin = (-Math.PI * 89.9) / 180; // 下限
-      const pitchMax = (Math.PI * 89.9) / 180; // 上限
+      // カメラ制御（死亡中も操作可能）
+      const yawSpeed = 0.8;
+      const pitchSpeed = 0.5;
+      const pitchMin = (-Math.PI * 89.9) / 180;
+      const pitchMax = (Math.PI * 89.9) / 180;
 
       if (keysPressed.current.has("ArrowLeft")) {
         cameraYawRef.current += yawSpeed * dTau;
@@ -335,22 +410,17 @@ const RelativisticGame = () => {
         );
       }
 
-      // 死亡中は物理更新・レーザー発射・ネットワーク送信をスキップ
-      // player.isDead フラグが正（kill で true、respawn メッセージで false）
       const isDead = playersRef.current.get(myId)?.isDead ?? false;
 
       // レーザー発射（スペースキー）
-      const laserCooldown = LASER_COOLDOWN;
       if (
         !isDead &&
         keysPressed.current.has(" ") &&
-        currentTime - lastLaserTimeRef.current > laserCooldown
+        currentTime - lastLaserTimeRef.current > LASER_COOLDOWN
       ) {
         const myPlayer = playersRef.current.get(myId);
         if (myPlayer) {
           lastLaserTimeRef.current = currentTime;
-
-          // カメラyawから方向を計算
           const dx = Math.cos(cameraYawRef.current);
           const dy = Math.sin(cameraYawRef.current);
 
@@ -368,17 +438,13 @@ const RelativisticGame = () => {
             color: getLaserColor(myPlayer.color),
           };
 
-          // ローカルで追加
           setLasers((prev) => {
             const updated = [...prev, newLaser];
-            // 最大数を超えたら古いものを削除
-            if (updated.length > MAX_LASERS) {
-              return updated.slice(updated.length - MAX_LASERS);
-            }
-            return updated;
+            return updated.length > MAX_LASERS
+              ? updated.slice(updated.length - MAX_LASERS)
+              : updated;
           });
 
-          // ネットワーク送信
           const laserMsg = {
             type: "laser" as const,
             id: newLaser.id,
@@ -401,28 +467,40 @@ const RelativisticGame = () => {
       }
 
       if (isDead) {
-        // 死亡中: 幽霊として等速直線運動（加速度ゼロ・摩擦ゼロ）
-        // phaseSpace のみ更新（世界線追加なし、ネットワーク送信なし、他プレイヤーからは不可視）
-        setPlayers((prev) => {
-          const myPlayer = prev.get(myId);
-          if (!myPlayer) return prev;
-          const ghostAcceleration = createVector3(0, 0, 0);
-          const ghostPhaseSpace = evolvePhaseSpace(
-            myPlayer.phaseSpace,
-            ghostAcceleration,
-            dTau,
+        // 死亡中: ゴーストとして等速直線運動（DeathEvent から決定論的に計算）
+        ghostTauRef.current += dTau;
+        // observer 位置を更新（SceneContent が phaseSpace.pos を参照するため）
+        const de = myDeathEvent;
+        if (de) {
+          const tau = ghostTauRef.current;
+          const ghostPos = createVector4(
+            de.pos.t + de.u.t * tau,
+            de.pos.x + de.u.x * tau,
+            de.pos.y + de.u.y * tau,
+            0,
           );
-          const next = new Map(prev);
-          next.set(myId, { ...myPlayer, phaseSpace: ghostPhaseSpace });
-          return next;
-        });
-      } else
+          setPlayers((prev) => {
+            const me = prev.get(myId);
+            if (!me) return prev;
+            const next = new Map(prev);
+            next.set(myId, {
+              ...me,
+              phaseSpace: createPhaseSpace(
+                ghostPos,
+                createVector3(de.u.x, de.u.y, de.u.z),
+              ),
+            });
+            return next;
+          });
+        }
+      } else {
         setPlayers((prev) => {
           const myPlayer = prev.get(myId);
           if (!myPlayer) return prev;
-          // 他の誰かの未来光円錐を未来側に超えてしまうと因果律の守護者に時間停止を喰らう
+          // 因果律の守護者
           for (const [id, player] of prev) {
             if (id === myId) continue;
+            if (player.isDead) continue;
             if (player.phaseSpace.pos.t > myPlayer.phaseSpace.pos.t) continue;
             const diff = subVector4(
               player.phaseSpace.pos,
@@ -434,49 +512,45 @@ const RelativisticGame = () => {
 
           const next = new Map(prev);
 
-          // 加速度を計算（W/Sキー入力に基づく、カメラの向きに沿った方向）
           let forwardAccel = 0;
-          const accel = 8 / 10; // 加速度 (c/s)
-
+          const accel = 8 / 10;
           if (keysPressed.current.has("w")) forwardAccel += accel;
           if (keysPressed.current.has("s")) forwardAccel -= accel;
 
-          // カメラの向き（yaw）から前進方向を計算
           const ax = Math.cos(cameraYawRef.current) * forwardAccel;
           const ay = Math.sin(cameraYawRef.current) * forwardAccel;
 
-          // 摩擦
           const mu = 0.5;
           const frictionX = -myPlayer.phaseSpace.u.x * mu;
           const frictionY = -myPlayer.phaseSpace.u.y * mu;
 
-          const acceleration = createVector3(ax + frictionX, ay + frictionY, 0);
+          const acceleration = createVector3(
+            ax + frictionX,
+            ay + frictionY,
+            0,
+          );
 
-          // 相対論的運動方程式で更新
           const newPhaseSpace = evolvePhaseSpace(
             myPlayer.phaseSpace,
             acceleration,
             dTau,
           );
-          // 他プレイヤーの位置を収集（因果的 trimming 用）
           const otherPositions: Vector4[] = [];
           for (const [id, p] of prev) {
             if (id !== myId) otherPositions.push(p.phaseSpace.pos);
           }
-          const lastLife = currentLife(myPlayer);
-          const updatedLife = appendWorldLine(
-            lastLife,
+          const updatedWorldLine = appendWorldLine(
+            myPlayer.worldLine,
             newPhaseSpace,
             otherPositions,
           );
-          const lives = [...myPlayer.lives.slice(0, -1), updatedLife];
           next.set(myId, {
             ...myPlayer,
             phaseSpace: newPhaseSpace,
-            lives,
+            worldLine: updatedWorldLine,
           });
 
-          // 他のプレイヤーに送信（クライアントは syncTime 受信後のみ）
+          // ネットワーク送信
           if (peerManager) {
             const isHost = peerManager.getIsHost();
             if (isHost || timeSyncedRef.current) {
@@ -486,12 +560,9 @@ const RelativisticGame = () => {
                 position: newPhaseSpace.pos,
                 velocity: newPhaseSpace.u,
               };
-
               if (isHost) {
-                // ホストは直接全員に送信
                 peerManager.send(msg);
               } else {
-                // クライアントはホストにのみ送信
                 const hostId = peerManager.getHostId();
                 if (hostId) {
                   peerManager.sendTo(hostId, msg);
@@ -502,6 +573,7 @@ const RelativisticGame = () => {
 
           return next;
         });
+      }
 
       // ホストのみ: 当たり判定
       if (peerManager.getIsHost()) {
@@ -514,7 +586,6 @@ const RelativisticGame = () => {
           hitPos: { t: number; x: number; y: number; z: number };
         }[] = [];
 
-        // 全プレイヤーの最小 t を取得（レーザー期限切れ判定用）
         let minPlayerT = Number.POSITIVE_INFINITY;
         for (const [, player] of currentPlayers) {
           if (player.phaseSpace.pos.t < minPlayerT) {
@@ -522,11 +593,10 @@ const RelativisticGame = () => {
           }
         }
 
-        const killedThisFrame = new Set<string>(); // 同フレーム二重キル防止
+        const killedThisFrame = new Set<string>();
         for (const laser of currentLasers) {
           if (processedLasersRef.current.has(laser.id)) continue;
 
-          // レーザーの到達時刻を超えていたらもう当たらない → 判定済みにする
           const laserEndT = laser.emissionPos.t + laser.range;
           if (minPlayerT > laserEndT) {
             processedLasersRef.current.add(laser.id);
@@ -534,28 +604,24 @@ const RelativisticGame = () => {
           }
 
           for (const [playerId, player] of currentPlayers) {
-            if (playerId === laser.playerId) continue; // 自分のレーザーは除外
-            if (killedThisFrame.has(playerId)) continue; // 既にこのフレームでキル済み
-            if (deadPlayersRef.current.has(playerId)) continue; // リスポーン待ち中
+            if (playerId === laser.playerId) continue;
+            if (killedThisFrame.has(playerId)) continue;
+            if (deadPlayersRef.current.has(playerId)) continue;
             const hitPos = findLaserHitPosition(
               laser,
-              currentLife(player),
+              player.worldLine,
               HIT_RADIUS,
             );
             if (hitPos) {
-              kills.push({
-                victimId: playerId,
-                killerId: laser.playerId,
-                hitPos,
-              });
+              kills.push({ victimId: playerId, killerId: laser.playerId, hitPos });
               hitLaserIds.push(laser.id);
               killedThisFrame.add(playerId);
-              break; // 1レーザーにつき1キルまで
+              break;
             }
           }
         }
 
-        // processedLasersRef のクリーンアップ: lasers に存在しないIDを除去
+        // processedLasersRef のクリーンアップ
         const currentLaserIds = new Set(currentLasers.map((l) => l.id));
         for (const id of processedLasersRef.current) {
           if (!currentLaserIds.has(id)) {
@@ -564,7 +630,6 @@ const RelativisticGame = () => {
         }
 
         if (kills.length > 0) {
-          // スコア更新
           const newScores = { ...scoresRef.current };
           for (const { killerId } of kills) {
             newScores[killerId] = (newScores[killerId] || 0) + 1;
@@ -572,16 +637,11 @@ const RelativisticGame = () => {
           scoresRef.current = newScores;
           setScores(newScores);
 
-          // 判定済みレーザーを記録
           for (const id of hitLaserIds) {
             processedLasersRef.current.add(id);
           }
 
-          // キル通知 → 爆発エフェクト → 遅延リスポーン
           for (const { victimId, killerId, hitPos } of kills) {
-            const victim = currentPlayers.get(victimId);
-
-            // 死亡プレイヤーとして登録（リスポーンまで当たり判定から除外）
             deadPlayersRef.current.add(victimId);
 
             // kill 通知をブロードキャスト
@@ -598,6 +658,7 @@ const RelativisticGame = () => {
               setTimeout(() => setDeathFlash(false), 600);
             }
             if (killerId === myId && victimId !== myId) {
+              const victim = currentPlayers.get(victimId);
               setKillNotification({
                 victimName: victimId.slice(0, 6),
                 color: victim?.color ?? "white",
@@ -605,8 +666,8 @@ const RelativisticGame = () => {
               setTimeout(() => setKillNotification(null), 1500);
             }
 
-            // 状態更新: 世界線凍結 + デブリ + isDead
-            setPlayers((prev) => applyKill(prev, victimId, hitPos));
+            // データ更新: handleKill で世界線凍結 + デブリ生成 + isDead
+            handleKill(victimId, hitPos);
 
             // 遅延リスポーン
             const timerId = setTimeout(() => {
@@ -619,28 +680,13 @@ const RelativisticGame = () => {
                 y: Math.random() * SPAWN_RANGE,
                 z: 0,
               };
-
               deadPlayersRef.current.delete(victimId);
               peerManager.send({
                 type: "respawn" as const,
                 playerId: victimId,
                 position: respawnPos,
               });
-
-              // ローカルでもリスポーン適用
-              setPlayers((prev) => applyRespawn(prev, victimId, respawnPos));
-
-              // スポーンエフェクト
-              const spawningPlayer = playersRef.current.get(victimId);
-              setSpawns((prev) => [
-                ...prev,
-                {
-                  id: `spawn-${victimId}-${Date.now()}`,
-                  pos: respawnPos,
-                  color: spawningPlayer?.color ?? "white",
-                  startTime: Date.now(),
-                },
-              ]);
+              handleRespawn(victimId, respawnPos);
             }, RESPAWN_DELAY);
             respawnTimeoutsRef.current.add(timerId);
           }
@@ -650,8 +696,7 @@ const RelativisticGame = () => {
       }
     };
 
-    // setInterval を使用（requestAnimationFrame はタブ非アクティブ時に停止するため）
-    intervalRef.current = setInterval(gameLoop, 8); // ~120fps
+    intervalRef.current = setInterval(gameLoop, 8);
 
     return () => {
       if (intervalRef.current) {
@@ -662,7 +707,7 @@ const RelativisticGame = () => {
       }
       respawnTimeoutsRef.current.clear();
     };
-  }, [peerManager, myId]);
+  }, [peerManager, myId, handleKill, handleRespawn]);
 
   return (
     <div
@@ -685,19 +730,28 @@ const RelativisticGame = () => {
         setUseOrthographic={setUseOrthographic}
         deathFlash={deathFlash}
         killNotification={killNotification}
+        myDeathEvent={myDeathEvent}
+        ghostTau={ghostTauRef.current}
       />
 
       {useOrthographic ? (
         <Canvas
           key="ortho"
           orthographic
-          camera={{ zoom: 30, position: [0, 0, 100], near: -10000, far: 10000 }}
+          camera={{
+            zoom: 30,
+            position: [0, 0, 100],
+            near: -10000,
+            far: 10000,
+          }}
         >
           <SceneContent
             players={players}
             myId={myId}
             lasers={lasers}
             spawns={spawns}
+            frozenWorldLines={frozenWorldLines}
+            debrisRecords={debrisRecords}
             showInRestFrame={showInRestFrame}
             useOrthographic={true}
             cameraYawRef={cameraYawRef}
@@ -711,6 +765,8 @@ const RelativisticGame = () => {
             myId={myId}
             lasers={lasers}
             spawns={spawns}
+            frozenWorldLines={frozenWorldLines}
+            debrisRecords={debrisRecords}
             showInRestFrame={showInRestFrame}
             useOrthographic={false}
             cameraYawRef={cameraYawRef}

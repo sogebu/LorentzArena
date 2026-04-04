@@ -5,34 +5,25 @@ import {
   createWorldLine,
   vector3Zero,
 } from "../../physics";
-import { MAX_PAST_WORLDLINES } from "./constants";
-import { generateExplosionParticles } from "./debris";
 import type { RelativisticPlayer } from "./types";
 
 /**
- * Kill: 世界線を凍結（そのまま残す）+ デブリ記録 + isDead=true
- * 純粋関数: setPlayers(prev => applyKill(prev, victimId, hitPos)) として使う
+ * Kill: isDead=true にするだけ。
+ * 世界線の凍結（frozenWorldLines への移動）とデブリ生成は呼び出し元で行う。
  */
 export const applyKill = (
   prev: Map<string, RelativisticPlayer>,
   victimId: string,
-  hitPos: { t: number; x: number; y: number; z: number },
 ): Map<string, RelativisticPlayer> => {
   const victim = prev.get(victimId);
   if (!victim) return prev;
-  const debrisParticles = generateExplosionParticles();
-  const debrisRecords = [
-    ...victim.debrisRecords,
-    { deathPos: hitPos, particles: debrisParticles, color: victim.color },
-  ].slice(-MAX_PAST_WORLDLINES);
   const next = new Map(prev);
-  next.set(victimId, { ...victim, debrisRecords, isDead: true });
+  next.set(victimId, { ...victim, isDead: true });
   return next;
 };
 
 /**
- * Respawn: 新しい WorldLine を lives に追加（前の世界線とは完全に独立）+ isDead=false
- * 純粋関数: setPlayers(prev => applyRespawn(prev, playerId, position)) として使う
+ * Respawn: 新しい WorldLine で復活 + isDead=false
  */
 export const applyRespawn = (
   prev: Map<string, RelativisticPlayer>,
@@ -45,10 +36,14 @@ export const applyRespawn = (
     createVector4(position.t, position.x, position.y, position.z),
     vector3Zero(),
   );
-  let newLife = createWorldLine(); // リスポーン: origin なし（過去に半直線を伸ばさない）
-  newLife = appendWorldLine(newLife, ps);
-  const lives = [...player.lives, newLife].slice(-MAX_PAST_WORLDLINES);
+  let newWorldLine = createWorldLine(); // リスポーン: origin なし（過去に半直線を伸ばさない）
+  newWorldLine = appendWorldLine(newWorldLine, ps);
   const next = new Map(prev);
-  next.set(playerId, { ...player, phaseSpace: ps, lives, isDead: false });
+  next.set(playerId, {
+    ...player,
+    phaseSpace: ps,
+    worldLine: newWorldLine,
+    isDead: false,
+  });
   return next;
 };
