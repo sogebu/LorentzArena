@@ -76,8 +76,8 @@
 
 - **What**: `worldLine`（現在の命）+ `pastWorldLines[]`（過去の命）を `lives: WorldLine[]` に統合。最後の要素が現在の命
 - **Why**: kill/respawn のたびに worldLine → pastWorldLines への移動処理が必要で、host/client で重複実装になっていた。1つの配列にすることで状態遷移がシンプルになる
-- **操作**: kill → `lives.push(createWorldLine())`、respawn → 最後の life に appendWorldLine
-- **未解決**: リスポーン時に遅延 phaseSpace が新 life に混入し世界線が繋がるバグ。根本対策: respawn では完全に独立な世界線を0から作り直し、その最も過去のデータ（origin）を過去側に半直線として外装する
+- **操作**: kill → 世界線凍結（`isDead=true`）、respawn → `lives.push(newWorldLine)` で完全に独立した新世界線を追加
+- **解決済み**: 旧実装では kill 時に空 WorldLine を作成し respawn で最初の点を追加していたため、遅延 phaseSpace が混入して世界線が繋がるバグがあった。isDead フラグ + 凍結方式で解決
 
 ### 世界線の過去延長: origin + 半直線
 
@@ -99,3 +99,14 @@
 - **What**: `getMaterial` + モジュールレベルの `materialCache` を廃止し、R3F の宣言的マテリアル（`<meshStandardMaterial color={...} />`）に置き換え
 - **Why**: マテリアルキャッシュのキーに色が含まれておらず、仮色 `hsl(0, 0%, 70%)` でキャッシュされたマテリアルが確定色に更新されないバグがあった。R3F の宣言的マテリアルなら色の変更を自動反映し、ライフサイクルも React が管理する
 - **Tradeoff**: なし。プレイヤー数分（2-4個）のマテリアルにキャッシュのパフォーマンス効果はほぼゼロ
+
+### Kill/Respawn: 世界線凍結 + isDead フラグ一元管理
+
+- **What**: kill 時に空 WorldLine 作成 → 世界線凍結（`isDead` フラグ）に変更。死亡中はゴースト（不可視等速直線運動）。respawn で完全独立の新 WorldLine を追加（半直線延長なし）。`applyKill`/`applyRespawn` 純粋関数で状態更新をホスト/クライアント共通化
+- **Why**: 旧実装の問題:
+  1. 空 WorldLine 作成 → 遅延 phaseSpace 混入で世界線が繋がるバグ
+  2. `deadUntilRef`（タイマー）と `isDead`（フラグ）の二重管理
+  3. ホストと messageHandler で kill/respawn ロジックが重複・不一致
+  4. 他プレイヤーから見て kill 即座にマーカー消失（相対論的に不正確）
+- **新モデル**: kill → 凍結世界線が他プレイヤーの過去光円錐と交点を持つ間は可視（因果的に正しい「遅延された死亡」）。交点がなくなって初めて消える。リスポーン後も過去光円錐が新世界線に触れるまで不可視
+- **Tradeoff**: `deadPlayersRef`（ホスト専用、同一フレーム二重キル防止）は残す（React の状態更新が非同期のため）

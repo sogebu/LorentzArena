@@ -397,8 +397,10 @@ export const SceneContent = ({
         </group>
       ))}
 
-      {/* 各プレイヤーのマーカー */}
+      {/* 各プレイヤーのマーカー（死亡中 → 非表示） */}
       {playerList.map((player) => {
+        if (player.isDead) return null;
+
         const pos = transformEventForDisplay(
           player.phaseSpace.pos,
           observerPos,
@@ -438,7 +440,7 @@ export const SceneContent = ({
         );
       })}
 
-      {/* 自分の光円錐のみ描画 */}
+      {/* 自分の光円錐のみ描画（死亡中も表示 = 幽霊の位置に追随） */}
       {playerList
         .filter((p) => p.id === myId)
         .map((player) => {
@@ -574,25 +576,19 @@ export const SceneContent = ({
                 observerPos,
                 observerBoost,
               );
+              const lineGeom = new THREE.BufferGeometry();
+              lineGeom.setAttribute(
+                "position",
+                new THREE.Float32BufferAttribute(
+                  [
+                    startDisplay.x, startDisplay.y, startDisplay.t,
+                    endDisplay.x, endDisplay.y, endDisplay.t,
+                  ],
+                  3,
+                ),
+              );
               elements.push(
-                <line key={`debris-line-${player.id}-${di}-${pi}`}>
-                  <bufferGeometry>
-                    <bufferAttribute
-                      attach="attributes-position"
-                      array={
-                        new Float32Array([
-                          startDisplay.x,
-                          startDisplay.y,
-                          startDisplay.t,
-                          endDisplay.x,
-                          endDisplay.y,
-                          endDisplay.t,
-                        ])
-                      }
-                      count={2}
-                      itemSize={3}
-                    />
-                  </bufferGeometry>
+                <line key={`debris-line-${player.id}-${di}-${pi}`} geometry={lineGeom}>
                   <lineBasicMaterial
                     color={debrisColor}
                     transparent

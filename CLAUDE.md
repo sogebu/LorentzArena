@@ -80,6 +80,7 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 | `game/displayTransform.ts` | ローレンツ変換 → 表示座標変換 |
 | `game/laserPhysics.ts` | レーザー当たり判定 + 光円錐交差 |
 | `game/debris.ts` | デブリ生成 + 光円錐交差 |
+| `game/killRespawn.ts` | `applyKill`/`applyRespawn` 純粋関数（ホスト/クライアント共通） |
 | `game/SceneContent.tsx` | 3Dシーン（WorldLine/Laser/SpawnRenderer 含む） |
 | `game/messageHandler.ts` | ネットワークメッセージ処理（ファクトリ関数） |
 | `game/HUD.tsx` | オーバーレイUI（コントロール、スピードメーター、キル通知） |
@@ -89,11 +90,13 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 - 正射影/透視投影カメラ切替
 - 自分の静止系/世界系表示切替
 - 当たり判定（ホスト権威、`findLaserHitPosition`）
-- 即死 → 1秒後リスポーン（ホストの世界系 t に同期）
+- Kill/Respawn: kill → 世界線凍結（`isDead`フラグ）→ ゴースト（不可視等速直線運動）→ 1秒後リスポーン（新 WorldLine、ホストの世界系 t に同期）
+- 他プレイヤーから見た死亡: 凍結世界線の過去光円錐交差が消えるまで可視、リスポーン後は新世界線の交差が見えるまで不可視
+- 死亡状態管理: `isDead` フラグ一元管理、`applyKill`/`applyRespawn` 純粋関数（`killRespawn.ts`）
 - キルスコア + キル通知エフェクト
 - 永続デブリ（死亡イベントからの等速直線運動パーティクル、過去光円錐交差マーカー）
-- 世界線管理: `lives: WorldLine[]` で全ライフを管理。kill で新 life を追加、respawn で最初の点を設定
-- 世界線の過去延長: origin から半直線を過去方向に延長（最初のライフのみ）
+- 世界線管理: `lives: WorldLine[]` で全ライフを管理。kill で凍結、respawn で新 WorldLine を追加
+- 世界線の過去延長: origin から半直線を過去方向に延長（最初のライフのみ。リスポーン後のライフには付けない）
 - ホストによる色割り当て（`playerColor` メッセージで全クライアントに配信）
 - 因果律の守護者: 他プレイヤーの未来光円錐の内側にいる間、全操作を凍結（DESIGN.md 参照）
 
@@ -114,8 +117,8 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 
 | パラメータ | 値 | 説明 |
 |---|---|---|
-| 初期位置 | x,y ∈ [0, 30] | `Math.random() * 30` |
-| リスポーン位置 | x,y ∈ [0, 30] | 同上 |
+| 初期位置 | x,y ∈ [0, 10] | `Math.random() * 10`（テスト値、本番は 30） |
+| リスポーン位置 | x,y ∈ [0, 10] | 同上 |
 | `RESPAWN_DELAY` | 1000 ms | 死亡→リスポーンの待機時間 |
 | `SPAWN_EFFECT_DURATION` | 1500 ms | スポーンエフェクト表示時間 |
 | `LASER_RANGE` | 20 | レーザー射程（c=1 単位） |

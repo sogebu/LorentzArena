@@ -15,6 +15,7 @@ export type RelativisticPlayer = {
   lives: WorldLine[]; // 全ライフ（最後が現在の命）
   debrisRecords: DebrisRecord[]; // 死亡時の爆散デブリ（永続）
   color: string;
+  isDead: boolean; // kill 後 respawn 前 = true（世界線凍結中）
 };
 
 export const currentLife = (p: RelativisticPlayer): WorldLine =>

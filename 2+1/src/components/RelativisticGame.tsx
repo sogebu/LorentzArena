@@ -18,13 +18,12 @@ import {
   HIT_RADIUS,
   LASER_RANGE,
   MAX_LASERS,
-  MAX_PAST_WORLDLINES,
   OFFSET,
   RESPAWN_DELAY,
   SPAWN_EFFECT_DURATION,
 } from "./game/constants";
-import { generateExplosionParticles } from "./game/debris";
 import { HUD } from "./game/HUD";
+import { applyKill, applyRespawn } from "./game/killRespawn";
 import { findLaserHitPosition } from "./game/laserPhysics";
 import { createMessageHandler } from "./game/messageHandler";
 import { SceneContent } from "./game/SceneContent";
@@ -69,8 +68,7 @@ const RelativisticGame = () => {
   const lasersRef = useRef<Laser[]>([]); // ゲームループ用（当たり判定）
   const timeSyncedRef = useRef<boolean>(false); // syncTime 受信済みフラグ（クライアント用）
   const processedLasersRef = useRef<Set<string>>(new Set()); // 判定済みレーザーID
-  const deadUntilRef = useRef<number>(0); // 死亡中は Date.now() < deadUntil
-  const deadPlayersRef = useRef<Set<string>>(new Set()); // リスポーン待ちのプレイヤー（ホスト用）
+  const deadPlayersRef = useRef<Set<string>>(new Set()); // リスポーン待ちのプレイヤー（ホスト用、同一フレーム二重キル防止）
   const pendingColorsRef = useRef<Map<string, string>>(new Map()); // playerColor が先に届いた場合の一時保存
   const [_screenSize, setScreenSize] = useState({
     width: window.innerWidth,
@@ -95,8 +93,8 @@ const RelativisticGame = () => {
       const initialPhaseSpace = createPhaseSpace(
         createVector4(
           Date.now() / 1000 - OFFSET,
-          Math.random() * 30,
-          Math.random() * 30,
+          Math.random() * 10,
+          Math.random() * 10,
           0.0,
         ),
         vector3Zero(),
@@ -111,6 +109,7 @@ const RelativisticGame = () => {
         lives: [worldLine],
         debrisRecords: [],
         color: pendingColorsRef.current.get(myId) ?? "hsl(0, 0%, 70%)", // pending にあれば使う、なければ仮色
+        isDead: false,
       });
       return next;
     });
@@ -197,7 +196,6 @@ const RelativisticGame = () => {
         playersRef,
         timeSyncedRef,
         pendingColorsRef,
-        deadUntilRef,
       }),
     );
 
@@ -335,7 +333,8 @@ const RelativisticGame = () => {
       }
 
       // 死亡中は物理更新・レーザー発射・ネットワーク送信をスキップ
-      const isDead = currentTime < deadUntilRef.current;
+      // player.isDead フラグが正（kill で true、respawn メッセージで false）
+      const isDead = playersRef.current.get(myId)?.isDead ?? false;
 
       // レーザー発射（スペースキー）
       const laserCooldown = 100; // ミリ秒
@@ -399,7 +398,21 @@ const RelativisticGame = () => {
       }
 
       if (isDead) {
-        // 死亡中: 当たり判定のみ実行（物理更新・送信はスキップ）
+        // 死亡中: 幽霊として等速直線運動（加速度ゼロ・摩擦ゼロ）
+        // phaseSpace のみ更新（世界線追加なし、ネットワーク送信なし、他プレイヤーからは不可視）
+        setPlayers((prev) => {
+          const myPlayer = prev.get(myId);
+          if (!myPlayer) return prev;
+          const ghostAcceleration = createVector3(0, 0, 0);
+          const ghostPhaseSpace = evolvePhaseSpace(
+            myPlayer.phaseSpace,
+            ghostAcceleration,
+            dTau,
+          );
+          const next = new Map(prev);
+          next.set(myId, { ...myPlayer, phaseSpace: ghostPhaseSpace });
+          return next;
+        });
       } else
         setPlayers((prev) => {
           const myPlayer = prev.get(myId);
@@ -576,13 +589,11 @@ const RelativisticGame = () => {
               hitPos,
             });
 
-            // 自分が死んだら画面フラッシュ + 物理停止
+            // UI 副作用
             if (victimId === myId) {
               setDeathFlash(true);
               setTimeout(() => setDeathFlash(false), 600);
-              deadUntilRef.current = Date.now() + RESPAWN_DELAY;
             }
-            // 自分がキラーならキル通知
             if (killerId === myId && victimId !== myId) {
               setKillNotification({
                 victimName: victimId.slice(0, 6),
@@ -591,26 +602,8 @@ const RelativisticGame = () => {
               setTimeout(() => setKillNotification(null), 1500);
             }
 
-            // ローカルで新ライフ開始 + デブリ記録（kill 時点で即座に）
-            setPlayers((prev) => {
-              const v = prev.get(victimId);
-              if (!v) return prev;
-              const debrisParticles = generateExplosionParticles();
-              const debrisRecords = [
-                ...v.debrisRecords,
-                {
-                  deathPos: hitPos,
-                  particles: debrisParticles,
-                  color: v.color,
-                },
-              ].slice(-MAX_PAST_WORLDLINES);
-              const lives = [...v.lives, createWorldLine()].slice(
-                -MAX_PAST_WORLDLINES,
-              );
-              const next = new Map(prev);
-              next.set(victimId, { ...v, lives, debrisRecords });
-              return next;
-            });
+            // 状態更新: 世界線凍結 + デブリ + isDead
+            setPlayers((prev) => applyKill(prev, victimId, hitPos));
 
             // 遅延リスポーン
             setTimeout(() => {
@@ -618,8 +611,8 @@ const RelativisticGame = () => {
               const hostT = hostPlayer?.phaseSpace.pos.t ?? 0;
               const respawnPos = {
                 t: hostT,
-                x: Math.random() * 30,
-                y: Math.random() * 30,
+                x: Math.random() * 10,
+                y: Math.random() * 10,
                 z: 0,
               };
 
@@ -630,34 +623,8 @@ const RelativisticGame = () => {
                 position: respawnPos,
               });
 
-              // ローカルでもリスポーン適用（現在のライフに最初の点を追加）
-              setPlayers((prev) => {
-                const v = prev.get(victimId);
-                if (!v) return prev;
-                const respawnPhaseSpace = createPhaseSpace(
-                  createVector4(
-                    respawnPos.t,
-                    respawnPos.x,
-                    respawnPos.y,
-                    respawnPos.z,
-                  ),
-                  vector3Zero(),
-                );
-                const lastLife =
-                  v.lives[v.lives.length - 1] || createWorldLine();
-                const updatedLife = appendWorldLine(
-                  lastLife,
-                  respawnPhaseSpace,
-                );
-                const lives = [...v.lives.slice(0, -1), updatedLife];
-                const next = new Map(prev);
-                next.set(victimId, {
-                  ...v,
-                  phaseSpace: respawnPhaseSpace,
-                  lives,
-                });
-                return next;
-              });
+              // ローカルでもリスポーン適用
+              setPlayers((prev) => applyRespawn(prev, victimId, respawnPos));
 
               // スポーンエフェクト
               const spawningPlayer = playersRef.current.get(victimId);
