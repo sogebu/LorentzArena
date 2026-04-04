@@ -38,12 +38,20 @@ import {
 
 const OFFSET = Date.now() / 1000;
 
+// 死亡時の爆散デブリ（等速直線運動、永続データ）
+type DebrisRecord = {
+  readonly deathPos: { t: number; x: number; y: number; z: number };
+  readonly particles: ReadonlyArray<{ dx: number; dy: number; size: number }>;
+  readonly color: string;
+};
+
 type RelativisticPlayer = {
   id: string;
   // in 世界系
   phaseSpace: PhaseSpace;
   worldLine: WorldLine;
   pastWorldLines: WorldLine[]; // 死亡で切断された過去の世界線
+  debrisRecords: DebrisRecord[]; // 死亡時の爆散デブリ（永続）
   color: string;
 };
 
@@ -1131,6 +1139,35 @@ const SceneContent = ({
         />
       ))}
 
+      {/* 永続デブリの過去光円錐交差マーカー */}
+      {myPlayer && playerList.flatMap((player) =>
+        player.debrisRecords.flatMap((debris, di) =>
+          debris.particles.map((p, pi) => {
+            // デブリの worldLine は無限に伸びる直線。観測者の過去光円錐との交差を計算
+            const deathEvent = createVector4(debris.deathPos.t, debris.deathPos.x, debris.deathPos.y, 0);
+            // maxLambda は観測者の現在時刻までの時間差（十分大きく）
+            const maxLambda = Math.max(0, myPlayer.phaseSpace.pos.t - debris.deathPos.t);
+            if (maxLambda < 0.01) return null;
+            const intersection = pastLightConeIntersectionDebris(
+              deathEvent, p.dx, p.dy, maxLambda, myPlayer.phaseSpace.pos,
+            );
+            if (!intersection) return null;
+            const displayPos = transformEventForDisplay(intersection, observerPos, observerBoost);
+            const debrisColor = getThreeColor(debris.color);
+            return (
+              <mesh
+                key={`debris-${player.id}-${di}-${pi}`}
+                position={[displayPos.x, displayPos.y, displayPos.t]}
+                scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
+                geometry={sharedGeometries.explosionParticle}
+              >
+                <meshBasicMaterial color={debrisColor} transparent opacity={0.7} />
+              </mesh>
+            );
+          }).filter(Boolean),
+        ),
+      )}
+
       {/* スポーンエフェクトを描画 */}
       {spawns.map((spawn) => (
         <SpawnRenderer
@@ -1206,6 +1243,7 @@ const RelativisticGame = () => {
         phaseSpace: initialPhaseSpace,
         worldLine,
         pastWorldLines: [],
+        debrisRecords: [],
         color: pickDistinctColor(myId, prev),
       });
       return next;
@@ -1306,6 +1344,7 @@ const RelativisticGame = () => {
             phaseSpace,
             worldLine,
             pastWorldLines: existing?.pastWorldLines || [],
+            debrisRecords: existing?.debrisRecords || [],
             color,
           });
           return next;
@@ -1367,8 +1406,15 @@ const RelativisticGame = () => {
           const pastWorldLines = player.worldLine.history.length > 1
             ? [...player.pastWorldLines, player.worldLine].slice(-MAX_PAST_WORLDLINES)
             : player.pastWorldLines;
+          // 死亡時のデブリを永続記録
+          const deathPos = { t: player.phaseSpace.pos.t, x: player.phaseSpace.pos.x, y: player.phaseSpace.pos.y, z: 0 };
+          const debrisParticles = generateExplosionParticles();
+          const debrisRecords = [
+            ...player.debrisRecords,
+            { deathPos, particles: debrisParticles, color: player.color },
+          ].slice(-MAX_PAST_WORLDLINES);
           const next = new Map(prev);
-          next.set(msg.playerId, { ...player, phaseSpace: respawnPhaseSpace, worldLine, pastWorldLines });
+          next.set(msg.playerId, { ...player, phaseSpace: respawnPhaseSpace, worldLine, pastWorldLines, debrisRecords });
           return next;
         });
         // スポーンエフェクト
@@ -1801,8 +1847,14 @@ const RelativisticGame = () => {
                 const pastWorldLines = v.worldLine.history.length > 1
                   ? [...v.pastWorldLines, v.worldLine].slice(-MAX_PAST_WORLDLINES)
                   : v.pastWorldLines;
+                const deathPos = { t: v.phaseSpace.pos.t, x: v.phaseSpace.pos.x, y: v.phaseSpace.pos.y, z: 0 };
+                const debrisParticles = generateExplosionParticles();
+                const debrisRecords = [
+                  ...v.debrisRecords,
+                  { deathPos, particles: debrisParticles, color: v.color },
+                ].slice(-MAX_PAST_WORLDLINES);
                 const next = new Map(prev);
-                next.set(victimId, { ...v, phaseSpace: respawnPhaseSpace, worldLine, pastWorldLines });
+                next.set(victimId, { ...v, phaseSpace: respawnPhaseSpace, worldLine, pastWorldLines, debrisRecords });
                 return next;
               });
 
