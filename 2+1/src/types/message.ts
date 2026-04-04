@@ -50,6 +50,14 @@ export type Message =
     }
   | {
       /**
+       * Time synchronization from host to newly connected client.
+       * JP: ホストから新規クライアントへの世界系時刻同期。
+       */
+      type: "syncTime";
+      hostTime: number;
+    }
+  | {
+      /**
        * Laser shot event.
        *
        * English: emitted by a player and forwarded by the host.
@@ -62,4 +70,30 @@ export type Message =
       direction: { x: number; y: number; z: number };
       range: number;
       color: string;
+    }
+  | {
+      /**
+       * Kill notification from host.
+       * JP: ホストからのキル通知。
+       */
+      type: "kill";
+      victimId: string;
+      killerId: string;
+    }
+  | {
+      /**
+       * Respawn command from host.
+       * JP: ホストからのリスポーン指示。
+       */
+      type: "respawn";
+      playerId: string;
+      position: { t: number; x: number; y: number; z: number };
+    }
+  | {
+      /**
+       * Score update from host.
+       * JP: ホストからのスコア更新。
+       */
+      type: "score";
+      scores: Record<string, number>;
     };

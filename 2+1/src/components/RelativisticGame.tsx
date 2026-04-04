@@ -61,6 +61,92 @@ const LASER_RANGE = 20;
 // レーザーの最大数（メモリ管理）
 const MAX_LASERS = 1000;
 
+// 当たり判定の半径
+const HIT_RADIUS = 0.5;
+
+/**
+ * Check if a laser hits a world line (spatial proximity at simultaneous world-frame time).
+ *
+ * Laser trajectory: L(λ) = emissionPos + λ * (dir, 1),  λ ∈ [0, range]
+ * World line segment: W(μ) = p1 + μ * (p2 - p1),  μ ∈ [0, 1]
+ *
+ * Solve L.t = W.t for simultaneous time, then check spatial distance.
+ */
+const checkLaserHit = (
+  laser: Laser,
+  worldLine: WorldLine,
+  hitRadius: number,
+): boolean => {
+  const history = worldLine.history;
+  if (history.length < 2) return false;
+
+  const eT = laser.emissionPos.t;
+  const eX = laser.emissionPos.x;
+  const eY = laser.emissionPos.y;
+  const dX = laser.direction.x;
+  const dY = laser.direction.y;
+  const range = laser.range;
+  const r2 = hitRadius * hitRadius;
+
+  for (let i = 1; i < history.length; i++) {
+    const p1 = history[i - 1].pos;
+    const p2 = history[i].pos;
+
+    // World line segment: W(μ) = p1 + μ * (p2 - p1)
+    const wdT = p2.t - p1.t;
+    const wdX = p2.x - p1.x;
+    const wdY = p2.y - p1.y;
+
+    // Laser time: L.t = eT + λ
+    // World line time: W.t = p1.t + μ * wdT
+    // Simultaneous: eT + λ = p1.t + μ * wdT
+
+    // For each world line segment, sweep μ ∈ [0,1]:
+    //   λ(μ) = (p1.t + μ * wdT) - eT
+    //   Spatial distance² at that time:
+    //     dx = (eX + dX * λ) - (p1.x + μ * wdX)
+    //     dy = (eY + dY * λ) - (p1.y + μ * wdY)
+    //     dist² = dx² + dy²
+
+    // Check endpoints μ=0 and μ=1, plus the analytical minimum
+
+    const checkAtMu = (mu: number): boolean => {
+      if (mu < 0 || mu > 1) return false;
+      const lambda = p1.t + mu * wdT - eT;
+      if (lambda < 0 || lambda > range) return false;
+
+      const dx = eX + dX * lambda - (p1.x + mu * wdX);
+      const dy = eY + dY * lambda - (p1.y + mu * wdY);
+      return dx * dx + dy * dy <= r2;
+    };
+
+    // Check segment endpoints
+    if (checkAtMu(0) || checkAtMu(1)) return true;
+
+    // Analytical minimum: d(dist²)/dμ = 0
+    // dist²(μ) = (eX + dX*(p1.t + μ*wdT - eT) - p1.x - μ*wdX)² + (same for y)²
+    // Let A = eX + dX*(p1.t - eT) - p1.x,  a = dX*wdT - wdX
+    //     B = eY + dY*(p1.t - eT) - p1.y,  b = dY*wdT - wdY
+    // dist²(μ) = (A + a*μ)² + (B + b*μ)²
+    // d/dμ = 2a(A + a*μ) + 2b(B + b*μ) = 0
+    // μ* = -(a*A + b*B) / (a² + b²)
+
+    const lambda0 = p1.t - eT;
+    const A = eX + dX * lambda0 - p1.x;
+    const a = dX * wdT - wdX;
+    const B = eY + dY * lambda0 - p1.y;
+    const b = dY * wdT - wdY;
+
+    const denom = a * a + b * b;
+    if (denom > 1e-12) {
+      const muStar = -(a * A + b * B) / denom;
+      if (checkAtMu(muStar)) return true;
+    }
+  }
+
+  return false;
+};
+
 // 32bit FNV-1a hash（IDカラー生成用）
 const hashString32 = (input: string): number => {
   let hash = 0x811c9dc5;
@@ -661,12 +747,17 @@ const RelativisticGame = () => {
     new Map(),
   );
   const [lasers, setLasers] = useState<Laser[]>([]);
+  const [scores, setScores] = useState<Record<string, number>>({});
+  const scoresRef = useRef<Record<string, number>>({});
   const [showInRestFrame, setShowInRestFrame] = useState(true);
   const animationRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(Date.now());
   const keysPressed = useRef<Set<string>>(new Set());
   const lastLaserTimeRef = useRef<number>(0); // レーザー発射クールダウン用
   const playersRef = useRef<Map<string, RelativisticPlayer>>(new Map()); // ゲームループ用
+  const lasersRef = useRef<Laser[]>([]); // ゲームループ用（当たり判定）
+  const timeSyncedRef = useRef<boolean>(false); // syncTime 受信済みフラグ（クライアント用）
+  const processedLasersRef = useRef<Set<string>>(new Set()); // 判定済みレーザーID
   const [_screenSize, setScreenSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -710,18 +801,38 @@ const RelativisticGame = () => {
     });
   }, [myId]);
 
-  // playersRef を最新のplayers状態に同期
+  // ref を最新の state に同期
   useEffect(() => {
     playersRef.current = players;
   }, [players]);
+  useEffect(() => {
+    lasersRef.current = lasers;
+  }, [lasers]);
 
-  // 切断したプレイヤーを削除
+  // 切断したプレイヤーを削除 & 新規接続にsyncTime送信
+  const prevConnectionIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!myId) return;
 
     // 接続中のピアIDセット（自分自身を含む）
     const connectedIds = new Set(connections.map((c) => c.id));
     connectedIds.add(myId);
+
+    // ホストの場合、新しく接続した peer に syncTime を送信
+    if (peerManager?.getIsHost()) {
+      const myPlayer = playersRef.current.get(myId);
+      if (myPlayer) {
+        for (const conn of connections) {
+          if (conn.open && !prevConnectionIdsRef.current.has(conn.id)) {
+            peerManager.sendTo(conn.id, {
+              type: "syncTime",
+              hostTime: myPlayer.phaseSpace.pos.t,
+            });
+          }
+        }
+      }
+    }
+    prevConnectionIdsRef.current = new Set(connections.map((c) => c.id));
 
     setPlayers((prev) => {
       const idsToRemove: string[] = [];
@@ -739,7 +850,7 @@ const RelativisticGame = () => {
       }
       return next;
     });
-  }, [connections, myId]);
+  }, [connections, myId, peerManager]);
 
   // メッセージ受信処理
   useEffect(() => {
@@ -767,6 +878,27 @@ const RelativisticGame = () => {
           });
           return next;
         });
+      } else if (msg.type === "syncTime") {
+        // ホストから世界系時刻を受信 → 自分の t を揃える
+        timeSyncedRef.current = true;
+        setPlayers((prev) => {
+          const me = prev.get(myId);
+          if (!me) return prev;
+          const synced = createPhaseSpace(
+            createVector4(
+              msg.hostTime,
+              me.phaseSpace.pos.x,
+              me.phaseSpace.pos.y,
+              me.phaseSpace.pos.z,
+            ),
+            me.phaseSpace.u,
+          );
+          let worldLine = createWorldLine();
+          worldLine = appendWorldLine(worldLine, synced);
+          const next = new Map(prev);
+          next.set(myId, { ...me, phaseSpace: synced, worldLine });
+          return next;
+        });
       } else if (msg.type === "laser") {
         // 他プレイヤーからのレーザーを追加
         const receivedLaser: Laser = {
@@ -789,7 +921,26 @@ const RelativisticGame = () => {
           }
           return updated;
         });
+      } else if (msg.type === "respawn") {
+        // リスポーン: 対象プレイヤーの位置と worldLine をリセット
+        setPlayers((prev) => {
+          const player = prev.get(msg.playerId);
+          if (!player) return prev;
+          const respawnPhaseSpace = createPhaseSpace(
+            createVector4(msg.position.t, msg.position.x, msg.position.y, msg.position.z),
+            vector3Zero(),
+          );
+          let worldLine = createWorldLine();
+          worldLine = appendWorldLine(worldLine, respawnPhaseSpace);
+          const next = new Map(prev);
+          next.set(msg.playerId, { ...player, phaseSpace: respawnPhaseSpace, worldLine });
+          return next;
+        });
+      } else if (msg.type === "score") {
+        scoresRef.current = msg.scores;
+        setScores(msg.scores);
       }
+      // "kill" は現時点ではログのみ（将来エフェクト追加可）
     });
 
     return () => {
@@ -1007,29 +1158,123 @@ const RelativisticGame = () => {
           worldLine: updatedWorldLine,
         });
 
-        // 他のプレイヤーに送信
+        // 他のプレイヤーに送信（クライアントは syncTime 受信後のみ）
         if (peerManager) {
-          const msg = {
-            type: "phaseSpace" as const,
-            senderId: myId,
-            position: newPhaseSpace.pos,
-            velocity: newPhaseSpace.u,
-          };
+          const isHost = peerManager.getIsHost();
+          if (isHost || timeSyncedRef.current) {
+            const msg = {
+              type: "phaseSpace" as const,
+              senderId: myId,
+              position: newPhaseSpace.pos,
+              velocity: newPhaseSpace.u,
+            };
 
-          if (peerManager.getIsHost()) {
-            // ホストは直接全員に送信
-            peerManager.send(msg);
-          } else {
-            // クライアントはホストにのみ送信
-            const hostId = peerManager.getHostId();
-            if (hostId) {
-              peerManager.sendTo(hostId, msg);
-            }
+            if (isHost) {
+              // ホストは直接全員に送信
+              peerManager.send(msg);
+            } else {
+              // クライアントはホストにのみ送信
+              const hostId = peerManager.getHostId();
+              if (hostId) {
+                peerManager.sendTo(hostId, msg);
+              }
           }
         }
 
         return next;
       });
+
+      // ホストのみ: 当たり判定
+      if (peerManager.getIsHost()) {
+        const currentPlayers = playersRef.current;
+        const currentLasers = lasersRef.current;
+        const hitLaserIds: string[] = [];
+        const kills: { victimId: string; killerId: string }[] = [];
+
+        // 全プレイヤーの最小 t を取得（レーザー期限切れ判定用）
+        let minPlayerT = Number.POSITIVE_INFINITY;
+        for (const [, player] of currentPlayers) {
+          if (player.phaseSpace.pos.t < minPlayerT) {
+            minPlayerT = player.phaseSpace.pos.t;
+          }
+        }
+
+        for (const laser of currentLasers) {
+          if (processedLasersRef.current.has(laser.id)) continue;
+
+          // レーザーの到達時刻を超えていたらもう当たらない → 判定済みにする
+          const laserEndT = laser.emissionPos.t + laser.range;
+          if (minPlayerT > laserEndT) {
+            processedLasersRef.current.add(laser.id);
+            continue;
+          }
+
+          for (const [playerId, player] of currentPlayers) {
+            if (playerId === laser.playerId) continue; // 自分のレーザーは除外
+            if (checkLaserHit(laser, player.worldLine, HIT_RADIUS)) {
+              kills.push({ victimId: playerId, killerId: laser.playerId });
+              hitLaserIds.push(laser.id);
+              break; // 1レーザーにつき1キルまで
+            }
+          }
+        }
+
+        // processedLasersRef のクリーンアップ: lasers に存在しないIDを除去
+        const currentLaserIds = new Set(currentLasers.map((l) => l.id));
+        for (const id of processedLasersRef.current) {
+          if (!currentLaserIds.has(id)) {
+            processedLasersRef.current.delete(id);
+          }
+        }
+
+        if (kills.length > 0) {
+          // スコア更新
+          const newScores = { ...scoresRef.current };
+          for (const { killerId } of kills) {
+            newScores[killerId] = (newScores[killerId] || 0) + 1;
+          }
+          scoresRef.current = newScores;
+          setScores(newScores);
+
+          // 判定済みレーザーを記録
+          for (const id of hitLaserIds) {
+            processedLasersRef.current.add(id);
+          }
+
+          // キル・リスポーン・スコアをブロードキャスト & ローカル適用
+          const hostPlayer = currentPlayers.get(myId);
+          const hostT = hostPlayer?.phaseSpace.pos.t ?? 0;
+
+          for (const { victimId, killerId } of kills) {
+            const respawnPos = {
+              t: hostT,
+              x: Math.random() * 10,
+              y: Math.random() * 10,
+              z: 0,
+            };
+
+            peerManager.send({ type: "kill" as const, victimId, killerId });
+            peerManager.send({ type: "respawn" as const, playerId: victimId, position: respawnPos });
+
+            // ローカルでもリスポーン適用
+            setPlayers((prev) => {
+              const victim = prev.get(victimId);
+              if (!victim) return prev;
+              const respawnPhaseSpace = createPhaseSpace(
+                createVector4(respawnPos.t, respawnPos.x, respawnPos.y, respawnPos.z),
+                vector3Zero(),
+              );
+              let worldLine = createWorldLine();
+              worldLine = appendWorldLine(worldLine, respawnPhaseSpace);
+              const next = new Map(prev);
+              next.set(victimId, { ...victim, phaseSpace: respawnPhaseSpace, worldLine });
+              return next;
+            });
+          }
+
+          peerManager.send({ type: "score" as const, scores: newScores });
+        }
+      }
 
       animationRef.current = requestAnimationFrame(gameLoop);
     };
@@ -1093,6 +1338,18 @@ const RelativisticGame = () => {
         >
           FPS: {fps}
         </div>
+        {Object.keys(scores).length > 0 && (
+          <div style={{ marginTop: "8px", borderTop: "1px solid rgba(255,255,255,0.3)", paddingTop: "6px" }}>
+            <div style={{ fontWeight: "bold", marginBottom: "2px" }}>Kill</div>
+            {Object.entries(scores)
+              .sort(([, a], [, b]) => b - a)
+              .map(([id, kills]) => (
+                <div key={id} style={{ color: players.get(id)?.color ?? "white" }}>
+                  {id === myId ? "You" : id.slice(0, 6)}: {kills}
+                </div>
+              ))}
+          </div>
+        )}
       </div>
 
       {/* 速度計 */}
