@@ -1541,7 +1541,14 @@ const RelativisticGame = () => {
           build: {__BUILD_TIME__}
         </div>
         {Object.keys(scores).length > 0 && (
-          <div style={{ marginTop: "8px", borderTop: "1px solid rgba(255,255,255,0.3)", paddingTop: "6px" }}>
+          <div style={{
+            marginTop: "8px",
+            borderTop: "1px solid rgba(255,255,255,0.3)",
+            paddingTop: "6px",
+            transition: "transform 0.15s ease-out",
+            transform: killNotification ? "scale(1.4)" : "scale(1)",
+            transformOrigin: "top left",
+          }}>
             <div style={{ fontWeight: "bold", marginBottom: "2px" }}>Kill</div>
             {Object.entries(scores)
               .sort(([, a], [, b]) => b - a)
