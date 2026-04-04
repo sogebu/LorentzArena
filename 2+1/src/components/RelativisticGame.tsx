@@ -174,15 +174,60 @@ const hashString32 = (input: string): number => {
   return hash >>> 0;
 };
 
-// IDから色を生成する関数（高彩度で視認性の良い色）
+// IDから色を生成する関数（フォールバック用）
 const getColorFromId = (id: string): string => {
   const hash = hashString32(id);
-  // 連番・類似IDでも色相が偏りにくいように黄金角で拡散
   const hue = Math.floor(((hash * 137.50776405) % 360 + 360) % 360);
   const saturation = 80 + ((hash >> 8) % 17); // 80-96%
   const lightness = 50 + ((hash >> 16) % 14); // 50-63%
-
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+};
+
+// HSL文字列から色相を抽出
+const extractHue = (hsl: string): number | null => {
+  const match = hsl.match(/hsl\((\d+)/);
+  return match ? Number.parseInt(match[1], 10) : null;
+};
+
+// 既存プレイヤーの色と最も区別しやすい色を選ぶ
+const pickDistinctColor = (
+  id: string,
+  existingPlayers: Map<string, RelativisticPlayer>,
+): string => {
+  const existingHues: number[] = [];
+  for (const [pid, player] of existingPlayers) {
+    if (pid === id) continue;
+    const h = extractHue(player.color);
+    if (h !== null) existingHues.push(h);
+  }
+
+  const hash = hashString32(id);
+  const saturation = 80 + ((hash >> 8) % 17); // 80-96%
+  const lightness = 50 + ((hash >> 16) % 14); // 50-63%
+
+  if (existingHues.length === 0) {
+    // 最初のプレイヤーはIDから決定
+    const hue = Math.floor(((hash * 137.50776405) % 360 + 360) % 360);
+    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+  }
+
+  // 色相環上で既存色から最も遠い色相を探す
+  // 候補を36点（10°刻み）でサンプルし、最小距離が最大のものを選ぶ
+  let bestHue = 0;
+  let bestMinDist = -1;
+  for (let candidate = 0; candidate < 360; candidate += 10) {
+    let minDist = 360;
+    for (const h of existingHues) {
+      const d = Math.min(Math.abs(candidate - h), 360 - Math.abs(candidate - h));
+      if (d < minDist) minDist = d;
+    }
+    if (minDist > bestMinDist) {
+      bestMinDist = minDist;
+      bestHue = candidate;
+    }
+  }
+
+  return `hsl(${bestHue}, ${saturation}%, ${lightness}%)`;
 };
 
 // プレイヤーの色からレーザーの色を生成（より明るく、彩度を上げる）
@@ -1004,7 +1049,7 @@ const RelativisticGame = () => {
         phaseSpace: initialPhaseSpace,
         worldLine,
         pastWorldLines: [],
-        color: getColorFromId(myId),
+        color: pickDistinctColor(myId, prev),
       });
       return next;
     });
@@ -1087,7 +1132,7 @@ const RelativisticGame = () => {
             phaseSpace,
             worldLine,
             pastWorldLines: existing?.pastWorldLines || [],
-            color: existing?.color || getColorFromId(playerId), // 既存の色を保持
+            color: existing?.color || pickDistinctColor(playerId, prev), // 既存の色と区別しやすい色
           });
           return next;
         });
