@@ -26,7 +26,7 @@ export type WorldLine = {
  * Create a WorldLine.
  * JP: ワールドラインを作成。
  */
-export const createWorldLine = (maxHistorySize = 1000): WorldLine => ({
+export const createWorldLine = (maxHistorySize = 5000): WorldLine => ({
   history: [],
   maxHistorySize,
 });
