@@ -7,6 +7,20 @@ https://sogebu.github.io/LorentzArena/
 
 ## 直近の作業（2026-04-04）
 
+- **RelativisticGame.tsx ファイル分割リファクタ完了**
+  - 1992行 → 749行（62%削減）
+  - 10個の新ファイルを `src/components/game/` に作成:
+    - `types.ts` (63行) — ゲーム固有型定義
+    - `constants.ts` (22行) — ゲーム定数
+    - `colors.ts` (80行) — 色生成・距離最大化
+    - `threeCache.ts` (31行) — THREE.js ジオメトリ/マテリアル singleton
+    - `displayTransform.ts` (71行) — ローレンツ変換表示座標変換
+    - `laserPhysics.ts` (152行) — レーザー当たり判定 + 光円錐交差
+    - `debris.ts` (76行) — デブリ生成 + 光円錐交差
+    - `SceneContent.tsx` (650行) — 3Dシーン + WorldLine/Laser/SpawnRenderer
+    - `messageHandler.ts` (236行) — ネットワークメッセージ処理（ファクトリ関数）
+    - `HUD.tsx` (217行) — オーバーレイUI
+  - ゲームループは RelativisticGame.tsx に残留（12 ref + 11 state setter の closure のため）
 - マテリアルキャッシュ廃止 → R3F 宣言的マテリアル（仮色バグ修正）
 - 世界系カメラをプレイヤー追随に変更（世界線の曲がりは摩擦が原因と判明）
 - `worldLine` + `pastWorldLines` → `lives[]` 統合リファクタ
@@ -24,5 +38,4 @@ https://sogebu.github.io/LorentzArena/
 
 - リスポーン世界線分離バグ修正
 - デブリ世界線表示バグ修正
-- RelativisticGame.tsx のファイル分割リファクタ（2000行→複数ファイル）
 - 3+1 次元への拡張検討（カスタム頂点シェーダーが必要、DESIGN.md に記載済み）

@@ -66,7 +66,23 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 
 自動接続フロー: ページを開くだけで同じルームに入る。`#room=name` で部屋分離。
 
-### ゲーム (`2+1/src/components/RelativisticGame.tsx`)
+### ゲーム (`2+1/src/components/`)
+
+`RelativisticGame.tsx` がオーケストレーター。ゲームロジックのモジュールは `game/` サブディレクトリに分離:
+
+| ファイル | 内容 |
+|---|---|
+| `RelativisticGame.tsx` | state/ref 管理、ゲームループ、Canvas 配置 |
+| `game/types.ts` | ゲーム固有型定義（`RelativisticPlayer`, `Laser` 等） |
+| `game/constants.ts` | ゲーム定数（射程、リスポーン遅延等） |
+| `game/colors.ts` | プレイヤー色生成（色相距離最大化） |
+| `game/threeCache.ts` | THREE.js ジオメトリ/マテリアル singleton |
+| `game/displayTransform.ts` | ローレンツ変換 → 表示座標変換 |
+| `game/laserPhysics.ts` | レーザー当たり判定 + 光円錐交差 |
+| `game/debris.ts` | デブリ生成 + 光円錐交差 |
+| `game/SceneContent.tsx` | 3Dシーン（WorldLine/Laser/SpawnRenderer 含む） |
+| `game/messageHandler.ts` | ネットワークメッセージ処理（ファクトリ関数） |
+| `game/HUD.tsx` | オーバーレイUI（コントロール、スピードメーター、キル通知） |
 
 主要機能:
 - W/S: 加速/減速、矢印: カメラ回転、Space: レーザー発射
@@ -94,7 +110,7 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 | `playerColor` | host → all | 色割り当て |
 | `peerList` | host → client | 接続ピア一覧 |
 
-### ゲームパラメータ（`RelativisticGame.tsx`）
+### ゲームパラメータ（`game/constants.ts` + `RelativisticGame.tsx`）
 
 | パラメータ | 値 | 説明 |
 |---|---|---|

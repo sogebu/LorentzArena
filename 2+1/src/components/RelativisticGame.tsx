@@ -1,27 +1,35 @@
-import { useEffect, useRef, useState, useMemo } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import * as THREE from "three";
+import { Canvas } from "@react-three/fiber";
+import { useEffect, useRef, useState } from "react";
 import { usePeer } from "../hooks/usePeer";
 import {
-  type PhaseSpace,
-  type Vector4,
-  type WorldLine,
-  createVector3,
-  lengthVector3,
-  vector3Zero,
-  gamma,
-  createWorldLine,
   appendWorldLine,
   createPhaseSpace,
+  createVector3,
   createVector4,
+  createWorldLine,
   evolvePhaseSpace,
-  lorentzBoost,
   lorentzDotVector4,
-  multiplyVector4Matrix4,
   subVector4,
-  pastLightConeIntersectionWorldLine,
-  positionAlongStraightWorldLine,
+  type Vector4,
+  vector3Zero,
 } from "../physics";
+import { getLaserColor, pickDistinctColor } from "./game/colors";
+import {
+  HIT_RADIUS,
+  LASER_RANGE,
+  MAX_LASERS,
+  MAX_PAST_WORLDLINES,
+  OFFSET,
+  RESPAWN_DELAY,
+  SPAWN_EFFECT_DURATION,
+} from "./game/constants";
+import { generateExplosionParticles } from "./game/debris";
+import { HUD } from "./game/HUD";
+import { findLaserHitPosition } from "./game/laserPhysics";
+import { createMessageHandler } from "./game/messageHandler";
+import { SceneContent } from "./game/SceneContent";
+import type { Laser, RelativisticPlayer, SpawnEffect } from "./game/types";
+import { currentLife } from "./game/types";
 
 /**
  * RelativisticGame (2+1 spacetime).
@@ -37,1002 +45,6 @@ import {
  *   - マルチプレイ同期は PeerJS（WebRTC）。このアプリは基本的にホスト中継型です。
  */
 
-const OFFSET = Date.now() / 1000;
-
-// 死亡時の爆散デブリ（等速直線運動、永続データ）
-type DebrisRecord = {
-  readonly deathPos: { t: number; x: number; y: number; z: number };
-  readonly particles: ReadonlyArray<{ dx: number; dy: number; size: number }>;
-  readonly color: string;
-};
-
-type RelativisticPlayer = {
-  id: string;
-  // in 世界系
-  phaseSpace: PhaseSpace;
-  lives: WorldLine[]; // 全ライフ（最後が現在の命）
-  debrisRecords: DebrisRecord[]; // 死亡時の爆散デブリ（永続）
-  color: string;
-};
-
-const currentLife = (p: RelativisticPlayer): WorldLine =>
-  p.lives[p.lives.length - 1];
-
-type Laser = {
-  readonly id: string;
-  readonly playerId: string;
-  readonly emissionPos: { t: number; x: number; y: number; z: number };
-  readonly direction: { x: number; y: number; z: number };
-  readonly range: number;
-  readonly color: string;
-};
-
-type SpawnEffect = {
-  readonly id: string;
-  readonly pos: { t: number; x: number; y: number; z: number };
-  readonly color: string;
-  readonly startTime: number;
-};
-
-// スポーンエフェクトの持続時間（ミリ秒）
-const SPAWN_EFFECT_DURATION = 1500;
-
-// レーザーの射程
-const LASER_RANGE = 20;
-
-// リスポーン遅延（ミリ秒）
-const RESPAWN_DELAY = 1000;
-
-// 過去の世界線の保持上限
-const MAX_PAST_WORLDLINES = 5;
-
-// レーザーの最大数（メモリ管理）
-const MAX_LASERS = 1000;
-
-// 当たり判定の半径
-const HIT_RADIUS = 0.5;
-
-/**
- * Find the hit position where a laser intersects a world line.
- * Returns the world-frame hit position (on the player's worldline), or null if no hit.
- *
- * Laser trajectory: L(λ) = emissionPos + λ * (dir, 1),  λ ∈ [0, range]
- * World line segment: W(μ) = p1 + μ * (p2 - p1),  μ ∈ [0, 1]
- */
-const findLaserHitPosition = (
-  laser: Laser,
-  worldLine: WorldLine,
-  hitRadius: number,
-): { t: number; x: number; y: number; z: number } | null => {
-  const history = worldLine.history;
-  if (history.length < 2) return null;
-
-  const eT = laser.emissionPos.t;
-  const eX = laser.emissionPos.x;
-  const eY = laser.emissionPos.y;
-  const dX = laser.direction.x;
-  const dY = laser.direction.y;
-  const range = laser.range;
-  const r2 = hitRadius * hitRadius;
-
-  for (let i = 1; i < history.length; i++) {
-    const p1 = history[i - 1].pos;
-    const p2 = history[i].pos;
-
-    const wdT = p2.t - p1.t;
-    const wdX = p2.x - p1.x;
-    const wdY = p2.y - p1.y;
-
-    const checkAtMu = (mu: number): { t: number; x: number; y: number; z: number } | null => {
-      if (mu < 0 || mu > 1) return null;
-      const lambda = p1.t + mu * wdT - eT;
-      if (lambda < 0 || lambda > range) return null;
-
-      const dx = eX + dX * lambda - (p1.x + mu * wdX);
-      const dy = eY + dY * lambda - (p1.y + mu * wdY);
-      if (dx * dx + dy * dy > r2) return null;
-
-      // ヒット位置はプレイヤーのワールドライン上の点
-      return {
-        t: p1.t + mu * wdT,
-        x: p1.x + mu * wdX,
-        y: p1.y + mu * wdY,
-        z: 0,
-      };
-    };
-
-    const hit0 = checkAtMu(0);
-    if (hit0) return hit0;
-    const hit1 = checkAtMu(1);
-    if (hit1) return hit1;
-
-    const lambda0 = p1.t - eT;
-    const A = eX + dX * lambda0 - p1.x;
-    const a = dX * wdT - wdX;
-    const B = eY + dY * lambda0 - p1.y;
-    const b = dY * wdT - wdY;
-
-    const denom = a * a + b * b;
-    if (denom > 1e-12) {
-      const muStar = -(a * A + b * B) / denom;
-      const hitStar = checkAtMu(muStar);
-      if (hitStar) return hitStar;
-    }
-  }
-
-  return null;
-};
-
-// 32bit FNV-1a hash（IDカラー生成用）
-const hashString32 = (input: string): number => {
-  let hash = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-};
-
-// IDから色を生成する関数（フォールバック用）
-const getColorFromId = (id: string): string => {
-  const hash = hashString32(id);
-  const hue = Math.floor(((hash * 137.50776405) % 360 + 360) % 360);
-  const saturation = 80 + ((hash >> 8) % 17); // 80-96%
-  const lightness = 50 + ((hash >> 16) % 14); // 50-63%
-  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-};
-
-// HSL文字列から色相を抽出
-const extractHue = (hsl: string): number | null => {
-  const match = hsl.match(/hsl\((\d+)/);
-  return match ? Number.parseInt(match[1], 10) : null;
-};
-
-// 既存プレイヤーの色と最も区別しやすい色を選ぶ
-const pickDistinctColor = (
-  id: string,
-  existingPlayers: Map<string, RelativisticPlayer>,
-): string => {
-  const existingHues: number[] = [];
-  for (const [pid, player] of existingPlayers) {
-    if (pid === id) continue;
-    const h = extractHue(player.color);
-    if (h !== null) existingHues.push(h);
-  }
-
-  const hash = hashString32(id);
-  const saturation = 80 + ((hash >> 8) % 17); // 80-96%
-  const lightness = 50 + ((hash >> 16) % 14); // 50-63%
-
-  if (existingHues.length === 0) {
-    // 最初のプレイヤーはIDから決定
-    const hue = Math.floor(((hash * 137.50776405) % 360 + 360) % 360);
-    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-  }
-
-  // 色相環上で既存色から最も遠い色相を探す
-  // 候補を36点（10°刻み）でサンプルし、最小距離が最大のものを選ぶ
-  let bestHue = 0;
-  let bestMinDist = -1;
-  for (let candidate = 0; candidate < 360; candidate += 10) {
-    let minDist = 360;
-    for (const h of existingHues) {
-      const d = Math.min(Math.abs(candidate - h), 360 - Math.abs(candidate - h));
-      if (d < minDist) minDist = d;
-    }
-    if (minDist > bestMinDist) {
-      bestMinDist = minDist;
-      bestHue = candidate;
-    }
-  }
-
-  return `hsl(${bestHue}, ${saturation}%, ${lightness}%)`;
-};
-
-// プレイヤーの色からレーザーの色を生成（より明るく、彩度を上げる）
-const getLaserColor = (playerColor: string): string => {
-  // HSL形式をパース: hsl(hue, saturation%, lightness%)
-  const match = playerColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
-  if (!match) return playerColor;
-
-  const hue = Number.parseInt(match[1], 10);
-  const saturation = Math.min(100, Number.parseInt(match[2], 10) + 10); // 彩度を上げる
-  const lightness = Math.min(90, Number.parseInt(match[3], 10) + 25); // 明度を上げて明るく
-
-  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-};
-
-/**
- * Find intersection of "observer past light cone" and a laser world-line segment.
- *
- * English:
- *   - Laser trajectory is modeled as a spacetime segment:
- *       X(lambda) = start + lambda * (end - start), lambda in [0, 1]
- *   - We solve lorentzDot(observer - X, observer - X) = 0 and keep the past solution.
- *
- * 日本語:
- *   - レーザー軌跡を時空区間として扱い、
- *       X(lambda) = start + lambda * (end - start), lambda in [0, 1]
- *   - lorentzDot(observer - X, observer - X) = 0 を解いて、
- *     観測者より過去にある解のみ採用します。
- */
-const pastLightConeIntersectionLaser = (
-  laser: Laser,
-  observerPos: Vector4,
-): Vector4 | null => {
-  const start = createVector4(
-    laser.emissionPos.t,
-    laser.emissionPos.x,
-    laser.emissionPos.y,
-    laser.emissionPos.z,
-  );
-  const end = createVector4(
-    laser.emissionPos.t + laser.range,
-    laser.emissionPos.x + laser.direction.x * laser.range,
-    laser.emissionPos.y + laser.direction.y * laser.range,
-    laser.emissionPos.z + laser.direction.z * laser.range,
-  );
-
-  const delta = subVector4(end, start);
-  const separationAtStart = subVector4(observerPos, start);
-
-  // a*lambda^2 + b*lambda + c = 0
-  const a = lorentzDotVector4(delta, delta);
-  const b = -2 * lorentzDotVector4(separationAtStart, delta);
-  const c = lorentzDotVector4(separationAtStart, separationAtStart);
-
-  const EPS = 1e-9;
-  const candidates: number[] = [];
-
-  // Laser segment is (almost) lightlike, so treat near-linear case robustly.
-  if (Math.abs(a) < EPS) {
-    if (Math.abs(b) < EPS) return null;
-    candidates.push(-c / b);
-  } else {
-    const discriminant = b * b - 4 * a * c;
-    if (discriminant < 0) return null;
-    const sqrtDiscriminant = Math.sqrt(Math.max(0, discriminant));
-    candidates.push((-b - sqrtDiscriminant) / (2 * a));
-    candidates.push((-b + sqrtDiscriminant) / (2 * a));
-  }
-
-  let best: Vector4 | null = null;
-  for (const lambda of candidates) {
-    if (lambda < -EPS || lambda > 1 + EPS) continue;
-    const t = Math.min(1, Math.max(0, lambda));
-    const point = createVector4(
-      start.t + delta.t * t,
-      start.x + delta.x * t,
-      start.y + delta.y * t,
-      start.z + delta.z * t,
-    );
-
-    // We only want events in observer's past.
-    if (observerPos.t - point.t <= EPS) continue;
-    if (!best || point.t > best.t) best = point;
-  }
-
-  return best;
-};
-
-/**
- * Convert a world-frame event into display coordinates.
- *
- * English:
- *   - When `observerBoost` is present, we display in the observer's instantaneous rest frame.
- *   - Otherwise, we keep world-frame coordinates.
- *
- * 日本語:
- *   - `observerBoost` がある場合は観測者の瞬間静止系で表示します。
- *   - ない場合は世界系のまま表示します。
- */
-const transformEventForDisplay = (
-  worldEvent: Vector4,
-  observerPos: Vector4 | null,
-  observerBoost: ReturnType<typeof lorentzBoost> | null,
-): Vector4 => {
-  if (!observerPos || !observerBoost) return worldEvent;
-  return multiplyVector4Matrix4(observerBoost, subVector4(worldEvent, observerPos));
-};
-
-// Color キャッシュ
-const colorCache = new Map<string, THREE.Color>();
-const getThreeColor = (hslString: string): THREE.Color => {
-  let color = colorCache.get(hslString);
-  if (!color) {
-    color = new THREE.Color(hslString);
-    colorCache.set(hslString, color);
-  }
-  return color;
-};
-
-// 共有ジオメトリ（シングルトン）
-const sharedGeometries = {
-  playerSphere: new THREE.SphereGeometry(1, 8, 8),
-  intersectionSphere: new THREE.SphereGeometry(0.45, 16, 16),
-  intersectionCore: new THREE.SphereGeometry(0.15, 12, 12),
-  intersectionRing: new THREE.TorusGeometry(0.7, 0.07, 12, 24),
-  laserIntersectionDot: new THREE.SphereGeometry(0.25, 12, 12),
-  lightCone: new THREE.ConeGeometry(40, 40, 32, 1, true),
-  explosionParticle: new THREE.SphereGeometry(1, 6, 6), // スケールで size 調整
-};
-
-// デバッグ用: キャッシュサイズの監視（ブラウザコンソールで window.debugCaches を参照）
-if (typeof window !== "undefined") {
-  (window as unknown as Record<string, unknown>).debugCaches = {
-    colorCache,
-    sharedGeometries,
-  };
-}
-
-/**
- * Build a THREE.js Matrix4 that maps world-frame vertices (x, y, z=t)
- * to display-frame vertices via Lorentz boost + translation.
- *
- * Since the Lorentz transform is linear, it can be applied as a mesh
- * matrix instead of regenerating geometry every frame.
- *
- * THREE.js vertex: (x, y, z) = spacetime (x, y, t)
- * Lorentz matrix Λ operates on (t, x, y, z) → column reorder needed.
- *
- * display_x = Λ[1,1]*x + Λ[1,2]*y + Λ[1,0]*t + tx
- * display_y = Λ[2,1]*x + Λ[2,2]*y + Λ[2,0]*t + ty
- * display_z = Λ[0,1]*x + Λ[0,2]*y + Λ[0,0]*t + tz
- */
-const buildDisplayMatrix = (
-  observerPos: Vector4 | null,
-  observerBoost: ReturnType<typeof lorentzBoost> | null,
-): THREE.Matrix4 => {
-  const m = new THREE.Matrix4();
-  if (!observerPos || !observerBoost) {
-    return m; // identity
-  }
-
-  const L = observerBoost;
-  const get = (r: number, c: number) => L.data[r * 4 + c];
-
-  // Translation: -M * observerPos (in THREE.js coords)
-  const ox = observerPos.x;
-  const oy = observerPos.y;
-  const ot = observerPos.t;
-  const tx = -(get(1, 1) * ox + get(1, 2) * oy + get(1, 0) * ot);
-  const ty = -(get(2, 1) * ox + get(2, 2) * oy + get(2, 0) * ot);
-  const tz = -(get(0, 1) * ox + get(0, 2) * oy + get(0, 0) * ot);
-
-  // THREE.js Matrix4 is column-major: set(row, col, value) → elements[col*4+row]
-  m.set(
-    get(1, 1), get(1, 2), get(1, 0), tx, // row 0: display x
-    get(2, 1), get(2, 2), get(2, 0), ty, // row 1: display y
-    get(0, 1), get(0, 2), get(0, 0), tz, // row 2: display z (=t')
-    0, 0, 0, 1,                          // row 3: homogeneous
-  );
-  return m;
-};
-
-// WorldLineRenderer コンポーネント - 個別のワールドラインを描画
-type WorldLineRendererProps = {
-  worldLine: WorldLine;
-  color: string;
-  showHalfLine: boolean;
-  observerPos: Vector4 | null;
-  observerBoost: ReturnType<typeof lorentzBoost> | null;
-};
-
-const WorldLineRenderer = ({
-  worldLine: wl,
-  color: colorStr,
-  showHalfLine,
-  observerPos,
-  observerBoost,
-}: WorldLineRendererProps) => {
-  const [geometry, setGeometry] = useState<THREE.TubeGeometry | null>(null);
-  const meshRef = useRef<THREE.Mesh>(null);
-
-  const history = wl.history;
-  const origin = wl.origin;
-
-  // geometry は世界系座標で生成（history が変わったときだけ再生成）
-  // showHalfLine が true なら origin から過去方向への半直線も含む
-  useEffect(() => {
-    if (history.length < 2 && !(showHalfLine && origin)) {
-      // リスポーン直後など: 古い geometry をクリア
-      setGeometry((prev) => {
-        if (prev) prev.dispose();
-        return null;
-      });
-      return;
-    }
-
-    const points: THREE.Vector3[] = [];
-
-    // 半直線の端点: origin から過去方向に座標時間100単位分（最初の命のみ）
-    if (showHalfLine && origin) {
-      const HALF_LINE_LENGTH = 100; // 座標時間で100単位分
-      const pastEnd = positionAlongStraightWorldLine(origin, HALF_LINE_LENGTH);
-      points.push(new THREE.Vector3(pastEnd.x, pastEnd.y, pastEnd.t));
-
-      // origin 自体が history[0] と異なる場合（trimming 後）origin を追加
-      if (history.length === 0 || origin.pos.t !== history[0].pos.t) {
-        points.push(new THREE.Vector3(origin.pos.x, origin.pos.y, origin.pos.t));
-      }
-    }
-
-    // history の各点
-    for (const ps of history) {
-      points.push(new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t));
-    }
-
-    if (points.length < 2) {
-      setGeometry((prev) => {
-        if (prev) prev.dispose();
-        return null;
-      });
-      return;
-    }
-
-    const curve = new THREE.CatmullRomCurve3(points);
-    const tubeGeometry = new THREE.TubeGeometry(
-      curve,
-      Math.min(points.length * 2, 1000),
-      0.05,
-      8,
-      false,
-    );
-
-    setGeometry((prev) => {
-      if (prev) prev.dispose();
-      return tubeGeometry;
-    });
-  }, [history, origin, showHalfLine]);
-
-  // 表示変換はメッシュの行列として毎フレーム適用（geometry 再生成不要）
-  useFrame(() => {
-    if (!meshRef.current) return;
-    const displayMatrix = buildDisplayMatrix(observerPos, observerBoost);
-    meshRef.current.matrix.copy(displayMatrix);
-    meshRef.current.matrixWorldNeedsUpdate = true;
-  });
-
-  // アンマウント時に geometry を破棄
-  useEffect(() => {
-    return () => {
-      setGeometry((prev) => {
-        if (prev) prev.dispose();
-        return null;
-      });
-    };
-  }, []);
-
-  const color = getThreeColor(colorStr);
-
-  if (!geometry) return null;
-
-  return (
-    <mesh
-      ref={meshRef}
-      geometry={geometry}
-      matrixAutoUpdate={false}
-    >
-      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.9} />
-    </mesh>
-  );
-};
-
-type DisplayLaser = {
-  readonly id: string;
-  readonly color: string;
-  readonly start: Vector4;
-  readonly end: Vector4;
-};
-
-// LaserRenderer コンポーネント - 個別のレーザーを描画
-const LaserRenderer = ({ laser }: { laser: DisplayLaser }) => {
-  const geometry = useMemo(() => {
-    const startPoint = new THREE.Vector3(laser.start.x, laser.start.y, laser.start.t);
-    const endPoint = new THREE.Vector3(laser.end.x, laser.end.y, laser.end.t);
-    const curve = new THREE.LineCurve3(startPoint, endPoint);
-    return new THREE.TubeGeometry(curve, 2, 0.05, 8, false);
-  }, [laser]);
-
-  const color = useMemo(() => getThreeColor(laser.color), [laser.color]);
-  const material = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        color: color,
-        transparent: true,
-        opacity: 0.4,
-      }),
-    [color],
-  );
-
-  useEffect(() => {
-    return () => {
-      geometry.dispose();
-      material.dispose();
-    };
-  }, [geometry, material]);
-
-  return <mesh geometry={geometry} material={material} />;
-};
-
-// 爆発パーティクルの方向を事前生成（未来光円錐内をランダムに飛散）
-const EXPLOSION_PARTICLE_COUNT = 30;
-const generateExplosionParticles = () => {
-  const particles: { dx: number; dy: number; speed: number; size: number }[] = [];
-  for (let i = 0; i < EXPLOSION_PARTICLE_COUNT; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    // speed < 1 (光速未満) → 未来光円錐の内側を進む
-    const speed = 0.2 + Math.random() * 0.7; // 0.2c ~ 0.9c
-    particles.push({
-      dx: Math.cos(angle) * speed,
-      dy: Math.sin(angle) * speed,
-      speed,
-      size: 0.2 + Math.random() * 0.4,
-    });
-  }
-  return particles;
-};
-
-/**
- * Past light cone intersection for a debris particle (timelike straight worldline).
- *
- * Particle trajectory: P(λ) = start + λ * (dx, dy, 0, 1),  λ ∈ [0, maxLambda]
- * Solve lorentzDot(observer - P(λ), observer - P(λ)) = 0 for past intersection.
- */
-const pastLightConeIntersectionDebris = (
-  start: Vector4,
-  dx: number,
-  dy: number,
-  maxLambda: number,
-  observerPos: Vector4,
-): Vector4 | null => {
-  // delta = direction 4-vector = (1, dx, dy, 0) * maxLambda → normalized to λ ∈ [0, 1]
-  const delta = createVector4(maxLambda, dx * maxLambda, dy * maxLambda, 0);
-  const sep = subVector4(observerPos, start);
-
-  const a = lorentzDotVector4(delta, delta);
-  const b = -2 * lorentzDotVector4(sep, delta);
-  const c = lorentzDotVector4(sep, sep);
-
-  const EPS = 1e-9;
-  const candidates: number[] = [];
-
-  if (Math.abs(a) < EPS) {
-    if (Math.abs(b) < EPS) return null;
-    candidates.push(-c / b);
-  } else {
-    const disc = b * b - 4 * a * c;
-    if (disc < 0) return null;
-    const sqrtDisc = Math.sqrt(Math.max(0, disc));
-    candidates.push((-b - sqrtDisc) / (2 * a));
-    candidates.push((-b + sqrtDisc) / (2 * a));
-  }
-
-  let best: Vector4 | null = null;
-  for (const lambda of candidates) {
-    if (lambda < -EPS || lambda > 1 + EPS) continue;
-    const t = Math.min(1, Math.max(0, lambda));
-    const point = createVector4(
-      start.t + delta.t * t,
-      start.x + delta.x * t,
-      start.y + delta.y * t,
-      start.z + delta.z * t,
-    );
-    if (observerPos.t - point.t <= EPS) continue;
-    if (!best || point.t > best.t) best = point;
-  }
-
-  return best;
-};
-
-
-// スポーンエフェクトコンポーネント — 同心円リングが時間軸に沿って脈動
-const SpawnRenderer = ({
-  spawn,
-  observerPos,
-  observerBoost,
-}: {
-  spawn: SpawnEffect;
-  observerPos: Vector4 | null;
-  observerBoost: ReturnType<typeof lorentzBoost> | null;
-}) => {
-  const elapsed = Date.now() - spawn.startTime;
-  const progress = Math.min(elapsed / SPAWN_EFFECT_DURATION, 1);
-  const opacity = 1 - progress;
-
-  const color = useMemo(() => getThreeColor(spawn.color), [spawn.color]);
-
-  if (opacity <= 0) return null;
-
-  const spawnEvent = createVector4(spawn.pos.t, spawn.pos.x, spawn.pos.y, spawn.pos.z);
-
-  // 5本のリングが時間軸に沿って配置、収縮アニメーション
-  const ringCount = 5;
-  return (
-    <>
-      {Array.from({ length: ringCount }, (_, i) => {
-        const ringProgress = (progress * 3 + i / ringCount) % 1; // 各リングの位相をずらす
-        const ringRadius = (1 - ringProgress) * 4; // 収縮: 大きい → 小さい
-        const ringOpacity = opacity * (1 - ringProgress) * 0.8;
-        const ringT = spawn.pos.t + i * 0.5; // 時間軸に沿って配置
-
-        const worldPos = createVector4(ringT, spawn.pos.x, spawn.pos.y, 0);
-        const displayPos = transformEventForDisplay(worldPos, observerPos, observerBoost);
-
-        if (ringRadius < 0.1 || ringOpacity < 0.01) return null;
-
-        return (
-          <mesh
-            key={i}
-            position={[displayPos.x, displayPos.y, displayPos.t]}
-            rotation={[Math.PI / 2, 0, 0]}
-          >
-            <torusGeometry args={[ringRadius, 0.06, 8, 24]} />
-            <meshBasicMaterial
-              color={color}
-              transparent
-              opacity={ringOpacity}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
-        );
-      })}
-      {/* 中心の光柱（時間軸方向） */}
-      {(() => {
-        const pillarHeight = 6 * (1 - progress * 0.5);
-        const displayPos = transformEventForDisplay(spawnEvent, observerPos, observerBoost);
-        return (
-          <mesh
-            position={[displayPos.x, displayPos.y, displayPos.t + pillarHeight / 2]}
-          >
-            <cylinderGeometry args={[0.08, 0.08, pillarHeight, 6]} />
-            <meshBasicMaterial
-              color={color}
-              transparent
-              opacity={opacity * 0.6}
-            />
-          </mesh>
-        );
-      })()}
-    </>
-  );
-};
-
-// 3Dシーンコンテンツコンポーネント
-type SceneContentProps = {
-  players: Map<string, RelativisticPlayer>;
-  myId: string | null;
-  lasers: Laser[];
-  spawns: SpawnEffect[];
-  showInRestFrame: boolean;
-  useOrthographic: boolean;
-  cameraYawRef: React.RefObject<number>; // カメラのxy平面内での向き（ラジアン）
-  cameraPitchRef: React.RefObject<number>; // カメラの仰角（ラジアン、0=水平、正=上から見下ろす）
-};
-
-const SceneContent = ({
-  players,
-  myId,
-  lasers,
-  spawns,
-  showInRestFrame,
-  useOrthographic,
-  cameraYawRef,
-  cameraPitchRef,
-}: SceneContentProps) => {
-  // プレイヤーリストをメモ化
-  const playerList = useMemo(() => Array.from(players.values()), [players]);
-  const myPlayer = useMemo(
-    () => (myId ? players.get(myId) ?? null : null),
-    [players, myId],
-  );
-  const observerPos = myPlayer?.phaseSpace.pos ?? null;
-  const observerBoost = useMemo(
-    () => (showInRestFrame && myPlayer ? lorentzBoost(myPlayer.phaseSpace.u) : null),
-    [showInRestFrame, myPlayer],
-  );
-  const displayLasers = useMemo<DisplayLaser[]>(() => {
-    return lasers.map((laser) => {
-      const worldStart = createVector4(
-        laser.emissionPos.t,
-        laser.emissionPos.x,
-        laser.emissionPos.y,
-        laser.emissionPos.z,
-      );
-      const worldEnd = createVector4(
-        laser.emissionPos.t + laser.range,
-        laser.emissionPos.x + laser.direction.x * laser.range,
-        laser.emissionPos.y + laser.direction.y * laser.range,
-        laser.emissionPos.z + laser.direction.z * laser.range,
-      );
-
-      return {
-        id: laser.id,
-        color: laser.color,
-        start: transformEventForDisplay(worldStart, observerPos, observerBoost),
-        end: transformEventForDisplay(worldEnd, observerPos, observerBoost),
-      };
-    });
-  }, [lasers, observerPos, observerBoost]);
-
-  // カメラの位置をプレイヤー位置から計算（球面座標）
-  useFrame(({ camera }) => {
-    if (!myPlayer) return;
-
-    // 静止系: 原点追尾、世界系: プレイヤーの世界系座標に追随
-    const targetX = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.x;
-    const targetY = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.y;
-    const targetT = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.t;
-    // カメラの距離（プレイヤーからの距離、固定）
-    const cameraDistance = useOrthographic ? 100 : 15;
-    // カメラ位置: プレイヤーを中心とした球面上
-    const cameraYaw = cameraYawRef.current;
-    const cameraPitch = cameraPitchRef.current;
-    // 球面座標からデカルト座標へ変換
-    const camX =
-      targetX - Math.cos(cameraYaw) * Math.cos(cameraPitch) * cameraDistance;
-    const camY =
-      targetY - Math.sin(cameraYaw) * Math.cos(cameraPitch) * cameraDistance;
-    const camT = targetT - Math.sin(cameraPitch) * cameraDistance;
-
-    camera.position.set(camX, camY, camT);
-    camera.lookAt(targetX, targetY, targetT);
-    camera.up.set(0, 0, 1);
-  });
-  const worldLineIntersections = useMemo(() => {
-    if (!myPlayer || !myId) return [];
-
-    return playerList
-      .filter((player) => player.id !== myId)
-      .flatMap((player) => {
-        // 全ライフを新→旧の順に検索
-        for (let j = player.lives.length - 1; j >= 0; j--) {
-          const wl = player.lives[j];
-          const intersection = pastLightConeIntersectionWorldLine(
-            wl,
-            myPlayer.phaseSpace.pos,
-          );
-          if (intersection) {
-            return [{
-              playerId: player.id,
-              color: player.color,
-              pos: transformEventForDisplay(
-                intersection.pos,
-                observerPos,
-                observerBoost,
-              ),
-            }];
-          }
-        }
-        return [];
-      });
-  }, [myPlayer, myId, playerList, observerPos, observerBoost]);
-  const laserIntersections = useMemo(() => {
-    if (!myPlayer || !myId) return [];
-
-    return lasers
-      .map((laser) => {
-        const intersection = pastLightConeIntersectionLaser(
-          laser,
-          myPlayer.phaseSpace.pos,
-        );
-        if (!intersection) return null;
-        return {
-          laser,
-          pos: transformEventForDisplay(intersection, observerPos, observerBoost),
-        };
-      })
-      .filter(
-        (
-          value,
-        ): value is { laser: Laser; pos: Vector4 } => value !== null,
-      );
-  }, [lasers, myPlayer, myId, observerPos, observerBoost]);
-
-  return (
-    <>
-      <ambientLight intensity={0.5} />
-      <pointLight position={[10, 10, 10]} intensity={1} />
-
-      {/* 全プレイヤーの全ライフの世界線を描画 */}
-      {playerList.map((player) => (
-        <group key={`worldlines-${player.id}`}>
-          {player.lives.map((wl, i) => (
-            <WorldLineRenderer
-              key={`worldline-${player.id}-${i}-${wl.history[0]?.pos.t ?? 0}`}
-              worldLine={wl}
-              color={player.color}
-              showHalfLine={i === 0}
-              observerPos={observerPos}
-              observerBoost={observerBoost}
-            />
-          ))}
-        </group>
-      ))}
-
-      {/* 各プレイヤーのマーカー */}
-      {playerList.map((player) => {
-        const pos = transformEventForDisplay(
-          player.phaseSpace.pos,
-          observerPos,
-          observerBoost,
-        );
-        const isMe = player.id === myId;
-        const color = getThreeColor(player.color);
-        const size = isMe ? 0.42 : 0.2;
-
-        return (
-          <group key={`player-${player.id}`} position={[pos.x, pos.y, pos.t]}>
-            <mesh
-              scale={[size, size, size]}
-              geometry={sharedGeometries.playerSphere}
-            >
-              <meshStandardMaterial
-                color={color} emissive={color}
-                emissiveIntensity={isMe ? 1.0 : 0.4}
-                roughness={0.3} metalness={0.1}
-                transparent={!isMe} opacity={isMe ? 1.0 : 0.5}
-              />
-            </mesh>
-            <mesh
-              scale={[size * 1.8, size * 1.8, size * 1.8]}
-              geometry={sharedGeometries.playerSphere}
-            >
-              <meshBasicMaterial
-                color={color} transparent opacity={isMe ? 0.32 : 0.1}
-              />
-            </mesh>
-          </group>
-        );
-      })}
-
-      {/* 自分の光円錐のみ描画 */}
-      {playerList.filter((p) => p.id === myId).map((player) => {
-        const pos = transformEventForDisplay(
-          player.phaseSpace.pos,
-          observerPos,
-          observerBoost,
-        );
-        const color = getThreeColor(player.color);
-        const coneHeight = 40;
-        const coneMat = <meshBasicMaterial color={color} transparent opacity={0.5} side={THREE.DoubleSide} wireframe />;
-
-        return (
-          <group key={`lightcone-${player.id}`}>
-            {/* 未来光円錐 */}
-            <mesh
-              position={[pos.x, pos.y, pos.t + coneHeight / 2]}
-              rotation={[-Math.PI / 2, 0.0, 0.0]}
-              geometry={sharedGeometries.lightCone}
-            >
-              {coneMat}
-            </mesh>
-            {/* 過去光円錐 */}
-            <mesh
-              position={[pos.x, pos.y, pos.t - coneHeight / 2]}
-              rotation={[Math.PI / 2, 0.0, 0.0]}
-              geometry={sharedGeometries.lightCone}
-            >
-              {coneMat}
-            </mesh>
-          </group>
-        );
-      })}
-
-      {/* 自分の過去光円錐と他プレイヤーの世界線の交点 */}
-      {worldLineIntersections.map(({ playerId, color: colorText, pos }) => {
-        const color = getThreeColor(colorText);
-        return (
-          <group key={`intersection-${playerId}`} position={[pos.x, pos.y, pos.t]}>
-            <mesh geometry={sharedGeometries.intersectionSphere}>
-              <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.15} />
-            </mesh>
-            <mesh geometry={sharedGeometries.intersectionCore}>
-              <meshBasicMaterial color="#ffffff" />
-            </mesh>
-            <mesh geometry={sharedGeometries.intersectionRing}>
-              <meshBasicMaterial color={color} transparent opacity={0.9} side={THREE.DoubleSide} />
-            </mesh>
-          </group>
-        );
-      })}
-
-      {/* 各レーザーと自分の過去光円錐の交点（自分のレーザーも含む） */}
-      {laserIntersections.map(({ laser, pos }) => {
-        const color = getThreeColor(laser.color);
-        return (
-          <group
-            key={`laser-intersection-${laser.id}`}
-            position={[pos.x, pos.y, pos.t]}
-          >
-            <mesh geometry={sharedGeometries.laserIntersectionDot}>
-              <meshStandardMaterial
-                color={color} emissive={color} emissiveIntensity={1.1}
-                roughness={0.25} metalness={0.1}
-              />
-            </mesh>
-          </group>
-        );
-      })}
-
-      {/* レーザーを描画 */}
-      {displayLasers.map((laser) => (
-        <LaserRenderer key={laser.id} laser={laser} />
-      ))}
-
-      {/* 永続デブリの世界線 + 過去光円錐交差マーカー */}
-      {myPlayer && playerList.flatMap((player) =>
-        player.debrisRecords.flatMap((debris, di) => {
-          const deathEvent = createVector4(debris.deathPos.t, debris.deathPos.x, debris.deathPos.y, 0);
-          const maxLambda = Math.max(0, myPlayer.phaseSpace.pos.t - debris.deathPos.t);
-          if (maxLambda < 0.5) return [];
-          const debrisColor = getThreeColor(debris.color);
-
-          return debris.particles.flatMap((p, pi) => {
-            const elements: React.ReactNode[] = [];
-
-            // デブリの世界線チューブ（始点 → 観測者の時刻まで）
-            const startDisplay = transformEventForDisplay(deathEvent, observerPos, observerBoost);
-            const endWorld = createVector4(
-              debris.deathPos.t + maxLambda,
-              debris.deathPos.x + p.dx * maxLambda,
-              debris.deathPos.y + p.dy * maxLambda,
-              0,
-            );
-            const endDisplay = transformEventForDisplay(endWorld, observerPos, observerBoost);
-            elements.push(
-              <line key={`debris-line-${player.id}-${di}-${pi}`}>
-                <bufferGeometry>
-                  <bufferAttribute
-                    attach="attributes-position"
-                    array={new Float32Array([
-                      startDisplay.x, startDisplay.y, startDisplay.t,
-                      endDisplay.x, endDisplay.y, endDisplay.t,
-                    ])}
-                    count={2}
-                    itemSize={3}
-                  />
-                </bufferGeometry>
-                <lineBasicMaterial color={debrisColor} transparent opacity={0.15} />
-              </line>,
-            );
-
-            // 過去光円錐との交差マーカー
-            const intersection = pastLightConeIntersectionDebris(
-              deathEvent, p.dx, p.dy, maxLambda, myPlayer.phaseSpace.pos,
-            );
-            if (intersection) {
-              const displayPos = transformEventForDisplay(intersection, observerPos, observerBoost);
-              elements.push(
-                <mesh
-                  key={`debris-${player.id}-${di}-${pi}`}
-                  position={[displayPos.x, displayPos.y, displayPos.t]}
-                  scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
-                  geometry={sharedGeometries.explosionParticle}
-                >
-                  <meshBasicMaterial color={debrisColor} transparent opacity={0.7} />
-                </mesh>,
-              );
-            }
-
-            return elements;
-          });
-        }),
-      )}
-
-      {/* スポーンエフェクトを描画 */}
-      {spawns.map((spawn) => (
-        <SpawnRenderer
-          key={spawn.id}
-          spawn={spawn}
-          observerPos={observerPos}
-          observerBoost={observerBoost}
-        />
-      ))}
-    </>
-  );
-};
-
 const RelativisticGame = () => {
   const { peerManager, myId, connections } = usePeer();
   const [players, setPlayers] = useState<Map<string, RelativisticPlayer>>(
@@ -1042,7 +54,10 @@ const RelativisticGame = () => {
   const [scores, setScores] = useState<Record<string, number>>({});
   const [spawns, setSpawns] = useState<SpawnEffect[]>([]);
   const [deathFlash, setDeathFlash] = useState(false);
-  const [killNotification, setKillNotification] = useState<{ victimName: string; color: string } | null>(null);
+  const [killNotification, setKillNotification] = useState<{
+    victimName: string;
+    color: string;
+  } | null>(null);
   const scoresRef = useRef<Record<string, number>>({});
   const [showInRestFrame, setShowInRestFrame] = useState(true);
   const [useOrthographic, setUseOrthographic] = useState(true);
@@ -1167,163 +182,24 @@ const RelativisticGame = () => {
   useEffect(() => {
     if (!peerManager || !myId) return;
 
-    // メッセージ受信処理
-    peerManager.onMessage("relativistic", (_, msg) => {
-      if (msg.type === "phaseSpace") {
-        const playerId = msg.senderId;
-        setPlayers((prev) => {
-          const next = new Map(prev);
-
-          const phaseSpace = createPhaseSpace(msg.position, msg.velocity);
-
-          // 既存のプレイヤーの現在のライフに追加、または新規作成
-          const existing = prev.get(playerId);
-          const existingLives = existing?.lives || [];
-          const lastLife = existingLives[existingLives.length - 1] || createWorldLine();
-          // 死亡中（respawn 待ち）なら phaseSpace を無視
-          if (lastLife.history.length === 0 && lastLife.origin === null && existingLives.length > 0) return prev;
-          const updatedLife = appendWorldLine(lastLife, phaseSpace);
-          const lives = existingLives.length > 0
-            ? [...existingLives.slice(0, -1), updatedLife]
-            : [updatedLife];
-
-          // 色の決定: pending にあればそれを使う、なければホストが割り当て
-          let color = existing?.color;
-          if (!color) {
-            const pending = pendingColorsRef.current.get(playerId);
-            if (pending) {
-              color = pending;
-              pendingColorsRef.current.delete(playerId);
-            } else if (peerManager.getIsHost()) {
-              color = pickDistinctColor(playerId, prev);
-              peerManager.send({ type: "playerColor" as const, playerId, color });
-            } else {
-              color = "hsl(0, 0%, 70%)"; // 仮色（playerColor 受信まで）
-            }
-          }
-
-          next.set(playerId, {
-            id: playerId,
-            phaseSpace,
-            lives,
-            debrisRecords: existing?.debrisRecords || [],
-            color,
-          });
-          return next;
-        });
-      } else if (msg.type === "syncTime") {
-        // ホストから世界系時刻を受信 → 自分の t を揃える
-        timeSyncedRef.current = true;
-        setPlayers((prev) => {
-          const me = prev.get(myId);
-          if (!me) return prev;
-          const synced = createPhaseSpace(
-            createVector4(
-              msg.hostTime,
-              me.phaseSpace.pos.x,
-              me.phaseSpace.pos.y,
-              me.phaseSpace.pos.z,
-            ),
-            me.phaseSpace.u,
-          );
-          let newLife = createWorldLine();
-          newLife = appendWorldLine(newLife, synced);
-          const next = new Map(prev);
-          next.set(myId, { ...me, phaseSpace: synced, lives: [newLife] });
-          return next;
-        });
-      } else if (msg.type === "laser") {
-        // 他プレイヤーからのレーザーを追加
-        const receivedLaser: Laser = {
-          id: msg.id,
-          playerId: msg.playerId,
-          emissionPos: msg.emissionPos,
-          direction: msg.direction,
-          range: msg.range,
-          color: msg.color,
-        };
-        setLasers((prev) => {
-          // 重複チェック
-          if (prev.some((l) => l.id === receivedLaser.id)) {
-            return prev;
-          }
-          const updated = [...prev, receivedLaser];
-          // 最大数を超えたら古いものを削除
-          if (updated.length > MAX_LASERS) {
-            return updated.slice(updated.length - MAX_LASERS);
-          }
-          return updated;
-        });
-      } else if (msg.type === "respawn") {
-        // リスポーン: 現在のライフ（空）に最初の点を追加
-        setPlayers((prev) => {
-          const player = prev.get(msg.playerId);
-          if (!player) return prev;
-          const respawnPhaseSpace = createPhaseSpace(
-            createVector4(msg.position.t, msg.position.x, msg.position.y, msg.position.z),
-            vector3Zero(),
-          );
-          const lastLife = player.lives[player.lives.length - 1] || createWorldLine();
-          const updatedLife = appendWorldLine(lastLife, respawnPhaseSpace);
-          const lives = [...player.lives.slice(0, -1), updatedLife];
-          const next = new Map(prev);
-          next.set(msg.playerId, { ...player, phaseSpace: respawnPhaseSpace, lives });
-          return next;
-        });
-        // スポーンエフェクト
-        const spawningPlayer = playersRef.current.get(msg.playerId);
-        setSpawns((prev) => [
-          ...prev,
-          {
-            id: `spawn-${msg.playerId}-${Date.now()}`,
-            pos: msg.position,
-            color: spawningPlayer?.color ?? "white",
-            startTime: Date.now(),
-          },
-        ]);
-      } else if (msg.type === "score") {
-        scoresRef.current = msg.scores;
-        setScores(msg.scores);
-      } else if (msg.type === "kill") {
-        // 自分が死んだら画面フラッシュ + 物理停止
-        if (msg.victimId === myId) {
-          setDeathFlash(true);
-          setTimeout(() => setDeathFlash(false), 600);
-          deadUntilRef.current = Date.now() + RESPAWN_DELAY;
-        }
-        // 自分がキラーならキル通知
-        if (msg.killerId === myId && msg.victimId !== myId) {
-          const v = playersRef.current.get(msg.victimId);
-          setKillNotification({ victimName: msg.victimId.slice(0, 6), color: v?.color ?? "white" });
-          setTimeout(() => setKillNotification(null), 1500);
-        }
-        // kill 時点で新ライフを開始 + デブリ記録
-        setPlayers((prev) => {
-          const victim = prev.get(msg.victimId);
-          if (!victim) return prev;
-          const debrisParticles = generateExplosionParticles();
-          const debrisRecords = [
-            ...victim.debrisRecords,
-            { deathPos: msg.hitPos, particles: debrisParticles, color: victim.color },
-          ].slice(-MAX_PAST_WORLDLINES);
-          const lives = [...victim.lives, createWorldLine()].slice(-MAX_PAST_WORLDLINES);
-          const next = new Map(prev);
-          next.set(msg.victimId, { ...victim, lives, debrisRecords });
-          return next;
-        });
-      } else if (msg.type === "playerColor") {
-        // ホストからの色割り当て → 上書き（プレイヤー未到着なら一時保存）
-        pendingColorsRef.current.set(msg.playerId, msg.color);
-        setPlayers((prev) => {
-          const player = prev.get(msg.playerId);
-          if (!player) return prev; // まだ phaseSpace が届いていない → pendingColors に保存済み
-          if (player.color === msg.color) return prev;
-          const next = new Map(prev);
-          next.set(msg.playerId, { ...player, color: msg.color });
-          return next;
-        });
-      }
-    });
+    peerManager.onMessage(
+      "relativistic",
+      createMessageHandler({
+        myId,
+        peerManager,
+        setPlayers,
+        setLasers,
+        setScores,
+        setSpawns,
+        setDeathFlash,
+        setKillNotification,
+        scoresRef,
+        playersRef,
+        timeSyncedRef,
+        pendingColorsRef,
+        deadUntilRef,
+      }),
+    );
 
     return () => {
       peerManager.offMessage("relativistic");
@@ -1403,13 +279,19 @@ const RelativisticGame = () => {
             next.set(myId, { ...p, color: hostColor });
             return next;
           });
-          peerManager.send({ type: "playerColor" as const, playerId: myId, color: hostColor });
+          peerManager.send({
+            type: "playerColor" as const,
+            playerId: myId,
+            color: hostColor,
+          });
         }
       }
 
       // 期限切れのスポーンエフェクトを削除
       setSpawns((prev) => {
-        const alive = prev.filter((e) => currentTime - e.startTime < SPAWN_EFFECT_DURATION);
+        const alive = prev.filter(
+          (e) => currentTime - e.startTime < SPAWN_EFFECT_DURATION,
+        );
         return alive.length === prev.length ? prev : alive;
       });
 
@@ -1518,94 +400,103 @@ const RelativisticGame = () => {
 
       if (isDead) {
         // 死亡中: 当たり判定のみ実行（物理更新・送信はスキップ）
-      } else setPlayers((prev) => {
-        const myPlayer = prev.get(myId);
-        if (!myPlayer) return prev;
-        // 他の誰かの未来光円錐を未来側に超えてしまうと因果律の守護者に時間停止を喰らう
-        for (const [id, player] of prev) {
-          if (id === myId) continue;
-          if (player.phaseSpace.pos.t > myPlayer.phaseSpace.pos.t) continue;
-          const diff = subVector4(
-            player.phaseSpace.pos,
-            myPlayer.phaseSpace.pos,
+      } else
+        setPlayers((prev) => {
+          const myPlayer = prev.get(myId);
+          if (!myPlayer) return prev;
+          // 他の誰かの未来光円錐を未来側に超えてしまうと因果律の守護者に時間停止を喰らう
+          for (const [id, player] of prev) {
+            if (id === myId) continue;
+            if (player.phaseSpace.pos.t > myPlayer.phaseSpace.pos.t) continue;
+            const diff = subVector4(
+              player.phaseSpace.pos,
+              myPlayer.phaseSpace.pos,
+            );
+            const l = lorentzDotVector4(diff, diff);
+            if (l < 0) return prev;
+          }
+
+          const next = new Map(prev);
+
+          // 加速度を計算（W/Sキー入力に基づく、カメラの向きに沿った方向）
+          let forwardAccel = 0;
+          const accel = 8 / 10; // 加速度 (c/s)
+
+          if (keysPressed.current.has("w")) forwardAccel += accel;
+          if (keysPressed.current.has("s")) forwardAccel -= accel;
+
+          // カメラの向き（yaw）から前進方向を計算
+          const ax = Math.cos(cameraYawRef.current) * forwardAccel;
+          const ay = Math.sin(cameraYawRef.current) * forwardAccel;
+
+          // 摩擦
+          const mu = 0.5;
+          const frictionX = -myPlayer.phaseSpace.u.x * mu;
+          const frictionY = -myPlayer.phaseSpace.u.y * mu;
+
+          const acceleration = createVector3(ax + frictionX, ay + frictionY, 0);
+
+          // 相対論的運動方程式で更新
+          const newPhaseSpace = evolvePhaseSpace(
+            myPlayer.phaseSpace,
+            acceleration,
+            dTau,
           );
-          const l = lorentzDotVector4(diff, diff);
-          if (l < 0) return prev;
-        }
+          // 他プレイヤーの位置を収集（因果的 trimming 用）
+          const otherPositions: Vector4[] = [];
+          for (const [id, p] of prev) {
+            if (id !== myId) otherPositions.push(p.phaseSpace.pos);
+          }
+          const lastLife = currentLife(myPlayer);
+          const updatedLife = appendWorldLine(
+            lastLife,
+            newPhaseSpace,
+            otherPositions,
+          );
+          const lives = [...myPlayer.lives.slice(0, -1), updatedLife];
+          next.set(myId, {
+            ...myPlayer,
+            phaseSpace: newPhaseSpace,
+            lives,
+          });
 
-        const next = new Map(prev);
+          // 他のプレイヤーに送信（クライアントは syncTime 受信後のみ）
+          if (peerManager) {
+            const isHost = peerManager.getIsHost();
+            if (isHost || timeSyncedRef.current) {
+              const msg = {
+                type: "phaseSpace" as const,
+                senderId: myId,
+                position: newPhaseSpace.pos,
+                velocity: newPhaseSpace.u,
+              };
 
-        // 加速度を計算（W/Sキー入力に基づく、カメラの向きに沿った方向）
-        let forwardAccel = 0;
-        const accel = 8 / 10; // 加速度 (c/s)
-
-        if (keysPressed.current.has("w")) forwardAccel += accel;
-        if (keysPressed.current.has("s")) forwardAccel -= accel;
-
-        // カメラの向き（yaw）から前進方向を計算
-        const ax = Math.cos(cameraYawRef.current) * forwardAccel;
-        const ay = Math.sin(cameraYawRef.current) * forwardAccel;
-
-        // 摩擦
-        const mu = 0.5;
-        const frictionX = -myPlayer.phaseSpace.u.x * mu;
-        const frictionY = -myPlayer.phaseSpace.u.y * mu;
-
-        const acceleration = createVector3(ax + frictionX, ay + frictionY, 0);
-
-        // 相対論的運動方程式で更新
-        const newPhaseSpace = evolvePhaseSpace(
-          myPlayer.phaseSpace,
-          acceleration,
-          dTau,
-        );
-        // 他プレイヤーの位置を収集（因果的 trimming 用）
-        const otherPositions: Vector4[] = [];
-        for (const [id, p] of prev) {
-          if (id !== myId) otherPositions.push(p.phaseSpace.pos);
-        }
-        const lastLife = currentLife(myPlayer);
-        const updatedLife = appendWorldLine(lastLife, newPhaseSpace, otherPositions);
-        const lives = [...myPlayer.lives.slice(0, -1), updatedLife];
-        next.set(myId, {
-          ...myPlayer,
-          phaseSpace: newPhaseSpace,
-          lives,
-        });
-
-        // 他のプレイヤーに送信（クライアントは syncTime 受信後のみ）
-        if (peerManager) {
-          const isHost = peerManager.getIsHost();
-          if (isHost || timeSyncedRef.current) {
-            const msg = {
-              type: "phaseSpace" as const,
-              senderId: myId,
-              position: newPhaseSpace.pos,
-              velocity: newPhaseSpace.u,
-            };
-
-            if (isHost) {
-              // ホストは直接全員に送信
-              peerManager.send(msg);
-            } else {
-              // クライアントはホストにのみ送信
-              const hostId = peerManager.getHostId();
-              if (hostId) {
-                peerManager.sendTo(hostId, msg);
+              if (isHost) {
+                // ホストは直接全員に送信
+                peerManager.send(msg);
+              } else {
+                // クライアントはホストにのみ送信
+                const hostId = peerManager.getHostId();
+                if (hostId) {
+                  peerManager.sendTo(hostId, msg);
+                }
               }
             }
           }
-        }
 
-        return next;
-      });
+          return next;
+        });
 
       // ホストのみ: 当たり判定
       if (peerManager.getIsHost()) {
         const currentPlayers = playersRef.current;
         const currentLasers = lasersRef.current;
         const hitLaserIds: string[] = [];
-        const kills: { victimId: string; killerId: string; hitPos: { t: number; x: number; y: number; z: number } }[] = [];
+        const kills: {
+          victimId: string;
+          killerId: string;
+          hitPos: { t: number; x: number; y: number; z: number };
+        }[] = [];
 
         // 全プレイヤーの最小 t を取得（レーザー期限切れ判定用）
         let minPlayerT = Number.POSITIVE_INFINITY;
@@ -1630,9 +521,17 @@ const RelativisticGame = () => {
             if (playerId === laser.playerId) continue; // 自分のレーザーは除外
             if (killedThisFrame.has(playerId)) continue; // 既にこのフレームでキル済み
             if (deadPlayersRef.current.has(playerId)) continue; // リスポーン待ち中
-            const hitPos = findLaserHitPosition(laser, currentLife(player), HIT_RADIUS);
+            const hitPos = findLaserHitPosition(
+              laser,
+              currentLife(player),
+              HIT_RADIUS,
+            );
             if (hitPos) {
-              kills.push({ victimId: playerId, killerId: laser.playerId, hitPos });
+              kills.push({
+                victimId: playerId,
+                killerId: laser.playerId,
+                hitPos,
+              });
               hitLaserIds.push(laser.id);
               killedThisFrame.add(playerId);
               break; // 1レーザーにつき1キルまで
@@ -1670,7 +569,12 @@ const RelativisticGame = () => {
             deadPlayersRef.current.add(victimId);
 
             // kill 通知をブロードキャスト
-            peerManager.send({ type: "kill" as const, victimId, killerId, hitPos });
+            peerManager.send({
+              type: "kill" as const,
+              victimId,
+              killerId,
+              hitPos,
+            });
 
             // 自分が死んだら画面フラッシュ + 物理停止
             if (victimId === myId) {
@@ -1680,7 +584,10 @@ const RelativisticGame = () => {
             }
             // 自分がキラーならキル通知
             if (killerId === myId && victimId !== myId) {
-              setKillNotification({ victimName: victimId.slice(0, 6), color: victim?.color ?? "white" });
+              setKillNotification({
+                victimName: victimId.slice(0, 6),
+                color: victim?.color ?? "white",
+              });
               setTimeout(() => setKillNotification(null), 1500);
             }
 
@@ -1691,9 +598,15 @@ const RelativisticGame = () => {
               const debrisParticles = generateExplosionParticles();
               const debrisRecords = [
                 ...v.debrisRecords,
-                { deathPos: hitPos, particles: debrisParticles, color: v.color },
+                {
+                  deathPos: hitPos,
+                  particles: debrisParticles,
+                  color: v.color,
+                },
               ].slice(-MAX_PAST_WORLDLINES);
-              const lives = [...v.lives, createWorldLine()].slice(-MAX_PAST_WORLDLINES);
+              const lives = [...v.lives, createWorldLine()].slice(
+                -MAX_PAST_WORLDLINES,
+              );
               const next = new Map(prev);
               next.set(victimId, { ...v, lives, debrisRecords });
               return next;
@@ -1711,21 +624,38 @@ const RelativisticGame = () => {
               };
 
               deadPlayersRef.current.delete(victimId);
-              peerManager.send({ type: "respawn" as const, playerId: victimId, position: respawnPos });
+              peerManager.send({
+                type: "respawn" as const,
+                playerId: victimId,
+                position: respawnPos,
+              });
 
               // ローカルでもリスポーン適用（現在のライフに最初の点を追加）
               setPlayers((prev) => {
                 const v = prev.get(victimId);
                 if (!v) return prev;
                 const respawnPhaseSpace = createPhaseSpace(
-                  createVector4(respawnPos.t, respawnPos.x, respawnPos.y, respawnPos.z),
+                  createVector4(
+                    respawnPos.t,
+                    respawnPos.x,
+                    respawnPos.y,
+                    respawnPos.z,
+                  ),
                   vector3Zero(),
                 );
-                const lastLife = v.lives[v.lives.length - 1] || createWorldLine();
-                const updatedLife = appendWorldLine(lastLife, respawnPhaseSpace);
+                const lastLife =
+                  v.lives[v.lives.length - 1] || createWorldLine();
+                const updatedLife = appendWorldLine(
+                  lastLife,
+                  respawnPhaseSpace,
+                );
                 const lives = [...v.lives.slice(0, -1), updatedLife];
                 const next = new Map(prev);
-                next.set(victimId, { ...v, phaseSpace: respawnPhaseSpace, lives });
+                next.set(victimId, {
+                  ...v,
+                  phaseSpace: respawnPhaseSpace,
+                  lives,
+                });
                 return next;
               });
 
@@ -1746,7 +676,6 @@ const RelativisticGame = () => {
           peerManager.send({ type: "score" as const, scores: newScores });
         }
       }
-
     };
 
     // setInterval を使用（requestAnimationFrame はタブ非アクティブ時に停止するため）
@@ -1769,197 +698,25 @@ const RelativisticGame = () => {
         overflow: "hidden",
       }}
     >
-      <div
-        style={{
-          position: "absolute",
-          top: "10px",
-          left: "10px",
-          color: "white",
-          fontSize: "14px",
-          fontFamily: "monospace",
-          zIndex: 100,
-        }}
-      >
-        <div>相対論的アリーナ (2+1次元 時空図)</div>
-        <div>W/S: 前進/後退</div>
-        <div>←/→: カメラ水平回転</div>
-        <div>↑/↓: カメラ上下回転</div>
-        <div>Space: レーザー発射</div>
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            marginTop: "6px",
-            cursor: "pointer",
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={showInRestFrame}
-            onChange={(e) => setShowInRestFrame(e.target.checked)}
-          />
-          <span>自分の静止系で表示</span>
-        </label>
-        <div style={{ opacity: 0.9 }}>
-          表示系: {showInRestFrame ? "自分の静止系（デフォルト）" : "世界系"}
-        </div>
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            cursor: "pointer",
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={useOrthographic}
-            onChange={(e) => setUseOrthographic(e.target.checked)}
-          />
-          <span>正射影カメラ</span>
-        </label>
-        <div
-          style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
-        >
-          FPS: {fps}
-        </div>
-        <div style={{ marginTop: "2px", fontSize: "13px", opacity: 0.6 }}>
-          build: {__BUILD_TIME__}
-        </div>
-        {Object.keys(scores).length > 0 && (
-          <div style={{
-            marginTop: "8px",
-            borderTop: "1px solid rgba(255,255,255,0.3)",
-            paddingTop: "6px",
-            transition: "transform 0.15s ease-out",
-            transform: killNotification ? "scale(1.4)" : "scale(1)",
-            transformOrigin: "top left",
-          }}>
-            <div style={{ fontWeight: "bold", marginBottom: "2px" }}>Kill</div>
-            {Object.entries(scores)
-              .sort(([, a], [, b]) => b - a)
-              .map(([id, kills]) => (
-                <div key={id} style={{ color: players.get(id)?.color ?? "white" }}>
-                  {id === myId ? "You" : id.slice(0, 6)}: {kills}
-                </div>
-              ))}
-          </div>
-        )}
-      </div>
-
-      {/* 速度計 */}
-      {(() => {
-        const myPlayer = myId ? players.get(myId) : undefined;
-        if (!myPlayer) return null;
-        const v = lengthVector3(myPlayer.phaseSpace.u);
-        const g = gamma(myPlayer.phaseSpace.u);
-
-        return (
-          <div
-            style={{
-              position: "absolute",
-              bottom: "10px",
-              right: "10px",
-              color: "white",
-              fontSize: "14px",
-              fontFamily: "monospace",
-              textAlign: "right",
-              zIndex: 100,
-            }}
-          >
-            <div>速度: {(v * 100).toFixed(1)}% c</div>
-            <div>ガンマ因子: {g.toFixed(3)}</div>
-            <div>固有時間: {myPlayer.phaseSpace.pos.t.toFixed(2)}s</div>
-            <div>
-              位置: ({myPlayer.phaseSpace.pos.x.toFixed(2)},{" "}
-              {myPlayer.phaseSpace.pos.y.toFixed(2)})
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* 死亡フラッシュ */}
-      {deathFlash && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            backgroundColor: "rgba(255, 50, 50, 0.6)",
-            zIndex: 200,
-            pointerEvents: "none",
-            animation: "flash-fade 0.6s ease-out forwards",
-          }}
-        />
-      )}
-      {/* キル通知 */}
-      {killNotification && (
-        <div
-          style={{
-            position: "absolute",
-            top: "30%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            zIndex: 300,
-            pointerEvents: "none",
-            textAlign: "center",
-            animation: "kill-notify 1.5s ease-out forwards",
-          }}
-        >
-          <div style={{
-            fontSize: "48px",
-            fontWeight: "bold",
-            fontFamily: "monospace",
-            color: killNotification.color,
-            textShadow: "0 0 20px rgba(255,215,0,0.8), 0 0 40px rgba(255,215,0,0.4)",
-          }}>
-            KILL
-          </div>
-          <div style={{
-            fontSize: "20px",
-            color: killNotification.color,
-            opacity: 0.9,
-          }}>
-            {killNotification.victimName}
-          </div>
-        </div>
-      )}
-
-      {/* 金色ボーダーグロー（キル時） */}
-      {killNotification && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            zIndex: 199,
-            pointerEvents: "none",
-            boxShadow: "inset 0 0 80px rgba(255,215,0,0.5), inset 0 0 30px rgba(255,215,0,0.3)",
-            animation: "kill-glow 1.5s ease-out forwards",
-          }}
-        />
-      )}
-
-      <style>{`
-        @keyframes flash-fade {
-          0% { opacity: 1; }
-          100% { opacity: 0; }
-        }
-        @keyframes kill-notify {
-          0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
-          15% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
-          30% { transform: translate(-50%, -50%) scale(1); }
-          80% { opacity: 1; }
-          100% { opacity: 0; transform: translate(-50%, -60%) scale(1); }
-        }
-        @keyframes kill-glow {
-          0% { opacity: 0; }
-          15% { opacity: 1; }
-          100% { opacity: 0; }
-        }
-      `}</style>
+      <HUD
+        players={players}
+        myId={myId}
+        scores={scores}
+        fps={fps}
+        showInRestFrame={showInRestFrame}
+        setShowInRestFrame={setShowInRestFrame}
+        useOrthographic={useOrthographic}
+        setUseOrthographic={setUseOrthographic}
+        deathFlash={deathFlash}
+        killNotification={killNotification}
+      />
 
       {useOrthographic ? (
-        <Canvas key="ortho" orthographic camera={{ zoom: 30, position: [0, 0, 100], near: -10000, far: 10000 }}>
+        <Canvas
+          key="ortho"
+          orthographic
+          camera={{ zoom: 30, position: [0, 0, 100], near: -10000, far: 10000 }}
+        >
           <SceneContent
             players={players}
             myId={myId}

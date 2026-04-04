@@ -1,0 +1,217 @@
+import { lengthVector3, gamma } from "../../physics";
+import type { RelativisticPlayer } from "./types";
+
+declare const __BUILD_TIME__: string;
+
+type HUDProps = {
+  players: Map<string, RelativisticPlayer>;
+  myId: string | null;
+  scores: Record<string, number>;
+  fps: number;
+  showInRestFrame: boolean;
+  setShowInRestFrame: (v: boolean) => void;
+  useOrthographic: boolean;
+  setUseOrthographic: (v: boolean) => void;
+  deathFlash: boolean;
+  killNotification: { victimName: string; color: string } | null;
+};
+
+export const HUD = ({
+  players, myId, scores, fps,
+  showInRestFrame, setShowInRestFrame,
+  useOrthographic, setUseOrthographic,
+  deathFlash, killNotification,
+}: HUDProps) => {
+  return (
+    <>
+      <div
+        style={{
+          position: "absolute",
+          top: "10px",
+          left: "10px",
+          color: "white",
+          fontSize: "14px",
+          fontFamily: "monospace",
+          zIndex: 100,
+        }}
+      >
+        <div>相対論的アリーナ (2+1次元 時空図)</div>
+        <div>W/S: 前進/後退</div>
+        <div>←/→: カメラ水平回転</div>
+        <div>↑/↓: カメラ上下回転</div>
+        <div>Space: レーザー発射</div>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            marginTop: "6px",
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={showInRestFrame}
+            onChange={(e) => setShowInRestFrame(e.target.checked)}
+          />
+          <span>自分の静止系で表示</span>
+        </label>
+        <div style={{ opacity: 0.9 }}>
+          表示系: {showInRestFrame ? "自分の静止系（デフォルト）" : "世界系"}
+        </div>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            cursor: "pointer",
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={useOrthographic}
+            onChange={(e) => setUseOrthographic(e.target.checked)}
+          />
+          <span>正射影カメラ</span>
+        </label>
+        <div
+          style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
+        >
+          FPS: {fps}
+        </div>
+        <div style={{ marginTop: "2px", fontSize: "13px", opacity: 0.6 }}>
+          build: {__BUILD_TIME__}
+        </div>
+        {Object.keys(scores).length > 0 && (
+          <div style={{
+            marginTop: "8px",
+            borderTop: "1px solid rgba(255,255,255,0.3)",
+            paddingTop: "6px",
+            transition: "transform 0.15s ease-out",
+            transform: killNotification ? "scale(1.4)" : "scale(1)",
+            transformOrigin: "top left",
+          }}>
+            <div style={{ fontWeight: "bold", marginBottom: "2px" }}>Kill</div>
+            {Object.entries(scores)
+              .sort(([, a], [, b]) => b - a)
+              .map(([id, kills]) => (
+                <div key={id} style={{ color: players.get(id)?.color ?? "white" }}>
+                  {id === myId ? "You" : id.slice(0, 6)}: {kills}
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
+
+      {/* 速度計 */}
+      {(() => {
+        const myPlayer = myId ? players.get(myId) : undefined;
+        if (!myPlayer) return null;
+        const v = lengthVector3(myPlayer.phaseSpace.u);
+        const g = gamma(myPlayer.phaseSpace.u);
+
+        return (
+          <div
+            style={{
+              position: "absolute",
+              bottom: "10px",
+              right: "10px",
+              color: "white",
+              fontSize: "14px",
+              fontFamily: "monospace",
+              textAlign: "right",
+              zIndex: 100,
+            }}
+          >
+            <div>速度: {(v * 100).toFixed(1)}% c</div>
+            <div>ガンマ因子: {g.toFixed(3)}</div>
+            <div>固有時間: {myPlayer.phaseSpace.pos.t.toFixed(2)}s</div>
+            <div>
+              位置: ({myPlayer.phaseSpace.pos.x.toFixed(2)},{" "}
+              {myPlayer.phaseSpace.pos.y.toFixed(2)})
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 死亡フラッシュ */}
+      {deathFlash && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundColor: "rgba(255, 50, 50, 0.6)",
+            zIndex: 200,
+            pointerEvents: "none",
+            animation: "flash-fade 0.6s ease-out forwards",
+          }}
+        />
+      )}
+      {/* キル通知 */}
+      {killNotification && (
+        <div
+          style={{
+            position: "absolute",
+            top: "30%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: 300,
+            pointerEvents: "none",
+            textAlign: "center",
+            animation: "kill-notify 1.5s ease-out forwards",
+          }}
+        >
+          <div style={{
+            fontSize: "48px",
+            fontWeight: "bold",
+            fontFamily: "monospace",
+            color: killNotification.color,
+            textShadow: "0 0 20px rgba(255,215,0,0.8), 0 0 40px rgba(255,215,0,0.4)",
+          }}>
+            KILL
+          </div>
+          <div style={{
+            fontSize: "20px",
+            color: killNotification.color,
+            opacity: 0.9,
+          }}>
+            {killNotification.victimName}
+          </div>
+        </div>
+      )}
+
+      {/* 金色ボーダーグロー（キル時） */}
+      {killNotification && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 199,
+            pointerEvents: "none",
+            boxShadow: "inset 0 0 80px rgba(255,215,0,0.5), inset 0 0 30px rgba(255,215,0,0.3)",
+            animation: "kill-glow 1.5s ease-out forwards",
+          }}
+        />
+      )}
+
+      <style>{`
+        @keyframes flash-fade {
+          0% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes kill-notify {
+          0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+          15% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+          30% { transform: translate(-50%, -50%) scale(1); }
+          80% { opacity: 1; }
+          100% { opacity: 0; transform: translate(-50%, -60%) scale(1); }
+        }
+        @keyframes kill-glow {
+          0% { opacity: 0; }
+          15% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+      `}</style>
+    </>
+  );
+};
