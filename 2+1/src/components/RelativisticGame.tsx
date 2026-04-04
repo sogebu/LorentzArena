@@ -951,16 +951,18 @@ const SceneContent = ({
         );
         const isMe = player.id === myId;
         const color = getThreeColor(player.color);
-        const size = isMe ? 0.42 : 0.34;
+        const size = isMe ? 0.42 : 0.2;
         const material = getMaterial(
           `player-core-${player.id}-${isMe}`,
           () =>
             new THREE.MeshStandardMaterial({
               color: color,
               emissive: color,
-              emissiveIntensity: isMe ? 1.0 : 0.75,
+              emissiveIntensity: isMe ? 1.0 : 0.4,
               roughness: 0.3,
               metalness: 0.1,
+              transparent: !isMe,
+              opacity: isMe ? 1.0 : 0.5,
             }),
         );
         const haloMaterial = getMaterial(
@@ -969,7 +971,7 @@ const SceneContent = ({
             new THREE.MeshBasicMaterial({
               color: color,
               transparent: true,
-              opacity: isMe ? 0.32 : 0.22,
+              opacity: isMe ? 0.32 : 0.1,
             }),
         );
 
@@ -989,23 +991,22 @@ const SceneContent = ({
         );
       })}
 
-      {/* 各プレイヤーの光円錐を描画 */}
-      {playerList.map((player) => {
+      {/* 自分の光円錐のみ描画 */}
+      {playerList.filter((p) => p.id === myId).map((player) => {
         const pos = transformEventForDisplay(
           player.phaseSpace.pos,
           observerPos,
           observerBoost,
         );
-        const isMe = player.id === myId;
         const color = getThreeColor(player.color);
         const coneHeight = 40;
         const coneMaterial = getMaterial(
-          `lightcone-${player.id}-${isMe}`,
+          `lightcone-${player.id}`,
           () =>
             new THREE.MeshBasicMaterial({
               color: color,
               transparent: true,
-              opacity: isMe ? 0.5 : 0.4,
+              opacity: 0.5,
               side: THREE.DoubleSide,
               wireframe: true,
             }),
@@ -1276,12 +1277,21 @@ const RelativisticGame = () => {
           let worldLine = existing?.worldLine || createWorldLine();
           worldLine = appendWorldLine(worldLine, phaseSpace);
 
+          // ホストが新プレイヤーを初めて見たとき、色を割り当ててブロードキャスト
+          let color = existing?.color;
+          if (!color) {
+            color = pickDistinctColor(playerId, prev);
+            if (peerManager.getIsHost()) {
+              peerManager.send({ type: "playerColor" as const, playerId, color });
+            }
+          }
+
           next.set(playerId, {
             id: playerId,
             phaseSpace,
             worldLine,
             pastWorldLines: existing?.pastWorldLines || [],
-            color: existing?.color || pickDistinctColor(playerId, prev), // 既存の色と区別しやすい色
+            color,
           });
           return next;
         });
@@ -1386,6 +1396,15 @@ const RelativisticGame = () => {
             },
           ]);
         }
+      } else if (msg.type === "playerColor") {
+        // ホストからの色割り当て → 上書き
+        setPlayers((prev) => {
+          const player = prev.get(msg.playerId);
+          if (!player || player.color === msg.color) return prev;
+          const next = new Map(prev);
+          next.set(msg.playerId, { ...player, color: msg.color });
+          return next;
+        });
       }
     });
 

@@ -96,4 +96,13 @@ export type Message =
        */
       type: "score";
       scores: Record<string, number>;
+    }
+  | {
+      /**
+       * Color assignment from host (ensures all clients see same colors).
+       * JP: ホストからの色割り当て（全クライアントで色を統一）。
+       */
+      type: "playerColor";
+      playerId: string;
+      color: string;
     };
