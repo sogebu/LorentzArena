@@ -1,28 +1,43 @@
 # Lorentz Arena 2+1
 
-[English](#english) | [日本語](#日本語)
+**Also available in: [Japanese](#japanese)**
 
-## English
+This folder contains the **2+1 spacetime** arena (x, y, t) rendered with `three.js` via `@react-three/fiber`.
 
-This folder contains the **2+1 spacetime** version (x, y, t) rendered with `three.js` via `@react-three/fiber`.
-
-Quick start:
+### Quick start
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-Visualization cues:
-- Default view is in your instantaneous rest frame.
-- Uncheck the in-game checkbox to switch back to world-frame display.
-- Player colors are generated deterministically from peer IDs (high-separation palette).
-- Markers are shown for:
-  - intersections of **your past light cone** with other players' world lines
-  - intersections of **your past light cone** with laser world-lines (including your own)
+Open the URL in multiple browser tabs to play. No ID sharing needed -- everyone on the same URL joins the same room automatically. Use `#room=name` in the URL for separate rooms.
 
-Networking notes:
-- Multiplayer uses PeerJS/WebRTC.
+### Controls
+
+| Key | Action |
+|-----|--------|
+| W / S | Accelerate forward / backward |
+| Arrow Left / Right | Rotate camera horizontally |
+| Arrow Up / Down | Rotate camera vertically |
+| Space | Fire laser |
+
+### Features
+
+- **Relativistic physics**: Lorentz contraction, time dilation, proper time
+- **Past light cone rendering**: you see where things *were*, not where they *are*
+- **Laser combat**: instant kill on hit, 1-second respawn delay
+- **Kill score** with on-screen notifications
+- **Rest frame / world frame toggle**: view the spacetime diagram in your own rest frame or the global frame
+- **Orthographic / perspective camera**: orthographic preserves 45-degree light cone angles at all distances
+- **Persistent debris**: death events produce debris particles with timelike worldlines, rendered with past light cone intersection markers
+- **World line history**: severed on death, past lives preserved (up to 5)
+- **Host-assigned colors**: the host picks maximally distinct colors for all players
+- **Auto-connect**: PeerJS signaling server's duplicate-ID detection used as room discovery
+
+### Networking
+
+- Multiplayer uses PeerJS/WebRTC by default.
 - Some networks (school/enterprise) block P2P. In that case use **WS Relay mode**.
 
 ### WS Relay mode (for restrictive networks)
@@ -66,28 +81,47 @@ For public deployment (`wss://...:443`), see:
 
 - `relay-deploy/README.md`
 
-## 日本語
+<a id="japanese"></a>
 
-このフォルダは **2+1 次元（x, y, t）** 版です。`three.js`（@react-three/fiber）で描画します。
+## Japanese
 
-起動手順:
+このフォルダは **2+1 次元（x, y, t）** の対戦アリーナです。`three.js`（@react-three/fiber）で描画。
+
+### 起動
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-可視化について:
-- デフォルト表示は「自分の瞬間静止系」です。
-- ゲーム内チェックボックスを外すと世界系表示に切り替わります。
-- プレイヤー色は peer ID から決定論的に生成（色分離を強化）。
-- 次の交点にマーカーを表示します:
-  - **自分の過去光円錐** と他プレイヤー world line の交点
-  - **自分の過去光円錐** と laser world-line（自分のレーザー含む）の交点
+ブラウザで複数タブを開くだけで対戦可能。ID の共有は不要（同じ URL を開けば自動で同じ部屋に入る）。`#room=名前` で部屋を分けられる。
 
-通信について:
-- PeerJS/WebRTC を使っています。
-- 学校・企業 Wi‑Fi だと P2P が塞がれて動かないことがあります。その場合は **WS Relay モード** を使ってください。
+### 操作
+
+| キー | 操作 |
+|------|------|
+| W / S | 加速 / 減速 |
+| 矢印 左/右 | カメラ水平回転 |
+| 矢印 上/下 | カメラ上下回転 |
+| Space | レーザー発射 |
+
+### 主な特徴
+
+- **相対論的物理**: ローレンツ収縮、時間膨張、固有時間
+- **過去光円錐に基づく描画**: 「今どこにあるか」ではなく「光が届く範囲」を見る
+- **レーザー戦闘**: 当たれば即死、1秒後にリスポーン
+- **キルスコア** + 画面通知
+- **静止系/世界系の切替**: 自分の静止系と世界系の時空図を切り替え
+- **正射影/透視投影カメラ**: 正射影なら全距離で光円錐が正確に45度
+- **永続デブリ**: 死亡時のデブリが世界線として残り、過去光円錐交差マーカーで可視化
+- **世界線の切断**: 死亡で世界線が切れ、過去の命は別表示（最大5本保持）
+- **ホストによる色割り当て**: 全プレイヤーの色相が最大限離れるように自動選択
+- **自動接続**: PeerJS シグナリングサーバーの ID 重複検出を部屋発見に利用
+
+### 通信
+
+- PeerJS/WebRTC を使用（デフォルト）
+- 学校・企業ネットワークで P2P が塞がれる場合は **WS Relay モード** を使用
 
 ### WS Relay モード（厳しいネットワーク向け）
 
