@@ -851,8 +851,9 @@ const SceneContent = ({
   useFrame(({ camera }) => {
     if (!myPlayer) return;
 
-    const targetX = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.x;
-    const targetY = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.y;
+    // 静止系: 原点追尾、世界系: 空間は固定（初期位置）、時間だけ追尾
+    const targetX = showInRestFrame ? 0 : 15;  // 世界系では空間的に固定
+    const targetY = showInRestFrame ? 0 : 15;
     const targetT = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.t;
     // カメラの距離（プレイヤーからの距離、固定）
     const cameraDistance = useOrthographic ? 100 : 15;
