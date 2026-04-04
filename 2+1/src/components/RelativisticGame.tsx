@@ -1117,8 +1117,8 @@ const SceneContent = ({
         <LaserRenderer key={laser.id} laser={laser} />
       ))}
 
-      {/* 爆発エフェクトを描画 */}
-      {explosions.map((explosion) => (
+      {/* 爆発エフェクト（disabled — 永続デブリで代替） */}
+      {/* {explosions.map((explosion) => (
         <ExplosionRenderer
           key={explosion.id}
           explosion={explosion}
@@ -1126,7 +1126,7 @@ const SceneContent = ({
           observerBoost={observerBoost}
           myPlayerPos={myPlayer?.phaseSpace.pos ?? null}
         />
-      ))}
+      ))} */}
 
       {/* 永続デブリの世界線 + 過去光円錐交差マーカー */}
       {myPlayer && playerList.flatMap((player) =>
@@ -1479,18 +1479,19 @@ const RelativisticGame = () => {
           next.set(msg.victimId, { ...victim, worldLine, pastWorldLines, debrisRecords });
           return next;
         });
-        // 爆発エフェクトを追加
-        const victim = playersRef.current.get(msg.victimId);
-        if (victim) {
-          setExplosions((prev) => [
-            ...prev,
-            {
-              id: `${msg.victimId}-${Date.now()}`,
-              pos: { t: victim.phaseSpace.pos.t, x: victim.phaseSpace.pos.x, y: victim.phaseSpace.pos.y, z: 0 },
-              color: victim.color,
-              startTime: Date.now(),
-            },
-          ]);
+        // 爆発エフェクト（disabled — 永続デブリで代替）
+        // const victim = playersRef.current.get(msg.victimId);
+        // if (victim) {
+        //   setExplosions((prev) => [
+        //     ...prev,
+        //     {
+        //       id: `${msg.victimId}-${Date.now()}`,
+        //       pos: { t: victim.phaseSpace.pos.t, x: victim.phaseSpace.pos.x, y: victim.phaseSpace.pos.y, z: 0 },
+        //       color: victim.color,
+        //       startTime: Date.now(),
+        //     },
+        //   ]);
+        if (false) {
         }
       } else if (msg.type === "playerColor") {
         // ホストからの色割り当て → 上書き（プレイヤー未到着なら一時保存）
@@ -1588,11 +1589,11 @@ const RelativisticGame = () => {
         }
       }
 
-      // 期限切れのエフェクトを削除
-      setExplosions((prev) => {
-        const alive = prev.filter((e) => currentTime - e.startTime < EXPLOSION_DURATION);
-        return alive.length === prev.length ? prev : alive;
-      });
+      // 期限切れのエフェクトを削除（爆発は disabled）
+      // setExplosions((prev) => {
+      //   const alive = prev.filter((e) => currentTime - e.startTime < EXPLOSION_DURATION);
+      //   return alive.length === prev.length ? prev : alive;
+      // });
       setSpawns((prev) => {
         const alive = prev.filter((e) => currentTime - e.startTime < SPAWN_EFFECT_DURATION);
         return alive.length === prev.length ? prev : alive;
@@ -1883,11 +1884,11 @@ const RelativisticGame = () => {
               return next;
             });
 
-            // ローカルで爆発エフェクト追加（レーザーが当たった時空点から）
-            setExplosions((prev) => [
-              ...prev,
-              { id: `${victimId}-${Date.now()}`, pos: hitPos, color: victim?.color ?? "white", startTime: Date.now() },
-            ]);
+            // ローカルで爆発エフェクト（disabled — 永続デブリで代替）
+            // setExplosions((prev) => [
+            //   ...prev,
+            //   { id: `${victimId}-${Date.now()}`, pos: hitPos, color: victim?.color ?? "white", startTime: Date.now() },
+            // ]);
 
             // 遅延リスポーン
             setTimeout(() => {
