@@ -454,7 +454,14 @@ const WorldLineRenderer = ({
 
   // geometry は世界系座標で生成（history が変わったときだけ再生成）
   useEffect(() => {
-    if (history.length < 2) return;
+    if (history.length < 2) {
+      // リスポーン直後など: 古い geometry をクリア
+      setGeometry((prev) => {
+        if (prev) prev.dispose();
+        return null;
+      });
+      return;
+    }
 
     const points: THREE.Vector3[] = history.map(
       (ps) => new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t),
@@ -565,7 +572,7 @@ const generateExplosionParticles = () => {
       dx: Math.cos(angle) * speed,
       dy: Math.sin(angle) * speed,
       speed,
-      size: 0.1 + Math.random() * 0.25,
+      size: 0.2 + Math.random() * 0.4,
     });
   }
   return particles;
@@ -872,28 +879,28 @@ const SceneContent = ({
 
     return playerList
       .filter((player) => player.id !== myId)
-      .map((player) => {
-        const intersection = pastLightConeIntersectionWorldLine(
-          player.worldLine,
-          myPlayer.phaseSpace.pos,
-        );
-        if (!intersection) return null;
-        return {
-          playerId: player.id,
-          color: player.color,
-          pos: transformEventForDisplay(
-            intersection.pos,
-            observerPos,
-            observerBoost,
-          ),
-        };
-      })
-      .filter(
-        (
-          value,
-        ): value is { playerId: string; color: string; pos: Vector4 } =>
-          value !== null,
-      );
+      .flatMap((player) => {
+        // 現在の worldLine + 過去の worldLine すべてを検索
+        const allWorldLines = [player.worldLine, ...player.pastWorldLines];
+        for (const wl of allWorldLines) {
+          const intersection = pastLightConeIntersectionWorldLine(
+            wl,
+            myPlayer.phaseSpace.pos,
+          );
+          if (intersection) {
+            return [{
+              playerId: player.id,
+              color: player.color,
+              pos: transformEventForDisplay(
+                intersection.pos,
+                observerPos,
+                observerBoost,
+              ),
+            }];
+          }
+        }
+        return [];
+      });
   }, [myPlayer, myId, playerList, observerPos, observerBoost]);
   const laserIntersections = useMemo(() => {
     if (!myPlayer || !myId) return [];
@@ -1222,7 +1229,7 @@ const RelativisticGame = () => {
     const connectedIds = new Set(connections.map((c) => c.id));
     connectedIds.add(myId);
 
-    // ホストの場合、新しく open した peer に syncTime を送信
+    // ホストの場合、新しく open した peer に syncTime + 全プレイヤーの色を送信
     if (peerManager?.getIsHost()) {
       const myPlayer = playersRef.current.get(myId);
       if (myPlayer) {
@@ -1232,6 +1239,14 @@ const RelativisticGame = () => {
               type: "syncTime",
               hostTime: myPlayer.phaseSpace.pos.t,
             });
+            // 既存全プレイヤーの色を新クライアントに送信
+            for (const [pid, player] of playersRef.current) {
+              peerManager.sendTo(conn.id, {
+                type: "playerColor",
+                playerId: pid,
+                color: player.color,
+              });
+            }
           }
         }
       }
