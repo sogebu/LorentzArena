@@ -861,6 +861,7 @@ const RelativisticGame = () => {
   const [scores, setScores] = useState<Record<string, number>>({});
   const [explosions, setExplosions] = useState<Explosion[]>([]);
   const [deathFlash, setDeathFlash] = useState(false);
+  const [killNotification, setKillNotification] = useState<{ victimName: string; color: string } | null>(null);
   const scoresRef = useRef<Record<string, number>>({});
   const [showInRestFrame, setShowInRestFrame] = useState(true);
   const [useOrthographic, setUseOrthographic] = useState(true);
@@ -1066,6 +1067,12 @@ const RelativisticGame = () => {
         if (msg.victimId === myId) {
           setDeathFlash(true);
           setTimeout(() => setDeathFlash(false), 600);
+        }
+        // 自分がキラーならキル通知
+        if (msg.killerId === myId && msg.victimId !== myId) {
+          const v = playersRef.current.get(msg.victimId);
+          setKillNotification({ victimName: msg.victimId.slice(0, 6), color: v?.color ?? "white" });
+          setTimeout(() => setKillNotification(null), 1500);
         }
         // 爆発エフェクトを追加
         const victim = playersRef.current.get(msg.victimId);
@@ -1404,6 +1411,11 @@ const RelativisticGame = () => {
               setDeathFlash(true);
               setTimeout(() => setDeathFlash(false), 600);
             }
+            // 自分がキラーならキル通知
+            if (killerId === myId && victimId !== myId) {
+              setKillNotification({ victimName: victimId.slice(0, 6), color: victim?.color ?? "white" });
+              setTimeout(() => setKillNotification(null), 1500);
+            }
 
             // ローカルで爆発エフェクト追加
             setExplosions((prev) => [
@@ -1586,9 +1598,68 @@ const RelativisticGame = () => {
           }}
         />
       )}
+      {/* キル通知 */}
+      {killNotification && (
+        <div
+          style={{
+            position: "absolute",
+            top: "30%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: 300,
+            pointerEvents: "none",
+            textAlign: "center",
+            animation: "kill-notify 1.5s ease-out forwards",
+          }}
+        >
+          <div style={{
+            fontSize: "48px",
+            fontWeight: "bold",
+            fontFamily: "monospace",
+            color: killNotification.color,
+            textShadow: "0 0 20px rgba(255,215,0,0.8), 0 0 40px rgba(255,215,0,0.4)",
+          }}>
+            KILL
+          </div>
+          <div style={{
+            fontSize: "20px",
+            color: killNotification.color,
+            opacity: 0.9,
+          }}>
+            {killNotification.victimName}
+          </div>
+        </div>
+      )}
+
+      {/* 金色ボーダーグロー（キル時） */}
+      {killNotification && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 199,
+            pointerEvents: "none",
+            boxShadow: "inset 0 0 80px rgba(255,215,0,0.5), inset 0 0 30px rgba(255,215,0,0.3)",
+            animation: "kill-glow 1.5s ease-out forwards",
+          }}
+        />
+      )}
+
       <style>{`
         @keyframes flash-fade {
           0% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes kill-notify {
+          0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+          15% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+          30% { transform: translate(-50%, -50%) scale(1); }
+          80% { opacity: 1; }
+          100% { opacity: 0; transform: translate(-50%, -60%) scale(1); }
+        }
+        @keyframes kill-glow {
+          0% { opacity: 0; }
+          15% { opacity: 1; }
           100% { opacity: 0; }
         }
       `}</style>
