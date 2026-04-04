@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { usePeer } from "../hooks/usePeer";
 
 const Connect = () => {
@@ -11,15 +11,11 @@ const Connect = () => {
     activeTransport,
     availableTransports,
     autoFallbackTriggered,
+    connectionPhase,
+    roomName,
     setActiveTransport,
   } = usePeer();
-  const [remoteId, setRemoteId] = useState("");
-  const [mode, setMode] = useState<"none" | "host" | "client">("none");
   const [isMinimized, setIsMinimized] = useState(false);
-
-  useEffect(() => {
-    setMode("none");
-  }, [activeTransport]);
 
   const peerStatusText = useMemo(() => {
     switch (peerStatus.status) {
@@ -36,25 +32,20 @@ const Connect = () => {
     }
   }, [peerStatus]);
 
-  const handleStartAsHost = () => {
-    if (peerManager) {
-      peerManager.setAsHost();
-      setMode("host");
+  const phaseText = useMemo(() => {
+    switch (connectionPhase) {
+      case "trying-host":
+        return `ルーム "${roomName}" に接続中...（ホスト試行）`;
+      case "connecting-client":
+        return `ルーム "${roomName}" に接続中...（クライアント）`;
+      case "connected":
+        return peerManager?.getIsHost()
+          ? `ルーム "${roomName}" — ホスト`
+          : `ルーム "${roomName}" — クライアント`;
+      case "manual":
+        return "手動接続モード";
     }
-  };
-
-  const handleConnectToHost = () => {
-    if (peerManager && remoteId.trim()) {
-      peerManager.setHostId(remoteId);
-      peerManager.connect(remoteId);
-      setMode("client");
-
-      // 互換のため残しているが、2+1 は基本的にホスト中継型で peerList は必須ではない。
-      setTimeout(() => {
-        peerManager.sendTo(remoteId, { type: "requestPeerList" });
-      }, 1000);
-    }
-  };
+  }, [connectionPhase, roomName, peerManager]);
 
   return (
     <div className="connection-panel">
@@ -84,6 +75,9 @@ const Connect = () => {
       {!isMinimized && (
         <>
           <div className="id-display">
+            <p style={{ margin: "5px 0", fontSize: "0.95em", fontWeight: "bold" }}>
+              {phaseText}
+            </p>
             <p style={{ margin: "5px 0", fontSize: "0.9em" }}>
               通信方式:{" "}
               {activeTransport === "peerjs" ? "PeerJS(WebRTC)" : "WS Relay"}
@@ -95,7 +89,7 @@ const Connect = () => {
               {peerStatusText}
             </p>
 
-            {peerStatus.status === "error" && (
+            {peerStatus.status === "error" && peerStatus.type !== "unavailable-id" && (
               <p
                 style={{
                   margin: "6px 0 0",
@@ -104,7 +98,7 @@ const Connect = () => {
                 }}
               >
                 学校/社内ネットワークだと WebRTC が塞がれていることがあります。
-                その場合は通信方式を `WS Relay` に切り替えてください。
+                その場合は通信方式を WS Relay に切り替えてください。
               </p>
             )}
 
@@ -116,55 +110,48 @@ const Connect = () => {
                   opacity: 0.9,
                 }}
               >
-                `VITE_NETWORK_TRANSPORT=auto` のため、PeerJS失敗時に
-                `WS Relay` へ自動切替しました。
+                PeerJS失敗のため WS Relay へ自動切替しました。
               </p>
             )}
-
-            {mode !== "none" && (
-              <p style={{ margin: "8px 0 0", fontSize: "0.9em" }}>
-                モード: {mode === "host" ? "ホスト" : "クライアント"}
-              </p>
-            )}
-
-            <details style={{ marginTop: "8px" }}>
-              <summary style={{ cursor: "pointer", fontSize: "0.85em" }}>
-                ネットワーク設定（env）
-              </summary>
-              <div
-                style={{ fontSize: "0.8em", opacity: 0.9, marginTop: "6px" }}
-              >
-                <div>PeerServer host: {networkingEnv.peerHost}</div>
-                <div>PeerServer port: {networkingEnv.peerPort}</div>
-                <div>PeerServer path: {networkingEnv.peerPath}</div>
-                <div>PeerServer secure: {networkingEnv.peerSecure}</div>
-                <div>ICE servers: {networkingEnv.iceServers}</div>
-                <div>ICE transport: {networkingEnv.iceTransportPolicy}</div>
-                <div>
-                  Preferred transport: {networkingEnv.preferredTransport}
-                </div>
-                <div>WS relay URL: {networkingEnv.wsRelayUrl}</div>
-              </div>
-            </details>
           </div>
 
-          {mode === "none" && (
-            <div className="mode-selection">
-              <h3>通信方式</h3>
-              <div
-                style={{
-                  display: "flex",
-                  gap: "8px",
-                  alignItems: "center",
-                  marginBottom: "12px",
-                }}
-              >
+          {connections.length > 0 && (
+            <div className="connections-list">
+              <h3>接続中の相手</h3>
+              <ul>
+                {connections.map((conn) => (
+                  <li
+                    key={conn.id}
+                    className={conn.open ? "connected" : "disconnected"}
+                  >
+                    {conn.id} ({conn.open ? "接続中" : "接続準備中/失敗"})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <details style={{ marginTop: "8px" }}>
+            <summary style={{ cursor: "pointer", fontSize: "0.85em" }}>
+              ▶ ネットワーク設定(env)
+            </summary>
+            <div
+              style={{ fontSize: "0.8em", opacity: 0.9, marginTop: "6px" }}
+            >
+              <div>PeerServer host: {networkingEnv.peerHost}</div>
+              <div>PeerServer port: {networkingEnv.peerPort}</div>
+              <div>PeerServer path: {networkingEnv.peerPath}</div>
+              <div>PeerServer secure: {networkingEnv.peerSecure}</div>
+              <div>ICE servers: {networkingEnv.iceServers}</div>
+              <div>ICE transport: {networkingEnv.iceTransportPolicy}</div>
+              <div>Preferred transport: {networkingEnv.preferredTransport}</div>
+              <div>WS relay URL: {networkingEnv.wsRelayUrl}</div>
+              <div style={{ marginTop: "8px" }}>
+                <span>通信方式: </span>
                 <select
                   value={activeTransport}
                   onChange={(e) =>
-                    setActiveTransport(
-                      e.target.value as "peerjs" | "wsrelay",
-                    )
+                    setActiveTransport(e.target.value as "peerjs" | "wsrelay")
                   }
                 >
                   <option value="peerjs">PeerJS (WebRTC)</option>
@@ -175,53 +162,9 @@ const Connect = () => {
                     WS Relay
                   </option>
                 </select>
-                {!availableTransports.includes("wsrelay") && (
-                  <span style={{ fontSize: "0.8em", opacity: 0.85 }}>
-                    `VITE_WS_RELAY_URL` 未設定
-                  </span>
-                )}
-              </div>
-
-              <h3>モードを選択</h3>
-              <button type="button" onClick={handleStartAsHost}>
-                ホストとして開始
-              </button>
-              <div style={{ margin: "10px 0" }}>
-                <input
-                  type="text"
-                  value={remoteId}
-                  onChange={(e) => setRemoteId(e.target.value)}
-                  placeholder="ホストのIDを入力"
-                />
-                <button type="button" onClick={handleConnectToHost}>
-                  ホストに接続
-                </button>
               </div>
             </div>
-          )}
-
-          {mode !== "none" && (
-            <div className="connections-list">
-              <h3>接続中の相手</h3>
-              {connections.length === 0 ? (
-                <p>接続中の相手はいません</p>
-              ) : (
-                <ul>
-                  {connections.map((conn) => (
-                    <li
-                      key={conn.id}
-                      className={conn.open ? "connected" : "disconnected"}
-                    >
-                      {conn.id} ({conn.open ? "接続中" : "接続準備中/失敗"})
-                      {mode === "client" &&
-                        conn.id === peerManager?.getHostId() &&
-                        " (ホスト)"}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
+          </details>
         </>
       )}
     </div>

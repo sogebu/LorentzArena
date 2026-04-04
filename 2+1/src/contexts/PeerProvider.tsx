@@ -21,6 +21,21 @@ type ActiveTransport = "peerjs" | "wsrelay";
 type NetworkStatus = PeerServerStatus | WsRelayStatus;
 type NetworkManager = PeerManager<Message> | WsRelayManager<Message>;
 
+/**
+ * Auto-connection phase for PeerJS mode.
+ *
+ * "trying-host": Attempting to register with the room ID as peer ID.
+ *   - If successful → we are the host.
+ *   - If "unavailable-id" error → someone else is host → move to "connecting-client".
+ *
+ * "connecting-client": Registered with a random ID, connecting to the room ID.
+ *
+ * "connected": Connected (as host or client).
+ *
+ * "manual": WS Relay mode or manual override — uses old manual flow.
+ */
+type ConnectionPhase = "trying-host" | "connecting-client" | "connected" | "manual";
+
 interface PeerContextValue {
   peerManager: NetworkManager | null;
   connections: ConnectionStatus[];
@@ -30,6 +45,8 @@ interface PeerContextValue {
   activeTransport: ActiveTransport;
   availableTransports: ActiveTransport[];
   autoFallbackTriggered: boolean;
+  connectionPhase: ConnectionPhase;
+  roomName: string;
   setActiveTransport: (transport: ActiveTransport) => void;
 }
 
@@ -37,21 +54,46 @@ export const PeerContext = createContext<PeerContextValue | null>(null);
 
 interface PeerProviderProps {
   children: ReactNode;
+  roomName: string;
 }
 
-export const PeerProvider = ({ children }: PeerProviderProps) => {
-  // PeerManager とそれに連動するステートを保持
+/** Register standard host relay handlers on a PeerManager. */
+const registerHostRelay = (pm: NetworkManager) => {
+  pm.onMessage("host", (senderId, msg) => {
+    if (!pm.getIsHost()) return;
+
+    if (msg.type === "requestPeerList") {
+      const peerIds = pm.getConnectedPeerIds();
+      pm.sendTo(senderId, { type: "peerList", peers: peerIds });
+      for (const peerId of peerIds) {
+        if (peerId !== senderId) {
+          pm.sendTo(peerId, { type: "peerList", peers: [...peerIds, senderId] });
+        }
+      }
+      return;
+    }
+
+    if (msg.type === "phaseSpace" || msg.type === "laser") {
+      pm.broadcast(msg, senderId);
+    }
+  });
+};
+
+export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   const [peerManager, setPeerManager] = useState<NetworkManager | null>(null);
   const [connections, setConnections] = useState<ConnectionStatus[]>([]);
   const [myId, setMyId] = useState<string | null>(null);
   const [peerStatus, setPeerStatus] = useState<NetworkStatus>({
     status: "connecting",
   });
+  const [connectionPhase, setConnectionPhase] = useState<ConnectionPhase>("trying-host");
 
   const networkingEnvBase = useMemo(() => getNetworkingEnvSummary(), []);
   const preferredTransportMode = useMemo(() => getNetworkTransportModeFromEnv(), []);
   const wsRelayUrl = useMemo(() => getWsRelayUrlFromEnv(), []);
   const localIdRef = useRef(Math.random().toString(36).substring(2, 11));
+
+  const roomPeerId = `la-${roomName}`;
 
   const availableTransports = useMemo<ActiveTransport[]>(
     () => (wsRelayUrl ? ["peerjs", "wsrelay"] : ["peerjs"]),
@@ -72,6 +114,7 @@ export const PeerProvider = ({ children }: PeerProviderProps) => {
       if (transport === "wsrelay" && !wsRelayUrl) return;
       setAutoFallbackTriggered(false);
       setActiveTransportState(transport);
+      setConnectionPhase("manual");
     },
     [wsRelayUrl],
   );
@@ -84,80 +127,106 @@ export const PeerProvider = ({ children }: PeerProviderProps) => {
     [networkingEnvBase, activeTransport],
   );
 
+  // WS Relay: manual mode (現状維持)
   useEffect(() => {
-    //  transport 変更時に manager を再生成
+    if (activeTransport !== "wsrelay") return;
+
     const localId = localIdRef.current;
 
-    let pm: NetworkManager | null = null;
-
-    if (activeTransport === "wsrelay") {
-      if (!wsRelayUrl) {
-        setPeerManager(null);
-        setConnections([]);
-        setMyId(localId);
-        setPeerStatus({
-          status: "error",
-          type: "config_error",
-          message:
-            "VITE_WS_RELAY_URL is not set. Configure relay URL or use PeerJS mode.",
-        });
-        return;
-      }
-      pm = new WsRelayManager<Message>(localId, { url: wsRelayUrl });
-    } else {
-      pm = new PeerManager<Message>(localId, buildPeerOptionsFromEnv());
+    if (!wsRelayUrl) {
+      setPeerManager(null);
+      setConnections([]);
+      setMyId(localId);
+      setPeerStatus({
+        status: "error",
+        type: "config_error",
+        message: "VITE_WS_RELAY_URL is not set.",
+      });
+      return;
     }
 
-    // myIdを設定（ID は自前生成なので即表示できる）
+    setConnectionPhase("manual");
+    const pm = new WsRelayManager<Message>(localId, { url: wsRelayUrl });
     setMyId(localId);
+
+    pm.onPeerStatusChange((status) => setPeerStatus(status));
+    pm.onConnectionChange((conns) => setConnections(conns));
+    registerHostRelay(pm);
+    setPeerManager(pm);
+
+    return () => { pm.destroy(); };
+  }, [activeTransport, wsRelayUrl]);
+
+  // PeerJS: Phase 1 — ルーム ID でホスト試行
+  useEffect(() => {
+    if (activeTransport !== "peerjs") return;
+    if (connectionPhase !== "trying-host") return;
+
+    const pm = new PeerManager<Message>(roomPeerId, buildPeerOptionsFromEnv());
 
     pm.onPeerStatusChange((status) => {
       setPeerStatus(status);
-    });
-
-    pm.onConnectionChange((conns) => {
-      setConnections(conns);
-    });
-
-    // ホスト用のメッセージハンドラ（2+1 は基本的にホスト中継型）
-    pm.onMessage("host", (senderId, msg) => {
-      if (!pm.getIsHost()) return;
-
-      if (msg.type === "requestPeerList") {
-        // 互換のため残しているが、2+1 は基本はホスト中継で動く。
-        const peerIds = pm.getConnectedPeerIds();
-        pm.sendTo(senderId, { type: "peerList", peers: peerIds });
-
-        for (const peerId of peerIds) {
-          if (peerId !== senderId) {
-            pm.sendTo(peerId, {
-              type: "peerList",
-              peers: [...peerIds, senderId],
-            });
-          }
-        }
-        return;
-      }
-
-      // phaseSpace / laser は「送信者以外へ」ホストが中継する。
-      if (msg.type === "phaseSpace" || msg.type === "laser") {
-        pm.broadcast(msg, senderId);
+      if (status.status === "open") {
+        // ルーム ID の登録に成功 → ホストになる
+        pm.setAsHost();
+        setMyId(roomPeerId);
+        registerHostRelay(pm);
+        setPeerManager(pm);
+        setConnectionPhase("connected");
+      } else if (status.status === "error" && status.type === "unavailable-id") {
+        // 既にホストがいる → クライアントモードへ
+        pm.destroy();
+        setConnectionPhase("connecting-client");
       }
     });
 
-    setPeerManager(pm);
+    pm.onConnectionChange((conns) => setConnections(conns));
 
     return () => {
-      pm.destroy();
+      if (connectionPhase === "trying-host") {
+        pm.destroy();
+      }
     };
-  }, [activeTransport, wsRelayUrl]);
+  }, [activeTransport, connectionPhase, roomPeerId]);
 
+  // PeerJS: Phase 2 — ランダム ID でクライアント接続
+  useEffect(() => {
+    if (activeTransport !== "peerjs") return;
+    if (connectionPhase !== "connecting-client") return;
+
+    const localId = localIdRef.current;
+    const pm = new PeerManager<Message>(localId, buildPeerOptionsFromEnv());
+
+    pm.onPeerStatusChange((status) => {
+      setPeerStatus(status);
+      if (status.status === "open") {
+        // シグナリング接続OK → ルーム ID のホストに接続
+        pm.setHostId(roomPeerId);
+        pm.connect(roomPeerId);
+        setMyId(localId);
+        registerHostRelay(pm);
+        setPeerManager(pm);
+        setConnectionPhase("connected");
+      }
+    });
+
+    pm.onConnectionChange((conns) => setConnections(conns));
+
+    return () => {
+      if (connectionPhase === "connecting-client") {
+        pm.destroy();
+      }
+    };
+  }, [activeTransport, connectionPhase, roomPeerId]);
+
+  // Auto-fallback: PeerJS → WS Relay
   useEffect(() => {
     if (preferredTransportMode !== "auto") return;
     if (!wsRelayUrl) return;
     if (activeTransport !== "peerjs") return;
     if (peerStatus.status !== "error") return;
     if (
+      peerStatus.type === "unavailable-id" ||
       peerStatus.type === "ws_error" ||
       peerStatus.type === "relay_error" ||
       peerStatus.type === "config_error"
@@ -179,6 +248,8 @@ export const PeerProvider = ({ children }: PeerProviderProps) => {
         activeTransport,
         availableTransports,
         autoFallbackTriggered,
+        connectionPhase,
+        roomName,
         setActiveTransport,
       }}
     >
