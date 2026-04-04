@@ -34,9 +34,9 @@
 
 ### WorldLine 描画最適化: ローレンツ変換を THREE.js 行列で適用（2+1 限定）
 
-- **What**: TubeGeometry を世界系座標で一度だけ生成し、表示系への変換はメッシュの Matrix4 として毎フレーム適用。geometry の再生成を回避
-- **Why**: ローレンツ変換は線形変換なので、CatmullRom スプラインの制御点に適用した結果はスプライン全体に適用した結果と一致。行列更新（16値のコピー）は TubeGeometry 再生成より桁違いに軽い
-- **Tradeoff**: なし（純粋な最適化）
+- **What**: TubeGeometry を世界系座標で生成し、表示系への変換はメッシュの Matrix4 として毎フレーム適用。geometry 再生成は `WorldLine.version` を `TUBE_REGEN_INTERVAL=8` で量子化してスロットリング（8 append ごとに再生成）
+- **Why**: ローレンツ変換は線形変換なので、CatmullRom スプラインの制御点に適用した結果はスプライン全体に適用した結果と一致。行列更新（16値のコピー）は TubeGeometry 再生成より桁違いに軽い。毎フレーム再生成を間引くことで、5000点 CatmullRom + TubeGeometry の計算コストを 1/8 に削減
+- **Tradeoff**: 世界線の先端が最大 8 フレーム分遅れて描画される。ゲームプレイ上は視認不可能な差
 - **制約: 2+1 次元でのみ成立**。時空 (t, x, y) の3成分が THREE.js の頂点 (x, y, z) にちょうど収まるため、4x4 ローレンツ行列を列並べ替えで 3x3 部分行列（+ 平行移動）として表現できる。3+1 次元では時空が4成分、THREE.js 頂点が3成分で、t の格納先がないため同じ手法は使えない。3+1 で同等の最適化をするにはカスタム頂点シェーダー（t を頂点属性として持たせ、GPU 側で変換）が必要
 
 ### 当たり判定: ホスト権威 + 世界系での交差計算
@@ -126,8 +126,8 @@
 
 ### メッセージバリデーション
 
-- **What**: `messageHandler.ts` で全メッセージタイプに `isFiniteNumber`/`isValidVector4`/`isValidVector3`/`isValidColor` のランタイム検証を追加
-- **Why**: `msg: any` で受け取ったネットワークメッセージの NaN/Infinity 注入防止、playerColor の CSS インジェクション防止
+- **What**: `messageHandler.ts` で全メッセージタイプに `isFiniteNumber`/`isValidVector4`/`isValidVector3`/`isValidColor`/`isValidString` のランタイム検証を追加。全文字列フィールド（senderId, id, playerId, victimId, killerId）を型検証。laser range は `0 < range <= 100`（LASER_RANGE=20 の 5 倍をマージン）。score は全エントリの key/value を検証。ホストリレー（PeerProvider）でも `isRelayable()` で構造を検証してからブロードキャスト
+- **Why**: `msg: any` で受け取ったネットワークメッセージの NaN/Infinity 注入防止、playerColor の CSS インジェクション防止、文字列フィールドの型安全性確保、不正メッセージのリレー防止
 - **Tradeoff**: 微小なオーバーヘッド。zod 等のスキーマライブラリは導入せず手書きで軽量に
 
 ### 因果律の守護者: 死亡プレイヤー除外

@@ -29,7 +29,7 @@ Key concepts:
 - **Vector4**: 4-position `(t, x, y, z)`
 - **PhaseSpace**: a snapshot of the player state:
   - `pos`: 4-position in the world frame
-  - `u`: 3-velocity in the world frame
+  - `u`: spatial part of the 4-velocity (proper velocity) in the world frame. Note: this is *not* the 3-velocity `v`; they are related by `u = γv` where `γ = √(1 + |u|²)`
 - **WorldLine**: an accumulated history of phase-space states (a discretized trajectory through spacetime)
 
 The game loop updates your own phase space in *proper time* and appends it to your world line.
@@ -38,10 +38,11 @@ Then it uses a past light cone intersection to decide “what you can see” of 
 
 ---
 
-## Networking layer (`src/services/PeerManager.ts`, `src/contexts/PeerProvider.tsx`)
+## Networking layer (`src/services/`, `src/contexts/PeerProvider.tsx`)
 
 - `PeerManager<T>` is a thin wrapper around PeerJS data connections.
-- `PeerProvider` exposes the PeerManager to React components.
+- `WsRelayManager<T>` is a WebSocket relay fallback for restrictive networks.
+- `PeerProvider` exposes the active network manager (PeerJS or WS Relay) to React components. The host validates messages with `isRelayable()` before relaying to other peers.
 
 The game sends small JSON messages (phase space updates, laser events, etc.) and updates local state when they arrive.
 

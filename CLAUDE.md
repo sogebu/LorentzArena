@@ -64,7 +64,7 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 - `vector.ts` — 3D/4D ベクトル演算、ミンコフスキー内積 (+,+,+,-)
 - `matrix.ts` — 4x4 ローレンツ変換行列
 - `mechanics.ts` — 相対論的運動方程式、phase space (4元位置 + 4元速度)
-- `worldLine.ts` — 世界線の離散履歴、過去光円錐交差計算、`origin` フィールドで半直線延長
+- `worldLine.ts` — 世界線の離散履歴、過去光円錐交差計算、`origin` フィールドで半直線延長、`version` カウンターで描画スロットリング
 
 単位系: c = 1。ファクトリパターン（クラス不使用）。
 
@@ -72,7 +72,7 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 
 - `PeerManager.ts` — PeerJS/WebRTC ラッパー
 - `WsRelayManager.ts` — WebSocket Relay フォールバック
-- `PeerProvider.tsx` — 自動接続: ルーム ID でホスト試行 → 失敗時クライアント接続
+- `PeerProvider.tsx` — 自動接続: ルーム ID でホスト試行 → 失敗時クライアント接続。ホストリレー前に `isRelayable()` でバリデーション
 
 自動接続フロー: ページを開くだけで同じルームに入る。`#room=name` で部屋分離。
 
@@ -129,7 +129,7 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 
 ホスト権威メッセージ（kill, respawn, score）: ホストはゲームループで処理済みのため messageHandler でスキップ（二重処理防止）。
 
-メッセージバリデーション: `messageHandler.ts` で全メッセージに `isFiniteNumber`/`isValidVector4`/`isValidVector3`/`isValidColor` のランタイム検証を実施。
+メッセージバリデーション: `messageHandler.ts` で全メッセージに `isFiniteNumber`/`isValidVector4`/`isValidVector3`/`isValidColor`/`isValidString` のランタイム検証を実施。laser range は `0 < range <= 100`、score は全エントリ検証。
 
 ### ゲームパラメータ（`game/constants.ts`）
 
@@ -157,8 +157,19 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 | ビーム opacity | 0.4 | レーザー世界線の透明度 |
 | 光円錐高さ | 40 | 描画上の円錐サイズ |
 | デブリ速度 | 0.2c〜0.9c | ランダム方向 |
+| `TUBE_REGEN_INTERVAL` | 8 | TubeGeometry 再生成の間引き（version を 8 で量子化） |
 | ゲームループ | 8 ms interval | `setInterval`（タブ非アクティブ対応） |
 | dτ 上限 | 100 ms | タブ復帰時の巨大ジャンプ防止 |
+
+### Relay サーバーセキュリティ（`relay-server/server.mjs`）
+
+| パラメータ | 値 | 説明 |
+|---|---|---|
+| `MAX_MESSAGE_SIZE` | 16 KB | メッセージサイズ上限 |
+| `RATE_LIMIT_MAX_MSGS` | 60 msg/s | クライアントごとのレート制限 |
+| `MAX_CONNECTIONS` | 100 | 同時接続上限 |
+| `HEARTBEAT_INTERVAL_MS` | 30s | ping 送信間隔 |
+| `HEARTBEAT_TIMEOUT_MS` | 10s | pong 応答タイムアウト |
 
 ### ビルド設定
 

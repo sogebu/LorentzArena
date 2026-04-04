@@ -26,12 +26,12 @@ Open the URL in multiple browser tabs to play. No ID sharing needed -- everyone 
 
 - **Relativistic physics**: Lorentz contraction, time dilation, proper time
 - **Past light cone rendering**: you see where things *were*, not where they *are*
-- **Laser combat**: instant kill on hit, 1-second respawn delay
+- **Laser combat**: instant kill on hit, 10-second respawn delay
 - **Kill score** with on-screen notifications
 - **Rest frame / world frame toggle**: view the spacetime diagram in your own rest frame or the global frame
 - **Orthographic / perspective camera**: orthographic preserves 45-degree light cone angles at all distances
 - **Persistent debris**: death events produce debris particles with timelike worldlines, rendered with past light cone intersection markers
-- **World line history**: severed on death, past lives preserved (up to 5)
+- **World line history**: severed on death, past lives preserved (up to 20)
 - **Host-assigned colors**: the host picks maximally distinct colors for all players
 - **Auto-connect**: PeerJS signaling server's duplicate-ID detection used as room discovery
 
@@ -109,12 +109,12 @@ pnpm dev
 
 - **相対論的物理**: ローレンツ収縮、時間膨張、固有時間
 - **過去光円錐に基づく描画**: 「今どこにあるか」ではなく「光が届く範囲」を見る
-- **レーザー戦闘**: 当たれば即死、1秒後にリスポーン
+- **レーザー戦闘**: 当たれば即死、10秒後にリスポーン
 - **キルスコア** + 画面通知
 - **静止系/世界系の切替**: 自分の静止系と世界系の時空図を切り替え
 - **正射影/透視投影カメラ**: 正射影なら全距離で光円錐が正確に45度
 - **永続デブリ**: 死亡時のデブリが世界線として残り、過去光円錐交差マーカーで可視化
-- **世界線の切断**: 死亡で世界線が切れ、過去の命は別表示（最大5本保持）
+- **世界線の切断**: 死亡で世界線が切れ、過去の命は別表示（最大20本保持）
 - **ホストによる色割り当て**: 全プレイヤーの色相が最大限離れるように自動選択
 - **自動接続**: PeerJS シグナリングサーバーの ID 重複検出を部屋発見に利用
 

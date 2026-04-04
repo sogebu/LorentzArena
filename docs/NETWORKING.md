@@ -49,7 +49,7 @@ See PeerJS docs: https://peerjs.com/docs/
 
 2) Set verbose logs:
 
-- `.env.local`
+- `.env.local` (create in the app directory, e.g. `2+1/.env.local`)
 
 ```bash
 VITE_PEERJS_DEBUG=3
