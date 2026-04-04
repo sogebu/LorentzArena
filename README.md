@@ -2,14 +2,22 @@
 
 **Also available in: [Japanese](#japanese)**
 
-Lorentz Arena is a small multiplayer arena experiment where **special relativity is a gameplay mechanic**.
+Lorentz Arena is a multiplayer arena game where **special relativity is a gameplay mechanic**.
 
-Players move at relativistic speeds, and what you see is not “what is now”, but “what can reach you” (past light cone). The result is a game that feels like physics is trolling you… in a mathematically honest way.
+Players move at relativistic speeds, fire lasers, and see everything through their past light cone. The game renders a 2+1 dimensional spacetime diagram in real-time with three.js. What you see is not “where things are”, but “where light from them can reach you”.
+
+Features:
+- Relativistic physics: Lorentz contraction, time dilation, light cone rendering
+- Laser combat with instant kill and respawn
+- Automatic room joining (just open the URL)
+- Rest frame / world frame toggle
+- Orthographic / perspective camera toggle
+- Persistent debris worldlines with past light cone intersection markers
 
 This repository contains multiple front-end apps:
 
-- **Root app**: a 1+1 spacetime diagram style renderer (x–t)
-- **`2+1/` app**: a 2+1 spacetime diagram renderer (x–y–t) using `three.js` / `@react-three/fiber`
+- **Root app**: a 1+1 spacetime diagram style renderer (x-t)
+- **`2+1/` app**: the main game, a 2+1 spacetime arena (x-y-t) using `three.js` / `@react-three/fiber`
 
 ### Live demo
 
