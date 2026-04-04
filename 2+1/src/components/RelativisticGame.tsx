@@ -1263,7 +1263,7 @@ const RelativisticGame = () => {
         worldLine,
         pastWorldLines: [],
         debrisRecords: [],
-        color: pickDistinctColor(myId, prev),
+        color: "hsl(0, 0%, 70%)", // 仮色（ホスト確定後に playerColor で上書き）
       });
       return next;
     });
@@ -1286,7 +1286,7 @@ const RelativisticGame = () => {
     const connectedIds = new Set(connections.map((c) => c.id));
     connectedIds.add(myId);
 
-    // ホストの場合、新しく open した peer に syncTime + 全プレイヤーの色を送信
+    // ホストの場合: 新 peer に syncTime + 色送信
     if (peerManager?.getIsHost()) {
       const myPlayer = playersRef.current.get(myId);
       if (myPlayer) {
@@ -1349,12 +1349,15 @@ const RelativisticGame = () => {
           let worldLine = existing?.worldLine || createWorldLine();
           worldLine = appendWorldLine(worldLine, phaseSpace);
 
-          // ホストが新プレイヤーを初めて見たとき、色を割り当ててブロードキャスト
+          // 色の決定: ホストのみが pickDistinctColor で割り当て、全員にブロードキャスト
+          // クライアントはホストからの playerColor を待つ（デフォルト白）
           let color = existing?.color;
           if (!color) {
-            color = pickDistinctColor(playerId, prev);
             if (peerManager.getIsHost()) {
+              color = pickDistinctColor(playerId, prev);
               peerManager.send({ type: "playerColor" as const, playerId, color });
+            } else {
+              color = "hsl(0, 0%, 70%)"; // 仮色（playerColor 受信まで）
             }
           }
 
@@ -1561,6 +1564,22 @@ const RelativisticGame = () => {
       const rawDTau = (currentTime - lastTimeRef.current) / 1000;
       const dTau = Math.min(rawDTau, 0.1); // 上限100ms（タブ復帰時の巨大ジャンプ防止）
       lastTimeRef.current = currentTime;
+
+      // ホスト: 自分の色が仮色なら確定させてブロードキャスト
+      if (peerManager.getIsHost()) {
+        const me = playersRef.current.get(myId);
+        if (me && me.color === "hsl(0, 0%, 70%)") {
+          const hostColor = pickDistinctColor(myId, playersRef.current);
+          setPlayers((prev) => {
+            const p = prev.get(myId);
+            if (!p || p.color !== "hsl(0, 0%, 70%)") return prev;
+            const next = new Map(prev);
+            next.set(myId, { ...p, color: hostColor });
+            return next;
+          });
+          peerManager.send({ type: "playerColor" as const, playerId: myId, color: hostColor });
+        }
+      }
 
       // 期限切れのエフェクトを削除
       setExplosions((prev) => {
