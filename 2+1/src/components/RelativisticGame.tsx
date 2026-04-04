@@ -1463,7 +1463,7 @@ const RelativisticGame = () => {
     };
 
     // setInterval を使用（requestAnimationFrame はタブ非アクティブ時に停止するため）
-    intervalRef.current = setInterval(gameLoop, 16); // ~60fps
+    intervalRef.current = setInterval(gameLoop, 8); // ~120fps
 
     return () => {
       if (intervalRef.current) {
