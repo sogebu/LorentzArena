@@ -929,7 +929,7 @@ const SceneContent = ({
       {playerList.map((player) => (
         <group key={`worldlines-${player.id}`}>
           <WorldLineRenderer
-            key={`worldline-${player.id}`}
+            key={`worldline-${player.id}-${player.worldLine.history[0]?.pos.t ?? 0}`}
             player={player}
             observerPos={observerPos}
             observerBoost={observerBoost}
@@ -1466,8 +1466,7 @@ const RelativisticGame = () => {
             ...victim.debrisRecords,
             { deathPos, particles: debrisParticles, color: victim.color },
           ].slice(-MAX_PAST_WORLDLINES);
-          let worldLine = createWorldLine();
-          worldLine = appendWorldLine(worldLine, victim.phaseSpace);
+          const worldLine = createWorldLine(); // 空のワールドライン（respawn まで描画なし）
           const next = new Map(prev);
           next.set(msg.victimId, { ...victim, worldLine, pastWorldLines, debrisRecords });
           return next;
@@ -1852,8 +1851,7 @@ const RelativisticGame = () => {
                 ...v.debrisRecords,
                 { deathPos: hitPos, particles: debrisParticles, color: v.color },
               ].slice(-MAX_PAST_WORLDLINES);
-              let worldLine = createWorldLine();
-              worldLine = appendWorldLine(worldLine, v.phaseSpace);
+              const worldLine = createWorldLine(); // 空のワールドライン（respawn まで描画なし）
               const next = new Map(prev);
               next.set(victimId, { ...v, worldLine, pastWorldLines, debrisRecords });
               return next;
