@@ -1181,6 +1181,7 @@ const RelativisticGame = () => {
               if (hostId) {
                 peerManager.sendTo(hostId, msg);
               }
+            }
           }
         }
 
