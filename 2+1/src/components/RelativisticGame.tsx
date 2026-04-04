@@ -64,13 +64,6 @@ type Laser = {
   readonly color: string;
 };
 
-type Explosion = {
-  readonly id: string;
-  readonly pos: { t: number; x: number; y: number; z: number };
-  readonly color: string;
-  readonly startTime: number; // Date.now()
-};
-
 type SpawnEffect = {
   readonly id: string;
   readonly pos: { t: number; x: number; y: number; z: number };
@@ -83,9 +76,6 @@ const SPAWN_EFFECT_DURATION = 1500;
 
 // レーザーの射程
 const LASER_RANGE = 20;
-
-// 爆発エフェクトの持続時間（ミリ秒）— 過去光円錐に届くまで十分長く
-const EXPLOSION_DURATION = 5000;
 
 // リスポーン遅延（ミリ秒）
 const RESPAWN_DELAY = 1000;
@@ -626,95 +616,6 @@ const pastLightConeIntersectionDebris = (
   return best;
 };
 
-// 爆発エフェクトコンポーネント
-const ExplosionRenderer = ({
-  explosion,
-  observerPos,
-  observerBoost,
-  myPlayerPos,
-}: {
-  explosion: Explosion;
-  observerPos: Vector4 | null;
-  observerBoost: ReturnType<typeof lorentzBoost> | null;
-  myPlayerPos: Vector4 | null;
-}) => {
-  // パーティクル方向をメモ化（爆発ごとに固定）
-  const particles = useMemo(() => generateExplosionParticles(), []);
-
-  const elapsed = Date.now() - explosion.startTime;
-  const progress = Math.min(elapsed / EXPLOSION_DURATION, 1);
-  const opacity = 1 - progress * progress; // 二乗で急速にフェード
-
-  const color = useMemo(() => getThreeColor(explosion.color), [explosion.color]);
-
-  if (opacity <= 0) return null;
-
-  // 経過した世界系時間（c=1 単位で、時空図上の距離に対応）
-  const dt = progress * 20; // 最大20単位先の未来まで飛散
-
-  const deathEvent = createVector4(
-    explosion.pos.t,
-    explosion.pos.x,
-    explosion.pos.y,
-    explosion.pos.z,
-  );
-
-  return (
-    <>
-      {particles.map((p, i) => {
-        // 各パーティクルの世界系時空位置: 死亡イベント + (dt, dx*dt, dy*dt, 0)
-        const worldPos = createVector4(
-          explosion.pos.t + dt,
-          explosion.pos.x + p.dx * dt,
-          explosion.pos.y + p.dy * dt,
-          0,
-        );
-        const displayPos = transformEventForDisplay(worldPos, observerPos, observerBoost);
-
-        // 過去光円錐との交差点
-        let intersectionNode = null;
-        if (myPlayerPos) {
-          const intersection = pastLightConeIntersectionDebris(
-            deathEvent, p.dx, p.dy, dt, myPlayerPos,
-          );
-          if (intersection) {
-            const intDisplayPos = transformEventForDisplay(intersection, observerPos, observerBoost);
-            intersectionNode = (
-              <mesh
-                position={[intDisplayPos.x, intDisplayPos.y, intDisplayPos.t]}
-                scale={[p.size * 1.8, p.size * 1.8, p.size * 1.8]}
-                geometry={sharedGeometries.explosionParticle}
-              >
-                <meshBasicMaterial
-                  color="white"
-                  transparent
-                  opacity={Math.min(1, opacity * 1.5)}
-                />
-              </mesh>
-            );
-          }
-        }
-
-        return (
-          <group key={i}>
-            <mesh
-              position={[displayPos.x, displayPos.y, displayPos.t]}
-              scale={[p.size, p.size, p.size]}
-              geometry={sharedGeometries.explosionParticle}
-            >
-              <meshBasicMaterial
-                color={i % 5 === 0 ? "white" : color}
-                transparent
-                opacity={opacity * (0.5 + p.size)}
-              />
-            </mesh>
-            {intersectionNode}
-          </group>
-        );
-      })}
-    </>
-  );
-};
 
 // スポーンエフェクトコンポーネント — 同心円リングが時間軸に沿って脈動
 const SpawnRenderer = ({
@@ -793,7 +694,6 @@ type SceneContentProps = {
   players: Map<string, RelativisticPlayer>;
   myId: string | null;
   lasers: Laser[];
-  explosions: Explosion[];
   spawns: SpawnEffect[];
   showInRestFrame: boolean;
   useOrthographic: boolean;
@@ -805,7 +705,6 @@ const SceneContent = ({
   players,
   myId,
   lasers,
-  explosions,
   spawns,
   showInRestFrame,
   useOrthographic,
@@ -1117,17 +1016,6 @@ const SceneContent = ({
         <LaserRenderer key={laser.id} laser={laser} />
       ))}
 
-      {/* 爆発エフェクト（disabled — 永続デブリで代替） */}
-      {/* {explosions.map((explosion) => (
-        <ExplosionRenderer
-          key={explosion.id}
-          explosion={explosion}
-          observerPos={observerPos}
-          observerBoost={observerBoost}
-          myPlayerPos={myPlayer?.phaseSpace.pos ?? null}
-        />
-      ))} */}
-
       {/* 永続デブリの世界線 + 過去光円錐交差マーカー */}
       {myPlayer && playerList.flatMap((player) =>
         player.debrisRecords.flatMap((debris, di) => {
@@ -1208,7 +1096,6 @@ const RelativisticGame = () => {
   );
   const [lasers, setLasers] = useState<Laser[]>([]);
   const [scores, setScores] = useState<Record<string, number>>({});
-  const [explosions, setExplosions] = useState<Explosion[]>([]);
   const [spawns, setSpawns] = useState<SpawnEffect[]>([]);
   const [deathFlash, setDeathFlash] = useState(false);
   const [killNotification, setKillNotification] = useState<{ victimName: string; color: string } | null>(null);
@@ -1468,31 +1355,16 @@ const RelativisticGame = () => {
           const pastWorldLines = victim.worldLine.history.length > 1
             ? [...victim.pastWorldLines, victim.worldLine].slice(-MAX_PAST_WORLDLINES)
             : victim.pastWorldLines;
-          const deathPos = { t: victim.phaseSpace.pos.t, x: victim.phaseSpace.pos.x, y: victim.phaseSpace.pos.y, z: 0 };
           const debrisParticles = generateExplosionParticles();
           const debrisRecords = [
             ...victim.debrisRecords,
-            { deathPos, particles: debrisParticles, color: victim.color },
+            { deathPos: msg.hitPos, particles: debrisParticles, color: victim.color },
           ].slice(-MAX_PAST_WORLDLINES);
           const worldLine = createWorldLine(); // 空のワールドライン（respawn まで描画なし）
           const next = new Map(prev);
           next.set(msg.victimId, { ...victim, worldLine, pastWorldLines, debrisRecords });
           return next;
         });
-        // 爆発エフェクト（disabled — 永続デブリで代替）
-        // const victim = playersRef.current.get(msg.victimId);
-        // if (victim) {
-        //   setExplosions((prev) => [
-        //     ...prev,
-        //     {
-        //       id: `${msg.victimId}-${Date.now()}`,
-        //       pos: { t: victim.phaseSpace.pos.t, x: victim.phaseSpace.pos.x, y: victim.phaseSpace.pos.y, z: 0 },
-        //       color: victim.color,
-        //       startTime: Date.now(),
-        //     },
-        //   ]);
-        if (false) {
-        }
       } else if (msg.type === "playerColor") {
         // ホストからの色割り当て → 上書き（プレイヤー未到着なら一時保存）
         pendingColorsRef.current.set(msg.playerId, msg.color);
@@ -1589,11 +1461,7 @@ const RelativisticGame = () => {
         }
       }
 
-      // 期限切れのエフェクトを削除（爆発は disabled）
-      // setExplosions((prev) => {
-      //   const alive = prev.filter((e) => currentTime - e.startTime < EXPLOSION_DURATION);
-      //   return alive.length === prev.length ? prev : alive;
-      // });
+      // 期限切れのスポーンエフェクトを削除
       setSpawns((prev) => {
         const alive = prev.filter((e) => currentTime - e.startTime < SPAWN_EFFECT_DURATION);
         return alive.length === prev.length ? prev : alive;
@@ -1852,7 +1720,7 @@ const RelativisticGame = () => {
             deadPlayersRef.current.add(victimId);
 
             // kill 通知をブロードキャスト
-            peerManager.send({ type: "kill" as const, victimId, killerId });
+            peerManager.send({ type: "kill" as const, victimId, killerId, hitPos });
 
             // 自分が死んだら画面フラッシュ + 物理停止
             if (victimId === myId) {
@@ -1883,12 +1751,6 @@ const RelativisticGame = () => {
               next.set(victimId, { ...v, worldLine, pastWorldLines, debrisRecords });
               return next;
             });
-
-            // ローカルで爆発エフェクト（disabled — 永続デブリで代替）
-            // setExplosions((prev) => [
-            //   ...prev,
-            //   { id: `${victimId}-${Date.now()}`, pos: hitPos, color: victim?.color ?? "white", startTime: Date.now() },
-            // ]);
 
             // 遅延リスポーン
             setTimeout(() => {
@@ -2154,7 +2016,6 @@ const RelativisticGame = () => {
             players={players}
             myId={myId}
             lasers={lasers}
-            explosions={explosions}
             spawns={spawns}
             showInRestFrame={showInRestFrame}
             useOrthographic={true}
@@ -2168,7 +2029,6 @@ const RelativisticGame = () => {
             players={players}
             myId={myId}
             lasers={lasers}
-            explosions={explosions}
             spawns={spawns}
             showInRestFrame={showInRestFrame}
             useOrthographic={false}

@@ -79,6 +79,7 @@ export type Message =
       type: "kill";
       victimId: string;
       killerId: string;
+      hitPos: { t: number; x: number; y: number; z: number };
     }
   | {
       /**
