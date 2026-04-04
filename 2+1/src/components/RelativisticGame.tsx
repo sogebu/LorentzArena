@@ -1159,6 +1159,7 @@ const RelativisticGame = () => {
   const timeSyncedRef = useRef<boolean>(false); // syncTime 受信済みフラグ（クライアント用）
   const processedLasersRef = useRef<Set<string>>(new Set()); // 判定済みレーザーID
   const deadUntilRef = useRef<number>(0); // 死亡中は Date.now() < deadUntil
+  const deadPlayersRef = useRef<Set<string>>(new Set()); // リスポーン待ちのプレイヤー（ホスト用）
   const [_screenSize, setScreenSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -1676,6 +1677,7 @@ const RelativisticGame = () => {
           for (const [playerId, player] of currentPlayers) {
             if (playerId === laser.playerId) continue; // 自分のレーザーは除外
             if (killedThisFrame.has(playerId)) continue; // 既にこのフレームでキル済み
+            if (deadPlayersRef.current.has(playerId)) continue; // リスポーン待ち中
             if (checkLaserHit(laser, player.worldLine, HIT_RADIUS)) {
               kills.push({ victimId: playerId, killerId: laser.playerId });
               hitLaserIds.push(laser.id);
@@ -1714,6 +1716,9 @@ const RelativisticGame = () => {
               ? { t: victim.phaseSpace.pos.t, x: victim.phaseSpace.pos.x, y: victim.phaseSpace.pos.y, z: 0 }
               : { t: 0, x: 0, y: 0, z: 0 };
 
+            // 死亡プレイヤーとして登録（リスポーンまで当たり判定から除外）
+            deadPlayersRef.current.add(victimId);
+
             // kill 通知をブロードキャスト
             peerManager.send({ type: "kill" as const, victimId, killerId });
 
@@ -1746,6 +1751,7 @@ const RelativisticGame = () => {
                 z: 0,
               };
 
+              deadPlayersRef.current.delete(victimId);
               peerManager.send({ type: "respawn" as const, playerId: victimId, position: respawnPos });
 
               // ローカルでもリスポーン適用（worldLine を退避して切断）
