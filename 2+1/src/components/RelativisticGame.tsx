@@ -818,7 +818,7 @@ const RelativisticGame = () => {
     const connectedIds = new Set(connections.map((c) => c.id));
     connectedIds.add(myId);
 
-    // ホストの場合、新しく接続した peer に syncTime を送信
+    // ホストの場合、新しく open した peer に syncTime を送信
     if (peerManager?.getIsHost()) {
       const myPlayer = playersRef.current.get(myId);
       if (myPlayer) {
@@ -832,7 +832,10 @@ const RelativisticGame = () => {
         }
       }
     }
-    prevConnectionIdsRef.current = new Set(connections.map((c) => c.id));
+    // open な接続のみ記録（open前に記録すると open時に「既知」扱いされてしまう）
+    prevConnectionIdsRef.current = new Set(
+      connections.filter((c) => c.open).map((c) => c.id),
+    );
 
     setPlayers((prev) => {
       const idsToRemove: string[] = [];
@@ -1337,6 +1340,9 @@ const RelativisticGame = () => {
           style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
         >
           FPS: {fps}
+        </div>
+        <div style={{ marginTop: "2px", fontSize: "10px", opacity: 0.5 }}>
+          build: {__BUILD_TIME__}
         </div>
         {Object.keys(scores).length > 0 && (
           <div style={{ marginTop: "8px", borderTop: "1px solid rgba(255,255,255,0.3)", paddingTop: "6px" }}>
