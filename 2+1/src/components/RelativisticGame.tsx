@@ -1183,8 +1183,8 @@ const RelativisticGame = () => {
       const initialPhaseSpace = createPhaseSpace(
         createVector4(
           Date.now() / 1000 - OFFSET,
-          Math.random() * 100,
-          Math.random() * 100,
+          Math.random() * 50,
+          Math.random() * 50,
           0.0,
         ),
         vector3Zero(),
@@ -1746,8 +1746,8 @@ const RelativisticGame = () => {
               const hostT = hostPlayer?.phaseSpace.pos.t ?? 0;
               const respawnPos = {
                 t: hostT,
-                x: Math.random() * 100,
-                y: Math.random() * 100,
+                x: Math.random() * 50,
+                y: Math.random() * 50,
                 z: 0,
               };
 
