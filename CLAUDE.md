@@ -77,6 +77,7 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 - 永続デブリ（死亡イベントからの等速直線運動パーティクル、過去光円錐交差マーカー）
 - 世界線切断（死亡時に pastWorldLines に退避）
 - ホストによる色割り当て（`playerColor` メッセージで全クライアントに配信）
+- 因果律の守護者: 他プレイヤーの未来光円錐の内側にいる間、全操作を凍結（DESIGN.md 参照）
 
 ### メッセージタイプ (`2+1/src/types/message.ts`)
 

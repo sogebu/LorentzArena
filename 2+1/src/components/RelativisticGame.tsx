@@ -354,25 +354,10 @@ const sharedGeometries = {
   explosionParticle: new THREE.SphereGeometry(1, 6, 6), // スケールで size 調整
 };
 
-// Material キャッシュ（プレイヤーID + タイプごと）
-const materialCache = new Map<string, THREE.Material>();
-const getMaterial = (
-  key: string,
-  factory: () => THREE.Material,
-): THREE.Material => {
-  let mat = materialCache.get(key);
-  if (!mat) {
-    mat = factory();
-    materialCache.set(key, mat);
-  }
-  return mat;
-};
-
 // デバッグ用: キャッシュサイズの監視（ブラウザコンソールで window.debugCaches を参照）
 if (typeof window !== "undefined") {
   (window as unknown as Record<string, unknown>).debugCaches = {
     colorCache,
-    materialCache,
     sharedGeometries,
   };
 }
@@ -487,15 +472,6 @@ const WorldLineRenderer = ({
   }, []);
 
   const color = getThreeColor(player.color);
-  const material = getMaterial(
-    `worldline-${player.id}-${player.color}`,
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: color,
-        emissive: color,
-        emissiveIntensity: 0.9,
-      }),
-  );
 
   if (!geometry) return null;
 
@@ -503,9 +479,10 @@ const WorldLineRenderer = ({
     <mesh
       ref={meshRef}
       geometry={geometry}
-      material={material}
       matrixAutoUpdate={false}
-    />
+    >
+      <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0.9} />
+    </mesh>
   );
 };
 
@@ -750,9 +727,9 @@ const SceneContent = ({
   useFrame(({ camera }) => {
     if (!myPlayer) return;
 
-    // 静止系: 原点追尾、世界系: 空間は固定（初期位置）、時間だけ追尾
-    const targetX = showInRestFrame ? 0 : 15;  // 世界系では空間的に固定
-    const targetY = showInRestFrame ? 0 : 15;
+    // 静止系: 原点追尾、世界系: プレイヤーの世界系座標に追随
+    const targetX = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.x;
+    const targetY = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.y;
     const targetT = showInRestFrame ? 0 : myPlayer.phaseSpace.pos.t;
     // カメラの距離（プレイヤーからの距離、固定）
     const cameraDistance = useOrthographic ? 100 : 15;
@@ -855,41 +832,28 @@ const SceneContent = ({
         const isMe = player.id === myId;
         const color = getThreeColor(player.color);
         const size = isMe ? 0.42 : 0.2;
-        const material = getMaterial(
-          `player-core-${player.id}-${isMe}`,
-          () =>
-            new THREE.MeshStandardMaterial({
-              color: color,
-              emissive: color,
-              emissiveIntensity: isMe ? 1.0 : 0.4,
-              roughness: 0.3,
-              metalness: 0.1,
-              transparent: !isMe,
-              opacity: isMe ? 1.0 : 0.5,
-            }),
-        );
-        const haloMaterial = getMaterial(
-          `player-halo-${player.id}-${isMe}`,
-          () =>
-            new THREE.MeshBasicMaterial({
-              color: color,
-              transparent: true,
-              opacity: isMe ? 0.32 : 0.1,
-            }),
-        );
 
         return (
           <group key={`player-${player.id}`} position={[pos.x, pos.y, pos.t]}>
             <mesh
               scale={[size, size, size]}
               geometry={sharedGeometries.playerSphere}
-              material={material}
-            />
+            >
+              <meshStandardMaterial
+                color={color} emissive={color}
+                emissiveIntensity={isMe ? 1.0 : 0.4}
+                roughness={0.3} metalness={0.1}
+                transparent={!isMe} opacity={isMe ? 1.0 : 0.5}
+              />
+            </mesh>
             <mesh
               scale={[size * 1.8, size * 1.8, size * 1.8]}
               geometry={sharedGeometries.playerSphere}
-              material={haloMaterial}
-            />
+            >
+              <meshBasicMaterial
+                color={color} transparent opacity={isMe ? 0.32 : 0.1}
+              />
+            </mesh>
           </group>
         );
       })}
@@ -903,17 +867,7 @@ const SceneContent = ({
         );
         const color = getThreeColor(player.color);
         const coneHeight = 40;
-        const coneMaterial = getMaterial(
-          `lightcone-${player.id}`,
-          () =>
-            new THREE.MeshBasicMaterial({
-              color: color,
-              transparent: true,
-              opacity: 0.5,
-              side: THREE.DoubleSide,
-              wireframe: true,
-            }),
-        );
+        const coneMat = <meshBasicMaterial color={color} transparent opacity={0.5} side={THREE.DoubleSide} wireframe />;
 
         return (
           <group key={`lightcone-${player.id}`}>
@@ -922,15 +876,17 @@ const SceneContent = ({
               position={[pos.x, pos.y, pos.t + coneHeight / 2]}
               rotation={[-Math.PI / 2, 0.0, 0.0]}
               geometry={sharedGeometries.lightCone}
-              material={coneMaterial}
-            />
+            >
+              {coneMat}
+            </mesh>
             {/* 過去光円錐 */}
             <mesh
               position={[pos.x, pos.y, pos.t - coneHeight / 2]}
               rotation={[Math.PI / 2, 0.0, 0.0]}
               geometry={sharedGeometries.lightCone}
-              material={coneMaterial}
-            />
+            >
+              {coneMat}
+            </mesh>
           </group>
         );
       })}
@@ -938,47 +894,17 @@ const SceneContent = ({
       {/* 自分の過去光円錐と他プレイヤーの世界線の交点 */}
       {worldLineIntersections.map(({ playerId, color: colorText, pos }) => {
         const color = getThreeColor(colorText);
-        const markerMaterial = getMaterial(
-          `intersection-marker-${playerId}`,
-          () =>
-            new THREE.MeshStandardMaterial({
-              color: color,
-              emissive: color,
-              emissiveIntensity: 1.15,
-            }),
-        );
-        const coreMaterial = getMaterial(
-          `intersection-core-${playerId}`,
-          () =>
-            new THREE.MeshBasicMaterial({
-              color: new THREE.Color("#ffffff"),
-            }),
-        );
-        const ringMaterial = getMaterial(
-          `intersection-ring-${playerId}`,
-          () =>
-            new THREE.MeshBasicMaterial({
-              color: color,
-              transparent: true,
-              opacity: 0.9,
-              side: THREE.DoubleSide,
-            }),
-        );
-
         return (
           <group key={`intersection-${playerId}`} position={[pos.x, pos.y, pos.t]}>
-            <mesh
-              geometry={sharedGeometries.intersectionSphere}
-              material={markerMaterial}
-            />
-            <mesh
-              geometry={sharedGeometries.intersectionCore}
-              material={coreMaterial}
-            />
-            <mesh
-              geometry={sharedGeometries.intersectionRing}
-              material={ringMaterial}
-            />
+            <mesh geometry={sharedGeometries.intersectionSphere}>
+              <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.15} />
+            </mesh>
+            <mesh geometry={sharedGeometries.intersectionCore}>
+              <meshBasicMaterial color="#ffffff" />
+            </mesh>
+            <mesh geometry={sharedGeometries.intersectionRing}>
+              <meshBasicMaterial color={color} transparent opacity={0.9} side={THREE.DoubleSide} />
+            </mesh>
           </group>
         );
       })}
@@ -986,27 +912,17 @@ const SceneContent = ({
       {/* 各レーザーと自分の過去光円錐の交点（自分のレーザーも含む） */}
       {laserIntersections.map(({ laser, pos }) => {
         const color = getThreeColor(laser.color);
-        const dotMaterial = getMaterial(
-          `laser-intersection-dot-${laser.color}`,
-          () =>
-            new THREE.MeshStandardMaterial({
-              color: color,
-              emissive: color,
-              emissiveIntensity: 1.1,
-              roughness: 0.25,
-              metalness: 0.1,
-            }),
-        );
-
         return (
           <group
             key={`laser-intersection-${laser.id}`}
             position={[pos.x, pos.y, pos.t]}
           >
-            <mesh
-              geometry={sharedGeometries.laserIntersectionDot}
-              material={dotMaterial}
-            />
+            <mesh geometry={sharedGeometries.laserIntersectionDot}>
+              <meshStandardMaterial
+                color={color} emissive={color} emissiveIntensity={1.1}
+                roughness={0.25} metalness={0.1}
+              />
+            </mesh>
           </group>
         );
       })}
@@ -1152,7 +1068,7 @@ const RelativisticGame = () => {
         worldLine,
         pastWorldLines: [],
         debrisRecords: [],
-        color: "hsl(0, 0%, 70%)", // 仮色（ホスト確定後に playerColor で上書き）
+        color: pendingColorsRef.current.get(myId) ?? "hsl(0, 0%, 70%)", // pending にあれば使う、なければ仮色
       });
       return next;
     });
