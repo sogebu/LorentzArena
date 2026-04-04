@@ -43,6 +43,7 @@ type RelativisticPlayer = {
   // in 世界系
   phaseSpace: PhaseSpace;
   worldLine: WorldLine;
+  pastWorldLines: WorldLine[]; // 死亡で切断された過去の世界線
   color: string;
 };
 
@@ -648,14 +649,24 @@ const SceneContent = ({
       <ambientLight intensity={0.5} />
       <pointLight position={[10, 10, 10]} intensity={1} />
 
-      {/* 全プレイヤーの world line を描画 */}
+      {/* 全プレイヤーの world line を描画（現在 + 過去の命） */}
       {playerList.map((player) => (
-        <WorldLineRenderer
-          key={`worldline-${player.id}`}
-          player={player}
-          observerPos={observerPos}
-          observerBoost={observerBoost}
-        />
+        <group key={`worldlines-${player.id}`}>
+          <WorldLineRenderer
+            key={`worldline-${player.id}`}
+            player={player}
+            observerPos={observerPos}
+            observerBoost={observerBoost}
+          />
+          {player.pastWorldLines.map((pastWl, i) => (
+            <WorldLineRenderer
+              key={`worldline-past-${player.id}-${i}`}
+              player={{ ...player, worldLine: pastWl }}
+              observerPos={observerPos}
+              observerBoost={observerBoost}
+            />
+          ))}
+        </group>
       ))}
 
       {/* 各プレイヤーのマーカー */}
@@ -849,6 +860,7 @@ const RelativisticGame = () => {
   const [lasers, setLasers] = useState<Laser[]>([]);
   const [scores, setScores] = useState<Record<string, number>>({});
   const [explosions, setExplosions] = useState<Explosion[]>([]);
+  const [deathFlash, setDeathFlash] = useState(false);
   const scoresRef = useRef<Record<string, number>>({});
   const [showInRestFrame, setShowInRestFrame] = useState(true);
   const [useOrthographic, setUseOrthographic] = useState(true);
@@ -897,6 +909,7 @@ const RelativisticGame = () => {
         id: myId,
         phaseSpace: initialPhaseSpace,
         worldLine,
+        pastWorldLines: [],
         color: getColorFromId(myId),
       });
       return next;
@@ -979,6 +992,7 @@ const RelativisticGame = () => {
             id: playerId,
             phaseSpace,
             worldLine,
+            pastWorldLines: existing?.pastWorldLines || [],
             color: existing?.color || getColorFromId(playerId), // 既存の色を保持
           });
           return next;
@@ -1027,7 +1041,7 @@ const RelativisticGame = () => {
           return updated;
         });
       } else if (msg.type === "respawn") {
-        // リスポーン: 対象プレイヤーの位置と worldLine をリセット
+        // リスポーン: 現在の worldLine を退避し、新しい worldLine で再開
         setPlayers((prev) => {
           const player = prev.get(msg.playerId);
           if (!player) return prev;
@@ -1037,14 +1051,22 @@ const RelativisticGame = () => {
           );
           let worldLine = createWorldLine();
           worldLine = appendWorldLine(worldLine, respawnPhaseSpace);
+          const pastWorldLines = player.worldLine.history.length > 1
+            ? [...player.pastWorldLines, player.worldLine]
+            : player.pastWorldLines;
           const next = new Map(prev);
-          next.set(msg.playerId, { ...player, phaseSpace: respawnPhaseSpace, worldLine });
+          next.set(msg.playerId, { ...player, phaseSpace: respawnPhaseSpace, worldLine, pastWorldLines });
           return next;
         });
       } else if (msg.type === "score") {
         scoresRef.current = msg.scores;
         setScores(msg.scores);
       } else if (msg.type === "kill") {
+        // 自分が死んだら画面フラッシュ
+        if (msg.victimId === myId) {
+          setDeathFlash(true);
+          setTimeout(() => setDeathFlash(false), 600);
+        }
         // 爆発エフェクトを追加
         const victim = playersRef.current.get(msg.victimId);
         if (victim) {
@@ -1374,8 +1396,14 @@ const RelativisticGame = () => {
               ? { t: victim.phaseSpace.pos.t, x: victim.phaseSpace.pos.x, y: victim.phaseSpace.pos.y, z: 0 }
               : { t: 0, x: 0, y: 0, z: 0 };
 
-            // kill 通知をブロードキャスト（爆発位置つき）
+            // kill 通知をブロードキャスト
             peerManager.send({ type: "kill" as const, victimId, killerId });
+
+            // 自分が死んだら画面フラッシュ
+            if (victimId === myId) {
+              setDeathFlash(true);
+              setTimeout(() => setDeathFlash(false), 600);
+            }
 
             // ローカルで爆発エフェクト追加
             setExplosions((prev) => [
@@ -1396,7 +1424,7 @@ const RelativisticGame = () => {
 
               peerManager.send({ type: "respawn" as const, playerId: victimId, position: respawnPos });
 
-              // ローカルでもリスポーン適用
+              // ローカルでもリスポーン適用（worldLine を退避して切断）
               setPlayers((prev) => {
                 const v = prev.get(victimId);
                 if (!v) return prev;
@@ -1406,8 +1434,11 @@ const RelativisticGame = () => {
                 );
                 let worldLine = createWorldLine();
                 worldLine = appendWorldLine(worldLine, respawnPhaseSpace);
+                const pastWorldLines = v.worldLine.history.length > 1
+                  ? [...v.pastWorldLines, v.worldLine]
+                  : v.pastWorldLines;
                 const next = new Map(prev);
-                next.set(victimId, { ...v, phaseSpace: respawnPhaseSpace, worldLine });
+                next.set(victimId, { ...v, phaseSpace: respawnPhaseSpace, worldLine, pastWorldLines });
                 return next;
               });
             }, RESPAWN_DELAY);
@@ -1541,6 +1572,26 @@ const RelativisticGame = () => {
           </div>
         );
       })()}
+
+      {/* 死亡フラッシュ */}
+      {deathFlash && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundColor: "rgba(255, 50, 50, 0.6)",
+            zIndex: 200,
+            pointerEvents: "none",
+            animation: "flash-fade 0.6s ease-out forwards",
+          }}
+        />
+      )}
+      <style>{`
+        @keyframes flash-fade {
+          0% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+      `}</style>
 
       {useOrthographic ? (
         <Canvas key="ortho" orthographic camera={{ zoom: 30, position: [0, 0, 100], near: -10000, far: 10000 }}>
