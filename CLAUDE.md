@@ -1,6 +1,6 @@
-# CLAUDE.md
+# CLAUDE.md — LorentzArena
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Claude Code 作業マニュアル。全リポ共通の規約は `CONVENTIONS.md`（claude-config の symlink）を参照。
 
 ## Project Overview
 
