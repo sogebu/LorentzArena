@@ -1480,8 +1480,8 @@ const RelativisticGame = () => {
       }
 
       // カメラ制御: 左右キーでyaw回転、上下キーでpitch回転（プレイヤーを中心に球面上を移動）
-      const yawSpeed = 1.5; // rad/s
-      const pitchSpeed = 1.0; // rad/s
+      const yawSpeed = 0.8; // rad/s
+      const pitchSpeed = 0.5; // rad/s
       const pitchMin = (-Math.PI * 89.9) / 180; // 下限
       const pitchMax = (Math.PI * 89.9) / 180; // 上限
 
