@@ -1,5 +1,11 @@
-import { type Vector4, subVector4, lorentzDotVector4 } from "./vector";
-import type { PhaseSpace } from "./mechanics";
+import {
+  type Vector4,
+  subVector4,
+  lorentzDotVector4,
+  createVector4,
+  gamma,
+} from "./vector";
+import { type PhaseSpace, createPhaseSpace } from "./mechanics";
 
 /**
  * World line utilities (history of PhaseSpace snapshots).
@@ -20,6 +26,7 @@ import type { PhaseSpace } from "./mechanics";
 export type WorldLine = {
   readonly history: PhaseSpace[];
   readonly maxHistorySize: number;
+  readonly origin: PhaseSpace | null; // スポーン/リスポーン時の初期点（半直線の起点）
 };
 
 /**
@@ -29,27 +36,54 @@ export type WorldLine = {
 export const createWorldLine = (maxHistorySize = 5000): WorldLine => ({
   history: [],
   maxHistorySize,
+  origin: null,
 });
 
 /**
  * Append a PhaseSpace snapshot.
  *
- * English: Keeps history length under `maxHistorySize`.
- * 日本語: `maxHistorySize` を超えたら古いものを捨てます。
+ * 因果的 trimming: maxHistorySize を超えたとき、最古の点が全他プレイヤーの
+ * 過去光円錐の過去側にある場合のみ削除。未来側にある点は保持。
+ * otherPlayerPositions を省略すると従来通り無条件に削除。
  */
 export const appendWorldLine = (
   wl: WorldLine,
   phaseSpace: PhaseSpace,
+  otherPlayerPositions?: Vector4[],
 ): WorldLine => {
   const newHistory = [...wl.history, phaseSpace];
+  const origin = wl.origin ?? phaseSpace; // 最初の追加で origin を設定
 
   if (newHistory.length > wl.maxHistorySize) {
-    newHistory.shift();
+    const oldest = newHistory[0];
+    let canRemove = true;
+
+    // 安全弁: maxHistorySize の2倍を超えたら因果的判定を無視して強制削除
+    const forceRemove = newHistory.length > wl.maxHistorySize * 2;
+
+    if (!forceRemove && otherPlayerPositions) {
+      for (const otherPos of otherPlayerPositions) {
+        const diff = subVector4(otherPos, oldest.pos); // other - oldest
+        const s2 = lorentzDotVector4(diff, diff);
+        // oldest を削除できるのは、otherPos の過去光円錐の内側にある場合のみ
+        // = otherPos が oldest の未来側 (diff.t > 0) かつ時間的 (s2 < 0)
+        const isInsidePastCone = diff.t > 0 && s2 < 0;
+        if (!isInsidePastCone) {
+          canRemove = false;
+          break;
+        }
+      }
+    }
+
+    if (canRemove || forceRemove) {
+      newHistory.shift();
+    }
   }
 
   return {
     ...wl,
     history: newHistory,
+    origin,
   };
 };
 
@@ -138,12 +172,78 @@ const findLatestIndexAtOrBeforeTime = (
  *   - 世界線を最新→過去へ辿り、過去光円錐と交差する区間を探します。
  *   - 返す PhaseSpace は暫定（現在は補間していません）。
  */
+/**
+ * Compute the 4-position at proper time offset s along a straight worldline
+ * (constant velocity) from a given PhaseSpace, going into the past (s > 0 = past).
+ */
+export const positionAlongStraightWorldLine = (
+  ps: PhaseSpace,
+  s: number,
+): Vector4 => {
+  const g = gamma(ps.u);
+  return createVector4(
+    ps.pos.t - s * g,
+    ps.pos.x - s * ps.u.x,
+    ps.pos.y - s * ps.u.y,
+    ps.pos.z - s * ps.u.z,
+  );
+};
+
+/**
+ * Find the past light cone intersection with a semi-infinite straight worldline
+ * extending from `origin` into the past (constant velocity origin.u).
+ * Returns the PhaseSpace at the intersection, or null.
+ */
+const pastLightConeIntersectionHalfLine = (
+  origin: PhaseSpace,
+  observerPosition: Vector4,
+): PhaseSpace | null => {
+  // Half-line: P(s) = origin.pos - s * u^μ, s >= 0 (s increases into the past)
+  // u^μ = (γ, u_x, u_y, u_z)
+  const g = gamma(origin.u);
+  // Direction vector (into the past): d = (-γ, -u_x, -u_y, -u_z)
+  const d: Vector4 = createVector4(-g, -origin.u.x, -origin.u.y, -origin.u.z);
+  const x0 = subVector4(observerPosition, origin.pos);
+
+  // Quadratic: a*s^2 - 2*b*s + c = 0
+  const a = lorentzDotVector4(d, d);
+  const b = lorentzDotVector4(d, x0);
+  const c = lorentzDotVector4(x0, x0);
+
+  const discriminant = b * b - a * c;
+  if (discriminant < 0) return null;
+
+  const sqrtD = Math.sqrt(discriminant);
+  // Both roots
+  const s1 = (b + sqrtD) / a;
+  const s2 = (b - sqrtD) / a;
+
+  // We need s >= 0 (past direction). Pick the smallest positive s (closest to origin).
+  let s = -1;
+  if (s1 >= 0 && s2 >= 0) s = Math.min(s1, s2);
+  else if (s1 >= 0) s = s1;
+  else if (s2 >= 0) s = s2;
+  if (s < 0) return null;
+
+  // Also verify it's in the observer's past
+  const intersectionPos = positionAlongStraightWorldLine(origin, s);
+  if (intersectionPos.t > observerPosition.t) return null;
+
+  return createPhaseSpace(intersectionPos, origin.u);
+};
+
 export const pastLightConeIntersectionWorldLine = (
   wl: WorldLine,
   observerPosition: Vector4,
 ): PhaseSpace | null => {
   const history = wl.history;
-  if (history.length === 0) return null;
+  if (history.length === 0) {
+    // history が空でも origin があれば半直線で探す
+    if (wl.origin) {
+      return pastLightConeIntersectionHalfLine(wl.origin, observerPosition);
+    }
+    return null;
+  }
 
   // We may have samples slightly "in the future" compared to the observer's t due to clock drift.
   // Start from the newest sample that is at/before observer time, but include one future sample
@@ -152,7 +252,13 @@ export const pastLightConeIntersectionWorldLine = (
     history,
     observerPosition.t,
   );
-  if (lastPastIdx < 0) return null;
+  if (lastPastIdx < 0) {
+    // history 全体が観測者の未来 → origin 半直線で探す
+    if (wl.origin) {
+      return pastLightConeIntersectionHalfLine(wl.origin, observerPosition);
+    }
+    return null;
+  }
 
   const startIdx = Math.min(history.length - 1, lastPastIdx + 1);
 
@@ -182,6 +288,24 @@ export const pastLightConeIntersectionWorldLine = (
     }
   }
 
+  // history を走査しても見つからなかった → origin 半直線で探す
+  if (wl.origin) {
+    // origin → history[0] のセグメントも探す（trimming でギャップがある場合）
+    if (wl.origin.pos.t !== history[0].pos.t) {
+      const tParam = findLightlikeIntersectionParam(
+        wl.origin.pos,
+        history[0].pos,
+        observerPosition,
+      );
+      if (tParam >= 0 && tParam <= 1) {
+        return createPhaseSpace(wl.origin.pos, wl.origin.u);
+      }
+    }
+
+    // 半直線で探す
+    return pastLightConeIntersectionHalfLine(wl.origin, observerPosition);
+  }
+
   return null;
 };
 
@@ -192,4 +316,5 @@ export const pastLightConeIntersectionWorldLine = (
 export const clearWorldLine = (wl: WorldLine): WorldLine => ({
   ...wl,
   history: [],
+  origin: null,
 });

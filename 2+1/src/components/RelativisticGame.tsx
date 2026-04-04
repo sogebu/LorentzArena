@@ -20,6 +20,7 @@ import {
   multiplyVector4Matrix4,
   subVector4,
   pastLightConeIntersectionWorldLine,
+  positionAlongStraightWorldLine,
 } from "../physics";
 
 /**
@@ -49,11 +50,13 @@ type RelativisticPlayer = {
   id: string;
   // in 世界系
   phaseSpace: PhaseSpace;
-  worldLine: WorldLine;
-  pastWorldLines: WorldLine[]; // 死亡で切断された過去の世界線
+  lives: WorldLine[]; // 全ライフ（最後が現在の命）
   debrisRecords: DebrisRecord[]; // 死亡時の爆散デブリ（永続）
   color: string;
 };
+
+const currentLife = (p: RelativisticPlayer): WorldLine =>
+  p.lives[p.lives.length - 1];
 
 type Laser = {
   readonly id: string;
@@ -408,24 +411,30 @@ const buildDisplayMatrix = (
 
 // WorldLineRenderer コンポーネント - 個別のワールドラインを描画
 type WorldLineRendererProps = {
-  player: RelativisticPlayer;
+  worldLine: WorldLine;
+  color: string;
+  showHalfLine: boolean;
   observerPos: Vector4 | null;
   observerBoost: ReturnType<typeof lorentzBoost> | null;
 };
 
 const WorldLineRenderer = ({
-  player,
+  worldLine: wl,
+  color: colorStr,
+  showHalfLine,
   observerPos,
   observerBoost,
 }: WorldLineRendererProps) => {
   const [geometry, setGeometry] = useState<THREE.TubeGeometry | null>(null);
   const meshRef = useRef<THREE.Mesh>(null);
 
-  const history = player.worldLine.history;
+  const history = wl.history;
+  const origin = wl.origin;
 
   // geometry は世界系座標で生成（history が変わったときだけ再生成）
+  // showHalfLine が true なら origin から過去方向への半直線も含む
   useEffect(() => {
-    if (history.length < 2) {
+    if (history.length < 2 && !(showHalfLine && origin)) {
       // リスポーン直後など: 古い geometry をクリア
       setGeometry((prev) => {
         if (prev) prev.dispose();
@@ -434,9 +443,32 @@ const WorldLineRenderer = ({
       return;
     }
 
-    const points: THREE.Vector3[] = history.map(
-      (ps) => new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t),
-    );
+    const points: THREE.Vector3[] = [];
+
+    // 半直線の端点: origin から過去方向に座標時間100単位分（最初の命のみ）
+    if (showHalfLine && origin) {
+      const HALF_LINE_LENGTH = 100; // 座標時間で100単位分
+      const pastEnd = positionAlongStraightWorldLine(origin, HALF_LINE_LENGTH);
+      points.push(new THREE.Vector3(pastEnd.x, pastEnd.y, pastEnd.t));
+
+      // origin 自体が history[0] と異なる場合（trimming 後）origin を追加
+      if (history.length === 0 || origin.pos.t !== history[0].pos.t) {
+        points.push(new THREE.Vector3(origin.pos.x, origin.pos.y, origin.pos.t));
+      }
+    }
+
+    // history の各点
+    for (const ps of history) {
+      points.push(new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t));
+    }
+
+    if (points.length < 2) {
+      setGeometry((prev) => {
+        if (prev) prev.dispose();
+        return null;
+      });
+      return;
+    }
 
     const curve = new THREE.CatmullRomCurve3(points);
     const tubeGeometry = new THREE.TubeGeometry(
@@ -451,7 +483,7 @@ const WorldLineRenderer = ({
       if (prev) prev.dispose();
       return tubeGeometry;
     });
-  }, [history]);
+  }, [history, origin, showHalfLine]);
 
   // 表示変換はメッシュの行列として毎フレーム適用（geometry 再生成不要）
   useFrame(() => {
@@ -471,7 +503,7 @@ const WorldLineRenderer = ({
     };
   }, []);
 
-  const color = getThreeColor(player.color);
+  const color = getThreeColor(colorStr);
 
   if (!geometry) return null;
 
@@ -508,7 +540,7 @@ const LaserRenderer = ({ laser }: { laser: DisplayLaser }) => {
       new THREE.MeshBasicMaterial({
         color: color,
         transparent: true,
-        opacity: 0.8,
+        opacity: 0.4,
       }),
     [color],
   );
@@ -753,9 +785,9 @@ const SceneContent = ({
     return playerList
       .filter((player) => player.id !== myId)
       .flatMap((player) => {
-        // 現在の worldLine + 過去の worldLine すべてを検索
-        const allWorldLines = [player.worldLine, ...player.pastWorldLines];
-        for (const wl of allWorldLines) {
+        // 全ライフを新→旧の順に検索
+        for (let j = player.lives.length - 1; j >= 0; j--) {
+          const wl = player.lives[j];
           const intersection = pastLightConeIntersectionWorldLine(
             wl,
             myPlayer.phaseSpace.pos,
@@ -802,19 +834,15 @@ const SceneContent = ({
       <ambientLight intensity={0.5} />
       <pointLight position={[10, 10, 10]} intensity={1} />
 
-      {/* 全プレイヤーの world line を描画（現在 + 過去の命） */}
+      {/* 全プレイヤーの全ライフの世界線を描画 */}
       {playerList.map((player) => (
         <group key={`worldlines-${player.id}`}>
-          <WorldLineRenderer
-            key={`worldline-${player.id}-${player.worldLine.history[0]?.pos.t ?? 0}`}
-            player={player}
-            observerPos={observerPos}
-            observerBoost={observerBoost}
-          />
-          {player.pastWorldLines.map((pastWl, i) => (
+          {player.lives.map((wl, i) => (
             <WorldLineRenderer
-              key={`worldline-past-${player.id}-${i}`}
-              player={{ ...player, worldLine: pastWl }}
+              key={`worldline-${player.id}-${i}-${wl.history[0]?.pos.t ?? 0}`}
+              worldLine={wl}
+              color={player.color}
+              showHalfLine={i === 0}
               observerPos={observerPos}
               observerBoost={observerBoost}
             />
@@ -1065,8 +1093,7 @@ const RelativisticGame = () => {
       next.set(myId, {
         id: myId,
         phaseSpace: initialPhaseSpace,
-        worldLine,
-        pastWorldLines: [],
+        lives: [worldLine],
         debrisRecords: [],
         color: pendingColorsRef.current.get(myId) ?? "hsl(0, 0%, 70%)", // pending にあれば使う、なければ仮色
       });
@@ -1149,10 +1176,16 @@ const RelativisticGame = () => {
 
           const phaseSpace = createPhaseSpace(msg.position, msg.velocity);
 
-          // 既存のプレイヤーのワールドラインに追加、または新規作成
+          // 既存のプレイヤーの現在のライフに追加、または新規作成
           const existing = prev.get(playerId);
-          let worldLine = existing?.worldLine || createWorldLine();
-          worldLine = appendWorldLine(worldLine, phaseSpace);
+          const existingLives = existing?.lives || [];
+          const lastLife = existingLives[existingLives.length - 1] || createWorldLine();
+          // 死亡中（respawn 待ち）なら phaseSpace を無視
+          if (lastLife.history.length === 0 && lastLife.origin === null && existingLives.length > 0) return prev;
+          const updatedLife = appendWorldLine(lastLife, phaseSpace);
+          const lives = existingLives.length > 0
+            ? [...existingLives.slice(0, -1), updatedLife]
+            : [updatedLife];
 
           // 色の決定: pending にあればそれを使う、なければホストが割り当て
           let color = existing?.color;
@@ -1172,8 +1205,7 @@ const RelativisticGame = () => {
           next.set(playerId, {
             id: playerId,
             phaseSpace,
-            worldLine,
-            pastWorldLines: existing?.pastWorldLines || [],
+            lives,
             debrisRecords: existing?.debrisRecords || [],
             color,
           });
@@ -1194,10 +1226,10 @@ const RelativisticGame = () => {
             ),
             me.phaseSpace.u,
           );
-          let worldLine = createWorldLine();
-          worldLine = appendWorldLine(worldLine, synced);
+          let newLife = createWorldLine();
+          newLife = appendWorldLine(newLife, synced);
           const next = new Map(prev);
-          next.set(myId, { ...me, phaseSpace: synced, worldLine });
+          next.set(myId, { ...me, phaseSpace: synced, lives: [newLife] });
           return next;
         });
       } else if (msg.type === "laser") {
@@ -1223,7 +1255,7 @@ const RelativisticGame = () => {
           return updated;
         });
       } else if (msg.type === "respawn") {
-        // リスポーン: 新しい位置で worldLine を開始（退避は kill 時に済み）
+        // リスポーン: 現在のライフ（空）に最初の点を追加
         setPlayers((prev) => {
           const player = prev.get(msg.playerId);
           if (!player) return prev;
@@ -1231,10 +1263,11 @@ const RelativisticGame = () => {
             createVector4(msg.position.t, msg.position.x, msg.position.y, msg.position.z),
             vector3Zero(),
           );
-          let worldLine = createWorldLine();
-          worldLine = appendWorldLine(worldLine, respawnPhaseSpace);
+          const lastLife = player.lives[player.lives.length - 1] || createWorldLine();
+          const updatedLife = appendWorldLine(lastLife, respawnPhaseSpace);
+          const lives = [...player.lives.slice(0, -1), updatedLife];
           const next = new Map(prev);
-          next.set(msg.playerId, { ...player, phaseSpace: respawnPhaseSpace, worldLine });
+          next.set(msg.playerId, { ...player, phaseSpace: respawnPhaseSpace, lives });
           return next;
         });
         // スポーンエフェクト
@@ -1264,21 +1297,18 @@ const RelativisticGame = () => {
           setKillNotification({ victimName: msg.victimId.slice(0, 6), color: v?.color ?? "white" });
           setTimeout(() => setKillNotification(null), 1500);
         }
-        // kill 時点で worldLine を退避 + デブリ記録（respawn を待たない）
+        // kill 時点で新ライフを開始 + デブリ記録
         setPlayers((prev) => {
           const victim = prev.get(msg.victimId);
           if (!victim) return prev;
-          const pastWorldLines = victim.worldLine.history.length > 1
-            ? [...victim.pastWorldLines, victim.worldLine].slice(-MAX_PAST_WORLDLINES)
-            : victim.pastWorldLines;
           const debrisParticles = generateExplosionParticles();
           const debrisRecords = [
             ...victim.debrisRecords,
             { deathPos: msg.hitPos, particles: debrisParticles, color: victim.color },
           ].slice(-MAX_PAST_WORLDLINES);
-          const worldLine = createWorldLine(); // 空のワールドライン（respawn まで描画なし）
+          const lives = [...victim.lives, createWorldLine()].slice(-MAX_PAST_WORLDLINES);
           const next = new Map(prev);
-          next.set(msg.victimId, { ...victim, worldLine, pastWorldLines, debrisRecords });
+          next.set(msg.victimId, { ...victim, lives, debrisRecords });
           return next;
         });
       } else if (msg.type === "playerColor") {
@@ -1529,14 +1559,18 @@ const RelativisticGame = () => {
           acceleration,
           dTau,
         );
-        const updatedWorldLine = appendWorldLine(
-          myPlayer.worldLine,
-          newPhaseSpace,
-        );
+        // 他プレイヤーの位置を収集（因果的 trimming 用）
+        const otherPositions: Vector4[] = [];
+        for (const [id, p] of prev) {
+          if (id !== myId) otherPositions.push(p.phaseSpace.pos);
+        }
+        const lastLife = currentLife(myPlayer);
+        const updatedLife = appendWorldLine(lastLife, newPhaseSpace, otherPositions);
+        const lives = [...myPlayer.lives.slice(0, -1), updatedLife];
         next.set(myId, {
           ...myPlayer,
           phaseSpace: newPhaseSpace,
-          worldLine: updatedWorldLine,
+          lives,
         });
 
         // 他のプレイヤーに送信（クライアントは syncTime 受信後のみ）
@@ -1596,7 +1630,7 @@ const RelativisticGame = () => {
             if (playerId === laser.playerId) continue; // 自分のレーザーは除外
             if (killedThisFrame.has(playerId)) continue; // 既にこのフレームでキル済み
             if (deadPlayersRef.current.has(playerId)) continue; // リスポーン待ち中
-            const hitPos = findLaserHitPosition(laser, player.worldLine, HIT_RADIUS);
+            const hitPos = findLaserHitPosition(laser, currentLife(player), HIT_RADIUS);
             if (hitPos) {
               kills.push({ victimId: playerId, killerId: laser.playerId, hitPos });
               hitLaserIds.push(laser.id);
@@ -1650,21 +1684,18 @@ const RelativisticGame = () => {
               setTimeout(() => setKillNotification(null), 1500);
             }
 
-            // ローカルで worldLine 退避 + デブリ記録（kill 時点で即座に）
+            // ローカルで新ライフ開始 + デブリ記録（kill 時点で即座に）
             setPlayers((prev) => {
               const v = prev.get(victimId);
               if (!v) return prev;
-              const pastWorldLines = v.worldLine.history.length > 1
-                ? [...v.pastWorldLines, v.worldLine].slice(-MAX_PAST_WORLDLINES)
-                : v.pastWorldLines;
               const debrisParticles = generateExplosionParticles();
               const debrisRecords = [
                 ...v.debrisRecords,
                 { deathPos: hitPos, particles: debrisParticles, color: v.color },
               ].slice(-MAX_PAST_WORLDLINES);
-              const worldLine = createWorldLine(); // 空のワールドライン（respawn まで描画なし）
+              const lives = [...v.lives, createWorldLine()].slice(-MAX_PAST_WORLDLINES);
               const next = new Map(prev);
-              next.set(victimId, { ...v, worldLine, pastWorldLines, debrisRecords });
+              next.set(victimId, { ...v, lives, debrisRecords });
               return next;
             });
 
@@ -1682,7 +1713,7 @@ const RelativisticGame = () => {
               deadPlayersRef.current.delete(victimId);
               peerManager.send({ type: "respawn" as const, playerId: victimId, position: respawnPos });
 
-              // ローカルでもリスポーン適用（退避は kill 時に済み）
+              // ローカルでもリスポーン適用（現在のライフに最初の点を追加）
               setPlayers((prev) => {
                 const v = prev.get(victimId);
                 if (!v) return prev;
@@ -1690,10 +1721,11 @@ const RelativisticGame = () => {
                   createVector4(respawnPos.t, respawnPos.x, respawnPos.y, respawnPos.z),
                   vector3Zero(),
                 );
-                let worldLine = createWorldLine();
-                worldLine = appendWorldLine(worldLine, respawnPhaseSpace);
+                const lastLife = v.lives[v.lives.length - 1] || createWorldLine();
+                const updatedLife = appendWorldLine(lastLife, respawnPhaseSpace);
+                const lives = [...v.lives.slice(0, -1), updatedLife];
                 const next = new Map(prev);
-                next.set(victimId, { ...v, phaseSpace: respawnPhaseSpace, worldLine });
+                next.set(victimId, { ...v, phaseSpace: respawnPhaseSpace, lives });
                 return next;
               });
 

@@ -72,6 +72,28 @@
 - **Why**: 各クライアントが独立に色を選ぶとタイミングのずれで不一致が起きる。ホストが全プレイヤーの色を知っているので最適な色相選択が可能
 - **Tradeoff**: `playerColor` が `phaseSpace` より先に届くと捨てられる問題 → `pendingColorsRef` で解決
 
+### 世界線管理: lives[] 統合
+
+- **What**: `worldLine`（現在の命）+ `pastWorldLines[]`（過去の命）を `lives: WorldLine[]` に統合。最後の要素が現在の命
+- **Why**: kill/respawn のたびに worldLine → pastWorldLines への移動処理が必要で、host/client で重複実装になっていた。1つの配列にすることで状態遷移がシンプルになる
+- **操作**: kill → `lives.push(createWorldLine())`、respawn → 最後の life に appendWorldLine
+- **未解決**: リスポーン時に遅延 phaseSpace が新 life に混入し世界線が繋がるバグ。根本対策: respawn では完全に独立な世界線を0から作り直し、その最も過去のデータ（origin）を過去側に半直線として外装する
+
+### 世界線の過去延長: origin + 半直線
+
+- **What**: WorldLine に `origin` フィールド（スポーン時の初期 PhaseSpace）を追加。`pastLightConeIntersectionWorldLine` で history を走査して交差が見つからなかった場合、origin から過去方向に等速直線運動の半直線との交差を解析的に計算
+- **Why**: スポーン直後の短い世界線でも、過去光円錐との交差が必ず見つかるようにする。初期位置で静止（または初期速度で等速直線運動）していたと仮定すれば物理的に正しい
+- **描画**: 最初のライフ（`lives[0]`）の origin からのみ半直線を描画。リスポーン後のライフには半直線をつけない（前の命と繋がって見えるのを防止）
+- **制約**: history trimming で origin と history[0] の間にギャップが生じうる。origin → history[0] のセグメントでも交差を探す
+
+### 因果的 trimming
+
+- **What**: `appendWorldLine` で `maxHistorySize` を超えたとき、最古の点が全他プレイヤーの過去光円錐の内側にある場合のみ削除。そうでなければ保持
+- **Why**: 過去光円錐の交差計算で必要な点を早期に消さないため。プレイヤーの過去光円錐がまだ到達していない世界線上の点は将来の交差計算に必要
+- **判定**: `diff = otherPos - oldest.pos`、`diff.t > 0 && lorentzDot(diff, diff) < 0` なら oldest は otherPos の過去光円錐の内側 → 削除 OK。それ以外は保持
+- **安全弁**: `maxHistorySize * 2` を超えたら因果的判定を無視して強制削除（メモリ保護）
+- **コスト**: O(P) per frame、P = 2-4。無視できる
+
 ### マテリアル管理: R3F 宣言的マテリアル
 
 - **What**: `getMaterial` + モジュールレベルの `materialCache` を廃止し、R3F の宣言的マテリアル（`<meshStandardMaterial color={...} />`）に置き換え
