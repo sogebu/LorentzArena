@@ -1,5 +1,7 @@
 # Architecture overview
 
+> This is a high-level overview for both apps. For detailed 2+1 architecture (modules, parameters, message types), see `2+1/CLAUDE.md`. For design decisions, see `2+1/DESIGN.md`.
+
 LorentzArena is intentionally small, but there are a few “conceptual walls” worth documenting:
 
 - **Physics** (special relativity)
