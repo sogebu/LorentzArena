@@ -463,15 +463,69 @@ const generateExplosionParticles = () => {
   return particles;
 };
 
+/**
+ * Past light cone intersection for a debris particle (timelike straight worldline).
+ *
+ * Particle trajectory: P(λ) = start + λ * (dx, dy, 0, 1),  λ ∈ [0, maxLambda]
+ * Solve lorentzDot(observer - P(λ), observer - P(λ)) = 0 for past intersection.
+ */
+const pastLightConeIntersectionDebris = (
+  start: Vector4,
+  dx: number,
+  dy: number,
+  maxLambda: number,
+  observerPos: Vector4,
+): Vector4 | null => {
+  // delta = direction 4-vector = (1, dx, dy, 0) * maxLambda → normalized to λ ∈ [0, 1]
+  const delta = createVector4(maxLambda, dx * maxLambda, dy * maxLambda, 0);
+  const sep = subVector4(observerPos, start);
+
+  const a = lorentzDotVector4(delta, delta);
+  const b = -2 * lorentzDotVector4(sep, delta);
+  const c = lorentzDotVector4(sep, sep);
+
+  const EPS = 1e-9;
+  const candidates: number[] = [];
+
+  if (Math.abs(a) < EPS) {
+    if (Math.abs(b) < EPS) return null;
+    candidates.push(-c / b);
+  } else {
+    const disc = b * b - 4 * a * c;
+    if (disc < 0) return null;
+    const sqrtDisc = Math.sqrt(Math.max(0, disc));
+    candidates.push((-b - sqrtDisc) / (2 * a));
+    candidates.push((-b + sqrtDisc) / (2 * a));
+  }
+
+  let best: Vector4 | null = null;
+  for (const lambda of candidates) {
+    if (lambda < -EPS || lambda > 1 + EPS) continue;
+    const t = Math.min(1, Math.max(0, lambda));
+    const point = createVector4(
+      start.t + delta.t * t,
+      start.x + delta.x * t,
+      start.y + delta.y * t,
+      start.z + delta.z * t,
+    );
+    if (observerPos.t - point.t <= EPS) continue;
+    if (!best || point.t > best.t) best = point;
+  }
+
+  return best;
+};
+
 // 爆発エフェクトコンポーネント
 const ExplosionRenderer = ({
   explosion,
   observerPos,
   observerBoost,
+  myPlayerPos,
 }: {
   explosion: Explosion;
   observerPos: Vector4 | null;
   observerBoost: ReturnType<typeof lorentzBoost> | null;
+  myPlayerPos: Vector4 | null;
 }) => {
   // パーティクル方向をメモ化（爆発ごとに固定）
   const particles = useMemo(() => generateExplosionParticles(), []);
@@ -487,11 +541,17 @@ const ExplosionRenderer = ({
   // 経過した世界系時間（c=1 単位で、時空図上の距離に対応）
   const dt = progress * 8; // 最大8単位先の未来まで飛散
 
+  const deathEvent = createVector4(
+    explosion.pos.t,
+    explosion.pos.x,
+    explosion.pos.y,
+    explosion.pos.z,
+  );
+
   return (
     <>
       {particles.map((p, i) => {
         // 各パーティクルの世界系時空位置: 死亡イベント + (dt, dx*dt, dy*dt, 0)
-        // speed < 1 なので未来光円錐の内側（時間的領域）を進む
         const worldPos = createVector4(
           explosion.pos.t + dt,
           explosion.pos.x + p.dx * dt,
@@ -500,19 +560,45 @@ const ExplosionRenderer = ({
         );
         const displayPos = transformEventForDisplay(worldPos, observerPos, observerBoost);
 
+        // 過去光円錐との交差点
+        let intersectionNode = null;
+        if (myPlayerPos) {
+          const intersection = pastLightConeIntersectionDebris(
+            deathEvent, p.dx, p.dy, dt, myPlayerPos,
+          );
+          if (intersection) {
+            const intDisplayPos = transformEventForDisplay(intersection, observerPos, observerBoost);
+            intersectionNode = (
+              <mesh
+                position={[intDisplayPos.x, intDisplayPos.y, intDisplayPos.t]}
+                scale={[p.size * 1.8, p.size * 1.8, p.size * 1.8]}
+                geometry={sharedGeometries.explosionParticle}
+              >
+                <meshBasicMaterial
+                  color="white"
+                  transparent
+                  opacity={Math.min(1, opacity * 1.5)}
+                />
+              </mesh>
+            );
+          }
+        }
+
         return (
-          <mesh
-            key={i}
-            position={[displayPos.x, displayPos.y, displayPos.t]}
-            scale={[p.size, p.size, p.size]}
-            geometry={sharedGeometries.explosionParticle}
-          >
-            <meshBasicMaterial
-              color={i % 5 === 0 ? "white" : color}
-              transparent
-              opacity={opacity * (0.5 + p.size)}
-            />
-          </mesh>
+          <group key={i}>
+            <mesh
+              position={[displayPos.x, displayPos.y, displayPos.t]}
+              scale={[p.size, p.size, p.size]}
+              geometry={sharedGeometries.explosionParticle}
+            >
+              <meshBasicMaterial
+                color={i % 5 === 0 ? "white" : color}
+                transparent
+                opacity={opacity * (0.5 + p.size)}
+              />
+            </mesh>
+            {intersectionNode}
+          </group>
         );
       })}
     </>
@@ -851,6 +937,7 @@ const SceneContent = ({
           explosion={explosion}
           observerPos={observerPos}
           observerBoost={observerBoost}
+          myPlayerPos={myPlayer?.phaseSpace.pos ?? null}
         />
       ))}
     </>
