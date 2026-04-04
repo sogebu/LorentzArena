@@ -54,7 +54,7 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 - `vector.ts` — 3D/4D ベクトル演算、ミンコフスキー内積 (+,+,+,-)
 - `matrix.ts` — 4x4 ローレンツ変換行列
 - `mechanics.ts` — 相対論的運動方程式、phase space (4元位置 + 4元速度)
-- `worldLine.ts` — 世界線の離散履歴、過去光円錐交差計算
+- `worldLine.ts` — 世界線の離散履歴、過去光円錐交差計算、`allowHalfLine` フラグで最初のライフのみ半直線延長
 
 単位系: c = 1。ファクトリパターン（クラス不使用）。
 
@@ -74,31 +74,34 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 |---|---|
 | `RelativisticGame.tsx` | state/ref 管理、ゲームループ、Canvas 配置 |
 | `game/types.ts` | ゲーム固有型定義（`RelativisticPlayer`, `Laser` 等） |
-| `game/constants.ts` | ゲーム定数（射程、リスポーン遅延等） |
+| `game/constants.ts` | ゲーム定数（射程、リスポーン遅延、スポーン範囲等） |
 | `game/colors.ts` | プレイヤー色生成（色相距離最大化） |
-| `game/threeCache.ts` | THREE.js ジオメトリ/マテリアル singleton |
+| `game/threeCache.ts` | THREE.js ジオメトリ/マテリアル singleton + デブリマテリアルキャッシュ |
 | `game/displayTransform.ts` | ローレンツ変換 → 表示座標変換 |
 | `game/laserPhysics.ts` | レーザー当たり判定 + 光円錐交差 |
 | `game/debris.ts` | デブリ生成 + 光円錐交差 |
 | `game/killRespawn.ts` | `applyKill`/`applyRespawn` 純粋関数（ホスト/クライアント共通） |
 | `game/SceneContent.tsx` | 3Dシーン（WorldLine/Laser/SpawnRenderer 含む） |
-| `game/messageHandler.ts` | ネットワークメッセージ処理（ファクトリ関数） |
-| `game/HUD.tsx` | オーバーレイUI（コントロール、スピードメーター、キル通知） |
+| `game/messageHandler.ts` | ネットワークメッセージ処理（ファクトリ関数、バリデーション付き） |
+| `game/HUD.tsx` | オーバーレイUI（コントロール、スピードメーター、キル通知、死亡カウントダウン） |
 
 主要機能:
 - W/S: 加速/減速、矢印: カメラ回転、Space: レーザー発射
 - 正射影/透視投影カメラ切替
 - 自分の静止系/世界系表示切替
 - 当たり判定（ホスト権威、`findLaserHitPosition`）
-- Kill/Respawn: kill → 世界線凍結（`isDead`フラグ）→ ゴースト（不可視等速直線運動）→ 1秒後リスポーン（新 WorldLine、ホストの世界系 t に同期）
-- 他プレイヤーから見た死亡: 凍結世界線の過去光円錐交差が消えるまで可視、リスポーン後は新世界線の交差が見えるまで不可視
+- Kill/Respawn: kill → 世界線凍結（`isDead`フラグ）→ ゴースト（等速直線運動）→ 10秒後リスポーン（新 WorldLine、ホストの世界系 t に同期）
+- 死亡の設計哲学: 特別な処理を最小化。世界線は凍結されるだけで描画は継続。デブリも通常通り描画。唯一の特別処理は「死んだ本人が自分のマーカーを見ない」のみ
+- 他プレイヤーから見た死亡: 凍結世界線の過去光円錐交差で自然に見える/見えないが決まる。リスポーン後は新世界線の交差が見えるまで不可視
 - 死亡状態管理: `isDead` フラグ一元管理、`applyKill`/`applyRespawn` 純粋関数（`killRespawn.ts`）
+- DEAD カウントダウン: HUD に死亡中のカウントダウン表示（`lives.length` を key にしてリセット）
 - キルスコア + キル通知エフェクト
-- 永続デブリ（死亡イベントからの等速直線運動パーティクル、過去光円錐交差マーカー）
+- 永続デブリ: 死亡イベントからの等速直線運動パーティクル。世界線は lineSegments でバッチ描画（頂点カラーで死亡プレイヤーの色）。マーカーは過去光円錐交差で表示
 - 世界線管理: `lives: WorldLine[]` で全ライフを管理。kill で凍結、respawn で新 WorldLine を追加
-- 世界線の過去延長: origin から半直線を過去方向に延長（最初のライフのみ。リスポーン後のライフには付けない）
+- 世界線の過去延長: `allowHalfLine` フラグで制御。最初のライフのみ origin から半直線を過去方向に延長。リスポーン後のライフには付けない（`createWorldLine(5000, false)`）
 - ホストによる色割り当て（`playerColor` メッセージで全クライアントに配信）
 - 因果律の守護者: 他プレイヤーの未来光円錐の内側にいる間、全操作を凍結（DESIGN.md 参照）
+- 光円錐描画: FrontSide 半透明サーフェス（opacity 0.2）+ FrontSide ワイヤーフレーム（opacity 0.3）で手前/奥の区別
 
 ### メッセージタイプ (`2+1/src/types/message.ts`)
 
@@ -112,29 +115,37 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 | `score` | host → all | スコア更新 |
 | `playerColor` | host → all | 色割り当て |
 | `peerList` | host → client | 接続ピア一覧 |
+| `requestPeerList` | client → host | ピア一覧要求 |
 
-### ゲームパラメータ（`game/constants.ts` + `RelativisticGame.tsx`）
+ホスト権威メッセージ（kill, respawn, score）: ホストはゲームループで処理済みのため messageHandler でスキップ（二重処理防止）。
+
+メッセージバリデーション: `messageHandler.ts` で全メッセージに `isFiniteNumber`/`isValidVector4`/`isValidVector3`/`isValidColor` のランタイム検証を実施。
+
+### ゲームパラメータ（`game/constants.ts`）
 
 | パラメータ | 値 | 説明 |
 |---|---|---|
-| 初期位置 | x,y ∈ [0, 10] | `Math.random() * 10`（テスト値、本番は 30） |
-| リスポーン位置 | x,y ∈ [0, 10] | 同上 |
-| `RESPAWN_DELAY` | 1000 ms | 死亡→リスポーンの待機時間 |
+| `SPAWN_RANGE` | 10 | スポーン範囲 x,y ∈ [0, SPAWN_RANGE]（テスト値、本番は 30） |
+| `RESPAWN_DELAY` | 10000 ms | 死亡→リスポーンの待機時間 |
 | `SPAWN_EFFECT_DURATION` | 1500 ms | スポーンエフェクト表示時間 |
-| `LASER_RANGE` | 20 | レーザー射程（c=1 単位） |
+| `LASER_RANGE` | 20 | レーザー射程（アフィンパラメータ λ の上限、c=1 で座標時間=空間距離） |
+| `LASER_COOLDOWN` | 100 ms | レーザー連射間隔 |
 | `HIT_RADIUS` | 0.5 | 当たり判定の半径 |
 | `MAX_LASERS` | 1000 | レーザー保持上限 |
 | `MAX_PAST_WORLDLINES` | 5 | ライフ数上限（`lives[]` の最大長） |
+| `EXPLOSION_PARTICLE_COUNT` | 30 | デブリパーティクル数 |
+
+| パラメータ（コード内） | 値 | 説明 |
+|---|---|---|
 | `maxHistorySize` | 5000 | 世界線のサンプル数上限（`worldLine.ts`） |
 | 加速度 | 0.8 c/s | `8 / 10` |
 | 摩擦係数 | 0.5 | 速度に比例する減速 |
-| レーザークールダウン | 100 ms | 連射制限 |
 | カメラ距離 | 正射影: 100, 透視: 15 | |
 | カメラ回転速度 | yaw: 0.8 rad/s, pitch: 0.5 rad/s | |
 | カメラ仰角範囲 | ±89.9° | |
 | ビーム opacity | 0.4 | レーザー世界線の透明度 |
 | 光円錐高さ | 40 | 描画上の円錐サイズ |
-| デブリ速度 | 0.2c〜0.9c | パーティクル30個、ランダム方向 |
+| デブリ速度 | 0.2c〜0.9c | ランダム方向 |
 | ゲームループ | 8 ms interval | `setInterval`（タブ非アクティブ対応） |
 | dτ 上限 | 100 ms | タブ復帰時の巨大ジャンプ防止 |
 

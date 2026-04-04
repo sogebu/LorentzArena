@@ -22,6 +22,22 @@ export const sharedGeometries = {
   explosionParticle: new THREE.SphereGeometry(1, 6, 6), // スケールで size 調整
 };
 
+// デブリマーカー用 material キャッシュ（色ごとに1つ）
+const debrisMaterialCache = new Map<string, THREE.MeshBasicMaterial>();
+export const getDebrisMaterial = (color: THREE.Color): THREE.MeshBasicMaterial => {
+  const key = color.getHexString();
+  let mat = debrisMaterialCache.get(key);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.7,
+    });
+    debrisMaterialCache.set(key, mat);
+  }
+  return mat;
+};
+
 // デバッグ用: キャッシュサイズの監視（ブラウザコンソールで window.debugCaches を参照）
 if (typeof window !== "undefined") {
   (window as unknown as Record<string, unknown>).debugCaches = {

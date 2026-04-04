@@ -10,16 +10,7 @@
  *   - メッセージは JSON。大きくしすぎないのが吉です。
  */
 export type Message =
-  | {
-      /**
-       * (Legacy) Simple 2D position update.
-       * JP: （互換用）単純な2D座標更新。
-       */
-      type: "position";
-      x: number;
-      y: number;
-    }
-  | {
+  {
       /**
        * Relativistic state update: 4-position and 3-velocity.
        * JP: 相対論的状態（4元位置 + 3元速度）の更新。

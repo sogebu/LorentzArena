@@ -15,7 +15,7 @@ import {
   transformEventForDisplay,
 } from "./displayTransform";
 import { pastLightConeIntersectionLaser } from "./laserPhysics";
-import { getThreeColor, sharedGeometries } from "./threeCache";
+import { getDebrisMaterial, getThreeColor, sharedGeometries } from "./threeCache";
 import type {
   DisplayLaser,
   Laser,
@@ -397,9 +397,9 @@ export const SceneContent = ({
         </group>
       ))}
 
-      {/* 各プレイヤーのマーカー（死亡中 → 非表示） */}
+      {/* 各プレイヤーのマーカー（死亡中の自分のみ非表示） */}
       {playerList.map((player) => {
-        if (player.isDead) return null;
+        if (player.id === myId && player.isDead) return null;
 
         const pos = transformEventForDisplay(
           player.phaseSpace.pos,
@@ -451,15 +451,6 @@ export const SceneContent = ({
           );
           const color = getThreeColor(player.color);
           const coneHeight = 40;
-          const coneMat = (
-            <meshBasicMaterial
-              color={color}
-              transparent
-              opacity={0.5}
-              side={THREE.DoubleSide}
-              wireframe
-            />
-          );
 
           return (
             <group key={`lightcone-${player.id}`}>
@@ -469,7 +460,26 @@ export const SceneContent = ({
                 rotation={[-Math.PI / 2, 0.0, 0.0]}
                 geometry={sharedGeometries.lightCone}
               >
-                {coneMat}
+                <meshBasicMaterial
+                  color={color}
+                  transparent
+                  opacity={0.2}
+                  side={THREE.FrontSide}
+                  depthWrite={false}
+                />
+              </mesh>
+              <mesh
+                position={[pos.x, pos.y, pos.t + coneHeight / 2]}
+                rotation={[-Math.PI / 2, 0.0, 0.0]}
+                geometry={sharedGeometries.lightCone}
+              >
+                <meshBasicMaterial
+                  color={color}
+                  transparent
+                  opacity={0.3}
+                  side={THREE.FrontSide}
+                  wireframe
+                />
               </mesh>
               {/* 過去光円錐 */}
               <mesh
@@ -477,7 +487,26 @@ export const SceneContent = ({
                 rotation={[Math.PI / 2, 0.0, 0.0]}
                 geometry={sharedGeometries.lightCone}
               >
-                {coneMat}
+                <meshBasicMaterial
+                  color={color}
+                  transparent
+                  opacity={0.2}
+                  side={THREE.FrontSide}
+                  depthWrite={false}
+                />
+              </mesh>
+              <mesh
+                position={[pos.x, pos.y, pos.t - coneHeight / 2]}
+                rotation={[Math.PI / 2, 0.0, 0.0]}
+                geometry={sharedGeometries.lightCone}
+              >
+                <meshBasicMaterial
+                  color={color}
+                  transparent
+                  opacity={0.3}
+                  side={THREE.FrontSide}
+                  wireframe
+                />
               </mesh>
             </group>
           );
@@ -559,7 +588,7 @@ export const SceneContent = ({
                 0,
                 myPlayer.phaseSpace.pos.t - debris.deathPos.t,
               );
-              if (maxLambda < 0.5) continue;
+              if (maxLambda <= 0) continue;
               const debrisColor = getThreeColor(debris.color);
               const r = debrisColor.r;
               const g = debrisColor.g;
@@ -613,13 +642,8 @@ export const SceneContent = ({
                       position={[displayPos.x, displayPos.y, displayPos.t]}
                       scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
                       geometry={sharedGeometries.explosionParticle}
-                    >
-                      <meshBasicMaterial
-                        color={debrisColor}
-                        transparent
-                        opacity={0.7}
-                      />
-                    </mesh>,
+                      material={getDebrisMaterial(debrisColor)}
+                    />,
                   );
                 }
               }

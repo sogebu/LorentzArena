@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { lengthVector3, gamma } from "../../physics";
 import { RESPAWN_DELAY } from "./constants";
 import type { RelativisticPlayer } from "./types";
@@ -58,6 +58,10 @@ export const HUD = ({
   useOrthographic, setUseOrthographic,
   deathFlash, killNotification,
 }: HUDProps) => {
+  const sortedScores = useMemo(
+    () => Object.entries(scores).sort(([, a], [, b]) => b - a),
+    [scores],
+  );
   return (
     <>
       <div
@@ -128,9 +132,7 @@ export const HUD = ({
             transformOrigin: "top left",
           }}>
             <div style={{ fontWeight: "bold", marginBottom: "2px" }}>Kill</div>
-            {Object.entries(scores)
-              .sort(([, a], [, b]) => b - a)
-              .map(([id, kills]) => (
+            {sortedScores.map(([id, kills]) => (
                 <div key={id} style={{ color: players.get(id)?.color ?? "white" }}>
                   {id === myId ? "You" : id.slice(0, 6)}: {kills}
                 </div>
@@ -174,7 +176,7 @@ export const HUD = ({
       {(() => {
         const myPlayer = myId ? players.get(myId) : undefined;
         if (!myPlayer?.isDead) return null;
-        return <RespawnCountdown />;
+        return <RespawnCountdown key={`respawn-${myPlayer.lives.length}`} />;
       })()}
 
       {/* 死亡フラッシュ */}

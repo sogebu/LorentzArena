@@ -18,5 +18,11 @@ export const MAX_LASERS = 1000;
 // 当たり判定の半径
 export const HIT_RADIUS = 0.5;
 
+// スポーン範囲（x, y）: テスト=10, 本番=30
+export const SPAWN_RANGE = 10;
+
+// レーザー連射間隔（ミリ秒）
+export const LASER_COOLDOWN = 100;
+
 // 爆発パーティクル数
 export const EXPLOSION_PARTICLE_COUNT = 30;

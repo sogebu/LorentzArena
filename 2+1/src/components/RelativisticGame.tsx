@@ -16,10 +16,12 @@ import {
 import { getLaserColor, pickDistinctColor } from "./game/colors";
 import {
   HIT_RADIUS,
+  LASER_COOLDOWN,
   LASER_RANGE,
   MAX_LASERS,
   OFFSET,
   RESPAWN_DELAY,
+  SPAWN_RANGE,
   SPAWN_EFFECT_DURATION,
 } from "./game/constants";
 import { HUD } from "./game/HUD";
@@ -69,6 +71,7 @@ const RelativisticGame = () => {
   const timeSyncedRef = useRef<boolean>(false); // syncTime 受信済みフラグ（クライアント用）
   const processedLasersRef = useRef<Set<string>>(new Set()); // 判定済みレーザーID
   const deadPlayersRef = useRef<Set<string>>(new Set()); // リスポーン待ちのプレイヤー（ホスト用、同一フレーム二重キル防止）
+  const respawnTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set()); // リスポーンタイマー追跡
   const pendingColorsRef = useRef<Map<string, string>>(new Map()); // playerColor が先に届いた場合の一時保存
   const [_screenSize, setScreenSize] = useState({
     width: window.innerWidth,
@@ -93,8 +96,8 @@ const RelativisticGame = () => {
       const initialPhaseSpace = createPhaseSpace(
         createVector4(
           Date.now() / 1000 - OFFSET,
-          Math.random() * 10,
-          Math.random() * 10,
+          Math.random() * SPAWN_RANGE,
+          Math.random() * SPAWN_RANGE,
           0.0,
         ),
         vector3Zero(),
@@ -337,7 +340,7 @@ const RelativisticGame = () => {
       const isDead = playersRef.current.get(myId)?.isDead ?? false;
 
       // レーザー発射（スペースキー）
-      const laserCooldown = 100; // ミリ秒
+      const laserCooldown = LASER_COOLDOWN;
       if (
         !isDead &&
         keysPressed.current.has(" ") &&
@@ -606,13 +609,14 @@ const RelativisticGame = () => {
             setPlayers((prev) => applyKill(prev, victimId, hitPos));
 
             // 遅延リスポーン
-            setTimeout(() => {
+            const timerId = setTimeout(() => {
+              respawnTimeoutsRef.current.delete(timerId);
               const hostPlayer = playersRef.current.get(myId);
               const hostT = hostPlayer?.phaseSpace.pos.t ?? 0;
               const respawnPos = {
                 t: hostT,
-                x: Math.random() * 10,
-                y: Math.random() * 10,
+                x: Math.random() * SPAWN_RANGE,
+                y: Math.random() * SPAWN_RANGE,
                 z: 0,
               };
 
@@ -638,6 +642,7 @@ const RelativisticGame = () => {
                 },
               ]);
             }, RESPAWN_DELAY);
+            respawnTimeoutsRef.current.add(timerId);
           }
 
           peerManager.send({ type: "score" as const, scores: newScores });
@@ -652,6 +657,10 @@ const RelativisticGame = () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
+      for (const id of respawnTimeoutsRef.current) {
+        clearTimeout(id);
+      }
+      respawnTimeoutsRef.current.clear();
     };
   }, [peerManager, myId]);
 

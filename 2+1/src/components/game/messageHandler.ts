@@ -32,9 +32,31 @@ export type MessageHandlerDeps = {
   pendingColorsRef: React.RefObject<Map<string, string>>;
 };
 
-// biome-ignore lint/suspicious/noExplicitAny: Message type is generic from PeerManager
+const isFiniteNumber = (v: unknown): v is number =>
+  typeof v === "number" && Number.isFinite(v);
+
+const isValidVector4 = (v: unknown): v is { t: number; x: number; y: number; z: number } =>
+  v != null &&
+  typeof v === "object" &&
+  isFiniteNumber((v as Record<string, unknown>).t) &&
+  isFiniteNumber((v as Record<string, unknown>).x) &&
+  isFiniteNumber((v as Record<string, unknown>).y) &&
+  isFiniteNumber((v as Record<string, unknown>).z);
+
+const isValidVector3 = (v: unknown): v is { x: number; y: number; z: number } =>
+  v != null &&
+  typeof v === "object" &&
+  isFiniteNumber((v as Record<string, unknown>).x) &&
+  isFiniteNumber((v as Record<string, unknown>).y) &&
+  isFiniteNumber((v as Record<string, unknown>).z);
+
+const isValidColor = (v: unknown): v is string =>
+  typeof v === "string" && v.length < 100 && /^(hsl|rgb|#)/i.test(v);
+
 export const createMessageHandler =
+  // biome-ignore lint/suspicious/noExplicitAny: Network messages require runtime validation
   (deps: MessageHandlerDeps) => (_: string, msg: any) => {
+    if (!msg || typeof msg !== "object" || typeof msg.type !== "string") return;
     const {
       myId,
       peerManager,
@@ -51,6 +73,7 @@ export const createMessageHandler =
     } = deps;
 
     if (msg.type === "phaseSpace") {
+      if (!isValidVector4(msg.position) || !isValidVector3(msg.velocity)) return;
       const playerId = msg.senderId;
       setPlayers((prev) => {
         const next = new Map(prev);
@@ -97,6 +120,7 @@ export const createMessageHandler =
         return next;
       });
     } else if (msg.type === "syncTime") {
+      if (!isFiniteNumber(msg.hostTime)) return;
       timeSyncedRef.current = true;
       setPlayers((prev) => {
         const me = prev.get(myId);
@@ -117,6 +141,13 @@ export const createMessageHandler =
         return next;
       });
     } else if (msg.type === "laser") {
+      if (
+        !isValidVector4(msg.emissionPos) ||
+        !isValidVector3(msg.direction) ||
+        !isFiniteNumber(msg.range) ||
+        msg.range > 1000
+      )
+        return;
       const receivedLaser: Laser = {
         id: msg.id,
         playerId: msg.playerId,
@@ -134,6 +165,8 @@ export const createMessageHandler =
         return updated;
       });
     } else if (msg.type === "respawn") {
+      if (peerManager.getIsHost()) return;
+      if (!isValidVector4(msg.position)) return;
       setPlayers((prev) => applyRespawn(prev, msg.playerId, msg.position));
       // スポーンエフェクト
       const spawningPlayer = playersRef.current.get(msg.playerId);
@@ -147,9 +180,12 @@ export const createMessageHandler =
         },
       ]);
     } else if (msg.type === "score") {
+      if (peerManager.getIsHost()) return;
       scoresRef.current = msg.scores;
       setScores(msg.scores);
     } else if (msg.type === "kill") {
+      if (peerManager.getIsHost()) return;
+      if (!isValidVector4(msg.hitPos)) return;
       // UI 副作用
       if (msg.victimId === myId) {
         setDeathFlash(true);
@@ -166,6 +202,7 @@ export const createMessageHandler =
       // 状態更新: 世界線凍結 + デブリ + isDead
       setPlayers((prev) => applyKill(prev, msg.victimId, msg.hitPos));
     } else if (msg.type === "playerColor") {
+      if (!isValidColor(msg.color)) return;
       pendingColorsRef.current.set(msg.playerId, msg.color);
       setPlayers((prev) => {
         const player = prev.get(msg.playerId);
