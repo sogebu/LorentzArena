@@ -539,98 +539,116 @@ export const SceneContent = ({
         <LaserRenderer key={laser.id} laser={laser} />
       ))}
 
-      {/* 永続デブリの世界線 + 過去光円錐交差マーカー */}
+      {/* 永続デブリの世界線（全パーティクルを1つの lineSegments にバッチ化、頂点カラー） */}
       {myPlayer &&
-        playerList.flatMap((player) =>
-          player.debrisRecords.flatMap((debris, di) => {
-            const deathEvent = createVector4(
-              debris.deathPos.t,
-              debris.deathPos.x,
-              debris.deathPos.y,
-              0,
-            );
-            const maxLambda = Math.max(
-              0,
-              myPlayer.phaseSpace.pos.t - debris.deathPos.t,
-            );
-            if (maxLambda < 0.5) return [];
-            const debrisColor = getThreeColor(debris.color);
+        (() => {
+          const lineVertices: number[] = [];
+          const lineColors: number[] = [];
+          const markerElements: React.ReactNode[] = [];
 
-            return debris.particles.flatMap((p, pi) => {
-              const elements: React.ReactNode[] = [];
+          for (const player of playerList) {
+            for (let di = 0; di < player.debrisRecords.length; di++) {
+              const debris = player.debrisRecords[di];
+              const deathEvent = createVector4(
+                debris.deathPos.t,
+                debris.deathPos.x,
+                debris.deathPos.y,
+                0,
+              );
+              const maxLambda = Math.max(
+                0,
+                myPlayer.phaseSpace.pos.t - debris.deathPos.t,
+              );
+              if (maxLambda < 0.5) continue;
+              const debrisColor = getThreeColor(debris.color);
+              const r = debrisColor.r;
+              const g = debrisColor.g;
+              const b = debrisColor.b;
 
-              // デブリの世界線チューブ（始点 → 観測者の時刻まで）
               const startDisplay = transformEventForDisplay(
                 deathEvent,
                 observerPos,
                 observerBoost,
               );
-              const endWorld = createVector4(
-                debris.deathPos.t + maxLambda,
-                debris.deathPos.x + p.dx * maxLambda,
-                debris.deathPos.y + p.dy * maxLambda,
-                0,
-              );
-              const endDisplay = transformEventForDisplay(
-                endWorld,
-                observerPos,
-                observerBoost,
-              );
-              const lineGeom = new THREE.BufferGeometry();
-              lineGeom.setAttribute(
-                "position",
-                new THREE.Float32BufferAttribute(
-                  [
-                    startDisplay.x, startDisplay.y, startDisplay.t,
-                    endDisplay.x, endDisplay.y, endDisplay.t,
-                  ],
-                  3,
-                ),
-              );
-              elements.push(
-                <line key={`debris-line-${player.id}-${di}-${pi}`} geometry={lineGeom}>
-                  <lineBasicMaterial
-                    color={debrisColor}
-                    transparent
-                    opacity={0.15}
-                  />
-                </line>,
-              );
 
-              // 過去光円錐との交差マーカー
-              const intersection = pastLightConeIntersectionDebris(
-                deathEvent,
-                p.dx,
-                p.dy,
-                maxLambda,
-                myPlayer.phaseSpace.pos,
-              );
-              if (intersection) {
-                const displayPos = transformEventForDisplay(
-                  intersection,
+              for (let pi = 0; pi < debris.particles.length; pi++) {
+                const p = debris.particles[pi];
+
+                // デブリ世界線の頂点ペア
+                const endWorld = createVector4(
+                  debris.deathPos.t + maxLambda,
+                  debris.deathPos.x + p.dx * maxLambda,
+                  debris.deathPos.y + p.dy * maxLambda,
+                  0,
+                );
+                const endDisplay = transformEventForDisplay(
+                  endWorld,
                   observerPos,
                   observerBoost,
                 );
-                elements.push(
-                  <mesh
-                    key={`debris-${player.id}-${di}-${pi}`}
-                    position={[displayPos.x, displayPos.y, displayPos.t]}
-                    scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
-                    geometry={sharedGeometries.explosionParticle}
-                  >
-                    <meshBasicMaterial
-                      color={debrisColor}
-                      transparent
-                      opacity={0.7}
-                    />
-                  </mesh>,
+                lineVertices.push(
+                  startDisplay.x, startDisplay.y, startDisplay.t,
+                  endDisplay.x, endDisplay.y, endDisplay.t,
                 );
-              }
+                // 始点・終点に同じ色
+                lineColors.push(r, g, b, r, g, b);
 
-              return elements;
-            });
-          }),
-        )}
+                // 過去光円錐との交差マーカー
+                const intersection = pastLightConeIntersectionDebris(
+                  deathEvent,
+                  p.dx,
+                  p.dy,
+                  maxLambda,
+                  myPlayer.phaseSpace.pos,
+                );
+                if (intersection) {
+                  const displayPos = transformEventForDisplay(
+                    intersection,
+                    observerPos,
+                    observerBoost,
+                  );
+                  markerElements.push(
+                    <mesh
+                      key={`debris-${player.id}-${di}-${pi}`}
+                      position={[displayPos.x, displayPos.y, displayPos.t]}
+                      scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
+                      geometry={sharedGeometries.explosionParticle}
+                    >
+                      <meshBasicMaterial
+                        color={debrisColor}
+                        transparent
+                        opacity={0.7}
+                      />
+                    </mesh>,
+                  );
+                }
+              }
+            }
+          }
+
+          if (lineVertices.length === 0) return markerElements;
+
+          const geom = new THREE.BufferGeometry();
+          geom.setAttribute(
+            "position",
+            new THREE.Float32BufferAttribute(lineVertices, 3),
+          );
+          geom.setAttribute(
+            "color",
+            new THREE.Float32BufferAttribute(lineColors, 3),
+          );
+
+          return [
+            <lineSegments key="debris-lines" geometry={geom}>
+              <lineBasicMaterial
+                vertexColors
+                transparent
+                opacity={0.4}
+              />
+            </lineSegments>,
+            ...markerElements,
+          ];
+        })()}
 
       {/* スポーンエフェクトを描画 */}
       {spawns.map((spawn) => (

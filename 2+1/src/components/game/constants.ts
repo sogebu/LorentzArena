@@ -7,7 +7,7 @@ export const SPAWN_EFFECT_DURATION = 1500;
 export const LASER_RANGE = 20;
 
 // リスポーン遅延（ミリ秒）
-export const RESPAWN_DELAY = 1000;
+export const RESPAWN_DELAY = 10000;
 
 // 過去の世界線の保持上限
 export const MAX_PAST_WORLDLINES = 5;

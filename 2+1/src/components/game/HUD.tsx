@@ -1,4 +1,6 @@
+import { useState, useEffect } from "react";
 import { lengthVector3, gamma } from "../../physics";
+import { RESPAWN_DELAY } from "./constants";
 import type { RelativisticPlayer } from "./types";
 
 declare const __BUILD_TIME__: string;
@@ -14,6 +16,40 @@ type HUDProps = {
   setUseOrthographic: (v: boolean) => void;
   deathFlash: boolean;
   killNotification: { victimName: string; color: string } | null;
+};
+
+const RespawnCountdown = () => {
+  const [remaining, setRemaining] = useState(RESPAWN_DELAY / 1000);
+  useEffect(() => {
+    const start = Date.now();
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - start;
+      const left = Math.max(0, (RESPAWN_DELAY - elapsed) / 1000);
+      setRemaining(Math.ceil(left));
+    }, 100);
+    return () => clearInterval(timer);
+  }, []);
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        zIndex: 250,
+        pointerEvents: "none",
+        textAlign: "center",
+        fontFamily: "monospace",
+      }}
+    >
+      <div style={{ fontSize: "36px", fontWeight: "bold", color: "#ff4444" }}>
+        DEAD
+      </div>
+      <div style={{ fontSize: "24px", color: "white", marginTop: "8px" }}>
+        {remaining}
+      </div>
+    </div>
+  );
 };
 
 export const HUD = ({
@@ -132,6 +168,13 @@ export const HUD = ({
             </div>
           </div>
         );
+      })()}
+
+      {/* 死亡カウントダウン */}
+      {(() => {
+        const myPlayer = myId ? players.get(myId) : undefined;
+        if (!myPlayer?.isDead) return null;
+        return <RespawnCountdown />;
       })()}
 
       {/* 死亡フラッシュ */}

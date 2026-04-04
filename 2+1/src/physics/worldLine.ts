@@ -26,17 +26,21 @@ import { type PhaseSpace, createPhaseSpace } from "./mechanics";
 export type WorldLine = {
   readonly history: PhaseSpace[];
   readonly maxHistorySize: number;
-  readonly origin: PhaseSpace | null; // スポーン/リスポーン時の初期点（半直線の起点）
+  readonly origin: PhaseSpace | null; // 無限の過去に延びる半直線の起点（最初のライフのみ。null なら半直線なし）
 };
 
 /**
  * Create a WorldLine.
- * JP: ワールドラインを作成。
+ * origin を渡すと過去方向に半直線を延長する（最初のライフ用）。
+ * リスポーン後のライフは origin なしで作成する。
  */
-export const createWorldLine = (maxHistorySize = 5000): WorldLine => ({
+export const createWorldLine = (
+  maxHistorySize = 5000,
+  origin: PhaseSpace | null = null,
+): WorldLine => ({
   history: [],
   maxHistorySize,
-  origin: null,
+  origin,
 });
 
 /**
@@ -52,7 +56,6 @@ export const appendWorldLine = (
   otherPlayerPositions?: Vector4[],
 ): WorldLine => {
   const newHistory = [...wl.history, phaseSpace];
-  const origin = wl.origin ?? phaseSpace; // 最初の追加で origin を設定
 
   if (newHistory.length > wl.maxHistorySize) {
     const oldest = newHistory[0];
@@ -83,7 +86,6 @@ export const appendWorldLine = (
   return {
     ...wl,
     history: newHistory,
-    origin,
   };
 };
 

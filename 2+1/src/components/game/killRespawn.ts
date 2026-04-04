@@ -45,7 +45,7 @@ export const applyRespawn = (
     createVector4(position.t, position.x, position.y, position.z),
     vector3Zero(),
   );
-  let newLife = createWorldLine();
+  let newLife = createWorldLine(); // リスポーン: origin なし（過去に半直線を伸ばさない）
   newLife = appendWorldLine(newLife, ps);
   const lives = [...player.lives, newLife].slice(-MAX_PAST_WORLDLINES);
   const next = new Map(prev);

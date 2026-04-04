@@ -63,7 +63,8 @@ export const createMessageHandler =
 
         const existingLives = existing?.lives || [];
         const lastLife =
-          existingLives[existingLives.length - 1] || createWorldLine();
+          existingLives[existingLives.length - 1] ||
+          createWorldLine(5000, phaseSpace); // 新規プレイヤーの最初のライフ: origin 付き
         const updatedLife = appendWorldLine(lastLife, phaseSpace);
         const lives =
           existingLives.length > 0
@@ -109,7 +110,7 @@ export const createMessageHandler =
           ),
           me.phaseSpace.u,
         );
-        let newLife = createWorldLine();
+        let newLife = createWorldLine(5000, synced); // 時刻同期: 最初のライフ、origin 付き
         newLife = appendWorldLine(newLife, synced);
         const next = new Map(prev);
         next.set(myId, { ...me, phaseSpace: synced, lives: [newLife] });

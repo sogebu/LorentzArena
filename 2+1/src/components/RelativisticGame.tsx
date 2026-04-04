@@ -99,7 +99,7 @@ const RelativisticGame = () => {
         ),
         vector3Zero(),
       );
-      let worldLine = createWorldLine();
+      let worldLine = createWorldLine(5000, initialPhaseSpace); // 最初のライフ: origin 付き（過去に半直線延長）
       worldLine = appendWorldLine(worldLine, initialPhaseSpace);
 
       const next = new Map(prev);
