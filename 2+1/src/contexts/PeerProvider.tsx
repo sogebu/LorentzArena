@@ -162,12 +162,15 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     if (activeTransport !== "peerjs") return;
     if (connectionPhase !== "trying-host") return;
 
+    let owned = true; // このエフェクトが pm の所有権を持っているか
+
     const pm = new PeerManager<Message>(roomPeerId, buildPeerOptionsFromEnv());
 
     pm.onPeerStatusChange((status) => {
       setPeerStatus(status);
       if (status.status === "open") {
         // ルーム ID の登録に成功 → ホストになる
+        owned = false; // 所有権を setPeerManager に移譲
         pm.setAsHost();
         setMyId(roomPeerId);
         registerHostRelay(pm);
@@ -175,6 +178,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         setConnectionPhase("connected");
       } else if (status.status === "error" && status.type === "unavailable-id") {
         // 既にホストがいる → クライアントモードへ
+        owned = false;
         pm.destroy();
         setConnectionPhase("connecting-client");
       }
@@ -183,9 +187,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     pm.onConnectionChange((conns) => setConnections(conns));
 
     return () => {
-      if (connectionPhase === "trying-host") {
-        pm.destroy();
-      }
+      if (owned) pm.destroy();
     };
   }, [activeTransport, connectionPhase, roomPeerId]);
 
@@ -194,6 +196,8 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     if (activeTransport !== "peerjs") return;
     if (connectionPhase !== "connecting-client") return;
 
+    let owned = true;
+
     const localId = localIdRef.current;
     const pm = new PeerManager<Message>(localId, buildPeerOptionsFromEnv());
 
@@ -201,6 +205,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       setPeerStatus(status);
       if (status.status === "open") {
         // シグナリング接続OK → ルーム ID のホストに接続
+        owned = false;
         pm.setHostId(roomPeerId);
         pm.connect(roomPeerId);
         setMyId(localId);
@@ -213,9 +218,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     pm.onConnectionChange((conns) => setConnections(conns));
 
     return () => {
-      if (connectionPhase === "connecting-client") {
-        pm.destroy();
-      }
+      if (owned) pm.destroy();
     };
   }, [activeTransport, connectionPhase, roomPeerId]);
 
