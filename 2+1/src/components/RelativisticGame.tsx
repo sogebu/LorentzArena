@@ -1225,6 +1225,7 @@ const RelativisticGame = () => {
   const processedLasersRef = useRef<Set<string>>(new Set()); // 判定済みレーザーID
   const deadUntilRef = useRef<number>(0); // 死亡中は Date.now() < deadUntil
   const deadPlayersRef = useRef<Set<string>>(new Set()); // リスポーン待ちのプレイヤー（ホスト用）
+  const pendingColorsRef = useRef<Map<string, string>>(new Map()); // playerColor が先に届いた場合の一時保存
   const [_screenSize, setScreenSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -1350,11 +1351,14 @@ const RelativisticGame = () => {
           let worldLine = existing?.worldLine || createWorldLine();
           worldLine = appendWorldLine(worldLine, phaseSpace);
 
-          // 色の決定: ホストのみが pickDistinctColor で割り当て、全員にブロードキャスト
-          // クライアントはホストからの playerColor を待つ（デフォルト白）
+          // 色の決定: pending にあればそれを使う、なければホストが割り当て
           let color = existing?.color;
           if (!color) {
-            if (peerManager.getIsHost()) {
+            const pending = pendingColorsRef.current.get(playerId);
+            if (pending) {
+              color = pending;
+              pendingColorsRef.current.delete(playerId);
+            } else if (peerManager.getIsHost()) {
               color = pickDistinctColor(playerId, prev);
               peerManager.send({ type: "playerColor" as const, playerId, color });
             } else {
@@ -1489,10 +1493,12 @@ const RelativisticGame = () => {
           ]);
         }
       } else if (msg.type === "playerColor") {
-        // ホストからの色割り当て → 上書き
+        // ホストからの色割り当て → 上書き（プレイヤー未到着なら一時保存）
+        pendingColorsRef.current.set(msg.playerId, msg.color);
         setPlayers((prev) => {
           const player = prev.get(msg.playerId);
-          if (!player || player.color === msg.color) return prev;
+          if (!player) return prev; // まだ phaseSpace が届いていない → pendingColors に保存済み
+          if (player.color === msg.color) return prev;
           const next = new Map(prev);
           next.set(msg.playerId, { ...player, color: msg.color });
           return next;
