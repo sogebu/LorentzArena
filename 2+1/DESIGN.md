@@ -284,3 +284,36 @@ export const colorForPlayerId = (id: string): string => {
 - **What**: messageHandler で kill/respawn/score メッセージ受信時、`peerManager.getIsHost()` なら return（スキップ）
 - **Why**: ホストはゲームループで kill 検出 → applyKill → ブロードキャスト。PeerManager.send は自分に送信しないが、安全策としてスキップ。従来は UI 副作用（setDeathFlash, setKillNotification の setTimeout）が二重発火していた
 - **Tradeoff**: なし
+
+### 用語の再考（未決定・言い換え候補）
+
+- **Status**: 検討中、未適用。コード・UI・ドキュメントの全域に現在も戦闘系語彙（KILL / DEAD / 死亡 / 撃破 / kill / deathFlash 等）が残存。置換する場合は機能的整合を崩さないように一括リネームで別コミット予定
+- **Why 再考**: 本アプリの本質は「相対論の時空図可視化」で、物理デモ/教育用途に寄せるなら戦闘系語彙は重い。現在の社会的文脈でも、`KILL` を画面に出すマルチプレイヤー Web アプリは不必要に不穏
+- **却下した方向（ぬるい言い換え）**: 「浄化」「ラヴ」「LOVE」など過度に婉曲な語。Euphemism treadmill で却って不気味さが増す（ゲーム業界で知られた現象; Portal の GLaDOS 的な皮肉に読まれる）。ネガティブな意味が言い換え先に染みて結局同じ、あるいは作者の意図を疑われる逆効果。**やばい**
+- **有力候補（物理記述寄り）**: 「そもそも物理的に何が起きているか」を中立に記述する方向。インターセプト（迎撃）/ コンタクト（接触）/ リゾルブ（解決）/ デカップル（切り離し）/ オフライン / ポーズ など
+
+  | 現状 | 候補 A（インターセプト系） | 候補 B（物理記述系） |
+  |---|---|---|
+  | `KILL` テキスト | `INTERCEPT` | `CONTACT` |
+  | `DEAD` カウントダウン | `OFFLINE` | `PAUSED` |
+  | `deathFlash` | `interceptFlash` | `contactFlash` |
+  | `handleKill` | `handleIntercept` | `handleContact` |
+  | `isDead` | `isInactive` | `isPaused` |
+  | `deadPlayersRef` | `inactivePlayersRef` | `pausedPlayersRef` |
+  | `DeathEvent` | `InterceptEvent` | `ContactEvent` |
+  | `killNotification` | `interceptNotification` | `contactNotification` |
+  | `pendingKillEventsRef` | `pendingInterceptEventsRef` | `pendingContactEventsRef` |
+  | kill message type | `intercept` | `contact` |
+  | 凍結世界線 (`frozenWorldLines`) | — | 既に物理記述的で OK（時間発展が停止した世界線） |
+  | レーザー (`laser`) | — | 物理用語なのでそのまま OK |
+
+- **候補 C（無言化）**: テキスト通知自体を廃止し、世界線凍結・デブリ・スコアパルスだけで「何か起きた」を表現。物理デモとして最も純粋だが、マルチプレイの達成感フィードバックが弱まる懸念
+- **判断材料**:
+  - 対象ユーザー（物理学生向け教育デモ ⇄ カジュアルマルチプレイゲーム）のどちらに寄せるか
+  - GitHub Pages に置いてある以上、検索エンジン・リンク先として不特定多数が見うる前提でタイトル・画面表示を評価
+  - リネームコストは中程度（grep 一括置換で型安全に実行可能、biome/tsc でエラー検出）
+- **次アクション候補**:
+  1. 対象ユーザー像を言語化してから決める
+  2. 候補 A か B を仮採用して 1 コミットで一括置換、SESSION.md で A/B テスト的に評価
+  3. 候補 C（無言化）を追加で試し、情報密度の違いを比較
+- **ログ**: 2026-04-06 SESSION.md の「次にやること」に「用語の再考」を追加。このセクションで代替候補を整理（未決定のまま記録）
