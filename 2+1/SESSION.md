@@ -49,5 +49,5 @@ stateful `pickDistinctColor` を純関数 `colorForPlayerId(id)` に置き換え
 - 各プレイヤーに固有時刻を表示（時間の遅れの実感用）
 - 3+1 次元への拡張検討
 - **スマホ UI の最適解**: 2026-04-06 option space 分析実施、**詳細は [`EXPLORING.md`](./EXPLORING.md) の「スマホ UI の設計思考」参照**。暫定方向は「横画面は single stick + auto-fire + cruise control、縦画面は観賞モードのみ、オンボーディングで固有時刻を即提示」。実装着手前に α（保守）/ β（創造: joystick = 4-velocity）のどちらで入るか再評価すること。優先度は中（新規ユーザー獲得と物理デモとしての到達範囲に直結）
-- **用語の再考**: "KILL" / "キル" / "撃破" / "death flash" / "DEAD" など戦闘/死亡系の物騒な用語を、現在の社会的文脈で使うのが適切か検討。代替案候補: 「タグ」「ヒット」「フリーズ」「アウト」「リトリート」等、物理デモ/教育用途に寄せた中立的語彙への置換。コード識別子（`isDead`, `handleKill`, `deadPlayersRef` 等）も含めて一括で見直す可能性あり。優先度は低いが方針は決めておきたい
+- **用語の再考**: 戦闘/死亡系語彙 (KILL / DEAD / deathFlash / handleKill / isDead 等) を物理記述寄りに置換するか検討。候補 A (INTERCEPT) / B (CONTACT) / C (無言化) を整理済み。**詳細は [`EXPLORING.md`](./EXPLORING.md) の「用語の再考」セクション参照**。un-shelve トリガーは対象ユーザー像の言語化 or スマホ UI 実装タイミング等。優先度は低いが方針は決めておきたい
 - ~~**残存する設計臭の掃除**~~ → **2026-04-06 全件 defer 決定**。詳細は DESIGN.md「残存する設計臭」→「再評価後の判断（2026-04-06）」参照。4 件（#1 mirror / #2 connections diffing / #3 kill dual entry / #4 timeSyncedRef）はいずれも実害ゼロ・preemptive fix トリガーなし・コスト非ゼロで、物理デモアプリのユーザー価値に寄与しない。各エントリに un-defer トリガーを明記済み。現時点では他の高価値タスク（固有時刻表示・スマホ UI・用語再考）を優先
