@@ -14,7 +14,7 @@ import {
   type Vector4,
   vector3Zero,
 } from "../physics";
-import { getLaserColor, pickDistinctColor } from "./game/colors";
+import { colorForPlayerId, getLaserColor } from "./game/colors";
 import {
   HIT_RADIUS,
   LASER_COOLDOWN,
@@ -81,7 +81,6 @@ const RelativisticGame = () => {
   const respawnTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(
     new Set(),
   );
-  const pendingColorsRef = useRef<Map<string, string>>(new Map());
   const pendingKillEventsRef = useRef<PendingKillEvent[]>([]);
   const [_screenSize, setScreenSize] = useState({
     width: window.innerWidth,
@@ -204,26 +203,17 @@ const RelativisticGame = () => {
       let worldLine = createWorldLine(5000, initialPhaseSpace);
       worldLine = appendWorldLine(worldLine, initialPhaseSpace);
 
-      // 色の決定: pending → ホストなら即確定 → 仮色
-      let color = pendingColorsRef.current.get(myId);
-      if (!color && peerManager?.getIsHost()) {
-        color = pickDistinctColor(myId, prev);
-      }
-      if (!color) {
-        color = "hsl(0, 0%, 70%)";
-      }
-
       const next = new Map(prev);
       next.set(myId, {
         id: myId,
         phaseSpace: initialPhaseSpace,
         worldLine,
-        color,
+        color: colorForPlayerId(myId),
         isDead: false,
       });
       return next;
     });
-  }, [myId, peerManager?.getIsHost]);
+  }, [myId]);
 
   // ref を最新の state に同期
   useEffect(() => {
@@ -250,13 +240,6 @@ const RelativisticGame = () => {
               type: "syncTime",
               hostTime: myPlayer.phaseSpace.pos.t,
             });
-            for (const [pid, player] of playersRef.current) {
-              peerManager.sendTo(conn.id, {
-                type: "playerColor",
-                playerId: pid,
-                color: player.color,
-              });
-            }
           }
         }
       }
@@ -297,7 +280,6 @@ const RelativisticGame = () => {
         setSpawns,
         scoresRef,
         timeSyncedRef,
-        pendingColorsRef,
         handleKill,
         handleRespawn,
       }),
@@ -365,26 +347,6 @@ const RelativisticGame = () => {
       const rawDTau = (currentTime - lastTimeRef.current) / 1000;
       const dTau = Math.min(rawDTau, 0.1);
       lastTimeRef.current = currentTime;
-
-      // ホスト: 自分の色が仮色なら確定させてブロードキャスト
-      if (peerManager.getIsHost()) {
-        const me = playersRef.current.get(myId);
-        if (me && me.color === "hsl(0, 0%, 70%)") {
-          const hostColor = pickDistinctColor(myId, playersRef.current);
-          setPlayers((prev) => {
-            const p = prev.get(myId);
-            if (!p || p.color !== "hsl(0, 0%, 70%)") return prev;
-            const next = new Map(prev);
-            next.set(myId, { ...p, color: hostColor });
-            return next;
-          });
-          peerManager.send({
-            type: "playerColor" as const,
-            playerId: myId,
-            color: hostColor,
-          });
-        }
-      }
 
       // 期限切れのスポーンエフェクトを削除
       setSpawns((prev) => {

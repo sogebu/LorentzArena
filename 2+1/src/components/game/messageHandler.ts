@@ -5,7 +5,7 @@ import {
   createVector4,
   createWorldLine,
 } from "../../physics";
-import { pickDistinctColor } from "./colors";
+import { colorForPlayerId } from "./colors";
 import { MAX_LASERS } from "./constants";
 import type { Laser, RelativisticPlayer, SpawnEffect } from "./types";
 
@@ -23,7 +23,6 @@ export type MessageHandlerDeps = {
   setSpawns: React.Dispatch<React.SetStateAction<SpawnEffect[]>>;
   scoresRef: React.RefObject<Record<string, number>>;
   timeSyncedRef: React.MutableRefObject<boolean>;
-  pendingColorsRef: React.RefObject<Map<string, string>>;
   handleKill: (
     victimId: string,
     killerId: string,
@@ -73,7 +72,6 @@ export const createMessageHandler =
       setScores,
       scoresRef,
       timeSyncedRef,
-      pendingColorsRef,
       handleKill,
       handleRespawn,
     } = deps;
@@ -87,8 +85,6 @@ export const createMessageHandler =
         return;
       const playerId = msg.senderId;
       setPlayers((prev) => {
-        const next = new Map(prev);
-
         const phaseSpace = createPhaseSpace(msg.position, msg.velocity);
 
         const existing = prev.get(playerId);
@@ -104,21 +100,10 @@ export const createMessageHandler =
               return wl;
             })();
 
-        // 色の決定
-        let color = existing?.color;
-        if (!color) {
-          const pending = pendingColorsRef.current.get(playerId);
-          if (pending) {
-            color = pending;
-            pendingColorsRef.current.delete(playerId);
-          } else if (peerManager.getIsHost()) {
-            color = pickDistinctColor(playerId, prev);
-            peerManager.send({ type: "playerColor" as const, playerId, color });
-          } else {
-            color = "hsl(0, 0%, 70%)";
-          }
-        }
+        // 色は ID から決定的に算出（純関数、副作用なし）
+        const color = existing?.color ?? colorForPlayerId(playerId);
 
+        const next = new Map(prev);
         next.set(playerId, {
           id: playerId,
           phaseSpace,
@@ -206,16 +191,5 @@ export const createMessageHandler =
         return;
       // データ更新 + UI pending: handleKill で一括処理
       handleKill(msg.victimId, msg.killerId, msg.hitPos);
-    } else if (msg.type === "playerColor") {
-      if (!isValidString(msg.playerId) || !isValidColor(msg.color)) return;
-      pendingColorsRef.current.set(msg.playerId, msg.color);
-      setPlayers((prev) => {
-        const player = prev.get(msg.playerId);
-        if (!player) return prev;
-        if (player.color === msg.color) return prev;
-        const next = new Map(prev);
-        next.set(msg.playerId, { ...player, color: msg.color });
-        return next;
-      });
     }
   };

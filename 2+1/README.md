@@ -32,7 +32,7 @@ Open the URL in multiple browser tabs to play. No ID sharing needed -- everyone 
 - **Orthographic / perspective camera**: orthographic preserves 45-degree light cone angles at all distances
 - **Persistent debris**: death events produce debris particles with timelike worldlines, rendered with past light cone intersection markers
 - **World line history**: severed on death, past lives preserved (up to 20)
-- **Host-assigned colors**: the host picks maximally distinct colors for all players
+- **Deterministic per-player colors**: hue derived from player ID hash via golden-angle rotation, so every peer independently arrives at the same color without network sync
 - **Auto-connect**: PeerJS signaling server's duplicate-ID detection used as room discovery
 
 ### Networking
@@ -115,7 +115,7 @@ pnpm dev
 - **正射影/透視投影カメラ**: 正射影なら全距離で光円錐が正確に45度
 - **永続デブリ**: 死亡時のデブリが世界線として残り、過去光円錐交差マーカーで可視化
 - **世界線の切断**: 死亡で世界線が切れ、過去の命は別表示（最大20本保持）
-- **ホストによる色割り当て**: 全プレイヤーの色相が最大限離れるように自動選択
+- **決定的プレイヤー色**: プレイヤー ID ハッシュ + 黄金角で色相を算出。全ピアが独立に同じ色に到達するのでネットワーク同期不要
 - **自動接続**: PeerJS シグナリングサーバーの ID 重複検出を部屋発見に利用
 
 ### 通信

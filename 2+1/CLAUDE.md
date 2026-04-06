@@ -60,7 +60,7 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 | `RelativisticGame.tsx` | state/ref 管理、ゲームループ、Canvas 配置 |
 | `game/types.ts` | ゲーム固有型定義（`RelativisticPlayer`, `Laser` 等） |
 | `game/constants.ts` | ゲーム定数（射程、リスポーン遅延、スポーン範囲等） |
-| `game/colors.ts` | プレイヤー色生成（色相距離最大化） |
+| `game/colors.ts` | プレイヤー色生成（`colorForPlayerId(id)` 純関数、ID ハッシュ + 黄金角） |
 | `game/threeCache.ts` | THREE.js ジオメトリ/マテリアル singleton + デブリマテリアルキャッシュ |
 | `game/displayTransform.ts` | ローレンツ変換 → 表示座標変換 |
 | `game/laserPhysics.ts` | レーザー当たり判定 + 光円錐交差 |
@@ -84,7 +84,7 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 - 永続デブリ: 死亡イベントからの等速直線運動パーティクル。lineSegments でバッチ描画。マーカーは過去光円錐交差で表示（maxLambda は固定値、observer 非依存）
 - 世界線管理: `player.worldLine` 1本のみ。過去のライフは `frozenWorldLines[]` に格納
 - 世界線の過去延長: `WorldLine.origin` で制御。最初のライフのみ origin から半直線延長
-- ホストによる色割り当て（初期化時に `pickDistinctColor` + `playerColor` メッセージで配信）
+- プレイヤー色は `colorForPlayerId(id)` で決定的に算出（純関数、ネットワーク同期不要）。詳細は DESIGN.md「色割り当て: 決定的純関数」
 - 因果律の守護者: 他プレイヤーの未来光円錐内で操作凍結。死亡プレイヤーは除外（DESIGN.md 参照）
 - 光円錐描画: FrontSide 半透明サーフェス（opacity 0.2）+ FrontSide ワイヤーフレーム（opacity 0.3）で手前/奥の区別
 
@@ -98,9 +98,10 @@ VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
 | `kill` | host → all | キル通知（hitPos 付き） |
 | `respawn` | host → all | リスポーン位置指示 |
 | `score` | host → all | スコア更新 |
-| `playerColor` | host → all | 色割り当て |
 | `peerList` | host → client | 接続ピア一覧 |
 | `requestPeerList` | client → host | ピア一覧要求 |
+
+**色は同期しない**: `playerColor` メッセージは 2026-04-06 に廃止。全ピアが `colorForPlayerId(id)` で同じ色を決定論的に算出するため、ネットワーク同期不要。詳細: DESIGN.md「色割り当て: 決定的純関数」
 
 ホスト権威メッセージ（kill, respawn, score）: ホストはゲームループで処理済みのため messageHandler でスキップ（二重処理防止）。
 

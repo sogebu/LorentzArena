@@ -60,11 +60,82 @@
 - **体験**: プレイヤーにはラグとして感じられる。高速ブーストで座標時刻が先に進むほど凍結されやすくなる — 物理的に自然なペナルティ
 - **実装箇所**: `RelativisticGame.tsx` ゲームループ内、物理更新の直前
 
-### 色割り当て: ホスト集中管理
+### 色割り当て: 決定的純関数（`colorForPlayerId`、2026-04-06 大掃除済み）
 
-- **What**: ホストのみが `pickDistinctColor` で色を決め、`playerColor` メッセージで全クライアントに配信。クライアントは色を自分で選ばない
-- **Why**: 各クライアントが独立に色を選ぶとタイミングのずれで不一致が起きる。ホストが全プレイヤーの色を知っているので最適な色相選択が可能
-- **Tradeoff**: `playerColor` が `phaseSpace` より先に届くと捨てられる問題 → `pendingColorsRef` で解決
+#### What
+
+```ts
+// colors.ts
+const hashString32 = (s: string): number => {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+};
+
+export const colorForPlayerId = (id: string): string => {
+  const hash = hashString32(id);
+  const hue = Math.floor((((hash * 137.50776405) % 360) + 360) % 360);
+  const saturation = 80 + ((hash >>> 8) % 17);  // 80-96%
+  const lightness = 50 + ((hash >>> 16) % 14);  // 50-63%
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+};
+```
+
+プレイヤー ID から色を計算する純関数。副作用なし、外部状態依存なし、ネットワーク同期なし。全ピア（ホスト・クライアント）が同じ関数を同じ ID で呼べば同じ色を得る。
+
+#### Why
+
+色は本質的に「プレイヤー ID の関数」であって React state に格納する情報ではない。state として扱うと、初期化タイミング・メッセージ順序・StrictMode 二重実行・接続再構築・HMR 時の state 保持などあらゆる境界で race が発生する。一方、ID から決定的に算出するなら、ピア間の一致は数学的に保証される。
+
+**色の分離性（黄金角）**: ID の小さな差を色環上の大きな差に飛ばしたい。黄金角 137.5° は連続整数 n に対する `n * 137.5° mod 360°` の列が最も一様になる角度（Vogel の螺旋で使われる性質）で、ハッシュ出力のビット相関があっても色相が密集しにくい。2〜4 人程度なら統計的に十分分離する。
+
+**saturation / lightness のビット切り出し**: `hash >>> 8`, `hash >>> 16` は hue に使うビットと独立なので、hue が近い 2 人でも saturation・lightness が異なる可能性が上がり、視覚的分離が補強される。注意: 符号付き `>>` は hash の最上位ビットが立つと負数を返し、`負数 % n` も負で戻るため `80 + 負` で想定外の値になる。必ず符号なし `>>>` を使う（2026-04-06 の緊急修正はまさにここだった）。
+
+#### How（呼び出し戦略）
+
+- **init 時に一度だけ呼ぶ** — `RelativisticPlayer.color: string` フィールドにキャッシュ。描画ループで毎フレーム文字列生成しないため
+- **呼び出し箇所**: `RelativisticGame.tsx` init useEffect（自分のプレイヤー作成時）と `messageHandler.ts` phaseSpace ハンドラ（他プレイヤー作成時）の 2 箇所のみ
+- **派生物**: レーザー色は `getLaserColor(player.color)`（HSL を少し明るくする変換）、デブリ・凍結世界線は作成時の `player.color` を継承。派生物を持つ瞬間に一度だけ計算されるので、後から player.color が変わっても古い派生物は影響を受けない（そもそも ID は不変なので player.color も不変）
+
+#### 削除したもの（大掃除で消えたコードと概念）
+
+| 項目 | 役割 | なぜ不要になったか |
+|---|---|---|
+| `playerColor` メッセージ型 | ホスト → 全員への色配信 | 全員が純関数で同じ色を計算できるので配信不要 |
+| `pendingColorsRef` | playerColor が phaseSpace より先に届いた場合のバッファ | playerColor メッセージ自体が消滅 |
+| `connections` useEffect の color broadcast | 新クライアント接続時に既存プレイヤーの色を送る処理 | 同上 |
+| ゲームループの「自分の色が gray なら修正」ブロック | init タイミングで isHost が未確定だった場合のリカバリ | そもそも gray placeholder を使わないので不要 |
+| `messageHandler` の色割り当てロジック（pickDistinctColor + 副作用 broadcast） | 新プレイヤー検出時のホスト側色決定 | 同上 |
+| gray placeholder `hsl(0, 0%, 70%)` | 「まだ色が決まっていない」sentinel | 決定的なので「未決定状態」が存在しない |
+| `pickDistinctColor(id, existingPlayers)` | 他プレイヤーと色相距離を最大化 | 純関数化のため最大距離要件を捨てた |
+
+**正味削減**: 約 87 行、4 ファイル。
+
+#### トレードオフ
+
+「色相距離の最大化」を捨てた。黄金角 + ID ハッシュは統計的に十分分離するが、確率的には「たまたま似た色の 2 人」が起こり得る。実運用でプレイヤー数が 2〜4 人なら気にならない。もし将来問題になれば、`colorForPlayerId` の内部だけで色相テーブルの 12 色パレット化など純関数のまま改善できる（外部 API は変わらない）。
+
+#### 経緯（歴史資料）
+
+この箇所は過去に 5 回のパッチを繰り返した。以下は掃除前の履歴で、同じ根の別症状が継承的に増殖していく典型例として残す。
+
+1. **`a1ddfdf`** — `pickDistinctColor(id, existingPlayers)` で「既存色から最大距離を選ぶ」stateful 設計を導入（**原罪**）。この瞬間、色は「ID の関数」ではなく「ID と既存プレイヤー集合の関数」になり、「どの時点の既存プレイヤー集合か」という問題が生まれた
+2. **`ef8b61e`** — `playerColor` メッセージが `phaseSpace` より先に届くと捨てられる問題 → `pendingColorsRef` で緩衝
+3. **`2db183f`** — クライアントが独立に色を選ぶと race → ホスト集中管理に集約
+4. **`b6ee80e`** — マテリアルキャッシュ key に色が含まれておらず仮色 `hsl(0, 0%, 70%)` のままキャッシュが固着 → key に色を含める（後に R3F 宣言的マテリアルに置換）
+5. **`9d10e03`** — 新クライアント接続時に既存プレイヤーの色を送っていなかった → `connections` useEffect で一括送信
+6. **2026-04-06 緊急パッチ** — `pendingColorsRef.delete()` と `peerManager.send()` を `setPlayers` reducer 内で呼んでいたため、React 18 StrictMode の reducer 二重実行で「1 回目で pending 消費・delete → 2 回目で pending 空 → gray fallback にコミット」となり「ホストが灰色のまま」症状を発生。color 決定と副作用を reducer 外に出して応急処置
+7. **2026-04-06 大掃除（このエントリ）** — 原罪（`a1ddfdf` の「最大距離」要件）を捨てて stateful 設計そのものを削除。5 回のパッチは全て同じ根（stateful 色割り当て）の別症状だったので、根を抜いたら枝葉もまとめて消えた
+
+#### 教訓（メタ設計）
+
+- **「X を Y の純粋な関数として計算できないか？」を最初に問う。** 色 = f(ID) で書けるなら、一切の同期・ブロードキャスト・バッファ・race は発生しない。state 同期を設計する前に、純関数で済む可能性を必ず検討する
+- **要件を 1 つ緩和すれば設計全体が単純化することがある。** 「色相距離最大化」を絶対視したために、同期経路を全て通す必要が生じた。要件を「統計的に十分分離すればよい」に緩和したら、全経路が消えた。要件の強度は設計複雑度に非線形に効く
+- **同じ箇所のパッチが 3 回を超えたら、根の設計を疑う。** 5 回のパッチは全て枝葉で、根は最初のコミットにあった。パッチが増えるほど既存コードに適合させる制約が強まり、根本治療の機会が遠のく
+- **State は常にコスト。** React state・ref・ネットワークメッセージ・キャッシュのどれも、「読み書きのタイミング」という隠れた次元を持つ。計算で代替できるなら、state を増やすより計算する方がほぼ常に安い
 
 ### 世界線管理: lives[] 統合 → 廃止（世界オブジェクト分離に移行）
 
@@ -121,7 +192,8 @@
 ### メッセージバリデーション
 
 - **What**: `messageHandler.ts` で全メッセージタイプに `isFiniteNumber`/`isValidVector4`/`isValidVector3`/`isValidColor`/`isValidString` のランタイム検証を追加。全文字列フィールド（senderId, id, playerId, victimId, killerId）を型検証。laser range は `0 < range <= 100`（LASER_RANGE=20 の 5 倍をマージン）。score は全エントリの key/value を検証。ホストリレー（PeerProvider）でも `isRelayable()` で構造を検証してからブロードキャスト
-- **Why**: `msg: any` で受け取ったネットワークメッセージの NaN/Infinity 注入防止、playerColor の CSS インジェクション防止、文字列フィールドの型安全性確保、不正メッセージのリレー防止
+- **Why**: `msg: any` で受け取ったネットワークメッセージの NaN/Infinity 注入防止、laser の color フィールドなど CSS 文字列で CSS インジェクション防止、文字列フィールドの型安全性確保、不正メッセージのリレー防止
+- **注**: `playerColor` メッセージ型は 2026-04-06 に廃止。色は全ピアで `colorForPlayerId(id)` が決定的に算出するのでネットワーク経由で来ない（CSS インジェクション経路の一つが消えた）
 - **Tradeoff**: 微小なオーバーヘッド。zod 等のスキーマライブラリは導入せず手書きで軽量に
 
 ### 因果律の守護者: 死亡プレイヤー除外

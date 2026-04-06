@@ -1,6 +1,4 @@
-import type { RelativisticPlayer } from "./types";
-
-// 32bit FNV-1a hash（IDカラー生成用）
+// 32bit FNV-1a hash（ID カラー生成用）
 const hashString32 = (input: string): number => {
   let hash = 0x811c9dc5;
   for (let i = 0; i < input.length; i++) {
@@ -10,54 +8,23 @@ const hashString32 = (input: string): number => {
   return hash >>> 0;
 };
 
-// HSL文字列から色相を抽出
-const extractHue = (hsl: string): number | null => {
-  const match = hsl.match(/hsl\((\d+)/);
-  return match ? Number.parseInt(match[1], 10) : null;
-};
-
-// 既存プレイヤーの色と最も区別しやすい色を選ぶ
-export const pickDistinctColor = (
-  id: string,
-  existingPlayers: Map<string, RelativisticPlayer>,
-): string => {
-  const existingHues: number[] = [];
-  for (const [pid, player] of existingPlayers) {
-    if (pid === id) continue;
-    const h = extractHue(player.color);
-    if (h !== null) existingHues.push(h);
-  }
-
+/**
+ * プレイヤー ID から決定的に色を生成する純関数。
+ *
+ * 黄金角 (137.50776°) で hash を色相に写すことで、ID の小さな差を
+ * 色環上の大きな差に広げる。saturation/lightness も hash の別ビット
+ * から決めるので、2〜4 人程度のプレイヤーなら統計的に十分分離する。
+ *
+ * すべてのピア（ホスト/クライアント）が同じ関数を呼ぶので、ネットワーク
+ * で色を同期する必要がない。過去の `playerColor` メッセージ / `pendingColorsRef` /
+ * ホストのブロードキャストはすべてこの純関数に置き換えられた。
+ */
+export const colorForPlayerId = (id: string): string => {
   const hash = hashString32(id);
-  const saturation = 80 + ((hash >> 8) % 17); // 80-96%
-  const lightness = 50 + ((hash >> 16) % 14); // 50-63%
-
-  if (existingHues.length === 0) {
-    // 最初のプレイヤーはIDから決定
-    const hue = Math.floor((((hash * 137.50776405) % 360) + 360) % 360);
-    return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-  }
-
-  // 色相環上で既存色から最も遠い色相を探す
-  // 候補を36点（10°刻み）でサンプルし、最小距離が最大のものを選ぶ
-  let bestHue = 0;
-  let bestMinDist = -1;
-  for (let candidate = 0; candidate < 360; candidate += 10) {
-    let minDist = 360;
-    for (const h of existingHues) {
-      const d = Math.min(
-        Math.abs(candidate - h),
-        360 - Math.abs(candidate - h),
-      );
-      if (d < minDist) minDist = d;
-    }
-    if (minDist > bestMinDist) {
-      bestMinDist = minDist;
-      bestHue = candidate;
-    }
-  }
-
-  return `hsl(${bestHue}, ${saturation}%, ${lightness}%)`;
+  const hue = Math.floor((((hash * 137.50776405) % 360) + 360) % 360);
+  const saturation = 80 + ((hash >>> 8) % 17); // 80-96%
+  const lightness = 50 + ((hash >>> 16) % 14); // 50-63%
+  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 };
 
 // プレイヤーの色からレーザーの色を生成（より明るく、彩度を上げる）
