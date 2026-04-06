@@ -2,6 +2,42 @@
 
 ## 設計判断の記録
 
+### setState reducer は純関数に保つ（StrictMode 安全）
+
+- **What**: `setPlayers` / `setLasers` / `setDebrisRecords` / `setSpawns` 等の updater 関数（reducer）の内部では、**副作用（`peerManager.send`、`ref.mutation`、`Math.random`、`Date.now`、`generateExplosionParticles` 等）を一切呼ばない**。副作用や非決定的計算は reducer の外（setState 呼び出しの前または後）で行い、結果を closure 経由で reducer に渡す
+- **Why**: React 18 StrictMode は dev モードで reducer を **2 回** 呼び出して副作用検知を行う。reducer 内で副作用を起こすと: (1) 副作用が 2 回実行される（ネット送信 2x、ログ 2x など）(2) `ref.delete()` のような破壊的操作が 1 回目の結果を壊し、2 回目が空状態を見て誤った分岐に落ちる。**色バグ「ホストが灰色のまま」はこのパターンの極端例**: `pendingColorsRef.delete()` を reducer 内で呼んでいたため、1 回目で pending 消費 → 2 回目で pending 空 → gray fallback が commit されていた
+- **canonical pattern**:
+  ```ts
+  // BAD: reducer に副作用と非決定性
+  setPlayers((prev) => {
+    const next = new Map(prev);
+    const color = Math.random() > 0.5 ? "red" : "blue"; // non-deterministic
+    peerManager.send(msg);                              // side effect
+    pendingRef.current.delete(key);                     // ref mutation
+    next.set(id, { ...existing, color });
+    return next;
+  });
+
+  // GOOD: すべて reducer の外で計算 → closure で束縛
+  const color = Math.random() > 0.5 ? "red" : "blue";
+  setPlayers((prev) => {
+    const next = new Map(prev);
+    next.set(id, { ...prev.get(id)!, color });
+    return next;
+  });
+  peerManager.send(msg);
+  pendingRef.current.delete(key);
+  ```
+- **Why (closure で束縛する理由)**: `let x; setPlayers(...x = foo()...); use(x);` のように reducer 内で変数を書いても、reducer は後の render phase まで実行されないため、setState 直後の `use(x)` は常に `undefined`。reducer の外で先に計算すれば `x` は setPlayers が呼ばれる時点で確定しており、両方の経路（reducer + 後続の副作用）から参照できる
+- **適用箇所**（2026-04-06 監査で修正済み）:
+  1. `messageHandler.ts` phaseSpace handler: `pendingColorsRef.delete` + `peerManager.send` を外出し（色バグ修正、後に大掃除で完全削除）
+  2. `RelativisticGame.tsx` ゲームループ movement: 因果律チェック・物理積分・`peerManager.send(phaseSpace)` を reducer 外に。reducer は新状態の Map 生成のみ
+  3. `RelativisticGame.tsx` init: `Math.random` / `Date.now` / `createWorldLine` を reducer 外で計算
+  4. `RelativisticGame.tsx` `handleKill`: `generateExplosionParticles()` を reducer 外で呼び `closure` で渡す
+  5. `RelativisticGame.tsx` `handleRespawn`: `Date.now()` を reducer 外で 1 回だけ取得
+- **例外**: `setXxx(nextValue)` のように関数ではなく値を直接渡す場合は reducer がないので対象外。`applyKill(prev, victimId)`・`applyRespawn(prev, ...)` のような **純関数を reducer として使う**のは OK（純関数は 2 回呼ばれても同じ結果）
+- **教訓**: React 18 の StrictMode は「純粋性契約違反」を検知するセンサー。dev で二重実行が発生したら、それは「本番で dispatch 戦略が変わったときに壊れる予兆」と考える。2 回呼ばれても結果が同じになる reducer を書くのは Future-Proof 戦略
+
 ### 物理エンジン: ファクトリパターン（クラス不使用）
 
 - **What**: physics モジュールはクラスではなく関数ベースのファクトリパターンで実装

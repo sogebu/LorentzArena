@@ -113,11 +113,12 @@ const RelativisticGame = () => {
         return [...prev, frozen].slice(-MAX_FROZEN_WORLDLINES);
       });
 
-      // 2. デブリ生成
+      // 2. デブリ生成（reducer 外で particle 生成: Math.random が StrictMode で二重実行されるのを防ぐ）
+      const explosionParticles = generateExplosionParticles();
       setDebrisRecords((prev) => {
         const newDebris: DebrisRecord = {
           deathPos: hitPos,
-          particles: generateExplosionParticles(),
+          particles: explosionParticles,
           color: victim.color,
         };
         return [...prev, newDebris].slice(-MAX_DEBRIS);
@@ -169,17 +170,16 @@ const RelativisticGame = () => {
         ghostTauRef.current = 0;
       }
 
-      // スポーンエフェクト
+      // スポーンエフェクト（id と startTime は reducer 外で決定 = StrictMode 安全）
       const spawningPlayer = playersRef.current.get(playerId);
-      setSpawns((prev) => [
-        ...prev,
-        {
-          id: `spawn-${playerId}-${Date.now()}`,
-          pos: position,
-          color: spawningPlayer?.color ?? "white",
-          startTime: Date.now(),
-        },
-      ]);
+      const now = Date.now();
+      const spawnEffect: SpawnEffect = {
+        id: `spawn-${playerId}-${now}`,
+        pos: position,
+        color: spawningPlayer?.color ?? colorForPlayerId(playerId),
+        startTime: now,
+      };
+      setSpawns((prev) => [...prev, spawnEffect]);
     },
     [myId],
   );
@@ -188,27 +188,29 @@ const RelativisticGame = () => {
   useEffect(() => {
     if (!myId) return;
 
+    // 非決定的な値（Date.now, Math.random）は reducer 外で計算して closure に束縛。
+    // StrictMode の reducer 二重実行でも同じ値を使うようにする。
+    const initialPhaseSpace = createPhaseSpace(
+      createVector4(
+        Date.now() / 1000 - OFFSET,
+        Math.random() * SPAWN_RANGE,
+        Math.random() * SPAWN_RANGE,
+        0.0,
+      ),
+      vector3Zero(),
+    );
+    let initialWorldLine = createWorldLine(5000, initialPhaseSpace);
+    initialWorldLine = appendWorldLine(initialWorldLine, initialPhaseSpace);
+    const initialColor = colorForPlayerId(myId);
+
     setPlayers((prev) => {
       if (prev.has(myId)) return prev;
-
-      const initialPhaseSpace = createPhaseSpace(
-        createVector4(
-          Date.now() / 1000 - OFFSET,
-          Math.random() * SPAWN_RANGE,
-          Math.random() * SPAWN_RANGE,
-          0.0,
-        ),
-        vector3Zero(),
-      );
-      let worldLine = createWorldLine(5000, initialPhaseSpace);
-      worldLine = appendWorldLine(worldLine, initialPhaseSpace);
-
       const next = new Map(prev);
       next.set(myId, {
         id: myId,
         phaseSpace: initialPhaseSpace,
-        worldLine,
-        color: colorForPlayerId(myId),
+        worldLine: initialWorldLine,
+        color: initialColor,
         isDead: false,
       });
       return next;
@@ -511,60 +513,72 @@ const RelativisticGame = () => {
           });
         }
       } else {
-        setPlayers((prev) => {
-          const myPlayer = prev.get(myId);
-          if (!myPlayer) return prev;
+        // 因果律チェックと物理積分を reducer 外で実行（StrictMode 安全）。
+        // setPlayers reducer 内で peerManager.send を呼ぶと StrictMode の
+        // 二重実行で dev モード時に送信が倍になる（色バグと同じ anti-pattern）。
+        const me = playersRef.current.get(myId);
+        if (me) {
           // 因果律の守護者
-          for (const [id, player] of prev) {
+          let frozen = false;
+          for (const [id, player] of playersRef.current) {
             if (id === myId) continue;
             if (player.isDead) continue;
-            if (player.phaseSpace.pos.t > myPlayer.phaseSpace.pos.t) continue;
-            const diff = subVector4(
-              player.phaseSpace.pos,
-              myPlayer.phaseSpace.pos,
-            );
+            if (player.phaseSpace.pos.t > me.phaseSpace.pos.t) continue;
+            const diff = subVector4(player.phaseSpace.pos, me.phaseSpace.pos);
             const l = lorentzDotVector4(diff, diff);
-            if (l < 0) return prev;
+            if (l < 0) {
+              frozen = true;
+              break;
+            }
           }
 
-          const next = new Map(prev);
+          if (!frozen) {
+            let forwardAccel = 0;
+            const accel = 8 / 10;
+            if (keysPressed.current.has("w")) forwardAccel += accel;
+            if (keysPressed.current.has("s")) forwardAccel -= accel;
 
-          let forwardAccel = 0;
-          const accel = 8 / 10;
-          if (keysPressed.current.has("w")) forwardAccel += accel;
-          if (keysPressed.current.has("s")) forwardAccel -= accel;
+            const ax = Math.cos(cameraYawRef.current) * forwardAccel;
+            const ay = Math.sin(cameraYawRef.current) * forwardAccel;
 
-          const ax = Math.cos(cameraYawRef.current) * forwardAccel;
-          const ay = Math.sin(cameraYawRef.current) * forwardAccel;
+            const mu = 0.5;
+            const frictionX = -me.phaseSpace.u.x * mu;
+            const frictionY = -me.phaseSpace.u.y * mu;
 
-          const mu = 0.5;
-          const frictionX = -myPlayer.phaseSpace.u.x * mu;
-          const frictionY = -myPlayer.phaseSpace.u.y * mu;
+            const acceleration = createVector3(
+              ax + frictionX,
+              ay + frictionY,
+              0,
+            );
 
-          const acceleration = createVector3(ax + frictionX, ay + frictionY, 0);
+            const newPhaseSpace = evolvePhaseSpace(
+              me.phaseSpace,
+              acceleration,
+              dTau,
+            );
+            const otherPositions: Vector4[] = [];
+            for (const [id, p] of playersRef.current) {
+              if (id !== myId) otherPositions.push(p.phaseSpace.pos);
+            }
+            const updatedWorldLine = appendWorldLine(
+              me.worldLine,
+              newPhaseSpace,
+              otherPositions,
+            );
 
-          const newPhaseSpace = evolvePhaseSpace(
-            myPlayer.phaseSpace,
-            acceleration,
-            dTau,
-          );
-          const otherPositions: Vector4[] = [];
-          for (const [id, p] of prev) {
-            if (id !== myId) otherPositions.push(p.phaseSpace.pos);
-          }
-          const updatedWorldLine = appendWorldLine(
-            myPlayer.worldLine,
-            newPhaseSpace,
-            otherPositions,
-          );
-          next.set(myId, {
-            ...myPlayer,
-            phaseSpace: newPhaseSpace,
-            worldLine: updatedWorldLine,
-          });
+            setPlayers((prev) => {
+              const myPlayer = prev.get(myId);
+              if (!myPlayer) return prev;
+              const next = new Map(prev);
+              next.set(myId, {
+                ...myPlayer,
+                phaseSpace: newPhaseSpace,
+                worldLine: updatedWorldLine,
+              });
+              return next;
+            });
 
-          // ネットワーク送信
-          if (peerManager) {
+            // ネットワーク送信（reducer の外、1 回だけ実行）
             const isHost = peerManager.getIsHost();
             if (isHost || timeSyncedRef.current) {
               const msg = {
@@ -583,9 +597,7 @@ const RelativisticGame = () => {
               }
             }
           }
-
-          return next;
-        });
+        }
       }
 
       // ホストのみ: 当たり判定

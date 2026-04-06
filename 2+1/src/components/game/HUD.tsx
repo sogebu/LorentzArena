@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { gamma, lengthVector3 } from "../../physics";
+import { colorForPlayerId } from "./colors";
 import { RESPAWN_DELAY } from "./constants";
 import type { DeathEvent, RelativisticPlayer } from "./types";
 
@@ -146,7 +147,7 @@ export const HUD = ({
             {sortedScores.map(([id, kills]) => (
               <div
                 key={id}
-                style={{ color: players.get(id)?.color ?? "white" }}
+                style={{ color: players.get(id)?.color ?? colorForPlayerId(id) }}
               >
                 {id === myId ? "You" : id.slice(0, 6)}: {kills}
               </div>

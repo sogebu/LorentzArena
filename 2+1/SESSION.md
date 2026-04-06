@@ -7,7 +7,15 @@
 
 本番には色バグ（「ホストがクライアント側で灰色」）が残存しているため、次回コミット後にデプロイすべき。
 
-## 直近の変更（2026-04-06、未コミット・未デプロイ）
+## 直近の変更（2026-04-06 PM、未コミット・未デプロイ）
+
+**4 軸レビュー**: 色大掃除後の全ファイルを整合性・無矛盾性・効率性・安全性で点検。整合性・効率性・安全性は合格。**無矛盾性で 5 件の「reducer 内副作用」を検出し修正**（色バグと同じアンチパターン）。
+- **A**: ゲームループの movement `setPlayers` reducer 内で `peerManager.send(phaseSpace)` を呼んでいた → 因果律チェック・物理積分・送信すべてを reducer 外に移動
+- **B**: `handleKill` の `setDebrisRecords` reducer 内で `generateExplosionParticles()`（`Math.random()` 含む）→ 外出し
+- **C**: init `setPlayers` reducer 内で `Math.random()` / `Date.now()` / `createWorldLine` → 外出し
+- **D**: `handleRespawn` の `setSpawns` reducer 内で `Date.now()` による id 生成 → 外出し
+- **E**: `HUD.tsx` スコア表示の color fallback `"white"` → `colorForPlayerId(id)`
+- 詳細: DESIGN.md「setState reducer は純関数に保つ」セクション
 
 **色システム大掃除**: stateful な `pickDistinctColor` を純関数 `colorForPlayerId(id)` に置き換え
 - **削除**: `playerColor` メッセージ型 / `pendingColorsRef` / ホスト集中色割り当て / connections useEffect の color broadcast / ゲームループの gray fallback / gray placeholder / messageHandler の色割り当てロジック
