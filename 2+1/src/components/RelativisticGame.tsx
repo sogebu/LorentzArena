@@ -759,6 +759,7 @@ const RelativisticGame = () => {
         setUseOrthographic={setUseOrthographic}
         deathFlash={deathFlash}
         killGlow={killNotification !== null}
+        killNotification={killNotification}
         myDeathEvent={myDeathEvent}
         ghostTau={ghostTauRef.current}
       />

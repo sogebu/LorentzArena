@@ -17,6 +17,7 @@ type HUDProps = {
   setUseOrthographic: (v: boolean) => void;
   deathFlash: boolean;
   killGlow: boolean;
+  killNotification: { victimName: string; color: string } | null;
   myDeathEvent?: DeathEvent | null;
   ghostTau?: number;
 };
@@ -66,6 +67,7 @@ export const HUD = ({
   setUseOrthographic,
   deathFlash,
   killGlow,
+  killNotification,
   myDeathEvent,
 }: HUDProps) => {
   const sortedScores = useMemo(
@@ -237,6 +239,45 @@ export const HUD = ({
             animation: "kill-glow 1.5s ease-out forwards",
           }}
         />
+      )}
+
+      {/* KILL テキスト（キラーの過去光円錐が hitPos に到達した瞬間に発火）*/}
+      {killNotification && (
+        <div
+          key={`kill-${killNotification.victimName}-${killNotification.color}`}
+          style={{
+            position: "absolute",
+            top: "30%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: 300,
+            pointerEvents: "none",
+            textAlign: "center",
+            animation: "kill-notify 1.5s ease-out forwards",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "48px",
+              fontWeight: "bold",
+              fontFamily: "monospace",
+              color: killNotification.color,
+              textShadow:
+                "0 0 20px rgba(255,215,0,0.8), 0 0 40px rgba(255,215,0,0.4)",
+            }}
+          >
+            KILL
+          </div>
+          <div
+            style={{
+              fontSize: "20px",
+              color: killNotification.color,
+              opacity: 0.9,
+            }}
+          >
+            {killNotification.victimName}
+          </div>
+        </div>
       )}
 
       <style>{`
