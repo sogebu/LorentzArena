@@ -285,9 +285,11 @@ export const colorForPlayerId = (id: string): string => {
 - **Why**: ホストはゲームループで kill 検出 → applyKill → ブロードキャスト。PeerManager.send は自分に送信しないが、安全策としてスキップ。従来は UI 副作用（setDeathFlash, setKillNotification の setTimeout）が二重発火していた
 - **Tradeoff**: なし
 
-### 残存する設計臭（2026-04-06 監査、未着手）
+### 残存する設計臭（2026-04-06 監査 → 2026-04-06 再評価で全件 defer）
 
-色バグの掃除と 4 軸レビューの後、同類の匂い（単一情報源の違反・派生可能な state・外部イベントの React 化・二重エントリポイント）が残っている箇所を棚卸ししたもの。色ほど酷い例はないが、記録しておかないと忘れる。着手順は各エントリの優先度を参照。
+色バグの掃除と 4 軸レビューの後、同類の匂い（単一情報源の違反・派生可能な state・外部イベントの React 化・二重エントリポイント）が残っている箇所を棚卸ししたもの。**監査時点では #2 → #1 → #4 → #3 の順で掃除する計画だったが、同日夕方に再評価して全 4 件を defer に決定した**（理由は本セクション末尾の「再評価後の判断（2026-04-06）」を参照）。
+
+各エントリの技術分析は将来 un-defer する際の下敷きとして原文のまま残す。各エントリ末尾に「**現状判断**」ブロックを追加し、defer 理由と un-defer トリガーを明記した。
 
 #### 残存臭 #1: `deadPlayersRef` / `processedLasersRef` は async state の sync mirror
 
@@ -313,6 +315,12 @@ export const colorForPlayerId = (id: string): string => {
   - もし反映が不確実なら、**`playersRef.current` を sync で更新する専用の setState ラッパー**を作る（setPlayers 直後に `playersRef.current = nextValue` を代入、ただし reducer 内ではなく呼び出し側で実施）
 - **優先度**: 高（mirror 同期忘れバグは潜在的に高リスク）、難易度: 中
 - **検証手順**: `deadPlayersRef` を削除して、その場に `playersRef.current.get(id)?.isDead` + `killedThisFrame` の組み合わせに置き換えてみる。2 人プレイで速射テスト（同一ティックで複数ヒット）を走らせて regression がないか確認。
+- **現状判断 (2026-04-06 再評価)**: **defer**。
+  - コード再読で `RelativisticGame.tsx:221-223` の `playersRef.current = players` は **useEffect 内**であることを確認した。つまり ref 同期は React コミット後に起きるので、`setPlayers(applyKill)` 直後の次ティックまでに commit が流れる保証は React scheduler 次第で、負荷時には stale になりうる
+  - 加えて `killedThisFrame` は既存（`:621`）で intra-tick dedup はカバー済み、cross-tick は実害なしで動いている
+  - mirror は「症状」ではなく impedance mismatch への **対処**。消すと新しい cross-tick race を生むリスクがある。直すなら setPlayers ラッパーで呼び出し側 sync 更新という大きい改修が必要で、DESIGN.md「setState reducer は純関数に保つ」の原則と両立させるのに手間がかかる
+  - 現時点で実害ゼロ、真の fix は非自明、コスト非ゼロ → defer
+  - **un-defer トリガー**: 実際に「kill したはずのプレイヤーが次ティックで生きている」類の race バグが観測されたとき、または setPlayers 周辺を大改修する別動機が発生したとき
 
 #### 残存臭 #2: connections useEffect で外部イベントを React state 経由で diff している
 
@@ -354,6 +362,12 @@ export const colorForPlayerId = (id: string): string => {
   - `prevConnectionIdsRef` を削除
   - 注意: `connections` state は UI（接続インジケータ）で使っているので削除せず、diffing ロジックだけ消す
 - **優先度**: 高（コード量削減・バグ温床除去）、難易度: 中（PeerManager + PeerProvider + RelativisticGame の 3 ファイル変更）
+- **現状判断 (2026-04-06 再評価)**: **defer**。
+  - 実コード読み直しで、変更範囲が監査時見積より広いことを確認: PeerManager だけでなく `WsRelayManager.ts` にも同じ callback API を足す必要がある（2 transport の同期維持コスト）
+  - diffing は動いている。現時点で実害ゼロ。StrictMode 下の dev 環境で syncTime が 2 回飛ぶ理論上の可能性はあるが prod は StrictMode off で無関係
+  - 節約される行は 20 行前後、得られるのは「ライフサイクルイベント型の API」という美学。物理デモアプリの価値には寄与しない
+  - preemptive fix の具体トリガーなし。syncTime を別ハンドシェイクに差し替えるとき、どのみちこの領域を触るのでそのとき同時掃除で十分
+  - **un-defer トリガー**: (a) 接続ライフサイクルに絡む実バグ観測、(b) syncTime / sync ハンドシェイクを別設計に差し替える機会、(c) PeerProvider に `reconnecting` 等の phase 概念が必要な機能を足すとき（#4 と合流する）
 
 #### 残存臭 #3: kill 処理の dual entry point（ホスト権威メッセージ）
 
@@ -390,6 +404,11 @@ export const colorForPlayerId = (id: string): string => {
   - respawn / score も同じパターンで統一
 - **懸念**: 現状の messageHandler は msg を validate してから処理する。self-loopback で自分の送信したメッセージも validate を通る（冗長だが害なし）。ただしゲームループ内のタイミングと messageHandler のタイミングがずれるので、副作用の順序（setDeathFlash のタイミングなど）が微妙に変わる可能性。要検証
 - **優先度**: 中（害は出ていないが、将来の拡張時に dual entry で bug が出やすい）、難易度: **高**（ゲームロジックの制御フロー全体を再配線、respawn / score の 3 経路同時変更、タイミング回帰テスト必須）
+- **現状判断 (2026-04-06 再評価)**: **defer（4 件の中で最も強く defer）**。
+  - DESIGN.md 自身の記述「害は出ていない、将来の拡張時リスク」を直視する。**具体バグも具体拡張計画もない状態で「大手術 + タイミング回帰テスト必須」を払うのは YAGNI 違反**
+  - host skip guard は明示的に書かれ、「ホスト権威メッセージの二重処理防止」セクションで正当化されている。dual entry は認知されて封じ込められている設計であって、隠れたバグ源ではない
+  - self-loopback パターンへの置換は理論的に美しいが、kill / respawn / score の 3 経路同時変更 + タイミング依存（`setDeathFlash` 等の副作用順序）の regression リスクが高く、色バグより deeper な race を作り込む可能性すらある
+  - **un-defer トリガー**: (a) dual entry 起因の実バグが観測されたとき、(b) 新しい権威メッセージ種別（例: 新しい kill-like イベント）を足す機会に、それを self-loopback で実装しつつ既存 3 経路も合流させるとき、(c) kill/respawn/score のいずれかを別理由で大改修するとき
 
 #### 残存臭 #4: `timeSyncedRef` が接続ライフサイクルを React に漏らしている
 
@@ -414,16 +433,66 @@ export const colorForPlayerId = (id: string): string => {
   - ゲームループは `peerStatus === "synced"` を usePeer フック経由で取得し gate に使う
   - `timeSyncedRef` と messageHandler のフラグ立て処理を削除
 - **優先度**: 低（実害少、1 ファイル程度の変更）、難易度: 低
+- **現状判断 (2026-04-06 再評価)**: **defer**。
+  - 4 件の中で技術的には最も低リスク・低コストだが、それでも今やる正味価値は薄い
+  - 現状の `timeSyncedRef` は set 1 箇所 / read 1 箇所の計 2 行副作用。汚いが動いている。bug source ではない
+  - PeerProvider に phase 概念を足すと逆に行数は増える可能性が高く、純行数 benefit はほぼなし。得られるのは「接続ライフサイクルはゲーム層ではなく接続層」という層の原則の体現のみ
+  - phase 概念が真価を発揮するのは「syncing 中の UI 表示」「再接続時の再同期フロー」などを実装するときで、現在これらの機能は予定にない → **機能トリガー先行で phase 概念を導入するほうが健全**
+  - **un-defer トリガー**: (a) `timeSyncedRef` が原因でクライアントが永遠に gate されるような実バグ、(b) 「同期中…」UI を表示したい機能要求、(c) 再接続・再同期を扱う機能追加（#2 と合流して unified connection-phase refactor として実施）
 
 ---
 
-#### 全体方針
+#### 再評価後の判断（2026-04-06）
 
-- 優先順: **#2 (connections diffing) → #1 (dead/processed mirror) → #4 (timeSyncedRef) → #3 (dual entry)**
-- #2 と #4 はピンポイントの比較的小さな掃除で効果が出る。先にここから
-- #1 は設計思想（React async vs game loop sync）の検証が必要。慎重に
-- #3 は大手術。他の掃除を先にやって、コードが落ち着いてから再評価
-- いずれの修正も「色掃除」と同じく、touch 箇所を最小化した 1 コミットで、lint + tsc + preview 2 タブテストで回帰なしを確認してからコミットすること
+監査当日の夕方、「そもそもこれをやるべきか」を深く考え直した結果、**4 件すべてを現状 defer** に決定した。監査時の優先順（#2 → #1 → #4 → #3）はコード内在的な見た目の美学に基づく並びで、**「なぜ今これをやるのか」というプロダクト側からの問いに耐えなかった**。以下が再評価の全記録。
+
+##### 色バグとの「アナロジー」を疑う
+
+監査は色バグの掃除直後に行われ、「同類の匂い」という枠で 4 件を並べた。しかし実際には色バグと 4 件は **質が違う**:
+
+| | 色バグ | #1 mirror | #2 diffing | #3 dual entry | #4 timeSyncedRef |
+|---|---|---|---|---|---|
+| 本番で観測された実害 | **あり（5 パッチ）** | なし | なし | なし | なし |
+| 分散・race 要素 | **ネットワーク越し** | ローカル | ネットワーク側だが副作用はローカル | ローカル | ローカル |
+| 現状の guard の有無 | なし | `killedThisFrame` で intra-tick カバー済 | `prevConnectionIdsRef` が機能 | host skip guard が明示 | 動いている |
+
+**色バグは「guard がないまま distributed race していた」** のに対し、4 件はすべて **「guard があって正しく動いているが見た目が冗長 / 層が不整合」**。同じクラスではない。「次は同じ根から別症状が出る」という予測は根拠が弱い。
+
+##### ROI で並べ直す
+
+4 件はいずれも **実害ゼロ・preemptive fix のトリガーなし・コスト非ゼロ** という共通構造を持つ:
+
+| smell | 得られるもの | コスト | 現バグ | 将来トリガー |
+|---|---|---|---|---|
+| #1 mirror | 見た目の冗長さ解消 | 真の fix は setPlayers ラッパー設計。消すだけだと cross-tick race を新たに生むリスク | なし | なし |
+| #2 diffing | 〜20 行削減、API の美学 | PeerManager + WsRelayManager 2 transport 同期、3 ファイル配線変更 | なし | なし（syncTime 差し替え時に同時対応で十分） |
+| #3 dual entry | guard 削除、制御フロー統一 | kill/respawn/score 3 経路同時変更、タイミング回帰リスク高 | なし（DESIGN.md 自身が明記） | なし |
+| #4 timeSyncedRef | 層の原則の体現、2 行の副作用消去 | 純行数はむしろ増える可能性 | なし | なし（phase 概念を必要とする機能要求発生時に同時対応で十分） |
+
+**物理デモアプリ（`2+1/`）の価値は「相対論の時空図を触って体験できる」こと**。4 件のどれも、この価値を 1 mm も前進させない。一方「次にやること」には 固有時刻表示（物理デモの本質）、3+1 拡張（新機能）、スマホ UI（新規ユーザー到達範囲）、戦闘系語彙の再考（社会的文脈）という **ユーザー観測可能なタスク** が並ぶ。機会費用の観点で、cleanup は負ける。
+
+##### 「束ねる論法」の破綻
+
+監査時に #2 と #4 を「接続ライフサイクル refactor として束ねれば同じファイルに 2 回触らずに済む」と考えたが、これは **「どのみちやる」前提に依存した節約論**で、やる価値自体を疑うと節約効果も 0 × 2 = 0 になる。束ねるメリットは「やる」を選んだ後の実装戦略であって、「やる」の根拠にはならない。
+
+##### defer の意味
+
+defer は「放棄」ではなく「**un-defer トリガーが発生するまで touch しない**」という明示的判断。各エントリに un-defer トリガーを列挙した。これにより:
+
+1. **現状は他の高価値タスクに集中できる**（固有時刻表示・スマホ UI・用語再考 など）
+2. **un-defer トリガーが発生したら、分析は原文のまま残っているので即着手できる**（監査時の labor は無駄にならない）
+3. **「気になるけど放置している」という心理的コストから解放される**（決定済みとして記録）
+
+##### 再 un-defer の条件（全件共通）
+
+どれか 1 件でも un-defer する際は以下のチェックを通すこと:
+
+- [ ] 具体的な bug 観測 or 具体的な機能トリガーがあるか？（「なんとなく気になる」ではない）
+- [ ] 現時点で物理デモとして価値のあるタスク（固有時刻表示・3+1 拡張・スマホ UI・用語再考 等）がこれより優先されないか？
+- [ ] 修正による regression リスク（特に race / timing 系）は受容可能か？
+- [ ] lint + tsc + preview 2 タブテストで検証可能な単位で 1 コミットに収まるか？
+
+**ログ**: 2026-04-06 監査 → 同日 SESSION.md に「次にやること」として列挙 → 同日夕方 "6 だな" トリガーで再評価 → 全件 defer 決定。本セクション末尾に判断経緯を残すことで、将来「なぜ 2026-04-06 時点で掃除を選ばなかったか」を再現可能にした。
 
 - **Status**: 検討中、未適用。コード・UI・ドキュメントの全域に現在も戦闘系語彙（KILL / DEAD / 死亡 / 撃破 / kill / deathFlash 等）が残存。置換する場合は機能的整合を崩さないように一括リネームで別コミット予定
 - **Why 再考**: 本アプリの本質は「相対論の時空図可視化」で、物理デモ/教育用途に寄せるなら戦闘系語彙は重い。現在の社会的文脈でも、`KILL` を画面に出すマルチプレイヤー Web アプリは不必要に不穏
