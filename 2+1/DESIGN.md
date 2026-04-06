@@ -285,7 +285,145 @@ export const colorForPlayerId = (id: string): string => {
 - **Why**: ホストはゲームループで kill 検出 → applyKill → ブロードキャスト。PeerManager.send は自分に送信しないが、安全策としてスキップ。従来は UI 副作用（setDeathFlash, setKillNotification の setTimeout）が二重発火していた
 - **Tradeoff**: なし
 
-### 用語の再考（未決定・言い換え候補）
+### 残存する設計臭（2026-04-06 監査、未着手）
+
+色バグの掃除と 4 軸レビューの後、同類の匂い（単一情報源の違反・派生可能な state・外部イベントの React 化・二重エントリポイント）が残っている箇所を棚卸ししたもの。色ほど酷い例はないが、記録しておかないと忘れる。着手順は各エントリの優先度を参照。
+
+#### 残存臭 #1: `deadPlayersRef` / `processedLasersRef` は async state の sync mirror
+
+- **場所**: `RelativisticGame.tsx:79-80`（ref 宣言）、`:623-636`（当たり判定で参照）、`:655-680`（更新）
+- **現状**: `RelativisticPlayer.isDead: boolean` が `players` Map の各プレイヤーに既に存在するのに、別途 `deadPlayersRef: Set<string>` を持って同じ情報を manual に同期している。同じく `processedLasersRef: Set<string>` は「このティックで既にヒット判定を処理したレーザー」を追跡。
+  ```ts
+  // ホストが kill 検出（game loop 内）
+  deadPlayersRef.current.add(victimId);           // sync で即時反映
+  handleKill(victimId, killerId, hitPos);         // setPlayers で isDead=true（async）
+  // ↑ 同じティックの後続の当たり判定が deadPlayersRef を見て skip する必要あり
+  ```
+  ```ts
+  // 次のティック以降の当たり判定
+  if (deadPlayersRef.current.has(playerId)) continue;
+  // ↑ 理屈上は player.isDead を見れば済むはずだが、setPlayers の反映タイミングに依存するので ref 経由
+  ```
+- **根本原因**: **React の `setState` は async、game loop は sync** というインピーダンスミスマッチ。`setPlayers(handleKill)` の結果が `playersRef.current` に commit されるのは次の render 後なので、同一ティック内で「さっき殺したプレイヤー」を skip するには sync な mirror が要る。`processedLasersRef` も同じ理由（1 ティック内で既ヒット判定したレーザーを他プレイヤーとの交差から外す）。
+- **色との類似**: 色は「ID から算出できる純関数データ」を state + pending + メッセージ型で 3 重管理していた。これは「React state の真実 (`isDead`)」を ref で mirror している。**同じ情報が 2 箇所に書かれ、手で同期を維持する必要がある**。色ほど race は致命的にならないが、同期忘れバグの温床。
+- **解消方向**:
+  - 現状でも `killedThisFrame: Set<string>` というローカル変数が per-tick dedup を担当しているので、1 ティック内は `killedThisFrame` に任せる
+  - 2 ティック目以降は `playersRef.current.get(id)?.isDead` で判定できるはず（`setPlayers` は次 render までに commit される想定）
+  - 検証: 120Hz のゲームループ内で setPlayers の commit が次ティックまでに確実に反映されるか。R3F / React の async batching の挙動を確認する必要がある
+  - もし反映が不確実なら、**`playersRef.current` を sync で更新する専用の setState ラッパー**を作る（setPlayers 直後に `playersRef.current = nextValue` を代入、ただし reducer 内ではなく呼び出し側で実施）
+- **優先度**: 高（mirror 同期忘れバグは潜在的に高リスク）、難易度: 中
+- **検証手順**: `deadPlayersRef` を削除して、その場に `playersRef.current.get(id)?.isDead` + `killedThisFrame` の組み合わせに置き換えてみる。2 人プレイで速射テスト（同一ティックで複数ヒット）を走らせて regression がないか確認。
+
+#### 残存臭 #2: connections useEffect で外部イベントを React state 経由で diff している
+
+- **場所**: `RelativisticGame.tsx:227-266`（特に `:229` の `prevConnectionIdsRef` 宣言と `:236-244` の比較ループ）
+- **現状**:
+  ```ts
+  const prevConnectionIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (peerManager?.getIsHost()) {
+      for (const conn of connections) {
+        if (conn.open && !prevConnectionIdsRef.current.has(conn.id)) {
+          peerManager.sendTo(conn.id, { type: "syncTime", ... });
+        }
+      }
+    }
+    prevConnectionIdsRef.current = new Set(connections.filter((c) => c.open).map((c) => c.id));
+    ...
+  }, [connections, myId, peerManager]);
+  ```
+- **なぜ smell か**: `dc.on('open')` の **その瞬間** に PeerManager は「これは新規接続だ」と分かっている。それをわざわざ `setConnections` で React state に昇格させ、再レンダーを起こし、前回の ref と diff を取って「新規」を復元している。情報の流れが「イベント → スナップショット → diff 検出」と遠回りしている。
+- **色との類似**: 色の `playerColor` ブロードキャスト（host → 新クライアントに対して既存プレイヤーの色を送り直す）と同じクラス。**外部の事象（接続開始、色決定）を、同期機構（React useEffect / ネットワークメッセージ）に載せて復元している**。色は純関数で送信自体を不要にした。connections は PeerManager のコールバック API で直接扱えば diffing が不要になる。
+- **解消方向**:
+  - PeerManager に `onNewPeerOpen(cb: (peerId: string) => void)` を足す
+  - `dc.on('open', () => { cb(dc.peer); notifyConnectionChange(); })` で即時コールバック
+  - RelativisticGame は useEffect ではなく一度だけ購読:
+    ```ts
+    useEffect(() => {
+      if (!peerManager) return;
+      return peerManager.onNewPeerOpen((peerId) => {
+        if (peerManager.getIsHost()) {
+          const me = playersRef.current.get(myId);
+          if (me) {
+            peerManager.sendTo(peerId, { type: "syncTime", hostTime: me.phaseSpace.pos.t });
+          }
+        }
+      });
+    }, [peerManager, myId]);
+    ```
+  - `prevConnectionIdsRef` を削除
+  - 注意: `connections` state は UI（接続インジケータ）で使っているので削除せず、diffing ロジックだけ消す
+- **優先度**: 高（コード量削減・バグ温床除去）、難易度: 中（PeerManager + PeerProvider + RelativisticGame の 3 ファイル変更）
+
+#### 残存臭 #3: kill 処理の dual entry point（ホスト権威メッセージ）
+
+- **場所**: `RelativisticGame.tsx:678` 付近（ホストのゲームループが直接 `handleKill`）+ `messageHandler.ts:184-193`（クライアントが kill メッセージを受けて `handleKill`）+ `messageHandler.ts:185`「ホスト skip」guard
+- **現状**:
+  ```ts
+  // ホスト側: game loop
+  peerManager.send({ type: "kill", victimId, killerId, hitPos });
+  handleKill(victimId, killerId, hitPos);  // 直接呼ぶ
+  ```
+  ```ts
+  // messageHandler
+  } else if (msg.type === "kill") {
+    if (peerManager.getIsHost()) return;  // ← dual entry 回避の guard（smell の本体）
+    ...
+    handleKill(msg.victimId, msg.killerId, msg.hitPos);
+  }
+  ```
+  respawn / score も同じ構造で host guard が入っている。DESIGN.md「ホスト権威メッセージの二重処理防止」セクションで正当化されている。
+- **なぜ smell か**: 同じ状態変更関数 `handleKill` に **2 本の入り口**（ゲームループ直呼び + メッセージ受信）があり、ホストだけ「自分のメッセージを自分で受け取ったら skip」という分岐を書く必要が生じている。**guard の存在自体が dual entry を認めた証**。どちらかの経路で副作用を追加し忘れると挙動が分岐する。
+- **色との類似**: **極めて高い**。色も init useEffect で直接 pickDistinctColor + messageHandler の phaseSpace で pickDistinctColor の 2 経路があり、掃除前はどちらかを先に実行するかで state が揺れていた。dual entry は「同じことを 2 箇所に書かされる」パターンで、将来の拡張（新しい UI 副作用・ログ・undo など）のたびに両方更新が必要になる。
+- **解消方向**: **self-loopback パターン**
+  - PeerManager に `sendWithLoopback(msg: T)` を追加:
+    ```ts
+    sendWithLoopback(msg: T) {
+      this.send(msg);  // 他ピアへ
+      for (const cb of this.messageCallbacks.values()) {
+        cb(this.localId, msg);  // 自分自身にも dispatch
+      }
+    }
+    ```
+  - ホストのゲームループは `handleKill` を直接呼ばず、`peerManager.sendWithLoopback({type:"kill",...})` に統一
+  - messageHandler から「host skip」guard を削除（全員が同じ経路で処理）
+  - respawn / score も同じパターンで統一
+- **懸念**: 現状の messageHandler は msg を validate してから処理する。self-loopback で自分の送信したメッセージも validate を通る（冗長だが害なし）。ただしゲームループ内のタイミングと messageHandler のタイミングがずれるので、副作用の順序（setDeathFlash のタイミングなど）が微妙に変わる可能性。要検証
+- **優先度**: 中（害は出ていないが、将来の拡張時に dual entry で bug が出やすい）、難易度: **高**（ゲームロジックの制御フロー全体を再配線、respawn / score の 3 経路同時変更、タイミング回帰テスト必須）
+
+#### 残存臭 #4: `timeSyncedRef` が接続ライフサイクルを React に漏らしている
+
+- **場所**: `RelativisticGame.tsx:78`（ref 宣言）、`:583`（ゲームループで gate）、`messageHandler.ts:118`（syncTime 受信でフラグ立て）
+- **現状**:
+  ```ts
+  const timeSyncedRef = useRef<boolean>(false);
+  // messageHandler.ts
+  } else if (msg.type === "syncTime") {
+    ...
+    timeSyncedRef.current = true;
+  }
+  // RelativisticGame.tsx game loop
+  if (isHost || timeSyncedRef.current) {
+    peerManager.send(phaseSpace);  // クライアントは syncTime 受信まで送信しない
+  }
+  ```
+- **なぜ smell か**: 「クライアントのクロックはホストの `syncTime` で初期化されるまでズレている、その前に phaseSpace を送ってはいけない」という接続ライフサイクルの状態が、ゲームロジック層のフラグとして露出している。本来これは PeerProvider の接続フェーズ（`trying-host` / `connecting-client` / `connected`）の延長で管理すべき情報（`connected-but-not-synced` / `connected-and-synced`）。
+- **色との類似**: 中程度。色ほどの race ではないが、「本来は下層（ネットワーク/接続管理）の責務を上層（ゲームロジック）に漏らしている」という層の違反。
+- **解消方向**:
+  - PeerProvider の `connectionPhase` に `"syncing"` と `"synced"` を追加（host は即 `synced`、client は syncTime 受信で `synced` に遷移）
+  - ゲームループは `peerStatus === "synced"` を usePeer フック経由で取得し gate に使う
+  - `timeSyncedRef` と messageHandler のフラグ立て処理を削除
+- **優先度**: 低（実害少、1 ファイル程度の変更）、難易度: 低
+
+---
+
+#### 全体方針
+
+- 優先順: **#2 (connections diffing) → #1 (dead/processed mirror) → #4 (timeSyncedRef) → #3 (dual entry)**
+- #2 と #4 はピンポイントの比較的小さな掃除で効果が出る。先にここから
+- #1 は設計思想（React async vs game loop sync）の検証が必要。慎重に
+- #3 は大手術。他の掃除を先にやって、コードが落ち着いてから再評価
+- いずれの修正も「色掃除」と同じく、touch 箇所を最小化した 1 コミットで、lint + tsc + preview 2 タブテストで回帰なしを確認してからコミットすること
 
 - **Status**: 検討中、未適用。コード・UI・ドキュメントの全域に現在も戦闘系語彙（KILL / DEAD / 死亡 / 撃破 / kill / deathFlash 等）が残存。置換する場合は機能的整合を崩さないように一括リネームで別コミット予定
 - **Why 再考**: 本アプリの本質は「相対論の時空図可視化」で、物理デモ/教育用途に寄せるなら戦闘系語彙は重い。現在の社会的文脈でも、`KILL` を画面に出すマルチプレイヤー Web アプリは不必要に不穏

@@ -49,3 +49,4 @@ stateful `pickDistinctColor` を純関数 `colorForPlayerId(id)` に置き換え
 - 各プレイヤーに固有時刻を表示（時間の遅れの実感用）
 - 3+1 次元への拡張検討
 - **用語の再考**: "KILL" / "キル" / "撃破" / "death flash" / "DEAD" など戦闘/死亡系の物騒な用語を、現在の社会的文脈で使うのが適切か検討。代替案候補: 「タグ」「ヒット」「フリーズ」「アウト」「リトリート」等、物理デモ/教育用途に寄せた中立的語彙への置換。コード識別子（`isDead`, `handleKill`, `deadPlayersRef` 等）も含めて一括で見直す可能性あり。優先度は低いが方針は決めておきたい
+- **残存する設計臭の掃除**（DESIGN.md「残存する設計臭」参照）: 色バグ掃除で確立した「純関数化・単一情報源・外部イベントを React state で diff しない・dual entry point 排除」の思想を、他の 4 箇所に順次適用。推奨順: (2) connections useEffect の diffing を PeerManager コールバックに → (1) `deadPlayersRef` / `processedLasersRef` の mirror 解消 → (4) `timeSyncedRef` を PeerProvider の接続フェーズへ移動 → (3) kill/respawn/score の dual entry を self-loopback で統一（大手術、最後）
