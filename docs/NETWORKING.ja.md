@@ -70,13 +70,43 @@ srflx が全然出ない / TURN 以外が全部失敗する、みたいならネ
 
 ## 対策
 
-### A（推奨）: TURN サーバを追加する
+選択肢を「インフラ運用負荷の小さい順」に並べると **A' → A → C → B** になります。学校 Wi-Fi 対策の最初の一手は **A'**。
 
-制限が強い環境で「確実に動かす」なら TURN が現実解です。
+### A'（最推奨・最小コスト）: 公開無料 TURN を使う
 
-**coturn** などで TURN を立てて、TCP/TLS（できれば 443）を有効にします。
+クライアントの env に **1 行追加してビルドし直すだけ** で済む方法。サーバ運用ゼロ、クレカ・ドメイン・アカウント不要。
 
-クライアント側はこんな感じで設定します。
+[Open Relay Project (Metered.ca)](https://www.metered.ca/tools/openrelay/) が公開している無料 TURN を使います。`turns:` (TLS over 443) エンドポイントが使えるので、UDP 完全遮断や DPI のある学校でも HTTPS と区別できず通る確率が高い。
+
+```bash
+# 2+1/.env.local
+VITE_WEBRTC_ICE_SERVERS='[
+  {"urls":["stun:stun.l.google.com:19302"]},
+  {"urls":["stun:stun.cloudflare.com:3478"]},
+  {"urls":["turn:openrelay.metered.ca:80"],"username":"openrelayproject","credential":"openrelayproject"},
+  {"urls":["turns:openrelay.metered.ca:443?transport=tcp"],"username":"openrelayproject","credential":"openrelayproject"}
+]'
+```
+
+ビルドして本番デプロイ:
+
+```bash
+cd 2+1
+pnpm run deploy
+```
+
+帯域感: phase space ~100 byte × 60Hz × 4 人 ≈ 24 KB/s。1 時間で 86 MB、月 50GB の無料枠は実質使い切れない量。
+
+注意点:
+
+- 公開 TURN なので **SLA なし**。商用クリティカルには使えない。落ちたら A（自前 TURN）か C（自前 WS Relay）に切り替える。
+- クレデンシャルは公開値なので秘匿不要。リポに直書き OK。
+
+### A: 自前 TURN サーバを立てる
+
+A' が落ちた・帯域を完全コントロールしたい場合の次の一手。
+
+**coturn** などで TURN を立てて、TCP/TLS（できれば 443）を有効にします。クライアント設定は A' と同じ形式で URL と credentials だけ差し替え:
 
 ```bash
 VITE_WEBRTC_ICE_SERVERS='[
@@ -168,4 +198,5 @@ VITE_WS_RELAY_URL=wss://relay.example.com
 ## 現場感あるアドバイス
 
 - 家（ホットスポット）だと動くのに学校だと死ぬ → ほぼネットワークが原因です。
-- 教室デモを通したい → TURN（TLS/443）を用意して、`.env.local` で切り替えるのが最短です。
+- 教室デモを通したい → **A'（公開 TURN を env に追加）が最短**。インフラ運用ゼロで TLS/443 経由になる。
+- A' で帯域や信頼性が問題になったら A（自前 TURN）or C（自前 WS Relay）。実装済み資産は両方リポに残してある。

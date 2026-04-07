@@ -28,9 +28,13 @@ pnpm run analyze               # バンドルサイズ分析
 VITE_NETWORK_TRANSPORT=auto    # peerjs | wsrelay | auto
 VITE_WS_RELAY_URL=             # WS Relay 用 URL
 VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
+VITE_WEBRTC_ICE_SERVERS=       # JSON 配列 (RTCIceServer[])。学校 Wi-Fi 突破は公開 TURN がここ
+VITE_WEBRTC_ICE_TRANSPORT_POLICY=  # "all" | "relay"
 ```
 
-詳細: `../docs/NETWORKING.md`, `relay-deploy/README.md`
+学校・企業ネットワークで P2P が塞がれる場合の最小コスト解は `VITE_WEBRTC_ICE_SERVERS` に Open Relay の公開 TURN を入れる（A'）。`.env.example` にコメント済み、詳細は `docs/NETWORKING.ja.md`。
+
+詳細: `../docs/NETWORKING.ja.md`, `relay-deploy/README.md`
 
 ## アーキテクチャ
 

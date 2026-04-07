@@ -72,13 +72,43 @@ If you get **no srflx candidates** or everything fails unless you use TURN/TLS, 
 
 ## Fix options
 
-### Option A (recommended): add a TURN server
+Ordered by infrastructure cost (low → high): **A' → A → C → B**. The first thing to try for a school Wi‑Fi problem is **A'**.
 
-If you want this to work on restrictive networks, TURN is the pragmatic solution.
+### Option A' (best): use a free public TURN
 
-You can run your own TURN server using **coturn** and enable TURN over TCP/TLS (often on port 443).
+The cheapest fix that does not require running anything: add one env var, rebuild, redeploy. No server, no domain, no account.
 
-Then set:
+This uses [Open Relay Project (Metered.ca)](https://www.metered.ca/tools/openrelay/), a free public TURN service that exposes a `turns:` (TLS over 443) endpoint. Because TLS-on-443 is indistinguishable from HTTPS, this typically gets through DPI / UDP-blocked school networks.
+
+```bash
+# 2+1/.env.local
+VITE_WEBRTC_ICE_SERVERS='[
+  {"urls":["stun:stun.l.google.com:19302"]},
+  {"urls":["stun:stun.cloudflare.com:3478"]},
+  {"urls":["turn:openrelay.metered.ca:80"],"username":"openrelayproject","credential":"openrelayproject"},
+  {"urls":["turns:openrelay.metered.ca:443?transport=tcp"],"username":"openrelayproject","credential":"openrelayproject"}
+]'
+```
+
+Then build and deploy:
+
+```bash
+cd 2+1
+pnpm run deploy
+```
+
+Bandwidth math: phase space ~100 B × 60 Hz × 4 players ≈ 24 KB/s. One hour ≈ 86 MB; the 50 GB/month free quota is effectively unbounded for this use case.
+
+Caveats:
+
+- It is a public service with **no SLA**. If it ever goes down, fall back to Option A (your own TURN) or Option C (your own WS relay).
+- Credentials are public values; safe to commit.
+
+### Option A: run your own TURN server
+
+Use this if A' goes down or you want full control over bandwidth.
+
+You can run your own TURN server using **coturn** and enable TURN over TCP/TLS (often on port 443). Same client config as A' with your own URL and credentials:
 
 ```bash
 VITE_WEBRTC_ICE_SERVERS='[
@@ -170,4 +200,5 @@ VITE_WS_RELAY_URL=wss://relay.example.com
 ## Practical advice
 
 - If it works on a phone hotspot but not on school Wi‑Fi: it’s almost certainly the network.
-- If you need a classroom demo: deploy a TURN server with TLS/443 and configure clients via `.env.local`.
+- For a classroom demo, **start with Option A'** (public TURN env var). Zero infra, TLS/443, usually solves it.
+- If A' bandwidth or reliability becomes a real concern, escalate to A (own TURN) or C (own WS relay). Both are still implemented in the repo.
