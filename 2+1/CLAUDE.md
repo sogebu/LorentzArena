@@ -28,7 +28,7 @@ pnpm run analyze               # バンドルサイズ分析
 VITE_NETWORK_TRANSPORT=auto    # peerjs | wsrelay | auto
 VITE_WS_RELAY_URL=             # WS Relay 用 URL
 VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
-VITE_WEBRTC_ICE_SERVERS=       # JSON 配列 (RTCIceServer[])。学校 Wi-Fi 突破は公開 TURN がここ
+VITE_WEBRTC_ICE_SERVERS=       # JSON 配列 (RTCIceServer[])。学校・企業ネットワーク突破は公開 TURN がここ
 VITE_WEBRTC_ICE_TRANSPORT_POLICY=  # "all" | "relay"
 ```
 

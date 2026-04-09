@@ -200,7 +200,7 @@ pnpm dev:wsrelay
 - PeerJS 方式では「シグナリングサーバ（PeerServer）」が必要で、環境によっては TURN が必要
 - WS Relay 方式では WebSocket サーバ経由でゲーム通信を中継
 
-家だと動くのに学校だと動かない場合は、まずここを読んでください。
+家だと動くのに学校・企業ネットワークだと動かない場合は、まずここを読んでください。
 
 - `docs/NETWORKING.ja.md`
 
