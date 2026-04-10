@@ -301,7 +301,7 @@ export const HUD = ({
             zIndex: 198,
             pointerEvents: "none",
             boxShadow:
-              "inset 0 0 40px rgba(255, 160, 60, 0.3), inset 0 0 15px rgba(255, 160, 60, 0.15)",
+              "inset 0 0 80px rgba(255, 160, 60, 0.6), inset 0 0 30px rgba(255, 160, 60, 0.4)",
           }}
         />
       )}
