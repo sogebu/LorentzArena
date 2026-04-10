@@ -166,6 +166,12 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `SWIPE_SENSITIVITY_X` | 0.008 rad/px | 横スワイプ → heading 回転の感度 |
 | `THRUST_SENSITIVITY_Y` | 0.015 /px | 縦変位 → thrust の感度（67px で最大推力） |
 
+| エネルギーパラメータ（`constants.ts`） | 値 | 説明 |
+|---|---|---|
+| `ENERGY_MAX` | 1.0 | エネルギー満タン値 |
+| `ENERGY_PER_SHOT` | 1/30 ≈ 0.033 | 1 発あたりの消費。30 発で枯渇（≈3 秒連射） |
+| `ENERGY_RECOVERY_RATE` | 1/6 ≈ 0.167/s | 6 秒で 0→満タン。撃っていないときのみ回復 |
+
 ### Relay サーバーセキュリティ（`relay-server/server.mjs`）
 
 | パラメータ | 値 | 説明 |
