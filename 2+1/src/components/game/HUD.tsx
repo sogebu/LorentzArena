@@ -42,9 +42,7 @@ const ToggleSwitch = ({
         width: "36px",
         height: "20px",
         borderRadius: "10px",
-        backgroundColor: checked
-          ? "rgba(100, 200, 100, 0.7)"
-          : "rgba(255, 255, 255, 0.25)",
+        backgroundColor: "rgba(255, 255, 255, 0.25)",
         position: "relative",
         transition: "background-color 0.2s",
         flexShrink: 0,
@@ -58,7 +56,7 @@ const ToggleSwitch = ({
           backgroundColor: "white",
           position: "absolute",
           top: "2px",
-          left: checked ? "18px" : "2px",
+          left: checked ? "2px" : "18px",
           transition: "left 0.2s",
         }}
       />
