@@ -120,7 +120,9 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `kill` | host → all | キル通知（hitPos 付き） |
 | `respawn` | host → all | リスポーン位置指示 |
 | `score` | host → all | スコア更新 |
-| `peerList` | host → client | 接続ピア一覧 |
+| `ping` | host → all | ハートビート（3秒間隔、8秒タイムアウトでホスト切断検知） |
+| `hostMigration` | new host → all | ホストマイグレーション（スコア + dead players 引継ぎ） |
+| `peerList` | host → all | 接続ピア一覧（接続変化時に proactive 送信） |
 | `requestPeerList` | client → host | ピア一覧要求 |
 
 **色は同期しない**: `playerColor` メッセージは 2026-04-06 に廃止。全ピアが `colorForPlayerId(id)` で同じ色を決定論的に算出するため、ネットワーク同期不要。詳細: DESIGN.md「色割り当て: 決定的純関数」

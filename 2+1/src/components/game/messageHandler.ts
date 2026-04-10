@@ -206,5 +206,32 @@ export const createMessageHandler =
         return;
       // データ更新 + UI pending: handleKill で一括処理
       handleKill(msg.victimId, msg.killerId, msg.hitPos);
+    } else if (msg.type === "hostMigration") {
+      // Host migration: sync scores from new host.
+      // Skip if we ARE the new host (we already have the state).
+      if (peerManager.getIsHost()) return;
+      if (
+        !isValidString(msg.newHostId) ||
+        !msg.scores ||
+        typeof msg.scores !== "object" ||
+        Array.isArray(msg.scores)
+      )
+        return;
+      // Sync scores
+      const scores: Record<string, number> = {};
+      for (const [key, val] of Object.entries(msg.scores)) {
+        if (isValidString(key) && isFiniteNumber(val)) {
+          scores[key] = val as number;
+        }
+      }
+      scoresRef.current = scores;
+      setScores(scores);
+      // eslint-disable-next-line no-console
+      console.log(
+        "[messageHandler] hostMigration received from",
+        msg.newHostId,
+        "scores:",
+        scores,
+      );
     }
   };

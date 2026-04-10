@@ -10,7 +10,7 @@ type RelayMessageIn<T> =
   | { type: "hello_ack"; id: string }
   | { type: "peers"; hostId: string; peers: string[] }
   | { type: "deliver"; from: string; msg: T }
-  | { type: "host_closed"; hostId: string }
+  | { type: "host_closed"; hostId: string; peers: string[] }
   | { type: "error"; message: string };
 
 type RelayOptions = {
@@ -41,6 +41,7 @@ export class WsRelayManager<T> {
 
   private peerStatus: WsRelayStatus = { status: "connecting" };
   private peerStatusCallback?: (status: WsRelayStatus) => void;
+  private hostClosedCallback?: (survivingPeers: string[]) => void;
 
   private isHost = false;
   private hostId?: string;
@@ -113,13 +114,19 @@ export class WsRelayManager<T> {
           cb(data.from, data.msg);
         }
         return;
-      case "host_closed":
+      case "host_closed": {
+        // Update peerOrderRef via callback BEFORE clearing connections,
+        // so migration election has the peer list available.
+        const survivingPeers = data.peers ?? [];
+        this.hostClosedCallback?.(survivingPeers);
+        // Clear connections — triggers migration detection in PeerProvider.
         this.conns.clear();
-        this.notifyConnectionChange();
         if (!this.isHost) {
           this.hostId = undefined;
         }
+        this.notifyConnectionChange();
         return;
+      }
       case "error":
         this.peerStatus = {
           status: "error",
@@ -149,6 +156,15 @@ export class WsRelayManager<T> {
   onPeerStatusChange(cb: (status: WsRelayStatus) => void) {
     this.peerStatusCallback = cb;
     cb(this.peerStatus);
+  }
+
+  /**
+   * Subscribe to host disconnection events.
+   * Called when relay server reports the host has closed.
+   * Includes the list of surviving peers for migration election.
+   */
+  onHostClosed(cb: (survivingPeers: string[]) => void) {
+    this.hostClosedCallback = cb;
   }
 
   getPeerStatus(): WsRelayStatus {
@@ -229,8 +245,24 @@ export class WsRelayManager<T> {
     this.sendRaw({ type: "set_host" });
   }
 
+  /**
+   * Promote self to host during migration (after previous host disconnected).
+   * Uses a dedicated server message that preserves the room membership.
+   */
+  promoteToHost() {
+    this.isHost = true;
+    this.hostId = this.localId;
+    this.sendRaw({ type: "promote_host" });
+  }
+
   getIsHost(): boolean {
     return this.isHost;
+  }
+
+  /** Reset host/client role flags for migration. */
+  clearHost() {
+    this.isHost = false;
+    this.hostId = undefined;
   }
 
   setHostId(hostId: string) {

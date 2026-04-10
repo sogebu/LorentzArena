@@ -50,7 +50,8 @@ import type {
 } from "./game/types";
 
 const RelativisticGame = () => {
-  const { peerManager, myId, connections } = usePeer();
+  const { peerManager, myId, connections, isMigrating, completeMigration } =
+    usePeer();
   const [players, setPlayers] = useState<Map<string, RelativisticPlayer>>(
     new Map(),
   );
@@ -85,6 +86,8 @@ const RelativisticGame = () => {
   const timeSyncedRef = useRef<boolean>(false);
   const processedLasersRef = useRef<Set<string>>(new Set());
   const deadPlayersRef = useRef<Set<string>>(new Set());
+  // Track when each player was killed (Date.now()), for migration respawn timer reconstruction.
+  const deathTimeMapRef = useRef<Map<string, number>>(new Map());
   const respawnTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(
     new Set(),
   );
@@ -147,7 +150,10 @@ const RelativisticGame = () => {
         ghostTauRef.current = 0;
       }
 
-      // 5. pending に追加（過去光円錐到達時に UI エフェクト + スコア加算を発火）
+      // 5. Record death time for migration respawn timer reconstruction
+      deathTimeMapRef.current.set(victimId, Date.now());
+
+      // 6. pending に追加（過去光円錐到達時に UI エフェクト + スコア加算を発火）
       // 全キルイベントを積む（スコアは各プレイヤーが因果律的に正しいタイミングで加算）
       pendingKillEventsRef.current.push({
         victimId,
@@ -172,6 +178,8 @@ const RelativisticGame = () => {
       position: { t: number; x: number; y: number; z: number },
     ) => {
       setPlayers((prev) => applyRespawn(prev, playerId, position));
+
+      deathTimeMapRef.current.delete(playerId);
 
       // 自分のリスポーン: ゴースト解除 + エネルギー満タン
       if (playerId === myId) {
@@ -261,7 +269,9 @@ const RelativisticGame = () => {
     const connectedIds = new Set(connections.map((c) => c.id));
     connectedIds.add(myId);
 
-    if (peerManager?.getIsHost()) {
+    // Send syncTime to newly connected clients (NOT during migration —
+    // migration uses hostMigration message which doesn't reset world time).
+    if (peerManager?.getIsHost() && !isMigrating) {
       const myPlayer = playersRef.current.get(myId);
       if (myPlayer) {
         for (const conn of connections) {
@@ -294,7 +304,94 @@ const RelativisticGame = () => {
       }
       return next;
     });
-  }, [connections, myId, peerManager]);
+  }, [connections, myId, peerManager, isMigrating]);
+
+  // Host migration: when promoted to host, broadcast game state and reconstruct respawn timers.
+  useEffect(() => {
+    if (!isMigrating) return;
+    if (!peerManager) return;
+    if (!peerManager.getIsHost()) return;
+    if (!myId) return;
+
+    // Wait for at least one connection before broadcasting
+    const openConns = connections.filter((c) => c.open);
+    if (openConns.length === 0) return;
+
+    // eslint-disable-next-line no-console
+    console.log(
+      "[RelativisticGame] Host migration: broadcasting state to",
+      openConns.length,
+      "peers",
+    );
+
+    // Reconstruct deadPlayersRef from player state
+    deadPlayersRef.current.clear();
+    for (const [id, player] of playersRef.current) {
+      if (player.isDead) {
+        deadPlayersRef.current.add(id);
+      }
+    }
+
+    // Build dead player list with death times for the migration message
+    const deadPlayersList: Array<{ playerId: string; deathTime: number }> = [];
+    for (const playerId of deadPlayersRef.current) {
+      const deathTime = deathTimeMapRef.current.get(playerId) ?? Date.now();
+      deadPlayersList.push({ playerId, deathTime });
+    }
+
+    // Broadcast hostMigration to all connected peers
+    peerManager.send({
+      type: "hostMigration" as const,
+      newHostId: myId,
+      scores: scoresRef.current,
+      deadPlayers: deadPlayersList,
+    });
+
+    // Reconstruct respawn timers for dead players
+    const now = Date.now();
+    for (const { playerId, deathTime } of deadPlayersList) {
+      const elapsed = now - deathTime;
+      const remaining = Math.max(0, RESPAWN_DELAY - elapsed);
+
+      const timerId = setTimeout(() => {
+        respawnTimeoutsRef.current.delete(timerId);
+        let minT = Number.POSITIVE_INFINITY;
+        let maxT = Number.NEGATIVE_INFINITY;
+        for (const [, p] of playersRef.current) {
+          const t = p.phaseSpace.pos.t;
+          if (Number.isFinite(t)) {
+            if (t < minT) minT = t;
+            if (t > maxT) maxT = t;
+          }
+        }
+        if (!Number.isFinite(minT)) minT = 0;
+        if (!Number.isFinite(maxT)) maxT = 0;
+        const respawnPos = {
+          t: (minT + maxT) / 2,
+          x: Math.random() * SPAWN_RANGE,
+          y: Math.random() * SPAWN_RANGE,
+          z: 0,
+        };
+        deadPlayersRef.current.delete(playerId);
+        peerManager.send({
+          type: "respawn" as const,
+          playerId,
+          position: respawnPos,
+        });
+        handleRespawn(playerId, respawnPos);
+      }, remaining);
+      respawnTimeoutsRef.current.add(timerId);
+    }
+
+    completeMigration();
+  }, [
+    isMigrating,
+    peerManager,
+    myId,
+    connections,
+    handleRespawn,
+    completeMigration,
+  ]);
 
   // メッセージ受信処理
   useEffect(() => {

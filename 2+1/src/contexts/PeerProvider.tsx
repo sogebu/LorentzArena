@@ -53,7 +53,9 @@ interface PeerContextValue {
   autoFallbackTriggered: boolean;
   connectionPhase: ConnectionPhase;
   roomName: string;
+  isMigrating: boolean;
   setActiveTransport: (transport: ActiveTransport) => void;
+  completeMigration: () => void;
 }
 
 export const PeerContext = createContext<PeerContextValue | null>(null);
@@ -83,6 +85,28 @@ const isRelayable = (msg: Message): boolean => {
     );
   }
   return false;
+};
+
+/**
+ * Register a listener that updates the peer order from peerList messages.
+ * Used by clients to know who else is in the room (for migration election).
+ */
+const registerPeerOrderListener = (
+  pm: NetworkManager,
+  peerOrderRef: { current: string[] },
+) => {
+  pm.onMessage("peerOrder", (_senderId, msg) => {
+    if (
+      msg &&
+      typeof msg === "object" &&
+      (msg as { type?: string }).type === "peerList"
+    ) {
+      const peers = (msg as { peers?: string[] }).peers;
+      if (Array.isArray(peers)) {
+        peerOrderRef.current = peers;
+      }
+    }
+  });
 };
 
 /** Register standard host relay handlers on a PeerManager. */
@@ -156,6 +180,15 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     },
   );
   const [autoFallbackTriggered, setAutoFallbackTriggered] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
+
+  // Ordered list of peer IDs (excluding host) for migration election.
+  // Updated by the host on connection changes and by clients on peerList receipt.
+  const peerOrderRef = useRef<string[]>([]);
+
+  const completeMigration = useCallback(() => {
+    setIsMigrating(false);
+  }, []);
 
   const setActiveTransport = useCallback(
     (transport: ActiveTransport) => {
@@ -214,6 +247,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     pm.onPeerStatusChange((status) => setPeerStatus(status));
     pm.onConnectionChange((conns) => setConnections(conns));
     registerHostRelay(pm);
+    registerPeerOrderListener(pm, peerOrderRef);
     setPeerManager(pm);
 
     return () => {
@@ -242,6 +276,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         pm.setAsHost();
         setMyId(roomPeerId);
         registerHostRelay(pm);
+        registerPeerOrderListener(pm, peerOrderRef);
         setPeerManager(pm);
         setConnectionPhase("connected");
       } else if (
@@ -291,6 +326,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         pm.connect(roomPeerId);
         setMyId(localId);
         registerHostRelay(pm);
+        registerPeerOrderListener(pm, peerOrderRef);
         setPeerManager(pm);
         setConnectionPhase("connected");
       }
@@ -327,6 +363,154 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     setActiveTransportState("wsrelay");
   }, [preferredTransportMode, wsRelayUrl, activeTransport, peerStatus]);
 
+  // Host: proactively broadcast peerList when connections change.
+  // Also update peerOrderRef on the host side.
+  useEffect(() => {
+    if (!peerManager) return;
+    if (!peerManager.getIsHost()) return;
+    if (connectionPhase !== "connected") return;
+    const openPeers = connections.filter((c) => c.open).map((c) => c.id);
+    peerOrderRef.current = openPeers;
+    if (openPeers.length > 0) {
+      peerManager.send({ type: "peerList", peers: openPeers } as never);
+    }
+  }, [connections, peerManager, connectionPhase]);
+
+  // Host heartbeat: send ping every 3 seconds so clients can detect
+  // host disconnection quickly (WebRTC ICE timeout is 30+ seconds).
+  const HEARTBEAT_INTERVAL = 3000;
+  const HEARTBEAT_TIMEOUT = 8000;
+  useEffect(() => {
+    if (!peerManager) return;
+    if (connectionPhase !== "connected") return;
+    if (!peerManager.getIsHost()) return;
+
+    const timer = setInterval(() => {
+      peerManager.send({ type: "ping" } as never);
+    }, HEARTBEAT_INTERVAL);
+    // Send first ping immediately
+    peerManager.send({ type: "ping" } as never);
+
+    return () => clearInterval(timer);
+  }, [peerManager, connectionPhase]);
+
+  // Client: detect host disconnect via heartbeat timeout.
+  // When no ping is received for HEARTBEAT_TIMEOUT ms, trigger migration.
+  const lastPingRef = useRef<number>(0);
+  const migrationTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (!peerManager) return;
+    if (connectionPhase !== "connected") return;
+    if (peerManager.getIsHost()) return;
+
+    // Listen for ping messages to update lastPingRef
+    lastPingRef.current = Date.now();
+    migrationTriggeredRef.current = false;
+
+    peerManager.onMessage("heartbeat", (_senderId, msg) => {
+      if (
+        msg &&
+        typeof msg === "object" &&
+        (msg as { type?: string }).type === "ping"
+      ) {
+        lastPingRef.current = Date.now();
+      }
+    });
+
+    const timer = setInterval(() => {
+      if (migrationTriggeredRef.current) return;
+      const elapsed = Date.now() - lastPingRef.current;
+      if (elapsed < HEARTBEAT_TIMEOUT) return;
+
+      // Host heartbeat timeout — trigger migration
+      migrationTriggeredRef.current = true;
+      clearInterval(timer);
+
+      // Clean up stale connection to old host
+      const oldHostId = peerManager.getHostId();
+      if (oldHostId && "disconnectPeer" in peerManager) {
+        (peerManager as PeerManager<Message>).disconnectPeer(oldHostId);
+      }
+
+      const candidates = peerOrderRef.current.filter(
+        (id) => id !== oldHostId,
+      );
+
+      // eslint-disable-next-line no-console
+      console.log(
+        "[PeerProvider] Host heartbeat timeout. Candidates:",
+        candidates,
+        "My ID:",
+        peerManager.id(),
+      );
+
+      const newHostId = candidates[0]; // first in join order = oldest client
+
+      if (!newHostId) {
+        // Solo player — become host for future joiners
+        peerManager.clearHost();
+        peerManager.setAsHost();
+        registerHostRelay(peerManager);
+        registerPeerOrderListener(peerManager, peerOrderRef);
+        return;
+      }
+
+      if (newHostId === peerManager.id()) {
+        // I am the new host
+        // eslint-disable-next-line no-console
+        console.log(
+          "[PeerProvider] I am the new host. Connecting to peers...",
+        );
+        peerManager.clearHost();
+        peerManager.setAsHost();
+        registerHostRelay(peerManager);
+
+        if (activeTransport === "peerjs") {
+          // Connect to all remaining peers (still registered on PeerServer)
+          for (const peerId of candidates) {
+            if (peerId !== peerManager.id()) {
+              peerManager.connect(peerId);
+            }
+          }
+        } else if (activeTransport === "wsrelay") {
+          (peerManager as WsRelayManager<Message>).promoteToHost();
+        }
+
+        setIsMigrating(true);
+      } else {
+        // I am NOT the new host — wait for new host to connect
+        // eslint-disable-next-line no-console
+        console.log("[PeerProvider] Waiting for new host:", newHostId);
+        peerManager.clearHost();
+        peerManager.setHostId(newHostId);
+
+        if (activeTransport === "wsrelay") {
+          setTimeout(() => {
+            (peerManager as WsRelayManager<Message>).connect(newHostId);
+          }, 500);
+        }
+        // PeerJS: new host will connect to us via peer.on("connection")
+      }
+    }, 1000); // Check every second
+
+    return () => {
+      clearInterval(timer);
+      peerManager.offMessage("heartbeat");
+    };
+  }, [peerManager, connectionPhase, activeTransport]);
+
+  // WS Relay: register host_closed handler for migration peer list
+  useEffect(() => {
+    if (activeTransport !== "wsrelay") return;
+    if (!peerManager) return;
+    if (!(peerManager instanceof WsRelayManager)) return;
+
+    peerManager.onHostClosed((survivingPeers) => {
+      // Update peerOrderRef with the surviving peers from server
+      peerOrderRef.current = survivingPeers;
+    });
+  }, [activeTransport, peerManager]);
+
   return (
     <PeerContext.Provider
       value={{
@@ -340,7 +524,9 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         autoFallbackTriggered,
         connectionPhase,
         roomName,
+        isMigrating,
         setActiveTransport,
+        completeMigration,
       }}
     >
       {children}

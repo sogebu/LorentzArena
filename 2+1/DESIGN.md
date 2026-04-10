@@ -2,6 +2,22 @@
 
 ## 設計判断の記録
 
+### ホストマイグレーション（2026-04-11）
+
+- **What**: ホスト切断時に最古参クライアントが自動昇格し、ゲームを継続する仕組み。PeerJS / WS Relay 両方で動作
+- **Why**: ホストのブラウザクラッシュ/リロードでセッションが崩壊するのは物理デモとしてもゲームとしても脆い
+- **Key decisions**:
+  - **選出**: peerList の順序（= 接続順）で決定。全クライアントが同じリストを持つので合意は自動的に成立
+  - **PeerJS ID 非再取得**: 旧ホストの `la-{roomName}` を再登録せず、新ホストは自分のランダム ID のまま他クライアントに直接接続。PeerServer の ID 解放タイムラグ問題を回避
+  - **proactive peerList**: ホストが接続変化時に全クライアントへ peerList をブロードキャスト（既存 requestPeerList は誰も送っていなかった）。マイグレーション選出の前提
+  - **状態引継ぎ**: `hostMigration` メッセージでスコア + dead players（deathTime 付き）を送信。syncTime は世界時刻をリセットするためマイグレーション中はスキップ
+  - **respawn タイマー再構築**: `deathTimeMapRef` で kill 時の `Date.now()` を記録。新ホストが残り時間を計算して `setTimeout` を再設定
+  - **WS Relay race 対策**: 非新ホストの `join_host` を 500ms 遅延し、新ホストの `promote_host` がルーム作成を完了するのを待つ
+  - **relay server**: `host_closed` に surviving peers リストを同梱。`promote_host` ハンドラで新ルーム作成
+- **ハートビート方式**: WebRTC DataConnection の close イベントは ICE タイムアウト依存で 30 秒以上（localhost では事実上無限）。ホストが 3 秒ごとに `ping` メッセージを送信し、クライアントが 8 秒間受信しなければホスト切断と判定。テストで即時検知を確認
+- **stale 接続クリーンアップ**: マイグレーション時に `disconnectPeer(oldHostId)` で旧ホストの DataConnection を明示的に close + conns から除去。UI に旧ホストが残り続ける問題を解消
+- **制限**: マイグレーション後に新規ジョイナーが `la-{roomName}` で入ると別セッションになる（新ホストを発見できない）。小規模ゲームでは許容
+
 ### レーザーエネルギー制（2026-04-11）
 
 - **What**: レーザー発射にエネルギーを消費する仕組みを導入。30 発（≈3 秒連射）で枯渇、6 秒で 0→満タン回復

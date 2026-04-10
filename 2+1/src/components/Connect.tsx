@@ -45,7 +45,7 @@ const Connect = () => {
       case "manual":
         return "手動接続モード";
     }
-  }, [connectionPhase, roomName, peerManager]);
+  }, [connectionPhase, roomName, peerManager, connections]);
 
   return (
     <div className="connection-panel">

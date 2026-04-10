@@ -88,4 +88,28 @@ export type Message =
        */
       type: "score";
       scores: Record<string, number>;
+    }
+  | {
+      /**
+       * Heartbeat from host to clients.
+       * Sent periodically so clients can detect host disconnection quickly,
+       * without waiting for the slow WebRTC ICE timeout.
+       *
+       * JP: ホストからクライアントへのハートビート。
+       * WebRTC の ICE タイムアウト（30秒以上）を待たずにホスト切断を検知するために使用。
+       */
+      type: "ping";
+    }
+  | {
+      /**
+       * Host migration: new host announces itself and transfers game state.
+       * Sent by the newly elected host to all clients after the previous host disconnects.
+       *
+       * JP: ホストマイグレーション: 新ホストがゲーム状態を引き継いで全クライアントに通知。
+       * 前ホスト切断後、選出された新ホストが送信。
+       */
+      type: "hostMigration";
+      newHostId: string;
+      scores: Record<string, number>;
+      deadPlayers: Array<{ playerId: string; deathTime: number }>;
     };

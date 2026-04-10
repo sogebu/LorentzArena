@@ -215,10 +215,31 @@ export class PeerManager<T> {
 
   setAsHost() {
     this.isHost = true;
+    this.hostId = this.localId;
   }
 
   getIsHost(): boolean {
     return this.isHost;
+  }
+
+  /** Reset host/client role flags for migration. */
+  clearHost() {
+    this.isHost = false;
+    this.hostId = undefined;
+  }
+
+  /** Close and remove a specific peer's connection (e.g., stale host after migration). */
+  disconnectPeer(peerId: string) {
+    const conn = this.conns.get(peerId);
+    if (conn) {
+      try {
+        conn.close();
+      } catch {
+        // ignore
+      }
+      this.conns.delete(peerId);
+      this.notifyConnectionChange();
+    }
   }
 
   setHostId(hostId: string) {
