@@ -34,6 +34,7 @@ import { applyKill, applyRespawn } from "./game/killRespawn";
 import { findLaserHitPosition } from "./game/laserPhysics";
 import { createMessageHandler } from "./game/messageHandler";
 import { SceneContent } from "./game/SceneContent";
+import { useTouchInput } from "./game/touchInput";
 import type {
   DeathEvent,
   DebrisRecord,
@@ -93,6 +94,7 @@ const RelativisticGame = () => {
   const fpsRef = useRef({ frameCount: 0, lastTime: performance.now() });
   const cameraYawRef = useRef(0);
   const cameraPitchRef = useRef(Math.PI / 6);
+  const touchInput = useTouchInput();
 
   // Kill 処理: 世界線凍結 + デブリ生成 + isDead 設定
   // ホストのゲームループと messageHandler の両方から呼ばれる
@@ -356,6 +358,7 @@ const RelativisticGame = () => {
   }, []);
 
   // ゲームループ
+  // biome-ignore lint/correctness/useExhaustiveDependencies: touchInput is a stable ref (like keysPressed) — reading .current in the loop is intentional
   useEffect(() => {
     if (!peerManager || !myId) return;
 
@@ -406,6 +409,13 @@ const RelativisticGame = () => {
           pitchMin,
           cameraPitchRef.current - pitchSpeed * dTau,
         );
+      }
+
+      // Touch: heading (yaw) from horizontal swipe
+      const touch = touchInput.current;
+      if (touch.yawDelta !== 0) {
+        cameraYawRef.current += touch.yawDelta;
+        touch.yawDelta = 0; // consume the delta
       }
 
       // 因果律遅延キル通知: pending kill events の過去光円錐チェック
@@ -461,10 +471,10 @@ const RelativisticGame = () => {
 
       const isDead = playersRef.current.get(myId)?.isDead ?? false;
 
-      // レーザー発射（スペースキー）
+      // レーザー発射（スペースキー or タッチ double-tap）
       if (
         !isDead &&
-        keysPressed.current.has(" ") &&
+        (keysPressed.current.has(" ") || touch.firing) &&
         currentTime - lastLaserTimeRef.current > LASER_COOLDOWN
       ) {
         const myPlayer = playersRef.current.get(myId);
@@ -567,6 +577,10 @@ const RelativisticGame = () => {
             const accel = 8 / 10;
             if (keysPressed.current.has("w")) forwardAccel += accel;
             if (keysPressed.current.has("s")) forwardAccel -= accel;
+            // Touch: vertical swipe thrust (continuous, -1 to 1)
+            if (touch.thrust !== 0) {
+              forwardAccel += accel * touch.thrust;
+            }
 
             const ax = Math.cos(cameraYawRef.current) * forwardAccel;
             const ay = Math.sin(cameraYawRef.current) * forwardAccel;
@@ -769,6 +783,8 @@ const RelativisticGame = () => {
   // NOTE: myDeathEvent is intentionally read via myDeathEventRef (not state)
   // to avoid re-running this effect on kill/respawn, which would clear
   // respawn timeouts and prevent the host from respawning.
+  // touchInput is a stable ref (like keysPressed) — reading .current in the
+  // loop is intentional and should not trigger re-runs.
   }, [peerManager, myId, handleKill, handleRespawn]);
 
   return (
