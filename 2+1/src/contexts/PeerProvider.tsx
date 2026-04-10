@@ -260,7 +260,13 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     return () => {
       if (owned) pm.destroy();
     };
-  }, [activeTransport, connectionPhase, roomPeerId, credentialsFetched, dynamicIceServers]);
+  }, [
+    activeTransport,
+    connectionPhase,
+    roomPeerId,
+    credentialsFetched,
+    dynamicIceServers,
+  ]);
 
   // PeerJS: Phase 2 — ランダム ID でクライアント接続
   useEffect(() => {
@@ -295,7 +301,13 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     return () => {
       if (owned) pm.destroy();
     };
-  }, [activeTransport, connectionPhase, roomPeerId, credentialsFetched, dynamicIceServers]);
+  }, [
+    activeTransport,
+    connectionPhase,
+    roomPeerId,
+    credentialsFetched,
+    dynamicIceServers,
+  ]);
 
   // Auto-fallback: PeerJS → WS Relay
   useEffect(() => {

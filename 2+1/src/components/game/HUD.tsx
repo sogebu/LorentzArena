@@ -149,7 +149,9 @@ export const HUD = ({
             {sortedScores.map(([id, kills]) => (
               <div
                 key={id}
-                style={{ color: players.get(id)?.color ?? colorForPlayerId(id) }}
+                style={{
+                  color: players.get(id)?.color ?? colorForPlayerId(id),
+                }}
               >
                 {id === myId ? "You" : id.slice(0, 6)}: {kills}
               </div>

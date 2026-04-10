@@ -184,7 +184,12 @@ const RelativisticGame = () => {
         // 自分自身: 光円錐距離 0 → 即時
         setSpawns((prev) => [
           ...prev,
-          { id: `spawn-${playerId}-${now}`, pos: position, color, startTime: now },
+          {
+            id: `spawn-${playerId}-${now}`,
+            pos: position,
+            color,
+            startTime: now,
+          },
         ]);
       } else {
         // 他プレイヤー: 過去光円錐到達まで遅延
@@ -194,7 +199,8 @@ const RelativisticGame = () => {
         ];
         // 上限（メモリ保護）
         if (pendingSpawnEventsRef.current.length > 50) {
-          pendingSpawnEventsRef.current = pendingSpawnEventsRef.current.slice(-50);
+          pendingSpawnEventsRef.current =
+            pendingSpawnEventsRef.current.slice(-50);
         }
       }
     },
@@ -424,7 +430,12 @@ const RelativisticGame = () => {
         const fired: number[] = [];
         for (let i = 0; i < pendingKillEventsRef.current.length; i++) {
           const ev = pendingKillEventsRef.current[i];
-          const hitPosV4 = createVector4(ev.hitPos.t, ev.hitPos.x, ev.hitPos.y, ev.hitPos.z);
+          const hitPosV4 = createVector4(
+            ev.hitPos.t,
+            ev.hitPos.x,
+            ev.hitPos.y,
+            ev.hitPos.z,
+          );
           if (isInPastLightCone(hitPosV4, myPos)) {
             fired.push(i);
             // 自分が殺された: death flash
@@ -456,9 +467,19 @@ const RelativisticGame = () => {
         const remaining: PendingSpawnEvent[] = [];
         const fireTime = Date.now();
         for (const ev of pendingSpawnEventsRef.current) {
-          const spawnPosV4 = createVector4(ev.pos.t, ev.pos.x, ev.pos.y, ev.pos.z);
+          const spawnPosV4 = createVector4(
+            ev.pos.t,
+            ev.pos.x,
+            ev.pos.y,
+            ev.pos.z,
+          );
           if (isInPastLightCone(spawnPosV4, myPos)) {
-            firedSpawns.push({ id: ev.id, pos: ev.pos, color: ev.color, startTime: fireTime });
+            firedSpawns.push({
+              id: ev.id,
+              pos: ev.pos,
+              color: ev.color,
+              startTime: fireTime,
+            });
           } else {
             remaining.push(ev);
           }
@@ -780,11 +801,11 @@ const RelativisticGame = () => {
       }
       respawnTimeoutsRef.current.clear();
     };
-  // NOTE: myDeathEvent is intentionally read via myDeathEventRef (not state)
-  // to avoid re-running this effect on kill/respawn, which would clear
-  // respawn timeouts and prevent the host from respawning.
-  // touchInput is a stable ref (like keysPressed) — reading .current in the
-  // loop is intentional and should not trigger re-runs.
+    // NOTE: myDeathEvent is intentionally read via myDeathEventRef (not state)
+    // to avoid re-running this effect on kill/respawn, which would clear
+    // respawn timeouts and prevent the host from respawning.
+    // touchInput is a stable ref (like keysPressed) — reading .current in the
+    // loop is intentional and should not trigger re-runs.
   }, [peerManager, myId, handleKill, handleRespawn]);
 
   return (
