@@ -6,6 +6,9 @@ import type { DeathEvent, RelativisticPlayer } from "./types";
 
 declare const __BUILD_TIME__: string;
 
+const isTouchDevice =
+  "ontouchstart" in window || navigator.maxTouchPoints > 0;
+
 type HUDProps = {
   players: Map<string, RelativisticPlayer>;
   myId: string | null;
@@ -88,10 +91,20 @@ export const HUD = ({
         }}
       >
         <div>相対論的アリーナ (2+1次元 時空図)</div>
-        <div>W/S: 前進/後退</div>
-        <div>←/→: カメラ水平回転</div>
-        <div>↑/↓: カメラ上下回転</div>
-        <div>Space: レーザー発射</div>
+        {isTouchDevice ? (
+          <>
+            <div>スワイプ ←→: 方向転換</div>
+            <div>スワイプ ↑: 前進 ↓: 後退</div>
+            <div>ダブルタップ: レーザー発射</div>
+          </>
+        ) : (
+          <>
+            <div>W/S: 前進/後退</div>
+            <div>←/→: カメラ水平回転</div>
+            <div>↑/↓: カメラ上下回転</div>
+            <div>Space: レーザー発射</div>
+          </>
+        )}
         <label
           style={{
             display: "flex",
