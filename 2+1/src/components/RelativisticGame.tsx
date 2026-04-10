@@ -58,7 +58,7 @@ const RelativisticGame = () => {
   const [scores, setScores] = useState<Record<string, number>>({});
   const [spawns, setSpawns] = useState<SpawnEffect[]>([]);
   const [deathFlash, setDeathFlash] = useState(false);
-  const [lastFireTime, setLastFireTime] = useState(0);
+  const [isFiring, setIsFiring] = useState(false);
   const [killNotification, setKillNotification] = useState<{
     victimName: string;
     color: string;
@@ -534,7 +534,6 @@ const RelativisticGame = () => {
         const myPlayer = playersRef.current.get(myId);
         if (myPlayer) {
           lastLaserTimeRef.current = currentTime;
-          setLastFireTime(currentTime); // 射撃フラッシュ用
           energyRef.current -= ENERGY_PER_SHOT;
           const dx = Math.cos(cameraYawRef.current);
           const dy = Math.sin(cameraYawRef.current);
@@ -588,8 +587,9 @@ const RelativisticGame = () => {
           energyRef.current + ENERGY_RECOVERY_RATE * dTau,
         );
       }
-      // HUD 用 state 更新（FPS カウンタと同じ低頻度パターン）
+      // HUD 用 state 更新
       setEnergy(energyRef.current);
+      setIsFiring(firingNow && energyRef.current >= ENERGY_PER_SHOT);
 
       if (isDead) {
         // 死亡中: ゴーストとして等速直線運動（DeathEvent から決定論的に計算）
@@ -866,7 +866,7 @@ const RelativisticGame = () => {
         useOrthographic={useOrthographic}
         setUseOrthographic={setUseOrthographic}
         energy={energy}
-        lastFireTime={lastFireTime}
+        isFiring={isFiring}
         myLaserColor={
           myId
             ? getLaserColor(

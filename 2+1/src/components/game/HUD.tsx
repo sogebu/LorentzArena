@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { gamma, lengthVector3 } from "../../physics";
 import { colorForPlayerId } from "./colors";
 import { RESPAWN_DELAY } from "./constants";
@@ -75,7 +75,7 @@ type HUDProps = {
   useOrthographic: boolean;
   setUseOrthographic: (v: boolean) => void;
   energy: number;
-  lastFireTime: number;
+  isFiring: boolean;
   myLaserColor: string;
   deathFlash: boolean;
   killGlow: boolean;
@@ -84,48 +84,10 @@ type HUDProps = {
   ghostTau?: number;
 };
 
-const FIRE_FLASH_DURATION = 120; // ms per flash pulse (> LASER_COOLDOWN=100ms so flashes overlap during continuous fire)
-
 /** Convert "hsl(H, S%, L%)" to "H, S%, L%" for use in hsla(). */
 const hslToComponents = (hsl: string): string => {
   const match = hsl.match(/hsl\((.+)\)/);
   return match ? match[1] : "30, 80%, 60%"; // fallback orange
-};
-
-const FireFlash = ({
-  lastFireTime,
-  color,
-}: { lastFireTime: number; color: string }) => {
-  const [opacity, setOpacity] = useState(0);
-  const rafRef = useRef<number>(0);
-  const hslComponents = hslToComponents(color);
-
-  useEffect(() => {
-    const animate = () => {
-      const elapsed = Date.now() - lastFireTime;
-      if (elapsed < FIRE_FLASH_DURATION) {
-        setOpacity(0.5 * (1 - elapsed / FIRE_FLASH_DURATION));
-        rafRef.current = requestAnimationFrame(animate);
-      } else {
-        setOpacity(0);
-      }
-    };
-    rafRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [lastFireTime]);
-
-  if (opacity <= 0) return null;
-  return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        zIndex: 198,
-        pointerEvents: "none",
-        boxShadow: `inset 0 0 60px hsla(${hslComponents}, ${opacity}), inset 0 0 25px hsla(${hslComponents}, ${opacity * 0.7})`,
-      }}
-    />
-  );
 };
 
 const RespawnCountdown = () => {
@@ -172,7 +134,7 @@ export const HUD = ({
   useOrthographic,
   setUseOrthographic,
   energy,
-  lastFireTime,
+  isFiring,
   myLaserColor,
   deathFlash,
   killGlow,
@@ -365,9 +327,17 @@ export const HUD = ({
         />
       )}
 
-      {/* 射撃フラッシュ（発射に同期した点滅） */}
-      {lastFireTime > 0 && (
-        <FireFlash lastFireTime={lastFireTime} color={myLaserColor} />
+      {/* 射撃中グロー（レーザー色で光りっぱなし） */}
+      {isFiring && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 198,
+            pointerEvents: "none",
+            boxShadow: `inset 0 0 60px hsla(${hslToComponents(myLaserColor)}, 0.5), inset 0 0 25px hsla(${hslToComponents(myLaserColor)}, 0.35)`,
+          }}
+        />
       )}
 
       {/* KILL テキスト（キラーの過去光円錐が hitPos に到達した瞬間に発火）*/}
