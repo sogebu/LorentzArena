@@ -44,7 +44,6 @@ const ToggleSwitch = ({
         borderRadius: "10px",
         backgroundColor: "rgba(255, 255, 255, 0.25)",
         position: "relative",
-        transition: "background-color 0.2s",
         flexShrink: 0,
       }}
     >
@@ -81,7 +80,6 @@ type HUDProps = {
   killGlow: boolean;
   killNotification: { victimName: string; color: string } | null;
   myDeathEvent?: DeathEvent | null;
-  ghostTau?: number;
 };
 
 /** Convert "hsl(H, S%, L%)" to "H, S%, L%" for use in hsla(). */
@@ -219,83 +217,83 @@ export const HUD = ({
         )}
       </div>
 
-      {/* 速度計 */}
+      {/* 速度計 + エネルギーゲージ + 死亡オーバーレイ */}
       {(() => {
         const myPlayer = myId ? players.get(myId) : undefined;
         if (!myPlayer) return null;
+
+        const isDead = myPlayer.isDead;
         const v = lengthVector3(myPlayer.phaseSpace.u);
         const g = gamma(myPlayer.phaseSpace.u);
 
         return (
-          <div
-            style={{
-              position: "absolute",
-              bottom: "10px",
-              right: "10px",
-              color: "white",
-              fontSize: "14px",
-              fontFamily: "monospace",
-              textAlign: "right",
-              zIndex: 100,
-            }}
-          >
-            {/* エネルギーゲージ */}
+          <>
             <div
               style={{
-                width: "120px",
-                height: "8px",
-                backgroundColor: "rgba(255, 255, 255, 0.15)",
-                borderRadius: "4px",
-                marginBottom: "8px",
-                marginLeft: "auto",
-                overflow: "hidden",
+                position: "absolute",
+                bottom: "10px",
+                right: "10px",
+                color: "white",
+                fontSize: "14px",
+                fontFamily: "monospace",
+                textAlign: "right",
+                zIndex: 100,
               }}
             >
+              {/* エネルギーゲージ */}
               <div
                 style={{
-                  width: `${energy * 100}%`,
-                  height: "100%",
-                  backgroundColor:
-                    energy < 0.2
-                      ? "rgba(255, 80, 80, 0.8)"
-                      : "rgba(255, 160, 60, 0.8)",
+                  width: "120px",
+                  height: "8px",
+                  backgroundColor: "rgba(255, 255, 255, 0.15)",
                   borderRadius: "4px",
-                  transition: "width 0.05s linear",
+                  marginBottom: "8px",
+                  marginLeft: "auto",
+                  overflow: "hidden",
+                }}
+              >
+                <div
+                  style={{
+                    width: `${energy * 100}%`,
+                    height: "100%",
+                    backgroundColor:
+                      energy < 0.2
+                        ? "rgba(255, 80, 80, 0.8)"
+                        : "rgba(255, 160, 60, 0.8)",
+                    borderRadius: "4px",
+                    transition: "width 0.05s linear",
+                  }}
+                />
+              </div>
+              <div>速度: {(v * 100).toFixed(1)}% c</div>
+              <div>ガンマ因子: {g.toFixed(3)}</div>
+              <div>固有時間: {myPlayer.phaseSpace.pos.t.toFixed(2)}s</div>
+              <div>
+                位置: ({myPlayer.phaseSpace.pos.x.toFixed(2)},{" "}
+                {myPlayer.phaseSpace.pos.y.toFixed(2)})
+              </div>
+            </div>
+
+            {/* 死亡カウントダウン */}
+            {isDead && (
+              <RespawnCountdown
+                key={`respawn-${myDeathEvent?.pos.t ?? 0}`}
+              />
+            )}
+
+            {/* ゴーストオーバーレイ */}
+            {isDead && (
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  backgroundColor: "rgba(100, 130, 180, 0.15)",
+                  zIndex: 90,
+                  pointerEvents: "none",
                 }}
               />
-            </div>
-            <div>速度: {(v * 100).toFixed(1)}% c</div>
-            <div>ガンマ因子: {g.toFixed(3)}</div>
-            <div>固有時間: {myPlayer.phaseSpace.pos.t.toFixed(2)}s</div>
-            <div>
-              位置: ({myPlayer.phaseSpace.pos.x.toFixed(2)},{" "}
-              {myPlayer.phaseSpace.pos.y.toFixed(2)})
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* 死亡カウントダウン */}
-      {(() => {
-        const myPlayer = myId ? players.get(myId) : undefined;
-        if (!myPlayer?.isDead) return null;
-        return <RespawnCountdown key={`respawn-${myDeathEvent?.pos.t ?? 0}`} />;
-      })()}
-
-      {/* ゴーストオーバーレイ */}
-      {(() => {
-        const myPlayer = myId ? players.get(myId) : undefined;
-        if (!myPlayer?.isDead) return null;
-        return (
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              backgroundColor: "rgba(100, 130, 180, 0.15)",
-              zIndex: 90,
-              pointerEvents: "none",
-            }}
-          />
+            )}
+          </>
         );
       })()}
 
