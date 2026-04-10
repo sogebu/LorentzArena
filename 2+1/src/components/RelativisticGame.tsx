@@ -64,6 +64,7 @@ const RelativisticGame = () => {
   );
   const [debrisRecords, setDebrisRecords] = useState<DebrisRecord[]>([]);
   const [myDeathEvent, setMyDeathEvent] = useState<DeathEvent | null>(null);
+  const myDeathEventRef = useRef<DeathEvent | null>(null);
   const ghostTauRef = useRef<number>(0);
 
   const scoresRef = useRef<Record<string, number>>({});
@@ -129,10 +130,12 @@ const RelativisticGame = () => {
 
       // 4. 自分が殺された場合: ゴーストカメラ用の DeathEvent を設定
       if (victimId === myId) {
-        setMyDeathEvent({
+        const de = {
           pos: victim.phaseSpace.pos,
           u: getVelocity4(victim.phaseSpace.u), // Vector3 → Vector4（γ を計算）
-        });
+        };
+        myDeathEventRef.current = de;
+        setMyDeathEvent(de);
         ghostTauRef.current = 0;
       }
 
@@ -166,6 +169,7 @@ const RelativisticGame = () => {
 
       // 自分のリスポーン: ゴースト解除
       if (playerId === myId) {
+        myDeathEventRef.current = null;
         setMyDeathEvent(null);
         ghostTauRef.current = 0;
       }
@@ -489,7 +493,7 @@ const RelativisticGame = () => {
         // 死亡中: ゴーストとして等速直線運動（DeathEvent から決定論的に計算）
         ghostTauRef.current += dTau;
         // observer 位置を更新（SceneContent が phaseSpace.pos を参照するため）
-        const de = myDeathEvent;
+        const de = myDeathEventRef.current;
         if (de) {
           const tau = ghostTauRef.current;
           const ghostPos = createVector4(
@@ -736,7 +740,10 @@ const RelativisticGame = () => {
       }
       respawnTimeoutsRef.current.clear();
     };
-  }, [peerManager, myId, handleKill, handleRespawn, myDeathEvent]);
+  // NOTE: myDeathEvent is intentionally read via myDeathEventRef (not state)
+  // to avoid re-running this effect on kill/respawn, which would clear
+  // respawn timeouts and prevent the host from respawning.
+  }, [peerManager, myId, handleKill, handleRespawn]);
 
   return (
     <div
