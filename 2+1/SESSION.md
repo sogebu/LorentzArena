@@ -2,19 +2,26 @@
 
 ## 現在のステータス
 
-対戦可能。**本番最新 `c884d98` デプロイ済み** (2026-04-10)。
+対戦可能。**本番最新 `451a964` デプロイ済み** (2026-04-10)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
 ## 直近の変更（2026-04-10）
 
+### `451a964` Simplify myDeathEvent to ref-only
+
+- state + ref 二重管理を ref 一本に統合。`ghostTauRef` と同じパターン
+
+### `5b6d3c7` Fix host not respawning after being killed
+
+- **バグ**: ホストが kill されると `setMyDeathEvent` → ゲームループ effect 再実行 → `clearTimeout` で respawn タイマー消失 → ホストがリスポーンしない
+- **修正**: `myDeathEvent` を ref 経由で読み、useEffect の deps から除去
+
 ### `c884d98` Add Cloudflare TURN credential proxy for restrictive network support
 
-- **Cloudflare TURN 導入**: 制約の厳しい組織ネットワーク（Symmetric NAT + FQDN blacklist）で WebRTC 接続を可能にするため、Cloudflare TURN (`turn.cloudflare.com`) を導入
-- **credential 発行 Worker**: `turn-worker/` に Cloudflare Worker を新設。短命 credential（TTL 24h）を発行するプロキシ。API token は Worker secret に隔離
-- **動的 ICE servers**: `VITE_TURN_CREDENTIAL_URL` を設定するとアプリ起動時に Worker から credential を自動取得。未設定なら従来通り（後方互換）
-- **優先順位**: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERVERS`) > PeerJS defaults
-- **Worker URL**: `https://lorentz-turn.odakin.workers.dev/`（`.env.production` に設定済み）
-- **旧 A'（Open Relay）廃止**: `openrelay.metered.ca` は一部組織ネットで全ポート遮断。Cloudflare はインフラのため構造的にブロック不能
+- Cloudflare TURN (`turn.cloudflare.com`) + Worker (`turn-worker/`) で短命 credential 発行
+- `VITE_TURN_CREDENTIAL_URL` で動的 ICE servers。優先順位: dynamic > static > defaults
+- Worker URL: `https://lorentz-turn.odakin.workers.dev/`（`.env.production` に設定済み）
+- 旧 A'（Open Relay）は一部組織ネットで全ポート遮断のため廃止
 - **学校ネットでの検証はまだ**（家からのデプロイ完了、学校で接続テスト待ち）
 
 ## 直近の変更（2026-04-06）

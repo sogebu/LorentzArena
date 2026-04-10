@@ -2,6 +2,12 @@
 
 ## 設計判断の記録
 
+### myDeathEvent は ref 一本で持つ（2026-04-10）
+
+- **What**: `myDeathEvent`（kill 時のゴーストカメラ用 DeathEvent）を `useState` ではなく `useRef` のみで管理。HUD には `myDeathEventRef.current` を直接渡す
+- **Why**: state で持つとゲームループ useEffect の deps に入り、kill のたびに effect がクリーンアップ → respawn timeout が clearTimeout される → **ホストがリスポーンしない**致命バグ。ref なら effect を再実行しない
+- **HUD の re-render 保証**: `handleKill` は `setPlayers(applyKill(...))` を必ず呼ぶので re-render が走る。その時点で `myDeathEventRef.current` は既にセット済み。`ghostTauRef` と同じパターン
+
 ### ICE servers: 静的 env → 動的 credential fetch（2026-04-10）
 
 - **What**: `VITE_TURN_CREDENTIAL_URL` が設定されていれば、アプリ起動時に Cloudflare Worker から短命 TURN credential を fetch し、ICE servers に使う。未設定なら従来の `VITE_WEBRTC_ICE_SERVERS`（静的 JSON）にフォールバック。さらに未設定なら PeerJS デフォルト（STUN のみ）
