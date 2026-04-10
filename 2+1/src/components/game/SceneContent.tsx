@@ -112,26 +112,55 @@ const WorldLineRenderer = ({
   );
 };
 
-// レーザー描画コンポーネント
+// レーザーバッチ描画コンポーネント（全レーザーを1つの BufferGeometry にまとめる）
+const LaserBatchRenderer = ({
+  displayLasers,
+}: { displayLasers: DisplayLaser[] }) => {
+  const geoRef = useRef<THREE.BufferGeometry | null>(null);
 
-const LaserRenderer = ({ laser }: { laser: DisplayLaser }) => {
-  const points = useMemo(
-    () => [
-      new THREE.Vector3(laser.start.x, laser.start.y, laser.start.t),
-      new THREE.Vector3(laser.end.x, laser.end.y, laser.end.t),
-    ],
-    [laser],
-  );
+  useEffect(() => {
+    return () => {
+      geoRef.current?.dispose();
+      geoRef.current = null;
+    };
+  }, []);
+
   const geometry = useMemo(() => {
+    geoRef.current?.dispose();
+    if (displayLasers.length === 0) {
+      geoRef.current = null;
+      return null;
+    }
+    const vertices = new Float32Array(displayLasers.length * 6);
+    const colors = new Float32Array(displayLasers.length * 6);
+    for (let i = 0; i < displayLasers.length; i++) {
+      const l = displayLasers[i];
+      const c = getThreeColor(l.color);
+      const off = i * 6;
+      vertices[off] = l.start.x;
+      vertices[off + 1] = l.start.y;
+      vertices[off + 2] = l.start.t;
+      vertices[off + 3] = l.end.x;
+      vertices[off + 4] = l.end.y;
+      vertices[off + 5] = l.end.t;
+      colors[off] = c.r;
+      colors[off + 1] = c.g;
+      colors[off + 2] = c.b;
+      colors[off + 3] = c.r;
+      colors[off + 4] = c.g;
+      colors[off + 5] = c.b;
+    }
     const geo = new THREE.BufferGeometry();
-    geo.setFromPoints(points);
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+    geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+    geoRef.current = geo;
     return geo;
-  }, [points]);
-  const color = getThreeColor(laser.color);
+  }, [displayLasers]);
 
+  if (!geometry) return null;
   return (
     <lineSegments geometry={geometry}>
-      <lineBasicMaterial color={color} transparent opacity={0.4} />
+      <lineBasicMaterial vertexColors transparent opacity={0.4} />
     </lineSegments>
   );
 };
@@ -687,10 +716,8 @@ export const SceneContent = ({
         );
       })}
 
-      {/* レーザー描画 */}
-      {displayLasers.map((laser) => (
-        <LaserRenderer key={laser.id} laser={laser} />
-      ))}
+      {/* レーザー描画（バッチ） */}
+      <LaserBatchRenderer displayLasers={displayLasers} />
 
       {/* デブリの世界線とマーカー（世界オブジェクト） */}
       {myPlayer && (
