@@ -72,35 +72,22 @@ srflx が全然出ない / TURN 以外が全部失敗する、みたいならネ
 
 選択肢を「インフラ運用負荷の小さい順」に並べると **A' → A → C → B** になります。制約の厳しいネットワーク対策の最初の一手は **A'**。
 
-### A'（最推奨・最小コスト）: 公開無料 TURN を使う
+### A'（最推奨）: Cloudflare TURN + credential Worker
 
-クライアントの env に **1 行追加してビルドし直すだけ** で済む方法。サーバ運用ゼロ、クレカ・ドメイン・アカウント不要。
+Cloudflare の TURN サーバ (`turn.cloudflare.com`) を使う方法。Cloudflare Worker で短命 credential を発行し、アプリが起動時に自動取得する。**サーバ運用ゼロ、無料枠 1,000 GB/月**。
 
-[Open Relay Project (Metered.ca)](https://www.metered.ca/tools/openrelay/) が公開している無料 TURN を使います。`turns:` (TLS over 443) エンドポイントが使えるので、UDP 完全遮断や DPI のあるネットワークでも HTTPS と区別できず通る確率が高い。
+Cloudflare はインターネットインフラなので、組織のファイアウォールでブロックされる可能性が極めて低い（実際に制約の厳しい組織ネットワークで全ポート開通確認済み）。
 
-```bash
-# 2+1/.env.local
-VITE_WEBRTC_ICE_SERVERS='[
-  {"urls":["stun:stun.l.google.com:19302"]},
-  {"urls":["stun:stun.cloudflare.com:3478"]},
-  {"urls":["turn:openrelay.metered.ca:80"],"username":"openrelayproject","credential":"openrelayproject"},
-  {"urls":["turns:openrelay.metered.ca:443?transport=tcp"],"username":"openrelayproject","credential":"openrelayproject"}
-]'
-```
-
-ビルドして本番デプロイ:
+**セットアップ**: `2+1/turn-worker/` にある Cloudflare Worker をデプロイし、`VITE_TURN_CREDENTIAL_URL` に Worker URL を設定。詳細は `turn-worker/wrangler.toml` と `2+1/CLAUDE.md` 参照。
 
 ```bash
-cd 2+1
-pnpm run deploy
+# 2+1/.env.local (or .env.production)
+VITE_TURN_CREDENTIAL_URL=https://lorentz-turn.<account>.workers.dev/
 ```
 
-帯域感: phase space ~100 byte × 60Hz × 4 人 ≈ 24 KB/s。1 時間で 86 MB、月 50GB の無料枠は実質使い切れない量。
+帯域感: phase space ~100 byte × 60Hz × 4 人 ≈ 24 KB/s。1 時間で 86 MB、月 1,000 GB の無料枠は実質使い切れない量。
 
-注意点:
-
-- 公開 TURN なので **SLA なし**。商用クリティカルには使えない。落ちたら A（自前 TURN）か C（自前 WS Relay）に切り替える。
-- クレデンシャルは公開値なので秘匿不要。リポに直書き OK。
+> **旧 A'（Open Relay）について**: 以前はこの欄に Open Relay (`openrelay.metered.ca`) を推奨していたが、一部の組織ネットワークで `openrelay.metered.ca` が全ポート遮断されていることが判明。Cloudflare TURN に移行。
 
 ### A: 自前 TURN サーバを立てる
 
@@ -198,5 +185,5 @@ VITE_WS_RELAY_URL=wss://relay.example.com
 ## 現場感あるアドバイス
 
 - 家（ホットスポット）だと動くのに組織ネットだと死ぬ → ほぼネットワークが原因です。
-- 教室・会議室デモを通したい → **A'（公開 TURN を env に追加）が最短**。インフラ運用ゼロで TLS/443 経由になる。
+- 教室・会議室デモを通したい → **A'（Cloudflare TURN + Worker）が最短**。インフラ運用ゼロで TLS/443 経由になる。
 - A' で帯域や信頼性が問題になったら A（自前 TURN）or C（自前 WS Relay）。実装済み資産は両方リポに残してある。

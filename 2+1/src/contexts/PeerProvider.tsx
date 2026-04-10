@@ -11,8 +11,10 @@ import {
   buildPeerOptionsFromEnv,
   getNetworkingEnvSummary,
   getNetworkTransportModeFromEnv,
+  getTurnCredentialUrlFromEnv,
   getWsRelayUrlFromEnv,
 } from "../config/peer";
+import { fetchTurnCredentials } from "../services/turnCredentials";
 import { PeerManager, type PeerServerStatus } from "../services/PeerManager";
 import { WsRelayManager, type WsRelayStatus } from "../services/WsRelayManager";
 import type { ConnectionStatus, Message } from "../types";
@@ -127,7 +129,16 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     [],
   );
   const wsRelayUrl = useMemo(() => getWsRelayUrlFromEnv(), []);
+  const turnCredentialUrl = useMemo(() => getTurnCredentialUrlFromEnv(), []);
   const localIdRef = useRef(Math.random().toString(36).substring(2, 11));
+
+  // Dynamic TURN credentials fetched from Cloudflare Worker.
+  const [dynamicIceServers, setDynamicIceServers] = useState<
+    RTCIceServer[] | null
+  >(null);
+  const [credentialsFetched, setCredentialsFetched] = useState(
+    !turnCredentialUrl,
+  );
 
   const roomPeerId = `la-${roomName}`;
 
@@ -163,6 +174,20 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     }),
     [networkingEnvBase, activeTransport],
   );
+
+  // Fetch dynamic TURN credentials from Cloudflare Worker (once on mount).
+  useEffect(() => {
+    if (!turnCredentialUrl) return;
+    let cancelled = false;
+    fetchTurnCredentials(turnCredentialUrl).then((servers) => {
+      if (cancelled) return;
+      if (servers.length > 0) setDynamicIceServers(servers);
+      setCredentialsFetched(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [turnCredentialUrl]);
 
   // WS Relay: manual mode (現状維持)
   useEffect(() => {
@@ -200,10 +225,14 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   useEffect(() => {
     if (activeTransport !== "peerjs") return;
     if (connectionPhase !== "trying-host") return;
+    if (!credentialsFetched) return;
 
     let owned = true; // このエフェクトが pm の所有権を持っているか
 
-    const pm = new PeerManager<Message>(roomPeerId, buildPeerOptionsFromEnv());
+    const pm = new PeerManager<Message>(
+      roomPeerId,
+      buildPeerOptionsFromEnv(dynamicIceServers),
+    );
 
     pm.onPeerStatusChange((status) => {
       setPeerStatus(status);
@@ -231,17 +260,21 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     return () => {
       if (owned) pm.destroy();
     };
-  }, [activeTransport, connectionPhase, roomPeerId]);
+  }, [activeTransport, connectionPhase, roomPeerId, credentialsFetched, dynamicIceServers]);
 
   // PeerJS: Phase 2 — ランダム ID でクライアント接続
   useEffect(() => {
     if (activeTransport !== "peerjs") return;
     if (connectionPhase !== "connecting-client") return;
+    if (!credentialsFetched) return;
 
     let owned = true;
 
     const localId = localIdRef.current;
-    const pm = new PeerManager<Message>(localId, buildPeerOptionsFromEnv());
+    const pm = new PeerManager<Message>(
+      localId,
+      buildPeerOptionsFromEnv(dynamicIceServers),
+    );
 
     pm.onPeerStatusChange((status) => {
       setPeerStatus(status);
@@ -262,7 +295,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     return () => {
       if (owned) pm.destroy();
     };
-  }, [activeTransport, connectionPhase, roomPeerId]);
+  }, [activeTransport, connectionPhase, roomPeerId, credentialsFetched, dynamicIceServers]);
 
   // Auto-fallback: PeerJS → WS Relay
   useEffect(() => {

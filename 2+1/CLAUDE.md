@@ -25,16 +25,19 @@ pnpm run analyze               # バンドルサイズ分析
 `.env.local`（この `2+1/` 直下）で設定:
 
 ```bash
+VITE_TURN_CREDENTIAL_URL=      # Cloudflare Worker URL（動的 TURN credential 発行）
 VITE_NETWORK_TRANSPORT=auto    # peerjs | wsrelay | auto
 VITE_WS_RELAY_URL=             # WS Relay 用 URL
 VITE_PEERJS_HOST=0.peerjs.com  # PeerServer ホスト
-VITE_WEBRTC_ICE_SERVERS=       # JSON 配列 (RTCIceServer[])。学校・企業ネットワーク突破は公開 TURN がここ
+VITE_WEBRTC_ICE_SERVERS=       # JSON 配列 (RTCIceServer[])。TURN_CREDENTIAL_URL 未設定時の静的フォールバック
 VITE_WEBRTC_ICE_TRANSPORT_POLICY=  # "all" | "relay"
 ```
 
-学校・企業ネットワークで P2P が塞がれる場合の最小コスト解は `VITE_WEBRTC_ICE_SERVERS` に Open Relay の公開 TURN を入れる（A'）。`.env.example` にコメント済み、詳細は `docs/NETWORKING.ja.md`。
+学校・企業ネットワークで P2P が塞がれる場合の推奨は `VITE_TURN_CREDENTIAL_URL` に Cloudflare TURN Worker の URL を設定（A'）。本番は `.env.production` に設定済み。Worker ソースは `turn-worker/`。詳細は `docs/NETWORKING.ja.md`。
 
-詳細: `../docs/NETWORKING.ja.md`, `relay-deploy/README.md`
+ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERVERS`) > PeerJS defaults
+
+詳細: `../docs/NETWORKING.ja.md`, `turn-worker/wrangler.toml`, `relay-deploy/README.md`
 
 ## アーキテクチャ
 

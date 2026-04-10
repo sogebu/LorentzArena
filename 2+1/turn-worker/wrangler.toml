@@ -1,0 +1,8 @@
+name = "lorentz-turn"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[vars]
+TURN_KEY_ID = "b9a0334715f43ec9f912878ecfe3a807"
+
+# TURN_API_TOKEN is secret — set via: npx wrangler secret put TURN_API_TOKEN

@@ -2,6 +2,14 @@
 
 ## 設計判断の記録
 
+### ICE servers: 静的 env → 動的 credential fetch（2026-04-10）
+
+- **What**: `VITE_TURN_CREDENTIAL_URL` が設定されていれば、アプリ起動時に Cloudflare Worker から短命 TURN credential を fetch し、ICE servers に使う。未設定なら従来の `VITE_WEBRTC_ICE_SERVERS`（静的 JSON）にフォールバック。さらに未設定なら PeerJS デフォルト（STUN のみ）
+- **Why**: 学校ネットワーク（Symmetric NAT + FQDN blacklist）で WebRTC P2P が不可。Open Relay (`openrelay.metered.ca`) は全ポート遮断されている（`network-notes/notes/a.md` 参照）。Cloudflare TURN (`turn.cloudflare.com`) は全ポート開通しており、Cloudflare インフラは構造的にブロック不能。短命 credential は Worker で発行し API token を隔離
+- **Alternatives considered**: (1) Metered 商用 static credential → `metered.ca` ドメイン自体が部分ブロック済み、将来遮断リスク高 (2) 自前 coturn → インフラ運用コスト (3) WS Relay → 実装済みだが TURN のほうが WebRTC ネイティブで低オーバーヘッド
+- **Priority**: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERVERS`) > PeerJS defaults
+- **Fetch failure**: 5s timeout、失敗時は TURN なしで続行（家ネットでは P2P 直結できるため）。学校ネットでは ICE 失敗 → 既存の auto fallback to WS Relay が効く
+
 ### setState reducer は純関数に保つ（StrictMode 安全）
 
 - **What**: `setPlayers` / `setLasers` / `setDebrisRecords` / `setSpawns` 等の updater 関数（reducer）の内部では、**副作用（`peerManager.send`、`ref.mutation`、`Math.random`、`Date.now`、`generateExplosionParticles` 等）を一切呼ばない**。副作用や非決定的計算は reducer の外（setState 呼び出しの前または後）で行い、結果を closure 経由で reducer に渡す

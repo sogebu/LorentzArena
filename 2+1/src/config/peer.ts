@@ -62,6 +62,7 @@ const parseJson = <T>(value: string | undefined): T | undefined => {
  * - VITE_WS_RELAY_URL
  */
 export const buildPeerOptionsFromEnv = (
+  dynamicIceServers?: RTCIceServer[] | null,
   env: StringMap = import.meta.env as unknown as StringMap,
 ): PeerOptions => {
   const options: PeerOptions = {};
@@ -82,10 +83,13 @@ export const buildPeerOptionsFromEnv = (
   if (secure !== undefined) options.secure = secure;
 
   // WebRTC (RTCPeerConnection) config.
-  // Only set this if we actually have values; otherwise keep PeerJS defaults.
-  const iceServers = parseJson<RTCIceServer[]>(
-    env.VITE_WEBRTC_ICE_SERVERS as string | undefined,
-  );
+  // Priority: dynamic TURN credentials > static env > PeerJS defaults.
+  const iceServers =
+    dynamicIceServers && dynamicIceServers.length > 0
+      ? dynamicIceServers
+      : parseJson<RTCIceServer[]>(
+          env.VITE_WEBRTC_ICE_SERVERS as string | undefined,
+        );
   const iceTransportPolicy =
     (env.VITE_WEBRTC_ICE_TRANSPORT_POLICY as
       | RTCIceTransportPolicy
@@ -116,6 +120,20 @@ export const getNetworkTransportModeFromEnv = (
 };
 
 /**
+ * TURN credential Worker URL for dynamic ICE server provisioning.
+ * When set, the app fetches short-lived TURN credentials from this
+ * Cloudflare Worker before establishing WebRTC connections.
+ */
+export const getTurnCredentialUrlFromEnv = (
+  env: StringMap = import.meta.env as unknown as StringMap,
+): string | undefined => {
+  const raw = env.VITE_TURN_CREDENTIAL_URL as string | undefined;
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+/**
  * WebSocket relay URL for restrictive networks.
  * Example: wss://your-relay.example.com
  */
@@ -138,14 +156,17 @@ export const getNetworkingEnvSummary = (
   env: StringMap = import.meta.env as unknown as StringMap,
 ) => {
   const wsRelayUrl = getWsRelayUrlFromEnv(env);
+  const turnCredentialUrl = getTurnCredentialUrlFromEnv(env);
   return {
     peerHost: (env.VITE_PEERJS_HOST as string | undefined) ?? "(default)",
     peerPort: (env.VITE_PEERJS_PORT as string | undefined) ?? "(default)",
     peerPath: (env.VITE_PEERJS_PATH as string | undefined) ?? "(default)",
     peerSecure: (env.VITE_PEERJS_SECURE as string | undefined) ?? "(auto)",
-    iceServers: (env.VITE_WEBRTC_ICE_SERVERS as string | undefined)
-      ? "(custom)"
-      : "(default)",
+    iceServers: turnCredentialUrl
+      ? "(dynamic)"
+      : (env.VITE_WEBRTC_ICE_SERVERS as string | undefined)
+        ? "(custom)"
+        : "(default)",
     iceTransportPolicy:
       (env.VITE_WEBRTC_ICE_TRANSPORT_POLICY as string | undefined) ??
       "(default)",
