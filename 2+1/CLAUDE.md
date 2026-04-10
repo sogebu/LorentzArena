@@ -43,7 +43,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 
 ### 物理エンジン (`src/physics/`)
 
-- `vector.ts` — 3D/4D ベクトル演算、ミンコフスキー内積 (+,+,+,-)
+- `vector.ts` — 3D/4D ベクトル演算、ミンコフスキー内積 (+,+,+,-)、`isInPastLightCone(event, observer)`
 - `matrix.ts` — 4x4 ローレンツ変換行列
 - `mechanics.ts` — 相対論的運動方程式、phase space (4元位置 + 4元速度)
 - `worldLine.ts` — 世界線の離散履歴、過去光円錐交差計算、`origin` フィールドで半直線延長、`version` カウンターで描画スロットリング
