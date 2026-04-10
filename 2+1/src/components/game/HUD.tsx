@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { gamma, lengthVector3 } from "../../physics";
 import { colorForPlayerId } from "./colors";
 import { RESPAWN_DELAY } from "./constants";
@@ -74,12 +74,46 @@ type HUDProps = {
   setShowInRestFrame: (v: boolean) => void;
   useOrthographic: boolean;
   setUseOrthographic: (v: boolean) => void;
-  isFiring: boolean;
+  lastFireTime: number;
   deathFlash: boolean;
   killGlow: boolean;
   killNotification: { victimName: string; color: string } | null;
   myDeathEvent?: DeathEvent | null;
   ghostTau?: number;
+};
+
+const FIRE_FLASH_DURATION = 80; // ms per flash pulse
+
+const FireFlash = ({ lastFireTime }: { lastFireTime: number }) => {
+  const [opacity, setOpacity] = useState(0);
+  const rafRef = useRef<number>(0);
+
+  useEffect(() => {
+    const animate = () => {
+      const elapsed = Date.now() - lastFireTime;
+      if (elapsed < FIRE_FLASH_DURATION) {
+        setOpacity(0.5 * (1 - elapsed / FIRE_FLASH_DURATION));
+        rafRef.current = requestAnimationFrame(animate);
+      } else {
+        setOpacity(0);
+      }
+    };
+    rafRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [lastFireTime]);
+
+  if (opacity <= 0) return null;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 198,
+        pointerEvents: "none",
+        boxShadow: `inset 0 0 60px rgba(255, 160, 60, ${opacity}), inset 0 0 25px rgba(255, 160, 60, ${opacity * 0.7})`,
+      }}
+    />
+  );
 };
 
 const RespawnCountdown = () => {
@@ -125,7 +159,7 @@ export const HUD = ({
   setShowInRestFrame,
   useOrthographic,
   setUseOrthographic,
-  isFiring,
+  lastFireTime,
   deathFlash,
   killGlow,
   killNotification,
@@ -292,18 +326,9 @@ export const HUD = ({
         />
       )}
 
-      {/* 射撃中グロー */}
-      {isFiring && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            zIndex: 198,
-            pointerEvents: "none",
-            boxShadow:
-              "inset 0 0 80px rgba(255, 160, 60, 0.6), inset 0 0 30px rgba(255, 160, 60, 0.4)",
-          }}
-        />
+      {/* 射撃フラッシュ（発射に同期した点滅） */}
+      {lastFireTime > 0 && (
+        <FireFlash lastFireTime={lastFireTime} />
       )}
 
       {/* KILL テキスト（キラーの過去光円錐が hitPos に到達した瞬間に発火）*/}

@@ -55,7 +55,7 @@ const RelativisticGame = () => {
   const [scores, setScores] = useState<Record<string, number>>({});
   const [spawns, setSpawns] = useState<SpawnEffect[]>([]);
   const [deathFlash, setDeathFlash] = useState(false);
-  const [isFiring, setIsFiring] = useState(false);
+  const [lastFireTime, setLastFireTime] = useState(0);
   const [killNotification, setKillNotification] = useState<{
     victimName: string;
     color: string;
@@ -517,12 +517,9 @@ const RelativisticGame = () => {
 
       const isDead = playersRef.current.get(myId)?.isDead ?? false;
 
-      // 射撃中インジケータ（HUD のグロー表示用）
+      // レーザー発射（スペースキー or タッチ double-tap）
       const firingNow =
         !isDead && (keysPressed.current.has(" ") || touch.firing);
-      setIsFiring(firingNow);
-
-      // レーザー発射（スペースキー or タッチ double-tap）
       if (
         firingNow &&
         currentTime - lastLaserTimeRef.current > LASER_COOLDOWN
@@ -530,6 +527,7 @@ const RelativisticGame = () => {
         const myPlayer = playersRef.current.get(myId);
         if (myPlayer) {
           lastLaserTimeRef.current = currentTime;
+          setLastFireTime(currentTime); // 射撃フラッシュ用
           const dx = Math.cos(cameraYawRef.current);
           const dy = Math.sin(cameraYawRef.current);
 
@@ -849,7 +847,7 @@ const RelativisticGame = () => {
         setShowInRestFrame={setShowInRestFrame}
         useOrthographic={useOrthographic}
         setUseOrthographic={setUseOrthographic}
-        isFiring={isFiring}
+        lastFireTime={lastFireTime}
         deathFlash={deathFlash}
         killGlow={killNotification !== null}
         killNotification={killNotification}
