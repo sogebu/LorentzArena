@@ -74,6 +74,7 @@ type HUDProps = {
   setShowInRestFrame: (v: boolean) => void;
   useOrthographic: boolean;
   setUseOrthographic: (v: boolean) => void;
+  isFiring: boolean;
   deathFlash: boolean;
   killGlow: boolean;
   killNotification: { victimName: string; color: string } | null;
@@ -124,6 +125,7 @@ export const HUD = ({
   setShowInRestFrame,
   useOrthographic,
   setUseOrthographic,
+  isFiring,
   deathFlash,
   killGlow,
   killNotification,
@@ -286,6 +288,20 @@ export const HUD = ({
             boxShadow:
               "inset 0 0 80px rgba(255,215,0,0.5), inset 0 0 30px rgba(255,215,0,0.3)",
             animation: "kill-glow 1.5s ease-out forwards",
+          }}
+        />
+      )}
+
+      {/* 射撃中グロー */}
+      {isFiring && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            zIndex: 198,
+            pointerEvents: "none",
+            boxShadow:
+              "inset 0 0 40px rgba(255, 160, 60, 0.3), inset 0 0 15px rgba(255, 160, 60, 0.15)",
           }}
         />
       )}
