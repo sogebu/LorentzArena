@@ -526,7 +526,6 @@ const RelativisticGame = () => {
       // レーザー発射（スペースキー or タッチ double-tap）+ エネルギー管理
       const firingNow =
         !isDead && (keysPressed.current.has(" ") || touch.firing);
-      let firedThisFrame = false;
       if (
         firingNow &&
         energyRef.current >= ENERGY_PER_SHOT &&
@@ -537,7 +536,6 @@ const RelativisticGame = () => {
           lastLaserTimeRef.current = currentTime;
           setLastFireTime(currentTime); // 射撃フラッシュ用
           energyRef.current -= ENERGY_PER_SHOT;
-          firedThisFrame = true;
           const dx = Math.cos(cameraYawRef.current);
           const dy = Math.sin(cameraYawRef.current);
 
@@ -583,8 +581,8 @@ const RelativisticGame = () => {
         }
       }
 
-      // エネルギー回復（撃っていないときのみ）
-      if (!firedThisFrame && !isDead) {
+      // エネルギー回復（射撃ボタンを離しているときのみ）
+      if (!firingNow && !isDead) {
         energyRef.current = Math.min(
           ENERGY_MAX,
           energyRef.current + ENERGY_RECOVERY_RATE * dTau,
