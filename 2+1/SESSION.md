@@ -5,6 +5,17 @@
 対戦可能。**本番最新 `6574a02` デプロイ済み** (2026-04-10)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
+## 直近の変更（2026-04-11）
+
+### `e3882b6` Add mobile touch controls
+
+- 全画面タッチジェスチャによるスマホ操作を実装（`game/touchInput.ts` 新規）
+- 横スワイプ → heading (yaw) 回転、縦変位 → thrust（連続値）、ダブルタップ → 射撃（保持+スワイプで全操作同時実行可）
+- UI 要素ゼロ。画面 100% が 3D ビュー
+- キーボード操作は変更なし（タッチと共存）
+- HUD の interactive 要素（ボタン・チェックボックス等）はタッチ入力から除外
+- **未デプロイ・実機テスト未済**。感度パラメータ（`SWIPE_SENSITIVITY_X`, `THRUST_SENSITIVITY_Y`, `DOUBLE_TAP_INTERVAL`）は実機で要調整
+
 ## 直近の変更（2026-04-10）
 
 ### `6574a02` Spawn effect causal delay + SPAWN_RANGE tuning

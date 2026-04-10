@@ -76,9 +76,11 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `game/SceneContent.tsx` | 3Dシーン（WorldLine/Laser/Spawn/DebrisRenderer 含む） |
 | `game/messageHandler.ts` | ネットワークメッセージ処理（ファクトリ関数、バリデーション付き） |
 | `game/HUD.tsx` | オーバーレイUI（コントロール、スピードメーター、キル通知、死亡カウントダウン） |
+| `game/touchInput.ts` | モバイルタッチ入力（全画面ジェスチャ: スワイプ heading/thrust + ダブルタップ fire） |
 
 主要機能:
-- W/S: 加速/減速、矢印: カメラ回転、Space: レーザー発射
+- PC: W/S: 加速/減速、矢印: カメラ回転、Space: レーザー発射
+- モバイル: 横スワイプ heading、縦変位 thrust（連続値）、ダブルタップ 射撃（全操作同時実行可）
 - 正射影/透視投影カメラ切替
 - 自分の静止系/世界系表示切替
 - 当たり判定（ホスト権威、`findLaserHitPosition`）
@@ -144,6 +146,13 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `TUBE_REGEN_INTERVAL` | 8 | TubeGeometry 再生成の間引き（version を 8 で量子化） |
 | ゲームループ | 8 ms interval | `setInterval`（タブ非アクティブ対応） |
 | dτ 上限 | 100 ms | タブ復帰時の巨大ジャンプ防止 |
+
+| タッチパラメータ（`touchInput.ts`） | 値 | 説明 |
+|---|---|---|
+| `DOUBLE_TAP_INTERVAL` | 300 ms | ダブルタップ判定の最大間隔 |
+| `DOUBLE_TAP_DISTANCE` | 30 px | ダブルタップ判定の最大距離 |
+| `SWIPE_SENSITIVITY_X` | 0.008 rad/px | 横スワイプ → heading 回転の感度 |
+| `THRUST_SENSITIVITY_Y` | 0.015 /px | 縦変位 → thrust の感度（67px で最大推力） |
 
 ### Relay サーバーセキュリティ（`relay-server/server.mjs`）
 
