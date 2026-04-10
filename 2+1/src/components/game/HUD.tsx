@@ -74,6 +74,7 @@ type HUDProps = {
   setShowInRestFrame: (v: boolean) => void;
   useOrthographic: boolean;
   setUseOrthographic: (v: boolean) => void;
+  energy: number;
   lastFireTime: number;
   deathFlash: boolean;
   killGlow: boolean;
@@ -159,6 +160,7 @@ export const HUD = ({
   setShowInRestFrame,
   useOrthographic,
   setUseOrthographic,
+  energy,
   lastFireTime,
   deathFlash,
   killGlow,
@@ -263,6 +265,31 @@ export const HUD = ({
               zIndex: 100,
             }}
           >
+            {/* エネルギーゲージ */}
+            <div
+              style={{
+                width: "120px",
+                height: "8px",
+                backgroundColor: "rgba(255, 255, 255, 0.15)",
+                borderRadius: "4px",
+                marginBottom: "8px",
+                marginLeft: "auto",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  width: `${energy * 100}%`,
+                  height: "100%",
+                  backgroundColor:
+                    energy < 0.2
+                      ? "rgba(255, 80, 80, 0.8)"
+                      : "rgba(255, 160, 60, 0.8)",
+                  borderRadius: "4px",
+                  transition: "width 0.05s linear",
+                }}
+              />
+            </div>
             <div>速度: {(v * 100).toFixed(1)}% c</div>
             <div>ガンマ因子: {g.toFixed(3)}</div>
             <div>固有時間: {myPlayer.phaseSpace.pos.t.toFixed(2)}s</div>

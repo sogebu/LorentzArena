@@ -17,6 +17,9 @@ import {
 } from "../physics";
 import { colorForPlayerId, getLaserColor } from "./game/colors";
 import {
+  ENERGY_MAX,
+  ENERGY_PER_SHOT,
+  ENERGY_RECOVERY_RATE,
   HIT_RADIUS,
   LASER_COOLDOWN,
   LASER_RANGE,
@@ -96,6 +99,8 @@ const RelativisticGame = () => {
   const cameraYawRef = useRef(0);
   const cameraPitchRef = useRef(Math.PI / 6);
   const touchInput = useTouchInput();
+  const energyRef = useRef(ENERGY_MAX);
+  const [energy, setEnergy] = useState(ENERGY_MAX);
 
   // Kill 処理: 世界線凍結 + デブリ生成 + isDead 設定
   // ホストのゲームループと messageHandler の両方から呼ばれる
@@ -168,10 +173,11 @@ const RelativisticGame = () => {
     ) => {
       setPlayers((prev) => applyRespawn(prev, playerId, position));
 
-      // 自分のリスポーン: ゴースト解除
+      // 自分のリスポーン: ゴースト解除 + エネルギー満タン
       if (playerId === myId) {
         myDeathEventRef.current = null;
         ghostTauRef.current = 0;
+        energyRef.current = ENERGY_MAX;
       }
 
       // スポーンエフェクト: 因果律遅延（過去光円錐到達時に発火）
@@ -517,17 +523,21 @@ const RelativisticGame = () => {
 
       const isDead = playersRef.current.get(myId)?.isDead ?? false;
 
-      // レーザー発射（スペースキー or タッチ double-tap）
+      // レーザー発射（スペースキー or タッチ double-tap）+ エネルギー管理
       const firingNow =
         !isDead && (keysPressed.current.has(" ") || touch.firing);
+      let firedThisFrame = false;
       if (
         firingNow &&
+        energyRef.current >= ENERGY_PER_SHOT &&
         currentTime - lastLaserTimeRef.current > LASER_COOLDOWN
       ) {
         const myPlayer = playersRef.current.get(myId);
         if (myPlayer) {
           lastLaserTimeRef.current = currentTime;
           setLastFireTime(currentTime); // 射撃フラッシュ用
+          energyRef.current -= ENERGY_PER_SHOT;
+          firedThisFrame = true;
           const dx = Math.cos(cameraYawRef.current);
           const dy = Math.sin(cameraYawRef.current);
 
@@ -572,6 +582,16 @@ const RelativisticGame = () => {
           }
         }
       }
+
+      // エネルギー回復（撃っていないときのみ）
+      if (!firedThisFrame && !isDead) {
+        energyRef.current = Math.min(
+          ENERGY_MAX,
+          energyRef.current + ENERGY_RECOVERY_RATE * dTau,
+        );
+      }
+      // HUD 用 state 更新（FPS カウンタと同じ低頻度パターン）
+      setEnergy(energyRef.current);
 
       if (isDead) {
         // 死亡中: ゴーストとして等速直線運動（DeathEvent から決定論的に計算）
@@ -847,6 +867,7 @@ const RelativisticGame = () => {
         setShowInRestFrame={setShowInRestFrame}
         useOrthographic={useOrthographic}
         setUseOrthographic={setUseOrthographic}
+        energy={energy}
         lastFireTime={lastFireTime}
         deathFlash={deathFlash}
         killGlow={killNotification !== null}
