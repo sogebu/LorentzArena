@@ -84,7 +84,7 @@ type HUDProps = {
   ghostTau?: number;
 };
 
-const FIRE_FLASH_DURATION = 80; // ms per flash pulse
+const FIRE_FLASH_DURATION = 120; // ms per flash pulse (> LASER_COOLDOWN=100ms so flashes overlap during continuous fire)
 
 /** Convert "hsl(H, S%, L%)" to "H, S%, L%" for use in hsla(). */
 const hslToComponents = (hsl: string): string => {
