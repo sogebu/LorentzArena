@@ -14,6 +14,13 @@ pnpm run format                # Biome formatter
 pnpm run analyze               # バンドルサイズ分析
 ```
 
+### デプロイ後の報告ルール
+
+`pnpm run deploy` 後は、以下をユーザーに報告すること:
+- 本番 URL: https://sogebu.github.io/LorentzArena/
+- **build 値**（`dist/` 内のビルドタイムスタンプ）。ユーザーがスマホの HUD で表示される build 値と照合してキャッシュ更新を確認するために使う
+- build 値の取得: `grep -o '2026-[0-9T:.Z]*' dist/assets/index-*.js | head -1`
+
 ### ローカルプレビュー
 
 - **マルチプレイテスト**: 同じ URL を複数タブで開く。ルーム分離は `#room=<名前>` で可能
