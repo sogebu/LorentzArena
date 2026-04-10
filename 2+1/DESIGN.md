@@ -2,6 +2,22 @@
 
 ## 設計判断の記録
 
+### モバイルタッチ入力: 全画面ジェスチャ + UI 要素ゼロ（2026-04-11）
+
+- **What**: スマホ操作を `touchInput.ts` で実装。横スワイプ=heading、縦変位=thrust（連続値）、ダブルタップ=射撃。画面に描画する UI 要素はゼロ
+- **Why**: 画面 100% を 3D ビューに使い、物理デモとしての没入感を最大化。ボタンやスティックを置くと画面が狭くなり、小さいスマホでは致命的
+- **Alternatives considered**:
+  1. 加速ボタン + yaw スティック + fire ボタン（3 要素）→ 画面を占有しすぎ
+  2. 加速ボタン + スワイプ heading + 静止タッチ fire → 射撃しながら heading 回転ができない
+  3. 加速レバー（連続値）+ スワイプ + タップ → レバー 1 つでも画面を占有。しかし縦スワイプで thrust を表現すれば不要
+- **Key decisions**:
+  - thrust は縦変位の連続値（タッチ開始点からの距離で推力が変わる）。ボタン（binary）だと中間速度巡航ができないが、連続値なら 0.3c と 0.9c を意図的に使い分けられる
+  - 射撃はダブルタップ（2 回目を保持）。シングルタッチと自然に区別でき、保持+スワイプで射撃しながら heading+thrust の全操作を 1 本の指で同時実行可能
+  - heading はフレーム間差分（`lastX` からの `dx`）で累積、thrust はタッチ開始点からの変位（`startY` からの `dy`）。heading は相対操作、thrust は絶対位置操作という非対称性が自然な操作感を生む
+  - HUD のインタラクティブ要素（ボタン・チェックボックス等）はタッチ入力から除外（`isInteractiveElement` ガード）
+- **Keyboard coexistence**: ゲームループで keyboard と touch の入力を加算。両方同時に使えるがタッチデバイスでキーボードを使うケースは稀なので問題なし
+- **設計検討の詳細経緯**: [`EXPLORING.md`](./EXPLORING.md) の「スマホ UI の設計思考」および「2026-04-10 の設計議論と方針決定」参照
+
 ### myDeathEvent は ref 一本で持つ（2026-04-10）
 
 - **What**: `myDeathEvent`（kill 時のゴーストカメラ用 DeathEvent）を `useState` ではなく `useRef` のみで管理。HUD には `myDeathEventRef.current` を直接渡す

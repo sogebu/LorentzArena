@@ -86,6 +86,6 @@ stateful `pickDistinctColor` を純関数 `colorForPlayerId(id)` に置き換え
 - マルチプレイヤーテスト（バリデーション・パフォーマンス確認）
 - 各プレイヤーに固有時刻を表示（時間の遅れの実感用）
 - 3+1 次元への拡張検討
-- **スマホ UI**: α（保守的）路線で着手予定。**詳細は [`EXPLORING.md`](./EXPLORING.md) の「スマホ UI の設計思考」参照**。2026-04-10 の設計議論で操作スキーム確定: 全画面タッチジェスチャ（横スワイプ=heading、縦スワイプ=thrust 連続値、ダブルタップ=射撃）。描画 UI 要素ゼロ。レーザーのエネルギー制（PC・スマホ共通）を検討中。MVP スコープ未決定
+- **スマホ UI**: タッチ入力実装済み（`e3882b6`）、**実機テスト・デプロイ待ち**。設計検討は [`EXPLORING.md`](./EXPLORING.md)、設計判断は [`DESIGN.md`](./DESIGN.md) に記録。次ステップ: (1) 実機で感度パラメータ調整 (2) デプロイ (3) レーザーのエネルギー制（PC・スマホ共通、EXPLORING.md 検討課題）
 - **用語の再考**: 戦闘/死亡系語彙 (KILL / DEAD / deathFlash / handleKill / isDead 等) を物理記述寄りに置換するか検討。候補 A (INTERCEPT) / B (CONTACT) / C (無言化) を整理済み。**詳細は [`EXPLORING.md`](./EXPLORING.md) の「用語の再考」セクション参照**。un-shelve トリガーは対象ユーザー像の言語化 or スマホ UI 実装タイミング等。優先度は低いが方針は決めておきたい
 - ~~**残存する設計臭の掃除**~~ → **2026-04-06 全件 defer 決定**。詳細は DESIGN.md「残存する設計臭」→「再評価後の判断（2026-04-06）」参照。4 件（#1 mirror / #2 connections diffing / #3 kill dual entry / #4 timeSyncedRef）はいずれも実害ゼロ・preemptive fix トリガーなし・コスト非ゼロで、物理デモアプリのユーザー価値に寄与しない。各エントリに un-defer トリガーを明記済み。現時点では他の高価値タスク（固有時刻表示・スマホ UI・用語再考）を優先
