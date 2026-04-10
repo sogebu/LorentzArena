@@ -776,19 +776,21 @@ const RelativisticGame = () => {
             // 遅延リスポーン
             const timerId = setTimeout(() => {
               respawnTimeoutsRef.current.delete(timerId);
-              // 全プレイヤーのうち最も未来の座標時刻でリスポーン
-              // → リスポーン直後に誰かの未来光円錐内に入って因果律の守護者が発動するのを防ぐ
-              let maxT = 0;
+              // 全プレイヤー（生存+ゴースト）の座標時刻の最大・最小の中間でリスポーン
+              let minT = Number.POSITIVE_INFINITY;
+              let maxT = Number.NEGATIVE_INFINITY;
               for (const [, p] of playersRef.current) {
-                if (
-                  Number.isFinite(p.phaseSpace.pos.t) &&
-                  p.phaseSpace.pos.t > maxT
-                ) {
-                  maxT = p.phaseSpace.pos.t;
+                const t = p.phaseSpace.pos.t;
+                if (Number.isFinite(t)) {
+                  if (t < minT) minT = t;
+                  if (t > maxT) maxT = t;
                 }
               }
+              // フォールバック: プレイヤーがいない場合は t=0
+              if (!Number.isFinite(minT)) minT = 0;
+              if (!Number.isFinite(maxT)) maxT = 0;
               const respawnPos = {
-                t: maxT,
+                t: (minT + maxT) / 2,
                 x: Math.random() * SPAWN_RANGE,
                 y: Math.random() * SPAWN_RANGE,
                 z: 0,
