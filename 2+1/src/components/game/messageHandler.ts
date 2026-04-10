@@ -116,6 +116,21 @@ export const createMessageHandler =
     } else if (msg.type === "syncTime") {
       if (!isFiniteNumber(msg.hostTime)) return;
       timeSyncedRef.current = true;
+      // スコア同期（途中参加時に過去のキルスコアを引き継ぐ）
+      if (
+        msg.scores &&
+        typeof msg.scores === "object" &&
+        !Array.isArray(msg.scores)
+      ) {
+        const scores: Record<string, number> = {};
+        for (const [key, val] of Object.entries(msg.scores)) {
+          if (isValidString(key) && isFiniteNumber(val)) {
+            scores[key] = val as number;
+          }
+        }
+        scoresRef.current = scores;
+        setScores(scores);
+      }
       setPlayers((prev) => {
         const me = prev.get(myId);
         if (!me) return prev;

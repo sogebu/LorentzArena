@@ -263,6 +263,7 @@ const RelativisticGame = () => {
             peerManager.sendTo(conn.id, {
               type: "syncTime",
               hostTime: myPlayer.phaseSpace.pos.t,
+              scores: scoresRef.current,
             });
           }
         }
