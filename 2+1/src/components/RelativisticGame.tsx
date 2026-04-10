@@ -142,21 +142,19 @@ const RelativisticGame = () => {
         ghostTauRef.current = 0;
       }
 
-      // 5. UI エフェクトを pending に追加（過去光円錐到達時に発火）
-      // 自分が当事者（被害者 or 加害者）の場合のみ
-      if (victimId === myId || killerId === myId) {
-        pendingKillEventsRef.current.push({
-          victimId,
-          killerId,
-          hitPos,
-          victimName: victimId.slice(0, 6),
-          victimColor: victim.color,
-        });
-        // 上限を超えたら最古のイベントを削除（メモリ保護）
-        if (pendingKillEventsRef.current.length > 100) {
-          pendingKillEventsRef.current =
-            pendingKillEventsRef.current.slice(-100);
-        }
+      // 5. pending に追加（過去光円錐到達時に UI エフェクト + スコア加算を発火）
+      // 全キルイベントを積む（スコアは各プレイヤーが因果律的に正しいタイミングで加算）
+      pendingKillEventsRef.current.push({
+        victimId,
+        killerId,
+        hitPos,
+        victimName: victimId.slice(0, 6),
+        victimColor: victim.color,
+      });
+      // 上限を超えたら最古のイベントを削除（メモリ保護）
+      if (pendingKillEventsRef.current.length > 100) {
+        pendingKillEventsRef.current =
+          pendingKillEventsRef.current.slice(-100);
       }
     },
     [myId],
@@ -439,10 +437,12 @@ const RelativisticGame = () => {
         touch.yawDelta = 0; // consume the delta
       }
 
-      // 因果律遅延キル通知: pending kill events の過去光円錐チェック
+      // 因果律遅延キル通知 + スコア: pending kill events の過去光円錐チェック
+      // 各プレイヤーが自分の過去光円錐に hitPos が入ったタイミングでスコア加算・UI 発火
       const myPos = playersRef.current.get(myId)?.phaseSpace.pos;
       if (myPos && pendingKillEventsRef.current.length > 0) {
         const fired: number[] = [];
+        let scoreUpdated = false;
         for (let i = 0; i < pendingKillEventsRef.current.length; i++) {
           const ev = pendingKillEventsRef.current[i];
           const hitPosV4 = createVector4(
@@ -453,6 +453,12 @@ const RelativisticGame = () => {
           );
           if (isInPastLightCone(hitPosV4, myPos)) {
             fired.push(i);
+            // スコア加算（因果律遅延: 自分の過去光円錐に入ったタイミング）
+            scoresRef.current = {
+              ...scoresRef.current,
+              [ev.killerId]: (scoresRef.current[ev.killerId] || 0) + 1,
+            };
+            scoreUpdated = true;
             // 自分が殺された: death flash
             if (ev.victimId === myId) {
               setDeathFlash(true);
@@ -473,6 +479,9 @@ const RelativisticGame = () => {
           pendingKillEventsRef.current = pendingKillEventsRef.current.filter(
             (_, i) => !fired.includes(i),
           );
+        }
+        if (scoreUpdated) {
+          setScores({ ...scoresRef.current });
         }
       }
 
@@ -747,14 +756,6 @@ const RelativisticGame = () => {
         }
 
         if (kills.length > 0) {
-          // ホスト権威: スコアは即時更新 + ブロードキャスト
-          const newScores = { ...scoresRef.current };
-          for (const { killerId } of kills) {
-            newScores[killerId] = (newScores[killerId] || 0) + 1;
-          }
-          scoresRef.current = newScores;
-          setScores(newScores);
-
           for (const id of hitLaserIds) {
             processedLasersRef.current.add(id);
           }
@@ -806,7 +807,6 @@ const RelativisticGame = () => {
             respawnTimeoutsRef.current.add(timerId);
           }
 
-          peerManager.send({ type: "score" as const, scores: newScores });
         }
       }
     };
