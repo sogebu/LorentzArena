@@ -867,6 +867,13 @@ const RelativisticGame = () => {
         setUseOrthographic={setUseOrthographic}
         energy={energy}
         lastFireTime={lastFireTime}
+        myLaserColor={
+          myId
+            ? getLaserColor(
+                players.get(myId)?.color ?? colorForPlayerId(myId),
+              )
+            : ""
+        }
         deathFlash={deathFlash}
         killGlow={killNotification !== null}
         killNotification={killNotification}

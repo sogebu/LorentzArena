@@ -76,6 +76,7 @@ type HUDProps = {
   setUseOrthographic: (v: boolean) => void;
   energy: number;
   lastFireTime: number;
+  myLaserColor: string;
   deathFlash: boolean;
   killGlow: boolean;
   killNotification: { victimName: string; color: string } | null;
@@ -85,9 +86,19 @@ type HUDProps = {
 
 const FIRE_FLASH_DURATION = 80; // ms per flash pulse
 
-const FireFlash = ({ lastFireTime }: { lastFireTime: number }) => {
+/** Convert "hsl(H, S%, L%)" to "H, S%, L%" for use in hsla(). */
+const hslToComponents = (hsl: string): string => {
+  const match = hsl.match(/hsl\((.+)\)/);
+  return match ? match[1] : "30, 80%, 60%"; // fallback orange
+};
+
+const FireFlash = ({
+  lastFireTime,
+  color,
+}: { lastFireTime: number; color: string }) => {
   const [opacity, setOpacity] = useState(0);
   const rafRef = useRef<number>(0);
+  const hslComponents = hslToComponents(color);
 
   useEffect(() => {
     const animate = () => {
@@ -111,7 +122,7 @@ const FireFlash = ({ lastFireTime }: { lastFireTime: number }) => {
         inset: 0,
         zIndex: 198,
         pointerEvents: "none",
-        boxShadow: `inset 0 0 60px rgba(255, 160, 60, ${opacity}), inset 0 0 25px rgba(255, 160, 60, ${opacity * 0.7})`,
+        boxShadow: `inset 0 0 60px hsla(${hslComponents}, ${opacity}), inset 0 0 25px hsla(${hslComponents}, ${opacity * 0.7})`,
       }}
     />
   );
@@ -162,6 +173,7 @@ export const HUD = ({
   setUseOrthographic,
   energy,
   lastFireTime,
+  myLaserColor,
   deathFlash,
   killGlow,
   killNotification,
@@ -355,7 +367,7 @@ export const HUD = ({
 
       {/* 射撃フラッシュ（発射に同期した点滅） */}
       {lastFireTime > 0 && (
-        <FireFlash lastFireTime={lastFireTime} />
+        <FireFlash lastFireTime={lastFireTime} color={myLaserColor} />
       )}
 
       {/* KILL テキスト（キラーの過去光円錐が hitPos に到達した瞬間に発火）*/}
