@@ -44,30 +44,52 @@ const WorldLineRenderer = ({
 }: WorldLineRendererProps) => {
   const tubeRef = useRef<THREE.Mesh>(null);
   const halfLineRef = useRef<THREE.Mesh>(null);
+  const prevTubeGeoRef = useRef<THREE.TubeGeometry | null>(null);
+  const prevHalfLineGeoRef = useRef<THREE.TubeGeometry | null>(null);
 
   // version を TUBE_REGEN_INTERVAL で量子化して再生成を間引く
   const geoVersion = Math.floor(wl.version / TUBE_REGEN_INTERVAL);
   // biome-ignore lint/correctness/useExhaustiveDependencies: geoVersion throttles rebuild; wl.history has actual data
   const tubeGeo = useMemo(() => {
-    if (wl.history.length < 2) return null;
+    prevTubeGeoRef.current?.dispose();
+    if (wl.history.length < 2) {
+      prevTubeGeoRef.current = null;
+      return null;
+    }
     const points = wl.history.map(
       (ps) => new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t),
     );
     const curve = new THREE.CatmullRomCurve3(points, false, "centripetal", 0.5);
     const segments = Math.max(1, points.length * 2);
-    return new THREE.TubeGeometry(curve, segments, 0.04, 6, false);
+    const geo = new THREE.TubeGeometry(curve, segments, 0.04, 6, false);
+    prevTubeGeoRef.current = geo;
+    return geo;
   }, [geoVersion]);
 
   const halfLineGeo = useMemo(() => {
-    if (!showHalfLine || !wl.origin) return null;
+    prevHalfLineGeoRef.current?.dispose();
+    if (!showHalfLine || !wl.origin) {
+      prevHalfLineGeoRef.current = null;
+      return null;
+    }
     const o = wl.origin;
     const len = 200;
     const start = positionAlongStraightWorldLine(o, len);
     const end = new THREE.Vector3(o.pos.x, o.pos.y, o.pos.t);
     const startVec = new THREE.Vector3(start.x, start.y, start.t);
     const curve = new THREE.LineCurve3(startVec, end);
-    return new THREE.TubeGeometry(curve, 2, 0.04, 6, false);
+    const geo = new THREE.TubeGeometry(curve, 2, 0.04, 6, false);
+    prevHalfLineGeoRef.current = geo;
+    return geo;
   }, [showHalfLine, wl.origin]);
+
+  // Dispose on unmount
+  useEffect(() => {
+    return () => {
+      prevTubeGeoRef.current?.dispose();
+      prevHalfLineGeoRef.current?.dispose();
+    };
+  }, []);
 
   const displayMatrix = buildDisplayMatrix(observerPos, observerBoost);
   useFrame(() => {
@@ -215,8 +237,9 @@ const SpawnRenderer = ({
             key={`ring-${spawn.id}-${i}`}
             position={[displayPos.x, displayPos.y, displayPos.t]}
             rotation={[Math.PI / 2, 0, 0]}
+            scale={[ringRadius, ringRadius, 1]}
+            geometry={sharedGeometries.spawnRing}
           >
-            <torusGeometry args={[ringRadius, 0.06, 8, 24]} />
             <meshBasicMaterial
               color={color}
               transparent
@@ -241,8 +264,9 @@ const SpawnRenderer = ({
               displayPos.y,
               displayPos.t + pillarHeight / 2,
             ]}
+            scale={[1, pillarHeight, 1]}
+            geometry={sharedGeometries.spawnPillar}
           >
-            <cylinderGeometry args={[0.08, 0.08, pillarHeight, 6]} />
             <meshBasicMaterial
               color={color}
               transparent
@@ -746,16 +770,14 @@ export const SceneContent = ({
           const killColor = getThreeColor(killNotification.color);
           return (
             <group position={[displayPos.x, displayPos.y, displayPos.t]}>
-              <mesh>
-                <sphereGeometry args={[1.5, 16, 16]} />
+              <mesh geometry={sharedGeometries.killSphere}>
                 <meshBasicMaterial
                   color={killColor}
                   transparent
                   opacity={0.6}
                 />
               </mesh>
-              <mesh>
-                <ringGeometry args={[1.8, 2.2, 24]} />
+              <mesh geometry={sharedGeometries.killRing}>
                 <meshBasicMaterial
                   color={killColor}
                   transparent

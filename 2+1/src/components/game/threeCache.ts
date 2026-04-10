@@ -20,6 +20,12 @@ export const sharedGeometries = {
   laserIntersectionDot: new THREE.SphereGeometry(0.25, 12, 12),
   lightCone: new THREE.ConeGeometry(40, 40, 32, 1, true),
   explosionParticle: new THREE.SphereGeometry(1, 6, 6), // スケールで size 調整
+  // Spawn effect
+  spawnRing: new THREE.TorusGeometry(1, 0.06, 8, 24), // スケールで ringRadius 調整
+  spawnPillar: new THREE.CylinderGeometry(0.08, 0.08, 1, 6), // スケールで pillarHeight 調整
+  // Kill notification
+  killSphere: new THREE.SphereGeometry(1.5, 16, 16),
+  killRing: new THREE.RingGeometry(1.8, 2.2, 24),
 };
 
 // デブリマーカー用 material キャッシュ（色ごとに1つ）

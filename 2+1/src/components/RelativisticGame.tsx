@@ -742,7 +742,7 @@ const RelativisticGame = () => {
           }
         }
         // 安全弁: サイズ上限を超えたらクリア（長時間プレイでの蓄積防止）
-        if (processedLasersRef.current.size > 2000) {
+        if (processedLasersRef.current.size > 500) {
           processedLasersRef.current.clear();
         }
 
