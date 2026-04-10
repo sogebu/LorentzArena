@@ -22,7 +22,7 @@ export const MAX_LASERS = 1000;
 export const HIT_RADIUS = 0.5;
 
 // スポーン範囲（x, y）
-export const SPAWN_RANGE = 30;
+export const SPAWN_RANGE = 20;
 
 // レーザー連射間隔（ミリ秒）
 export const LASER_COOLDOWN = 100;

@@ -186,6 +186,16 @@ export const lorentzDotVector4 = (a: Vector4, b: Vector4): number =>
   a.x * b.x + a.y * b.y + a.z * b.z - a.t * b.t;
 
 /**
+ * Check if an event is in the observer's past light cone.
+ * True when the separation is timelike or lightlike AND the event is in the past.
+ * JP: event が observer の過去光円錐内（時間的 or 光的、かつ過去）にあるか判定。
+ */
+export const isInPastLightCone = (event: Vector4, observer: Vector4): boolean => {
+  const diff = subVector4(event, observer);
+  return lorentzDotVector4(diff, diff) <= 0 && observer.t > event.t;
+};
+
+/**
  * Extract spatial part.
  * JP: 空間成分のみ取得。
  */

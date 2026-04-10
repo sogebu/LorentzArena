@@ -281,6 +281,14 @@ export const colorForPlayerId = (id: string): string => {
 - **自分が死んだ場合**: 自分はキルイベントの時空点にいるので lorentzDot = 0 → 即座に条件成立、事実上即時
 - **Tradeoff**: 遠距離キルほど通知が遅延する。ゲームプレイ上は「光速の遅れ」として自然
 
+### スポーンエフェクトの因果律遅延
+
+- **What**: 他プレイヤーのリスポーンエフェクト（リング + 光柱）を、キル通知と同様に過去光円錐到達時に発火するよう変更。自分のリスポーンは即時
+- **Why**: キル通知・デブリ・凍結世界線のマーカーは全て過去光円錐交差で可視性を制御していたが、スポーンエフェクトだけ即時だったのは一貫性に欠ける
+- **実装**: `pendingSpawnEventsRef` にリスポーンイベントを蓄積し、ゲームループ毎に `lorentzDot(spawnPos - myPos) <= 0 && myPos.t > spawnPos.t` で判定。fired イベントをバッチ化して **1フレーム1回の `setSpawns` 呼び出し** で追加
+- **Tradeoff**: 遠距離リスポーンほどエフェクトが遅延する。物理的に正しい
+- **教訓**: ゲームループ（setInterval 8ms）内で `setSpawns` をイベント毎に個別呼び出しするとクラッシュする。fired を配列にまとめて 1 回の `setSpawns((prev) => [...prev, ...fired])` でバッチ化する必要がある
+
 ### 時間積分: Semi-implicit Euler
 
 - **What**: `evolvePhaseSpace` で位置更新に加速 **後** の新しい速度 `newU` を使用（semi-implicit / symplectic Euler）

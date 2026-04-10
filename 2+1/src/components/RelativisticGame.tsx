@@ -9,6 +9,7 @@ import {
   createWorldLine,
   evolvePhaseSpace,
   getVelocity4,
+  isInPastLightCone,
   lorentzDotVector4,
   subVector4,
   type Vector4,
@@ -39,6 +40,7 @@ import type {
   FrozenWorldLine,
   Laser,
   PendingKillEvent,
+  PendingSpawnEvent,
   RelativisticPlayer,
   SpawnEffect,
 } from "./game/types";
@@ -82,6 +84,7 @@ const RelativisticGame = () => {
     new Set(),
   );
   const pendingKillEventsRef = useRef<PendingKillEvent[]>([]);
+  const pendingSpawnEventsRef = useRef<PendingSpawnEvent[]>([]);
   const [_screenSize, setScreenSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -170,16 +173,28 @@ const RelativisticGame = () => {
         ghostTauRef.current = 0;
       }
 
-      // スポーンエフェクト（id と startTime は reducer 外で決定 = StrictMode 安全）
+      // スポーンエフェクト: 因果律遅延（過去光円錐到達時に発火）
       const spawningPlayer = playersRef.current.get(playerId);
+      const color = spawningPlayer?.color ?? colorForPlayerId(playerId);
       const now = Date.now();
-      const spawnEffect: SpawnEffect = {
-        id: `spawn-${playerId}-${now}`,
-        pos: position,
-        color: spawningPlayer?.color ?? colorForPlayerId(playerId),
-        startTime: now,
-      };
-      setSpawns((prev) => [...prev, spawnEffect]);
+
+      if (playerId === myId) {
+        // 自分自身: 光円錐距離 0 → 即時
+        setSpawns((prev) => [
+          ...prev,
+          { id: `spawn-${playerId}-${now}`, pos: position, color, startTime: now },
+        ]);
+      } else {
+        // 他プレイヤー: 過去光円錐到達まで遅延
+        pendingSpawnEventsRef.current = [
+          ...pendingSpawnEventsRef.current,
+          { id: `spawn-${playerId}-${now}`, pos: position, color },
+        ];
+        // 上限（メモリ保護）
+        if (pendingSpawnEventsRef.current.length > 50) {
+          pendingSpawnEventsRef.current = pendingSpawnEventsRef.current.slice(-50);
+        }
+      }
     },
     [myId],
   );
@@ -399,12 +414,8 @@ const RelativisticGame = () => {
         const fired: number[] = [];
         for (let i = 0; i < pendingKillEventsRef.current.length; i++) {
           const ev = pendingKillEventsRef.current[i];
-          const diff = subVector4(
-            createVector4(ev.hitPos.t, ev.hitPos.x, ev.hitPos.y, ev.hitPos.z),
-            myPos,
-          );
-          // 過去光円錐内: lorentzDot <= 0（時間的 or 光的）かつ hitPos が過去
-          if (lorentzDotVector4(diff, diff) <= 0 && myPos.t > ev.hitPos.t) {
+          const hitPosV4 = createVector4(ev.hitPos.t, ev.hitPos.x, ev.hitPos.y, ev.hitPos.z);
+          if (isInPastLightCone(hitPosV4, myPos)) {
             fired.push(i);
             // 自分が殺された: death flash
             if (ev.victimId === myId) {
@@ -426,6 +437,25 @@ const RelativisticGame = () => {
           pendingKillEventsRef.current = pendingKillEventsRef.current.filter(
             (_, i) => !fired.includes(i),
           );
+        }
+      }
+
+      // 因果律遅延スポーンエフェクト: pending spawn events の過去光円錐チェック
+      if (myPos && pendingSpawnEventsRef.current.length > 0) {
+        const firedSpawns: SpawnEffect[] = [];
+        const remaining: PendingSpawnEvent[] = [];
+        const fireTime = Date.now();
+        for (const ev of pendingSpawnEventsRef.current) {
+          const spawnPosV4 = createVector4(ev.pos.t, ev.pos.x, ev.pos.y, ev.pos.z);
+          if (isInPastLightCone(spawnPosV4, myPos)) {
+            firedSpawns.push({ id: ev.id, pos: ev.pos, color: ev.color, startTime: fireTime });
+          } else {
+            remaining.push(ev);
+          }
+        }
+        if (firedSpawns.length > 0) {
+          pendingSpawnEventsRef.current = remaining;
+          setSpawns((prev) => [...prev, ...firedSpawns]);
         }
       }
 

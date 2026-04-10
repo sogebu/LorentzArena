@@ -25,6 +25,13 @@ export type DeathEvent = {
   readonly u: Vector4; // 死亡時の4元速度（ローレンツブースト計算用）
 };
 
+// スポーンイベント（過去光円錐到達まで UI 遅延）
+export type PendingSpawnEvent = {
+  readonly id: string;
+  readonly pos: { t: number; x: number; y: number; z: number };
+  readonly color: string;
+};
+
 // キルイベント（過去光円錐到達まで UI 遅延）
 export type PendingKillEvent = {
   readonly victimId: string;

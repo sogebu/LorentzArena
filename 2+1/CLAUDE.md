@@ -88,6 +88,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 - 死亡状態管理: `isDead` フラグ + `DeathEvent`（ゴーストカメラの決定論的計算）。`handleKill`/`handleRespawn` コールバックで一元化
 - ゴースト UI: 死亡中は青白い半透明オーバーレイ + DEAD カウントダウン。カメラ回転は可能
 - キルスコア + キル通知エフェクト（因果律遅延: 過去光円錐到達時に発火）
+- スポーンエフェクト（因果律遅延: 他プレイヤーのリスポーンは `pendingSpawnEventsRef` に積み、過去光円錐到達時に発火。自分のリスポーンは即時）
 - 永続デブリ: 死亡イベントからの等速直線運動パーティクル。lineSegments でバッチ描画。マーカーは過去光円錐交差で表示（maxLambda は固定値、observer 非依存）
 - 世界線管理: `player.worldLine` 1本のみ。過去のライフは `frozenWorldLines[]` に格納
 - 世界線の過去延長: `WorldLine.origin` で制御。最初のライフのみ origin から半直線延長
@@ -118,7 +119,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 
 | パラメータ | 値 | 説明 |
 |---|---|---|
-| `SPAWN_RANGE` | 30 | スポーン範囲 x,y ∈ [0, SPAWN_RANGE] |
+| `SPAWN_RANGE` | 20 | スポーン範囲 x,y ∈ [0, SPAWN_RANGE] |
 | `RESPAWN_DELAY` | 10000 ms | 死亡→リスポーンの待機時間 |
 | `SPAWN_EFFECT_DURATION` | 1500 ms | スポーンエフェクト表示時間 |
 | `LASER_RANGE` | 20 | レーザー射程（アフィンパラメータ λ の上限、c=1 で座標時間=空間距離） |

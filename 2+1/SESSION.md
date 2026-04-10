@@ -7,6 +7,13 @@
 
 ## 直近の変更（2026-04-10）
 
+### (未 commit) Spawn effect causal delay + SPAWN_RANGE tuning
+
+- `SPAWN_RANGE` 30 → 20（射程 `LASER_RANGE=20` と一致させる）
+- スポーンエフェクトに因果律遅延を導入: 他プレイヤーのリスポーンは `pendingSpawnEventsRef` に積み、過去光円錐到達時に発火。自分のリスポーンは即時
+- `isInPastLightCone(event, observer)` を `physics/vector.ts` に追加。kill/spawn 両方の過去光円錐判定を統一
+- 教訓: ゲームループ内で `setSpawns` をイベント毎に個別呼び出しするとクラッシュ。バッチ化必須（DESIGN.md に記録済み）
+
 ### `451a964` Simplify myDeathEvent to ref-only
 
 - state + ref 二重管理を ref 一本に統合。`ghostTauRef` と同じパターン
