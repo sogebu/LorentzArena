@@ -2,8 +2,20 @@
 
 ## 現在のステータス
 
-対戦可能。**本番最新 `1dd9349` デプロイ済み** (2026-04-06)。
+対戦可能。**本番最新 `c884d98` デプロイ済み** (2026-04-10)。
 本番 URL: https://sogebu.github.io/LorentzArena/
+
+## 直近の変更（2026-04-10）
+
+### `c884d98` Add Cloudflare TURN credential proxy for restrictive network support
+
+- **Cloudflare TURN 導入**: 制約の厳しい組織ネットワーク（Symmetric NAT + FQDN blacklist）で WebRTC 接続を可能にするため、Cloudflare TURN (`turn.cloudflare.com`) を導入
+- **credential 発行 Worker**: `turn-worker/` に Cloudflare Worker を新設。短命 credential（TTL 24h）を発行するプロキシ。API token は Worker secret に隔離
+- **動的 ICE servers**: `VITE_TURN_CREDENTIAL_URL` を設定するとアプリ起動時に Worker から credential を自動取得。未設定なら従来通り（後方互換）
+- **優先順位**: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERVERS`) > PeerJS defaults
+- **Worker URL**: `https://lorentz-turn.odakin.workers.dev/`（`.env.production` に設定済み）
+- **旧 A'（Open Relay）廃止**: `openrelay.metered.ca` は一部組織ネットで全ポート遮断。Cloudflare はインフラのため構造的にブロック不能
+- **学校ネットでの検証はまだ**（家からのデプロイ完了、学校で接続テスト待ち）
 
 ## 直近の変更（2026-04-06）
 
@@ -45,7 +57,7 @@ stateful `pickDistinctColor` を純関数 `colorForPlayerId(id)` に置き換え
 
 ## 次にやること
 
-- **制約の厳しいネットワーク（特定の組織ネット）で接続できない問題（既知・2026-04-07 再現）**: シグナリング OK だが WebRTC ICE 確立失敗。原因はおそらく対称 NAT または UDP 遮断で TURN 不在。**未試行の最小コスト解は A'（公開無料 TURN を `VITE_WEBRTC_ICE_SERVERS` に入れて再デプロイ）**。手順は `docs/NETWORKING.ja.md` の「対策 → A'」参照。インフラ運用ゼロで済むのでまずこれを試す。ダメなら A（自前 TURN）or C（自前 WS Relay 公開デプロイ、`relay-deploy/` 実装済み）に escalate。**意思決定の経緯**: 2026-02-26 の `2d9388b` で WS Relay (C) を実装したが、デプロイ・現地での動作確認は未完了で defer されたまま今日まで来ていた。今日の議論で「サーバ運用が要らない A'」が最初の一手として発見された
+- **制約ネットワーク検証待ち**: Cloudflare TURN (`c884d98`) をデプロイ済み。次に学校ネットワーク内で https://sogebu.github.io/LorentzArena/ を 2 タブ開いて接続テスト。成功すれば本件クローズ。失敗すれば C（WS Relay 公開デプロイ、`relay-deploy/` 実装済み）に escalate
 - マルチプレイヤーテスト（バリデーション・パフォーマンス確認）
 - 各プレイヤーに固有時刻を表示（時間の遅れの実感用）
 - 3+1 次元への拡張検討
