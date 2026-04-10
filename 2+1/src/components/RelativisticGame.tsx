@@ -382,6 +382,20 @@ const RelativisticGame = () => {
         return alive.length === prev.length ? prev : alive;
       });
 
+      // 古いレーザーを削除（発射時刻 + range から十分離れたら見えない）
+      const myT = playersRef.current.get(myId)?.phaseSpace.pos.t;
+      if (myT !== undefined && lasersRef.current.length > 0) {
+        // レーザーの世界線は t=emissionPos.t から t=emissionPos.t+range まで。
+        // 観測者の座標時間がそれより LASER_RANGE 以上先なら過去光円錐外。
+        const cutoff = myT - LASER_RANGE * 2;
+        setLasers((prev) => {
+          const alive = prev.filter(
+            (l) => l.emissionPos.t + l.range > cutoff,
+          );
+          return alive.length === prev.length ? prev : alive;
+        });
+      }
+
       // FPS計算
       const now = performance.now();
       fpsRef.current.frameCount++;
