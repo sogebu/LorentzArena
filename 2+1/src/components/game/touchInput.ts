@@ -12,9 +12,9 @@ import { useEffect, useRef } from "react";
  */
 
 export type TouchInputState = {
-  /** Heading delta per frame (radians). Positive = left (CCW). */
+  /** Heading delta accumulated since last consumption (radians). Positive = left (CCW). */
   yawDelta: number;
-  /** Thrust value: positive = forward, negative = backward. Range roughly [-1, 1]. */
+  /** Thrust value: positive = forward, negative = backward. Range [-1, 1]. */
   thrust: number;
   /** Whether fire is active (double-tap held). */
   firing: boolean;
@@ -24,7 +24,26 @@ const DOUBLE_TAP_INTERVAL = 300; // ms between taps to count as double-tap
 const DOUBLE_TAP_DISTANCE = 30; // px max distance between taps
 const SWIPE_SENSITIVITY_X = 0.008; // radians per pixel of horizontal movement
 const THRUST_SENSITIVITY_Y = 0.015; // thrust per pixel of vertical displacement
-const THRUST_MAX = 1.0;
+
+/** Find a specific touch by identifier in a TouchList, or null. */
+const findTouch = (touches: TouchList, id: number): Touch | null => {
+  for (let i = 0; i < touches.length; i++) {
+    if (touches[i].identifier === id) return touches[i];
+  }
+  return null;
+};
+
+/** Whether the target element is an interactive UI element (buttons, inputs, etc.) */
+const isInteractiveElement = (target: EventTarget | null): boolean => {
+  if (!(target instanceof HTMLElement)) return false;
+  return !!(
+    target.closest("button") ||
+    target.closest("input") ||
+    target.closest("label") ||
+    target.closest("select") ||
+    target.closest("details")
+  );
+};
 
 export const useTouchInput = (): React.RefObject<TouchInputState> => {
   const stateRef = useRef<TouchInputState>({
@@ -33,7 +52,6 @@ export const useTouchInput = (): React.RefObject<TouchInputState> => {
     firing: false,
   });
 
-  // Track active touch
   const touchRef = useRef<{
     id: number;
     startX: number;
@@ -43,27 +61,15 @@ export const useTouchInput = (): React.RefObject<TouchInputState> => {
     startTime: number;
   } | null>(null);
 
-  // Track last tap for double-tap detection
   const lastTapRef = useRef<{ x: number; y: number; time: number } | null>(
     null,
   );
 
-  // Track if currently in double-tap-hold (firing) mode
-  const firingRef = useRef(false);
-
   useEffect(() => {
+    const state = stateRef.current;
+
     const handleTouchStart = (e: TouchEvent) => {
-      // Don't intercept touches on interactive UI elements (HUD buttons, checkboxes, etc.)
-      const target = e.target as HTMLElement;
-      if (
-        target.closest("button") ||
-        target.closest("input") ||
-        target.closest("label") ||
-        target.closest("select") ||
-        target.closest("details")
-      ) {
-        return;
-      }
+      if (isInteractiveElement(e.target)) return;
       e.preventDefault();
 
       // Only track the first touch (single-finger control)
@@ -80,9 +86,7 @@ export const useTouchInput = (): React.RefObject<TouchInputState> => {
         Math.hypot(touch.clientX - lastTap.x, touch.clientY - lastTap.y) <
           DOUBLE_TAP_DISTANCE
       ) {
-        // Double-tap detected → enter firing mode
-        firingRef.current = true;
-        stateRef.current.firing = true;
+        state.firing = true;
         lastTapRef.current = null;
       }
 
@@ -97,58 +101,35 @@ export const useTouchInput = (): React.RefObject<TouchInputState> => {
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      e.preventDefault();
-
       const active = touchRef.current;
       if (!active) return;
+      e.preventDefault();
 
-      // Find the tracked touch
-      let touch: Touch | null = null;
-      for (let i = 0; i < e.changedTouches.length; i++) {
-        if (e.changedTouches[i].identifier === active.id) {
-          touch = e.changedTouches[i];
-          break;
-        }
-      }
+      const touch = findTouch(e.changedTouches, active.id);
       if (!touch) return;
 
-      // Heading: horizontal movement delta (frame-to-frame, accumulated)
-      const dx = touch.clientX - active.lastX;
-      stateRef.current.yawDelta += -dx * SWIPE_SENSITIVITY_X;
+      // Heading: horizontal movement delta (accumulated between game loop ticks)
+      state.yawDelta += -(touch.clientX - active.lastX) * SWIPE_SENSITIVITY_X;
 
-      // Thrust: vertical displacement from touch origin (position-based, not delta)
-      const dy = touch.clientY - active.startY;
+      // Thrust: vertical displacement from touch origin (position-based)
       // Up = negative clientY delta = forward thrust (positive)
-      const rawThrust = -dy * THRUST_SENSITIVITY_Y;
-      stateRef.current.thrust = Math.max(
-        -THRUST_MAX,
-        Math.min(THRUST_MAX, rawThrust),
-      );
+      const dy = touch.clientY - active.startY;
+      state.thrust = Math.max(-1, Math.min(1, -dy * THRUST_SENSITIVITY_Y));
 
       active.lastX = touch.clientX;
       active.lastY = touch.clientY;
     };
 
     const handleTouchEnd = (e: TouchEvent) => {
-      e.preventDefault();
-
       const active = touchRef.current;
       if (!active) return;
-
-      // Check if this is the tracked touch ending
-      let found = false;
-      for (let i = 0; i < e.changedTouches.length; i++) {
-        if (e.changedTouches[i].identifier === active.id) {
-          found = true;
-          break;
-        }
-      }
-      if (!found) return;
+      if (!findTouch(e.changedTouches, active.id)) return;
+      e.preventDefault();
 
       const now = Date.now();
 
-      // Record tap for double-tap detection (only if it was a short touch)
-      if (!firingRef.current && now - active.startTime < 300) {
+      // Record tap for double-tap detection (only short, non-firing touches)
+      if (!state.firing && now - active.startTime < 300) {
         lastTapRef.current = {
           x: active.startX,
           y: active.startY,
@@ -156,22 +137,13 @@ export const useTouchInput = (): React.RefObject<TouchInputState> => {
         };
       }
 
-      // Reset state
+      // Reset all state
       touchRef.current = null;
-      stateRef.current.yawDelta = 0;
-      stateRef.current.thrust = 0;
-
-      if (firingRef.current) {
-        firingRef.current = false;
-        stateRef.current.firing = false;
-      }
+      state.yawDelta = 0;
+      state.thrust = 0;
+      state.firing = false;
     };
 
-    const handleTouchCancel = (e: TouchEvent) => {
-      handleTouchEnd(e);
-    };
-
-    // Use the document to capture all touches (including over Canvas)
     document.addEventListener("touchstart", handleTouchStart, {
       passive: false,
     });
@@ -179,7 +151,7 @@ export const useTouchInput = (): React.RefObject<TouchInputState> => {
       passive: false,
     });
     document.addEventListener("touchend", handleTouchEnd, { passive: false });
-    document.addEventListener("touchcancel", handleTouchCancel, {
+    document.addEventListener("touchcancel", handleTouchEnd, {
       passive: false,
     });
 
@@ -187,7 +159,7 @@ export const useTouchInput = (): React.RefObject<TouchInputState> => {
       document.removeEventListener("touchstart", handleTouchStart);
       document.removeEventListener("touchmove", handleTouchMove);
       document.removeEventListener("touchend", handleTouchEnd);
-      document.removeEventListener("touchcancel", handleTouchCancel);
+      document.removeEventListener("touchcancel", handleTouchEnd);
     };
   }, []);
 
