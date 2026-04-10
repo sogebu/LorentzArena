@@ -9,6 +9,64 @@ declare const __BUILD_TIME__: string;
 const isTouchDevice =
   "ontouchstart" in window || navigator.maxTouchPoints > 0;
 
+const ToggleSwitch = ({
+  checked,
+  onChange,
+  labelLeft,
+  labelRight,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  labelLeft: string;
+  labelRight: string;
+}) => (
+  <button
+    type="button"
+    onClick={() => onChange(!checked)}
+    style={{
+      display: "flex",
+      alignItems: "center",
+      gap: "6px",
+      cursor: "pointer",
+      marginTop: "6px",
+      background: "none",
+      border: "none",
+      padding: 0,
+      color: "inherit",
+      font: "inherit",
+    }}
+  >
+    <span style={{ opacity: checked ? 1 : 0.4 }}>{labelLeft}</span>
+    <div
+      style={{
+        width: "36px",
+        height: "20px",
+        borderRadius: "10px",
+        backgroundColor: checked
+          ? "rgba(100, 200, 100, 0.7)"
+          : "rgba(255, 255, 255, 0.25)",
+        position: "relative",
+        transition: "background-color 0.2s",
+        flexShrink: 0,
+      }}
+    >
+      <div
+        style={{
+          width: "16px",
+          height: "16px",
+          borderRadius: "50%",
+          backgroundColor: "white",
+          position: "absolute",
+          top: "2px",
+          left: checked ? "18px" : "2px",
+          transition: "left 0.2s",
+        }}
+      />
+    </div>
+    <span style={{ opacity: checked ? 0.4 : 1 }}>{labelRight}</span>
+  </button>
+);
+
 type HUDProps = {
   players: Map<string, RelativisticPlayer>;
   myId: string | null;
@@ -105,40 +163,18 @@ export const HUD = ({
             <div>Space: レーザー発射</div>
           </>
         )}
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            marginTop: "6px",
-            cursor: "pointer",
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={showInRestFrame}
-            onChange={(e) => setShowInRestFrame(e.target.checked)}
-          />
-          <span>自分の静止系で表示</span>
-        </label>
-        <div style={{ opacity: 0.9 }}>
-          表示系: {showInRestFrame ? "自分の静止系（デフォルト）" : "世界系"}
-        </div>
-        <label
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            cursor: "pointer",
-          }}
-        >
-          <input
-            type="checkbox"
-            checked={useOrthographic}
-            onChange={(e) => setUseOrthographic(e.target.checked)}
-          />
-          <span>正射影カメラ</span>
-        </label>
+        <ToggleSwitch
+          checked={showInRestFrame}
+          onChange={setShowInRestFrame}
+          labelLeft="静止系"
+          labelRight="世界系"
+        />
+        <ToggleSwitch
+          checked={useOrthographic}
+          onChange={setUseOrthographic}
+          labelLeft="正射影"
+          labelRight="透視投影"
+        />
         <div
           style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
         >
