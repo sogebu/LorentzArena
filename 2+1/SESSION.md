@@ -2,12 +2,12 @@
 
 ## 現在のステータス
 
-対戦可能。**本番最新 `451a964` デプロイ済み** (2026-04-10)。
+対戦可能。**本番最新 `6574a02` デプロイ済み** (2026-04-10)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
 ## 直近の変更（2026-04-10）
 
-### (未 commit) Spawn effect causal delay + SPAWN_RANGE tuning
+### `6574a02` Spawn effect causal delay + SPAWN_RANGE tuning
 
 - `SPAWN_RANGE` 30 → 20（射程 `LASER_RANGE=20` と一致させる）
 - スポーンエフェクトに因果律遅延を導入: 他プレイヤーのリスポーンは `pendingSpawnEventsRef` に積み、過去光円錐到達時に発火。自分のリスポーンは即時
