@@ -197,6 +197,31 @@ VITE_WS_RELAY_URL=wss://relay.example.com
 
 ---
 
+## Host migration
+
+Automatic recovery when the host disconnects. Works with both PeerJS and WS Relay.
+
+### Disconnect detection: heartbeat
+
+The WebRTC DataConnection `close` event relies on ICE timeout (30s+, effectively infinite on localhost). Instead, the host sends a `ping` message every **3 seconds**. If a client receives no ping for **8 seconds**, it considers the host gone.
+
+### Migration flow
+
+1. **Detection**: client heartbeat timeout fires
+2. **Election**: the first peer in the `peerList` (ordered by connection time, proactively broadcast by the host on connection changes) becomes the new host
+3. **Reconnection**:
+   - **PeerJS**: new host calls `connect()` to each remaining peer via PeerServer. The old host's `la-{roomName}` ID is NOT re-acquired (avoids PeerServer ID release lag)
+   - **WS Relay**: new host sends `promote_host` to create a new room on the relay server; other clients `join_host`
+4. **State transfer**: new host broadcasts `hostMigration` with scores + dead players (with death timestamps)
+5. **Respawn timer reconstruction**: remaining time is calculated from recorded kill timestamps
+
+### Limitations
+
+- After migration, new joiners using `la-{roomName}` won't discover the new host (separate session). Acceptable for small groups.
+- Hit detection pauses during migration (a few seconds). Physics continues locally.
+
+---
+
 ## Practical advice
 
 - If it works on a phone hotspot but not on school Wi‑Fi: it’s almost certainly the network.

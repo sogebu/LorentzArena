@@ -66,9 +66,11 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 
 - `PeerManager.ts` — PeerJS/WebRTC ラッパー
 - `WsRelayManager.ts` — WebSocket Relay フォールバック
-- `PeerProvider.tsx` — 自動接続: ルーム ID でホスト試行 → 失敗時クライアント接続。ホストリレー前に `isRelayable()` でバリデーション
+- `PeerProvider.tsx` — 自動接続 + ホストマイグレーション
 
 自動接続フロー: ページを開くだけで同じルームに入る。`#room=name` で部屋分離。
+
+ホストマイグレーション: ホストが切断すると最古参クライアントが自動昇格。ハートビート方式（3 秒間隔 `ping`、8 秒タイムアウト）で WebRTC ICE タイムアウト（30 秒+）に依存せず即時検知。新ホストは `hostMigration` メッセージでスコア・dead players を引き継ぎ、respawn タイマーを残り時間で再構築。PeerJS では旧ホストの `la-{roomName}` ID を再取得せず、新ホストが自分のランダム ID のまま他クライアントに直接接続（PeerServer ID 解放タイムラグを回避）。設計判断は DESIGN.md「ホストマイグレーション」参照。
 
 ### ゲーム (`src/components/`)
 

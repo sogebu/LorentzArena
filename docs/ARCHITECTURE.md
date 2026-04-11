@@ -46,11 +46,17 @@ Then it uses a past light cone intersection to decide “what you can see” of 
 - `WsRelayManager<T>` is a WebSocket relay fallback for restrictive networks.
 - `PeerProvider` exposes the active network manager (PeerJS or WS Relay) to React components. The host validates messages with `isRelayable()` before relaying to other peers.
 
-The game sends small JSON messages (phase space updates, laser events, etc.) and updates local state when they arrive.
+The game uses a **host-relay model** (star topology). One peer is the host; all others send messages to the host, which relays them. The host also runs hit detection, manages kill/respawn, and keeps authoritative scores.
 
-For networking caveats and how to make it work on restrictive networks, see:
+### Host migration
 
-- `docs/NETWORKING.md`
+When the host disconnects, the **oldest client automatically promotes to host**. Detection uses a heartbeat mechanism (3s `ping` interval, 8s timeout) rather than relying on the slow WebRTC ICE timeout (30s+). The new host:
+
+1. Connects to remaining peers directly (PeerJS) or promotes itself on the relay server (WS Relay)
+2. Broadcasts a `hostMigration` message with scores and dead player state
+3. Reconstructs respawn timers from recorded death timestamps
+
+Design details: `2+1/DESIGN.md`. Networking troubleshooting: `docs/NETWORKING.md`.
 
 ---
 
