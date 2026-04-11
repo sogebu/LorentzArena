@@ -178,6 +178,7 @@ const RelativisticGame = () => {
   );
 
   // Respawn 処理
+  // biome-ignore lint/correctness/useExhaustiveDependencies: getPlayerColor is read at spawn time only, not a reactive dependency
   const handleRespawn = useCallback(
     (
       playerId: string,
@@ -223,12 +224,13 @@ const RelativisticGame = () => {
         }
       }
     },
-    [myId, getPlayerColor],
+    [myId],
   );
 
   // 初期化: ホストは即座にプレイヤー作成。
   // クライアントは syncTime ハンドラ（messageHandler.ts）がホストの座標時刻で作成する。
   const isHost = peerManager?.getIsHost() ?? false;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: getPlayerColor is read at init time only
   useEffect(() => {
     if (!myId) return;
     if (!isHost) return; // クライアントは syncTime 受信時に初期化
@@ -260,7 +262,7 @@ const RelativisticGame = () => {
       });
       return next;
     });
-  }, [myId, isHost, getPlayerColor]);
+  }, [myId, isHost]);
 
   // ref を最新の state に同期
   useEffect(() => {
@@ -405,6 +407,7 @@ const RelativisticGame = () => {
   ]);
 
   // メッセージ受信処理
+  // biome-ignore lint/correctness/useExhaustiveDependencies: getPlayerColor is passed to messageHandler but should not trigger re-registration
   useEffect(() => {
     if (!peerManager || !myId) return;
 
@@ -428,7 +431,7 @@ const RelativisticGame = () => {
     return () => {
       peerManager.offMessage("relativistic");
     };
-  }, [peerManager, myId, handleKill, handleRespawn, getPlayerColor]);
+  }, [peerManager, myId, handleKill, handleRespawn]);
 
   // ウィンドウリサイズの検出
   useEffect(() => {
