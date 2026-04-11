@@ -162,35 +162,27 @@
 - **体験**: プレイヤーにはラグとして感じられる。高速ブーストで座標時刻が先に進むほど凍結されやすくなる — 物理的に自然なペナルティ
 - **実装箇所**: `RelativisticGame.tsx` ゲームループ内、物理更新の直前
 
-### 色割り当て: 決定的純関数（`colorForPlayerId`、2026-04-06 大掃除済み）
+### 色割り当て: joinOrder × 黄金角（2026-04-11 改善）+ ハッシュフォールバック（2026-04-06）
 
 #### What
 
-```ts
-// colors.ts
-const hashString32 = (s: string): number => {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-};
+2 層構造:
+1. **主**: `colorForJoinOrder(index)` — 接続順 × 黄金角 137.5° で hue を割り当て。2 人で 137.5° 離れることが **保証** される
+2. **フォールバック**: `colorForPlayerId(id)` — ID の FNV-1a ハッシュ × 黄金角。peerList 未受信時に使用
 
-export const colorForPlayerId = (id: string): string => {
-  const hash = hashString32(id);
-  const hue = Math.floor((((hash * 137.50776405) % 360) + 360) % 360);
-  const saturation = 80 + ((hash >>> 8) % 17);  // 80-96%
-  const lightness = 50 + ((hash >>> 16) % 14);  // 50-63%
-  return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
-};
-```
+PeerProvider が append-only `joinRegistryRef` を管理。peerList 受信時に新規 ID を末尾追記（削除しない → index 安定）。`getPlayerColor(id)` が joinRegistry にあれば joinOrder 色、なければハッシュ色を返す。
 
-プレイヤー ID から色を計算する純関数。副作用なし、外部状態依存なし、ネットワーク同期なし。全ピア（ホスト・クライアント）が同じ関数を同じ ID で呼べば同じ色を得る。
+index 0 = ホスト、1 = 最初のクライアント、2 = 次、...
 
 #### Why
 
-色は本質的に「プレイヤー ID の関数」であって React state に格納する情報ではない。state として扱うと、初期化タイミング・メッセージ順序・StrictMode 二重実行・接続再構築・HMR 時の state 保持などあらゆる境界で race が発生する。一方、ID から決定的に算出するなら、ピア間の一致は数学的に保証される。
+- **旧 stateful 方式（2026-04-06 に廃止）**: ホストが色を管理・配信 → StrictMode 二重実行、接続 race、HMR state 保持で 5 連バグ
+- **ハッシュ方式（2026-04-06〜）**: 純関数で race 消滅。ただし 2 人で約 1/6 の確率で近い色になる
+- **joinOrder 方式（2026-04-11〜）**: 連続整数 × 黄金角で色分離を保証。append-only 配列 1 本のみの軽量 state で、旧方式の副作用問題を踏まない
+
+#### 注意: getPlayerColor を useEffect deps に入れない
+
+`getPlayerColor` は `useCallback([peerManager])` で peerManager 変更時に参照が変わる。これを `handleRespawn` → `handleKill` → ゲームループ effect の deps に入れると、接続変更のたびにゲームループが teardown → 再作成され **ゲーム凍結** を引き起こす（`2472464` で修正）。色は作成時に一度だけ読むので deps に不要。biome-ignore で除外。
 
 **色の分離性（黄金角）**: ID の小さな差を色環上の大きな差に飛ばしたい。黄金角 137.5° は連続整数 n に対する `n * 137.5° mod 360°` の列が最も一様になる角度（Vogel の螺旋で使われる性質）で、ハッシュ出力のビット相関があっても色相が密集しにくい。2〜4 人程度なら統計的に十分分離する。
 

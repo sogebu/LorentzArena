@@ -81,7 +81,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `RelativisticGame.tsx` | state/ref 管理、ゲームループ、Canvas 配置 |
 | `game/types.ts` | ゲーム固有型定義（`RelativisticPlayer`, `Laser` 等） |
 | `game/constants.ts` | ゲーム定数（射程、リスポーン遅延、スポーン範囲等） |
-| `game/colors.ts` | プレイヤー色生成（`colorForPlayerId(id)` 純関数、ID ハッシュ + 黄金角） |
+| `game/colors.ts` | プレイヤー色生成。`colorForJoinOrder(index)` が主（接続順 × 黄金角で保証分離）、`colorForPlayerId(id)` はフォールバック |
 | `game/threeCache.ts` | THREE.js ジオメトリ/マテリアル singleton + デブリマテリアルキャッシュ |
 | `game/displayTransform.ts` | ローレンツ変換 → 表示座標変換 |
 | `game/laserPhysics.ts` | レーザー当たり判定 + 光円錐交差 |
@@ -127,7 +127,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `peerList` | host → all | 接続ピア一覧（接続変化時に proactive 送信） |
 | `requestPeerList` | client → host | ピア一覧要求 |
 
-**色は同期しない**: `playerColor` メッセージは 2026-04-06 に廃止。全ピアが `colorForPlayerId(id)` で同じ色を決定論的に算出するため、ネットワーク同期不要。詳細: DESIGN.md「色割り当て: 決定的純関数」
+**色は同期しない**: 全ピアが `colorForJoinOrder(index)` で接続順に基づく色を独立に算出（peerList から各自 append-only joinRegistry を構築）。peerList 未受信時は `colorForPlayerId(id)` にフォールバック。ネットワークで色を直接同期するメッセージはない。詳細: DESIGN.md「色割り当て」
 
 ホスト権威メッセージ（kill, respawn, score）: ホストはゲームループで処理済みのため messageHandler でスキップ（二重処理防止）。
 
@@ -183,8 +183,10 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `MAX_MESSAGE_SIZE` | 16 KB | メッセージサイズ上限 |
 | `RATE_LIMIT_MAX_MSGS` | 60 msg/s | クライアントごとのレート制限 |
 | `MAX_CONNECTIONS` | 100 | 同時接続上限 |
-| `HEARTBEAT_INTERVAL_MS` | 30s | ping 送信間隔 |
-| `HEARTBEAT_TIMEOUT_MS` | 10s | pong 応答タイムアウト |
+| `HEARTBEAT_INTERVAL_MS` | 30s | WebSocket ping 送信間隔（サーバー→クライアント） |
+| `HEARTBEAT_TIMEOUT_MS` | 10s | WebSocket pong 応答タイムアウト |
+
+注: 上記は **relay server の WebSocket レベル heartbeat**。ゲームクライアントのホスト切断検知は別の仕組み（`PeerProvider` の `ping` メッセージ: 3 秒間隔、8 秒タイムアウト）。
 
 ### ビルド設定
 
