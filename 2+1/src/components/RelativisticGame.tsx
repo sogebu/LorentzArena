@@ -362,19 +362,14 @@ const RelativisticGame = () => {
 
       const timerId = setTimeout(() => {
         respawnTimeoutsRef.current.delete(timerId);
-        let minT = Number.POSITIVE_INFINITY;
         let maxT = Number.NEGATIVE_INFINITY;
         for (const [, p] of playersRef.current) {
           const t = p.phaseSpace.pos.t;
-          if (Number.isFinite(t)) {
-            if (t < minT) minT = t;
-            if (t > maxT) maxT = t;
-          }
+          if (Number.isFinite(t) && t > maxT) maxT = t;
         }
-        if (!Number.isFinite(minT)) minT = 0;
         if (!Number.isFinite(maxT)) maxT = 0;
         const respawnPos = {
-          t: (minT + maxT) / 2,
+          t: maxT,
           x: Math.random() * SPAWN_RANGE,
           y: Math.random() * SPAWN_RANGE,
           z: 0,
@@ -898,21 +893,15 @@ const RelativisticGame = () => {
             // 遅延リスポーン
             const timerId = setTimeout(() => {
               respawnTimeoutsRef.current.delete(timerId);
-              // 全プレイヤー（生存+ゴースト）の座標時刻の最大・最小の中間でリスポーン
-              let minT = Number.POSITIVE_INFINITY;
+              // 最も未来にいるプレイヤーの座標時刻でリスポーン
               let maxT = Number.NEGATIVE_INFINITY;
               for (const [, p] of playersRef.current) {
                 const t = p.phaseSpace.pos.t;
-                if (Number.isFinite(t)) {
-                  if (t < minT) minT = t;
-                  if (t > maxT) maxT = t;
-                }
+                if (Number.isFinite(t) && t > maxT) maxT = t;
               }
-              // フォールバック: プレイヤーがいない場合は t=0
-              if (!Number.isFinite(minT)) minT = 0;
               if (!Number.isFinite(maxT)) maxT = 0;
               const respawnPos = {
-                t: (minT + maxT) / 2,
+                t: maxT,
                 x: Math.random() * SPAWN_RANGE,
                 y: Math.random() * SPAWN_RANGE,
                 z: 0,

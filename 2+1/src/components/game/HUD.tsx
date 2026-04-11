@@ -259,7 +259,7 @@ export const HUD = ({
                     backgroundColor:
                       energy < 0.2
                         ? "rgba(255, 80, 80, 0.8)"
-                        : "rgba(255, 160, 60, 0.8)",
+                        : myLaserColor,
                     borderRadius: "4px",
                     transition: "width 0.05s linear",
                   }}
