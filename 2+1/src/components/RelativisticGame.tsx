@@ -893,9 +893,11 @@ const RelativisticGame = () => {
             // 遅延リスポーン
             const timerId = setTimeout(() => {
               respawnTimeoutsRef.current.delete(timerId);
-              // 最も未来にいるプレイヤーの座標時刻でリスポーン
+              // 生存プレイヤーの最大座標時刻でリスポーン（ゴーストは慣性運動で
+              // 未来に進むため除外 — どうせすぐリスポーンするので参照すべきでない）
               let maxT = Number.NEGATIVE_INFINITY;
               for (const [, p] of playersRef.current) {
+                if (p.isDead) continue;
                 const t = p.phaseSpace.pos.t;
                 if (Number.isFinite(t) && t > maxT) maxT = t;
               }
