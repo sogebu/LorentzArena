@@ -32,6 +32,7 @@ const Connect = () => {
     }
   }, [peerStatus]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: connections triggers re-eval when peerManager.getIsHost() changes after migration
   const phaseText = useMemo(() => {
     switch (connectionPhase) {
       case "trying-host":

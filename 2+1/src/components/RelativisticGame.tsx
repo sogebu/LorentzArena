@@ -300,7 +300,8 @@ const RelativisticGame = () => {
       const next = new Map(prev);
       for (const id of idsToRemove) {
         next.delete(id);
-        deadPlayersRef.current.delete(id); // 切断時に dead 状態もクリア
+        deadPlayersRef.current.delete(id);
+        deathTimeMapRef.current.delete(id);
       }
       return next;
     });
@@ -323,6 +324,12 @@ const RelativisticGame = () => {
       openConns.length,
       "peers",
     );
+
+    // Clear any previously pending respawn timers (safety against re-trigger)
+    for (const id of respawnTimeoutsRef.current) {
+      clearTimeout(id);
+    }
+    respawnTimeoutsRef.current.clear();
 
     // Reconstruct deadPlayersRef from player state
     deadPlayersRef.current.clear();

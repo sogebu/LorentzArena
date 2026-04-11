@@ -199,13 +199,14 @@ wss.on("connection", (ws) => {
       case "promote_host": {
         if (!ensureIdentified(state)) return;
         const newHostId = state.peerId;
+        // Remove from old room first (prevents double membership)
+        removeFromRoom(state.peerId, state.roomHostId);
         // Create a new room with this peer as host
         if (!rooms.has(newHostId)) {
           rooms.set(newHostId, new Set());
         }
         rooms.get(newHostId).add(newHostId);
         state.roomHostId = newHostId;
-        // Allow other peers to join via join_host with the new host ID
         broadcastPeers(newHostId);
         return;
       }
