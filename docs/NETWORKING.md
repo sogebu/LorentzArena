@@ -212,8 +212,8 @@ The WebRTC DataConnection `close` event relies on ICE timeout (30s+, effectively
 3. **Reconnection**:
    - **PeerJS**: new host calls `connect()` to each remaining peer via PeerServer. The old host's `la-{roomName}` ID is NOT re-acquired (avoids PeerServer ID release lag)
    - **WS Relay**: new host sends `promote_host` to create a new room on the relay server; other clients `join_host`
-4. **State transfer**: new host broadcasts `hostMigration` with scores + dead players (with death timestamps)
-5. **Respawn timer reconstruction**: remaining time is calculated from recorded kill timestamps
+4. **State transfer**: new host broadcasts `hostMigration` with scores + dead players (each with a `Date.now()` death timestamp)
+5. **Respawn timer reconstruction**: remaining = `RESPAWN_DELAY - (now - deathTime)`, clamped to 0
 
 ### Limitations
 

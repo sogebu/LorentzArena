@@ -145,8 +145,8 @@ wss.on("connection", (ws) => {
     switch (msg.type) {
       case "hello": {
         const peerId = String(msg.peerId ?? "");
-        if (!peerId) {
-          sendJson(ws, { type: "error", message: "peerId is required" });
+        if (!peerId || peerId.length > 256) {
+          sendJson(ws, { type: "error", message: "peerId is required (max 256 chars)" });
           return;
         }
         if (clientsById.has(peerId)) {
@@ -178,8 +178,8 @@ wss.on("connection", (ws) => {
       case "join_host": {
         if (!ensureIdentified(state)) return;
         const hostId = String(msg.hostId ?? "");
-        if (!hostId) {
-          sendJson(ws, { type: "error", message: "hostId is required" });
+        if (!hostId || hostId.length > 256) {
+          sendJson(ws, { type: "error", message: "hostId is required (max 256 chars)" });
           return;
         }
         if (!rooms.has(hostId)) {
@@ -214,8 +214,8 @@ wss.on("connection", (ws) => {
       case "send_to": {
         if (!ensureIdentified(state)) return;
         const to = String(msg.to ?? "");
-        if (!to) {
-          sendJson(ws, { type: "error", message: "to is required" });
+        if (!to || to.length > 256) {
+          sendJson(ws, { type: "error", message: "to is required (max 256 chars)" });
           return;
         }
         if (!state.roomHostId) {

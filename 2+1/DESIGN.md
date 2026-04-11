@@ -11,7 +11,7 @@
   - **PeerJS ID 非再取得**: 旧ホストの `la-{roomName}` を再登録せず、新ホストは自分のランダム ID のまま他クライアントに直接接続。PeerServer の ID 解放タイムラグ問題を回避
   - **proactive peerList**: ホストが接続変化時に全クライアントへ peerList をブロードキャスト（既存 requestPeerList は誰も送っていなかった）。マイグレーション選出の前提
   - **状態引継ぎ**: `hostMigration` メッセージでスコア + dead players（deathTime 付き）を送信。syncTime は世界時刻をリセットするためマイグレーション中はスキップ
-  - **respawn タイマー再構築**: `deathTimeMapRef` で kill 時の `Date.now()` を記録。新ホストが残り時間を計算して `setTimeout` を再設定
+  - **respawn タイマー再構築**: `deathTimeMapRef` で kill 時の `Date.now()`（ローカル壁時計、世界系座標時刻ではない）を記録。新ホストが `remaining = RESPAWN_DELAY - (Date.now() - deathTime)` で残り時間を計算し `setTimeout` を再設定。0 以下なら即リスポーン
   - **WS Relay race 対策**: 非新ホストの `join_host` を 500ms 遅延し、新ホストの `promote_host` がルーム作成を完了するのを待つ
   - **relay server**: `host_closed` に surviving peers リストを同梱。`promote_host` ハンドラで新ルーム作成
 - **ハートビート方式**: WebRTC DataConnection の close イベントは ICE タイムアウト依存で 30 秒以上（localhost では事実上無限）。ホストが 3 秒ごとに `ping` メッセージを送信し、クライアントが 8 秒間受信しなければホスト切断と判定。テストで即時検知を確認
