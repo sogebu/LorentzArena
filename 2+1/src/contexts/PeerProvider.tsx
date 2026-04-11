@@ -15,6 +15,10 @@ import {
   getWsRelayUrlFromEnv,
 } from "../config/peer";
 import { fetchTurnCredentials } from "../services/turnCredentials";
+import {
+  colorForJoinOrder,
+  colorForPlayerId,
+} from "../components/game/colors";
 import { PeerManager, type PeerServerStatus } from "../services/PeerManager";
 import { WsRelayManager, type WsRelayStatus } from "../services/WsRelayManager";
 import type { ConnectionStatus, Message } from "../types";
@@ -54,6 +58,7 @@ interface PeerContextValue {
   connectionPhase: ConnectionPhase;
   roomName: string;
   isMigrating: boolean;
+  getPlayerColor: (peerId: string) => string;
   setActiveTransport: (transport: ActiveTransport) => void;
   completeMigration: () => void;
 }
@@ -94,6 +99,7 @@ const isRelayable = (msg: Message): boolean => {
 const registerPeerOrderListener = (
   pm: NetworkManager,
   peerOrderRef: { current: string[] },
+  joinRegistryRef: { current: string[] },
 ) => {
   pm.onMessage("peerOrder", (_senderId, msg) => {
     if (
@@ -104,6 +110,12 @@ const registerPeerOrderListener = (
       const peers = (msg as { peers?: string[] }).peers;
       if (Array.isArray(peers)) {
         peerOrderRef.current = peers;
+        // Append-only: add new peers to joinRegistry (never remove)
+        for (const id of peers) {
+          if (!joinRegistryRef.current.includes(id)) {
+            joinRegistryRef.current.push(id);
+          }
+        }
       }
     }
   });
@@ -186,9 +198,32 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   // Updated by the host on connection changes and by clients on peerList receipt.
   const peerOrderRef = useRef<string[]>([]);
 
+  // Append-only registry of all peers that ever connected, in join order.
+  // Used for deterministic color assignment via golden angle.
+  // Never shrinks — disconnected peers keep their index for color stability.
+  const joinRegistryRef = useRef<string[]>([]);
+
   const completeMigration = useCallback(() => {
     setIsMigrating(false);
   }, []);
+
+  // Deterministic color from join order (golden angle separation).
+  // Host = index 0, clients = index 1, 2, ... in joinRegistry order.
+  // Fallback to hash-based color if peer not yet in registry.
+  const getPlayerColor = useCallback(
+    (peerId: string): string => {
+      // Host is always index 0
+      if (peerManager?.getIsHost() && peerId === peerManager.id()) {
+        return colorForJoinOrder(0);
+      }
+      const hostId = peerManager?.getHostId();
+      if (peerId === hostId) return colorForJoinOrder(0);
+      const idx = joinRegistryRef.current.indexOf(peerId);
+      if (idx >= 0) return colorForJoinOrder(idx + 1);
+      return colorForPlayerId(peerId); // fallback
+    },
+    [peerManager],
+  );
 
   const setActiveTransport = useCallback(
     (transport: ActiveTransport) => {
@@ -247,7 +282,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     pm.onPeerStatusChange((status) => setPeerStatus(status));
     pm.onConnectionChange((conns) => setConnections(conns));
     registerHostRelay(pm);
-    registerPeerOrderListener(pm, peerOrderRef);
+    registerPeerOrderListener(pm, peerOrderRef, joinRegistryRef);
     setPeerManager(pm);
 
     return () => {
@@ -276,7 +311,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         pm.setAsHost();
         setMyId(roomPeerId);
         registerHostRelay(pm);
-        registerPeerOrderListener(pm, peerOrderRef);
+        registerPeerOrderListener(pm, peerOrderRef, joinRegistryRef);
         setPeerManager(pm);
         setConnectionPhase("connected");
       } else if (
@@ -326,7 +361,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         pm.connect(roomPeerId);
         setMyId(localId);
         registerHostRelay(pm);
-        registerPeerOrderListener(pm, peerOrderRef);
+        registerPeerOrderListener(pm, peerOrderRef, joinRegistryRef);
         setPeerManager(pm);
         setConnectionPhase("connected");
       }
@@ -371,6 +406,12 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     if (connectionPhase !== "connected") return;
     const openPeers = connections.filter((c) => c.open).map((c) => c.id);
     peerOrderRef.current = openPeers;
+    // Append-only joinRegistry (host side)
+    for (const id of openPeers) {
+      if (!joinRegistryRef.current.includes(id)) {
+        joinRegistryRef.current.push(id);
+      }
+    }
     if (openPeers.length > 0) {
       peerManager.send({ type: "peerList", peers: openPeers } as never);
     }
@@ -451,7 +492,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         peerManager.clearHost();
         peerManager.setAsHost();
         registerHostRelay(peerManager);
-        registerPeerOrderListener(peerManager, peerOrderRef);
+        registerPeerOrderListener(peerManager, peerOrderRef, joinRegistryRef);
         return;
       }
 
@@ -525,6 +566,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         connectionPhase,
         roomName,
         isMigrating,
+        getPlayerColor,
         setActiveTransport,
         completeMigration,
       }}

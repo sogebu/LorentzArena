@@ -5,7 +5,7 @@ import {
   createVector4,
   createWorldLine,
 } from "../../physics";
-import { colorForPlayerId } from "./colors";
+import { colorForPlayerId } from "./colors"; // fallback for syncTime init
 import { MAX_LASERS } from "./constants";
 import type { Laser, RelativisticPlayer, SpawnEffect } from "./types";
 
@@ -32,6 +32,7 @@ export type MessageHandlerDeps = {
     playerId: string,
     position: { t: number; x: number; y: number; z: number },
   ) => void;
+  getPlayerColor: (peerId: string) => string;
 };
 
 const isFiniteNumber = (v: unknown): v is number =>
@@ -74,6 +75,7 @@ export const createMessageHandler =
       timeSyncedRef,
       handleKill,
       handleRespawn,
+      getPlayerColor,
     } = deps;
 
     if (msg.type === "phaseSpace") {
@@ -101,7 +103,7 @@ export const createMessageHandler =
             })();
 
         // 色は ID から決定的に算出（純関数、副作用なし）
-        const color = existing?.color ?? colorForPlayerId(playerId);
+        const color = existing?.color ?? getPlayerColor(playerId);
 
         const next = new Map(prev);
         next.set(playerId, {

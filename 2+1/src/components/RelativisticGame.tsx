@@ -15,7 +15,7 @@ import {
   type Vector4,
   vector3Zero,
 } from "../physics";
-import { colorForPlayerId, getLaserColor } from "./game/colors";
+import { getLaserColor } from "./game/colors";
 import {
   ENERGY_MAX,
   ENERGY_PER_SHOT,
@@ -50,8 +50,14 @@ import type {
 } from "./game/types";
 
 const RelativisticGame = () => {
-  const { peerManager, myId, connections, isMigrating, completeMigration } =
-    usePeer();
+  const {
+    peerManager,
+    myId,
+    connections,
+    isMigrating,
+    completeMigration,
+    getPlayerColor,
+  } = usePeer();
   const [players, setPlayers] = useState<Map<string, RelativisticPlayer>>(
     new Map(),
   );
@@ -190,7 +196,7 @@ const RelativisticGame = () => {
 
       // スポーンエフェクト: 因果律遅延（過去光円錐到達時に発火）
       const spawningPlayer = playersRef.current.get(playerId);
-      const color = spawningPlayer?.color ?? colorForPlayerId(playerId);
+      const color = spawningPlayer?.color ?? getPlayerColor(playerId);
       const now = Date.now();
 
       if (playerId === myId) {
@@ -217,7 +223,7 @@ const RelativisticGame = () => {
         }
       }
     },
-    [myId],
+    [myId, getPlayerColor],
   );
 
   // 初期化: ホストは即座にプレイヤー作成。
@@ -240,7 +246,7 @@ const RelativisticGame = () => {
     );
     let initialWorldLine = createWorldLine(5000, initialPhaseSpace);
     initialWorldLine = appendWorldLine(initialWorldLine, initialPhaseSpace);
-    const initialColor = colorForPlayerId(myId);
+    const initialColor = getPlayerColor(myId);
 
     setPlayers((prev) => {
       if (prev.has(myId)) return prev;
@@ -254,7 +260,7 @@ const RelativisticGame = () => {
       });
       return next;
     });
-  }, [myId, isHost]);
+  }, [myId, isHost, getPlayerColor]);
 
   // ref を最新の state に同期
   useEffect(() => {
@@ -415,13 +421,14 @@ const RelativisticGame = () => {
         timeSyncedRef,
         handleKill,
         handleRespawn,
+        getPlayerColor,
       }),
     );
 
     return () => {
       peerManager.offMessage("relativistic");
     };
-  }, [peerManager, myId, handleKill, handleRespawn]);
+  }, [peerManager, myId, handleKill, handleRespawn, getPlayerColor]);
 
   // ウィンドウリサイズの検出
   useEffect(() => {
@@ -968,7 +975,7 @@ const RelativisticGame = () => {
         myLaserColor={
           myId
             ? getLaserColor(
-                players.get(myId)?.color ?? colorForPlayerId(myId),
+                players.get(myId)?.color ?? getPlayerColor(myId),
               )
             : ""
         }
@@ -976,6 +983,7 @@ const RelativisticGame = () => {
         killGlow={killNotification !== null}
         killNotification={killNotification}
         myDeathEvent={myDeathEventRef.current}
+        getPlayerColor={getPlayerColor}
       />
 
       {useOrthographic ? (

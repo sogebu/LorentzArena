@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { gamma, lengthVector3 } from "../../physics";
-import { colorForPlayerId } from "./colors";
+// colorForPlayerId is no longer used here; colors come from getPlayerColor prop
 import { RESPAWN_DELAY } from "./constants";
 import type { DeathEvent, RelativisticPlayer } from "./types";
 
@@ -80,6 +80,7 @@ type HUDProps = {
   killGlow: boolean;
   killNotification: { victimName: string; color: string } | null;
   myDeathEvent?: DeathEvent | null;
+  getPlayerColor: (peerId: string) => string;
 };
 
 /** Convert "hsl(H, S%, L%)" to "H, S%, L%" for use in hsla(). */
@@ -138,6 +139,7 @@ export const HUD = ({
   killGlow,
   killNotification,
   myDeathEvent,
+  getPlayerColor,
 }: HUDProps) => {
   const sortedScores = useMemo(
     () => Object.entries(scores).sort(([, a], [, b]) => b - a),
@@ -207,7 +209,7 @@ export const HUD = ({
               <div
                 key={id}
                 style={{
-                  color: players.get(id)?.color ?? colorForPlayerId(id),
+                  color: players.get(id)?.color ?? getPlayerColor(id),
                 }}
               >
                 {id === myId ? "You" : id.slice(0, 6)}: {kills}
