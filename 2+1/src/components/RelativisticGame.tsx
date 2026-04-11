@@ -82,7 +82,7 @@ const RelativisticGame = () => {
 
   const scoresRef = useRef<Record<string, number>>({});
   const [showInRestFrame, setShowInRestFrame] = useState(true);
-  const [useOrthographic, setUseOrthographic] = useState(true);
+  const [useOrthographic, setUseOrthographic] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastTimeRef = useRef<number>(Date.now());
   const keysPressed = useRef<Set<string>>(new Set());
