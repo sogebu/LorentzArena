@@ -9,15 +9,24 @@ const hashString32 = (input: string): number => {
 };
 
 /**
- * プレイヤー ID から決定的に色を生成する純関数。
+ * 接続順 index から色を生成する純関数（黄金角方式）。
  *
- * 黄金角 (137.50776°) で hash を色相に写すことで、ID の小さな差を
- * 色環上の大きな差に広げる。saturation/lightness も hash の別ビット
- * から決めるので、2〜4 人程度のプレイヤーなら統計的に十分分離する。
+ * 連続整数 × 黄金角 (137.508°) で hue を割り当てるため、
+ * 2 人で 137.5°、3 人で全員 >90° の色相差が保証される。
  *
- * すべてのピア（ホスト/クライアント）が同じ関数を呼ぶので、ネットワーク
- * で色を同期する必要がない。過去の `playerColor` メッセージ / `pendingColorsRef` /
- * ホストのブロードキャストはすべてこの純関数に置き換えられた。
+ * index 0 = ホスト、1 = 最初のクライアント、2 = 次、...
+ * 切断しても index は再利用しない（append-only joinRegistry）。
+ */
+export const colorForJoinOrder = (index: number): string => {
+  const hue = Math.floor(((index * 137.50776405) % 360 + 360) % 360);
+  return `hsl(${hue}, 85%, 55%)`;
+};
+
+/**
+ * プレイヤー ID から決定的に色を生成する純関数（フォールバック用）。
+ *
+ * joinOrder が判明する前（peerList 未受信時）に使用。
+ * 黄金角 (137.50776°) で hash を色相に写す。
  */
 export const colorForPlayerId = (id: string): string => {
   const hash = hashString32(id);

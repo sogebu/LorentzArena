@@ -220,9 +220,12 @@ const RelativisticGame = () => {
     [myId],
   );
 
-  // 初期化
+  // 初期化: ホストは即座にプレイヤー作成。
+  // クライアントは syncTime ハンドラ（messageHandler.ts）がホストの座標時刻で作成する。
+  const isHost = peerManager?.getIsHost() ?? false;
   useEffect(() => {
     if (!myId) return;
+    if (!isHost) return; // クライアントは syncTime 受信時に初期化
 
     // 非決定的な値（Date.now, Math.random）は reducer 外で計算して closure に束縛。
     // StrictMode の reducer 二重実行でも同じ値を使うようにする。
@@ -251,7 +254,7 @@ const RelativisticGame = () => {
       });
       return next;
     });
-  }, [myId]);
+  }, [myId, isHost]);
 
   // ref を最新の state に同期
   useEffect(() => {

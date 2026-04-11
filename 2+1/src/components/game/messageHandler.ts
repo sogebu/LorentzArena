@@ -131,22 +131,33 @@ export const createMessageHandler =
         scoresRef.current = scores;
         setScores(scores);
       }
+      // ランダム値を reducer 外で生成（StrictMode 安全）
+      const spawnX = Math.random() * 20; // SPAWN_RANGE
+      const spawnY = Math.random() * 20;
       setPlayers((prev) => {
         const me = prev.get(myId);
-        if (!me) return prev;
+        // ホストの座標時刻でプレイヤーを作成/更新。
+        // クライアントはこの時点で初めてプレイヤーを作成する
+        // （init effect はホスト専用、クライアントは syncTime で初期化）。
         const synced = createPhaseSpace(
           createVector4(
             msg.hostTime,
-            me.phaseSpace.pos.x,
-            me.phaseSpace.pos.y,
-            me.phaseSpace.pos.z,
+            me?.phaseSpace.pos.x ?? spawnX,
+            me?.phaseSpace.pos.y ?? spawnY,
+            0,
           ),
-          me.phaseSpace.u,
+          me?.phaseSpace.u ?? { x: 0, y: 0, z: 0 },
         );
         let newWorldLine = createWorldLine(5000, synced);
         newWorldLine = appendWorldLine(newWorldLine, synced);
         const next = new Map(prev);
-        next.set(myId, { ...me, phaseSpace: synced, worldLine: newWorldLine });
+        next.set(myId, {
+          id: myId,
+          phaseSpace: synced,
+          worldLine: newWorldLine,
+          color: me?.color ?? colorForPlayerId(myId),
+          isDead: false,
+        });
         return next;
       });
     } else if (msg.type === "laser") {
