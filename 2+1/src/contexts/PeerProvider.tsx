@@ -627,14 +627,20 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       }
     });
 
-    // Helper: become solo host (last resort when no peers are reachable)
-    const becomeSoloHost = () => {
-      // eslint-disable-next-line no-console
-      console.log("[PeerProvider] Becoming solo host (no peers reachable)");
+    // Assume the host role: clear old state, set as host, register handlers,
+    // and notify React via roleVersion so role-dependent effects re-evaluate.
+    // This bundles the invariant: setAsHost() must always be paired with setRoleVersion().
+    const assumeHostRole = () => {
       peerManager.clearHost();
       peerManager.setAsHost();
       registerStandardHandlers(peerManager);
       setRoleVersion((v) => v + 1);
+    };
+
+    const becomeSoloHost = () => {
+      // eslint-disable-next-line no-console
+      console.log("[PeerProvider] Becoming solo host (no peers reachable)");
+      assumeHostRole();
     };
 
     // Helper: try to discover the real host via beacon redirect.
@@ -722,10 +728,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         console.log(
           "[PeerProvider] I am the new host. Connecting to peers...",
         );
-        peerManager.clearHost();
-        peerManager.setAsHost();
-        registerStandardHandlers(peerManager);
-        setRoleVersion((v) => v + 1); // Trigger re-eval of role-dependent effects
+        assumeHostRole();
 
         if (activeTransport === "peerjs") {
           // Connect to all remaining peers (still registered on PeerServer)
