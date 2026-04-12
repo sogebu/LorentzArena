@@ -880,13 +880,16 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             }
           }
           let frozen = false;
+          const COORDINATE_TIME_LAG_LIMIT = 5; // 座標時間で5秒以上遅れたプレイヤーはガード対象外
           for (const [id, player] of playersRef.current) {
             if (id === myId) continue;
             if (player.isDead) continue;
             if (isLighthouse(id)) continue; // NPC は因果律ガードに影響しない
-            // Stale プレイヤーは因果律ガードからスキップ（当たり判定は継続）
             if (staleFrozenRef.current.has(id)) continue;
             if (player.phaseSpace.pos.t > me.phaseSpace.pos.t) continue;
+            // バックグラウンドタブでゲームループが throttle され座標時間が
+            // 大幅に遅れたプレイヤーは因果律ガードから除外
+            if (me.phaseSpace.pos.t - player.phaseSpace.pos.t > COORDINATE_TIME_LAG_LIMIT) continue;
             const diff = subVector4(player.phaseSpace.pos, me.phaseSpace.pos);
             const l = lorentzDotVector4(diff, diff);
             // Hysteresis: require margin to exit frozen state (prevents flickering
