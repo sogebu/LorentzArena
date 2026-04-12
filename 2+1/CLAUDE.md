@@ -57,7 +57,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 
 ### 物理エンジン (`src/physics/`)
 
-- `vector.ts` — 3D/4D ベクトル演算、ミンコフスキー内積 (+,+,+,-)、`isInPastLightCone(event, observer)`
+- `vector.ts` — 3D/4D ベクトル演算、ミンコフスキー内積 (+,+,+,-)、`isInPastLightCone(event, observer)`、`pastLightConeIntersectionSegment(start, delta, observer)`（汎用光円錐交差ソルバー、laser/debris が共通利用）
 - `matrix.ts` — 4x4 ローレンツ変換行列
 - `mechanics.ts` — 相対論的運動方程式、phase space (4元位置 + 4元速度)
 - `worldLine.ts` — 世界線の離散履歴、過去光円錐交差計算、`origin` フィールドで半直線延長、`version` カウンターで描画スロットリング
@@ -169,7 +169,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 |---|---|---|
 | `DOUBLE_TAP_INTERVAL` | 300 ms | ダブルタップ判定の最大間隔 |
 | `DOUBLE_TAP_DISTANCE` | 30 px | ダブルタップ判定の最大距離 |
-| `SWIPE_SENSITIVITY_X` | 0.008 rad/px | 横スワイプ → heading 回転の感度 |
+| `SWIPE_SENSITIVITY` | 0.008 rad/px | スワイプ → yaw/pitch 回転の感度（両軸共通） |
 | `THRUST_SENSITIVITY_Y` | 0.015 /px | 縦変位 → thrust の感度（67px で最大推力） |
 
 | エネルギーパラメータ（`constants.ts`） | 値 | 説明 |

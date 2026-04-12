@@ -74,20 +74,17 @@ If you get **no srflx candidates** or everything fails unless you use TURN/TLS, 
 
 Ordered by infrastructure cost (low → high): **A' → A → C → B**. The first thing to try for a school Wi‑Fi problem is **A'**.
 
-### Option A' (best): use a free public TURN
+### Option A' (best): Cloudflare TURN + credential Worker
 
-The cheapest fix that does not require running anything: add one env var, rebuild, redeploy. No server, no domain, no account.
+Use Cloudflare's TURN server (`turn.cloudflare.com`) with a Cloudflare Worker that issues short-lived credentials. **Zero server operation, 1,000 GB/month free tier.**
 
-This uses [Open Relay Project (Metered.ca)](https://www.metered.ca/tools/openrelay/), a free public TURN service that exposes a `turns:` (TLS over 443) endpoint. Because TLS-on-443 is indistinguishable from HTTPS, this typically gets through DPI / UDP-blocked school networks.
+Cloudflare is core internet infrastructure, so its endpoints are extremely unlikely to be blocked by organizational firewalls (confirmed working on restrictive networks where other TURN providers were fully blocked).
+
+**Setup**: deploy the Cloudflare Worker in `2+1/turn-worker/`, then set `VITE_TURN_CREDENTIAL_URL` to the Worker URL. See `turn-worker/wrangler.toml` and `2+1/CLAUDE.md` for details.
 
 ```bash
-# 2+1/.env.local
-VITE_WEBRTC_ICE_SERVERS='[
-  {"urls":["stun:stun.l.google.com:19302"]},
-  {"urls":["stun:stun.cloudflare.com:3478"]},
-  {"urls":["turn:openrelay.metered.ca:80"],"username":"openrelayproject","credential":"openrelayproject"},
-  {"urls":["turns:openrelay.metered.ca:443?transport=tcp"],"username":"openrelayproject","credential":"openrelayproject"}
-]'
+# 2+1/.env.local (or .env.production)
+VITE_TURN_CREDENTIAL_URL=https://lorentz-turn.<account>.workers.dev/
 ```
 
 Then build and deploy:
@@ -97,12 +94,9 @@ cd 2+1
 pnpm run deploy
 ```
 
-Bandwidth math: phase space ~100 B × 60 Hz × 4 players ≈ 24 KB/s. One hour ≈ 86 MB; the 50 GB/month free quota is effectively unbounded for this use case.
+Bandwidth math: phase space ~100 B × 60 Hz × 4 players ≈ 24 KB/s. One hour ≈ 86 MB; the 1,000 GB/month free quota is effectively unbounded for this use case.
 
-Caveats:
-
-- It is a public service with **no SLA**. If it ever goes down, fall back to Option A (your own TURN) or Option C (your own WS relay).
-- Credentials are public values; safe to commit.
+> **Former A' (Open Relay)**: this slot previously recommended Open Relay (`openrelay.metered.ca`). It was deprecated after discovering that some organizational networks block `openrelay.metered.ca` on all ports. Cloudflare TURN replaced it.
 
 ### Option A: run your own TURN server
 
@@ -225,5 +219,5 @@ The WebRTC DataConnection `close` event relies on ICE timeout (30s+, effectively
 ## Practical advice
 
 - If it works on a phone hotspot but not on school Wi‑Fi: it’s almost certainly the network.
-- For a classroom demo, **start with Option A'** (public TURN env var). Zero infra, TLS/443, usually solves it.
+- For a classroom demo, **start with Option A'** (Cloudflare TURN + credential Worker). Zero infra, usually solves it.
 - If A' bandwidth or reliability becomes a real concern, escalate to A (own TURN) or C (own WS relay). Both are still implemented in the repo.
