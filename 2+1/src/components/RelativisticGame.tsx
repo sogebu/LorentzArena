@@ -77,8 +77,19 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     getPlayerColor,
     joinRegistryVersion,
   } = usePeer();
-  const [players, setPlayers] = useState<Map<string, RelativisticPlayer>>(
+  const [players, setPlayersRaw] = useState<Map<string, RelativisticPlayer>>(
     new Map(),
+  );
+  // setPlayers ラッパー: ref を即座に同期し、useEffect 遅延による stale 読みを根絶
+  const setPlayers = useCallback(
+    (updater: (prev: Map<string, RelativisticPlayer>) => Map<string, RelativisticPlayer>) => {
+      setPlayersRaw((prev) => {
+        const next = updater(prev);
+        playersRef.current = next;
+        return next;
+      });
+    },
+    [],
   );
   const [lasers, setLasers] = useState<Laser[]>([]);
   const [scores, setScores] = useState<Record<string, number>>({});
@@ -210,7 +221,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
           pendingKillEventsRef.current.slice(-100);
       }
     },
-    [myId],
+    [myId, setPlayers],
   );
 
   // Respawn 処理
@@ -262,7 +273,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         }
       }
     },
-    [myId],
+    [myId, setPlayers],
   );
 
   // Keep handleRespawnRef in sync with the latest handleRespawn
@@ -332,10 +343,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     }
   }, [myId, isHost]);
 
-  // ref を最新の state に同期
-  useEffect(() => {
-    playersRef.current = players;
-  }, [players]);
+  // playersRef は setPlayers ラッパー内で即座に同期されるため useEffect 不要
   useEffect(() => {
     lasersRef.current = lasers;
   }, [lasers]);
@@ -383,7 +391,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       stale.cleanupDisconnected(connectedIds);
       return next;
     });
-  }, [connections, myId, peerManager, isMigrating, stale]);
+  }, [connections, myId, peerManager, isMigrating, stale, setPlayers]);
 
   // joinRegistry 変化時に全プレイヤーの色を再計算
   useEffect(() => {
@@ -401,7 +409,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       }
       return changed ? next : prev;
     });
-  }, [joinRegistryVersion, getPlayerColor]);
+  }, [joinRegistryVersion, getPlayerColor, setPlayers]);
 
   // メッセージ受信処理
   // biome-ignore lint/correctness/useExhaustiveDependencies: getPlayerColor is passed to messageHandler but should not trigger re-registration
@@ -688,19 +696,11 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             setPlayers((prev) => {
               const myPlayer = prev.get(myId);
               if (!myPlayer) return prev;
-              // playersRef は useEffect で同期されるため、リスポーン直後は
-              // 古い worldLine ベースの physics.updatedWorldLine になりうる。
-              // prev（React 最新 state）の worldLine に append し直す。
-              const freshWorldLine = appendWorldLine(
-                myPlayer.worldLine,
-                physics.newPhaseSpace,
-                otherPositions,
-              );
               const next = new Map(prev);
               next.set(myId, {
                 ...myPlayer,
                 phaseSpace: physics.newPhaseSpace,
-                worldLine: freshWorldLine,
+                worldLine: physics.updatedWorldLine,
               });
               return next;
             });
