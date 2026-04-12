@@ -902,6 +902,14 @@ const RelativisticGame = () => {
             return next;
           });
 
+          // クライアントに phaseSpace を broadcast（Lighthouse を見えるようにする）
+          peerManager.send({
+            type: "phaseSpace" as const,
+            senderId: lhId,
+            position: lhNewPs.pos,
+            velocity: lhNewPs.u,
+          });
+
           // 発射間隔チェック
           const lastFire = lighthouseLastFireRef.current.get(lhId) ?? 0;
           if (currentTime - lastFire < LIGHTHOUSE_FIRE_INTERVAL) continue;
