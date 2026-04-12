@@ -220,6 +220,11 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
 
       deathTimeMapRef.current.delete(playerId);
 
+      // Lighthouse: reset spawn grace timer on respawn
+      if (isLighthouse(playerId)) {
+        lighthouseSpawnTimeRef.current.set(playerId, Date.now());
+      }
+
       if (playerId === myId) {
         myDeathEventRef.current = null;
         ghostTauRef.current = 0;
@@ -386,6 +391,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       let changed = false;
       const next = new Map(prev);
       for (const [id, player] of next) {
+        if (isLighthouse(id)) continue; // Lighthouse uses fixed LIGHTHOUSE_COLOR
         const correctColor = getPlayerColor(id);
         if (player.color !== correctColor) {
           next.set(id, { ...player, color: correctColor });
@@ -655,7 +661,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             if (player.phaseSpace.pos.t > me.phaseSpace.pos.t) continue;
             const diff = subVector4(player.phaseSpace.pos, me.phaseSpace.pos);
             const l = lorentzDotVector4(diff, diff);
-            const threshold = causalFrozenRef.current ? 0.5 : 0;
+            const threshold = causalFrozenRef.current ? 2.0 : 0;
             if (l < -threshold) {
               frozen = true;
               break;

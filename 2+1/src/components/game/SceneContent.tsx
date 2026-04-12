@@ -391,7 +391,7 @@ const DebrisRenderer = ({
   return (
     <>
       <lineSegments geometry={geom}>
-        <lineBasicMaterial vertexColors transparent opacity={0.4} />
+        <lineBasicMaterial vertexColors transparent opacity={0.15} />
       </lineSegments>
       {markerElements}
     </>
