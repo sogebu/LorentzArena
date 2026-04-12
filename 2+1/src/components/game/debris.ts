@@ -22,7 +22,7 @@ export const generateExplosionParticles = (victimU?: Vector3) => {
   for (let i = 0; i < EXPLOSION_PARTICLE_COUNT; i++) {
     const angle = Math.random() * Math.PI * 2;
     // 固有速度空間でのランダム摂動幅: 0.2 ~ 2.0 (γv 単位)
-    const kick = 0.1 + Math.random() * 0.9;
+    const kick = Math.random() * 0.8;
     const ux = baseUx + Math.cos(angle) * kick;
     const uy = baseUy + Math.sin(angle) * kick;
     // ut = γ = √(1 + |u|²)

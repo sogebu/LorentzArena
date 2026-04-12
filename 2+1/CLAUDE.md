@@ -200,7 +200,7 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | ビーム opacity | 0.4 | レーザー世界線の透明度 |
 | デブリ opacity | 0.10 | デブリ世界線の透明度（InstancedMesh シリンダー、レーザーより薄く区別） |
 | 光円錐高さ | 40 | 描画上の円錐サイズ |
-| デブリ速度 | 被撃破機の固有速度 + kick 0.1〜1.0 | 固有速度空間で加算後 3速度に正規化（\|v\|<1 自動保証） |
+| デブリ速度 | 被撃破機の固有速度 + kick 0〜0.8 | 固有速度空間で加算後 3速度に正規化（\|v\|<1 自動保証） |
 | `TUBE_REGEN_INTERVAL` | 8 | TubeGeometry 再生成の間引き（version を 8 で量子化） |
 | ゲームループ | 8 ms interval | `setInterval`（タブ非アクティブ対応） |
 | dτ 上限 | 100 ms | タブ復帰時の巨大ジャンプ防止 |
