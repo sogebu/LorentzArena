@@ -7,6 +7,7 @@ import {
 } from "../../physics";
 import { colorForPlayerId } from "./colors"; // fallback for syncTime init
 import { MAX_LASERS, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
+import { getRespawnCoordTime } from "./respawnTime";
 import type { Laser, RelativisticPlayer } from "./types";
 
 export type MessageHandlerDeps = {
@@ -113,15 +114,8 @@ export const createMessageHandler =
       if (staleFrozenRef.current.has(playerId)) {
         if (!peerManager.getIsHost()) return; // クライアントはホストの respawn を待つ
         // ホスト: maxT + ランダム位置でリスポーン（通常 respawn と同じ）
-        let maxT = Number.NEGATIVE_INFINITY;
-        for (const [, p] of playersRef.current) {
-          if (p.isDead) continue;
-          const t = p.phaseSpace.pos.t;
-          if (Number.isFinite(t) && t > maxT) maxT = t;
-        }
-        if (!Number.isFinite(maxT)) maxT = 0;
         const respawnPos = {
-          t: maxT,
+          t: getRespawnCoordTime(playersRef.current),
           x: Math.random() * SPAWN_RANGE,
           y: Math.random() * SPAWN_RANGE,
           z: 0,

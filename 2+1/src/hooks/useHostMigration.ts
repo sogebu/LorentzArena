@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { RESPAWN_DELAY, SPAWN_RANGE } from "../components/game/constants";
+import { getRespawnCoordTime } from "../components/game/respawnTime";
 import type { RelativisticPlayer } from "../components/game/types";
 interface UseHostMigrationArgs {
   isMigrating: boolean;
@@ -90,15 +91,8 @@ export function useHostMigration({
 
       const timerId = setTimeout(() => {
         respawnTimeoutsRef.current.delete(timerId);
-        let maxT = Number.NEGATIVE_INFINITY;
-        for (const [, p] of playersRef.current) {
-          if (p.isDead) continue;
-          const t = p.phaseSpace.pos.t;
-          if (Number.isFinite(t) && t > maxT) maxT = t;
-        }
-        if (!Number.isFinite(maxT)) maxT = 0;
         const respawnPos = {
-          t: maxT,
+          t: getRespawnCoordTime(playersRef.current),
           x: Math.random() * SPAWN_RANGE,
           y: Math.random() * SPAWN_RANGE,
           z: 0,
