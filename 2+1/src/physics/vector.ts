@@ -235,10 +235,16 @@ export const intervalTypeVector4 = (
  * JP: 時空区間 X(λ) = start + λ * delta (λ ∈ [0,1]) と
  * 観測者の過去光円錐の交点を求める。最も未来側の過去交点を返す。
  */
-export const pastLightConeIntersectionSegment = (
+/**
+ * Generic light cone intersection solver for a spacetime segment.
+ * `mode`: "past" returns the latest point in the observer's past,
+ *         "future" returns the earliest point in the observer's future.
+ */
+const lightConeIntersectionSegmentImpl = (
   start: Vector4,
   delta: Vector4,
   observerPos: Vector4,
+  mode: "past" | "future",
 ): Vector4 | null => {
   const sep = subVector4(observerPos, start);
 
@@ -270,9 +276,28 @@ export const pastLightConeIntersectionSegment = (
       start.y + delta.y * t,
       start.z + delta.z * t,
     );
-    if (observerPos.t - point.t <= EPS) continue;
-    if (!best || point.t > best.t) best = point;
+    if (mode === "past") {
+      if (observerPos.t - point.t <= EPS) continue;
+      if (!best || point.t > best.t) best = point;
+    } else {
+      if (point.t - observerPos.t <= EPS) continue;
+      if (!best || point.t < best.t) best = point;
+    }
   }
 
   return best;
 };
+
+export const pastLightConeIntersectionSegment = (
+  start: Vector4,
+  delta: Vector4,
+  observerPos: Vector4,
+): Vector4 | null =>
+  lightConeIntersectionSegmentImpl(start, delta, observerPos, "past");
+
+export const futureLightConeIntersectionSegment = (
+  start: Vector4,
+  delta: Vector4,
+  observerPos: Vector4,
+): Vector4 | null =>
+  lightConeIntersectionSegmentImpl(start, delta, observerPos, "future");

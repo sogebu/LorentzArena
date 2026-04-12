@@ -319,6 +319,51 @@ export const pastLightConeIntersectionWorldLine = (
 };
 
 /**
+ * Future light-cone intersection between an observer event and a world line.
+ *
+ * Finds the earliest point on the world line that lies on the observer's
+ * future light cone. This represents "where a signal sent NOW would reach
+ * the target's world line" (i.e., the intercept point for a laser).
+ *
+ * JP: 観測者の未来光円錐と世界線の交差点（最も過去側）を求める。
+ * 「今レーザーを撃ったら、どこでターゲットの世界線と交わるか」を表す。
+ */
+export const futureLightConeIntersectionWorldLine = (
+  wl: WorldLine,
+  observerPosition: Vector4,
+): PhaseSpace | null => {
+  const history = wl.history;
+  if (history.length < 2) return null;
+
+  // Search from oldest to newest: we want the earliest future intersection
+  for (let i = 1; i < history.length; i++) {
+    const prevState = history[i - 1];
+    const state = history[i];
+
+    // Both endpoints must be potentially in the observer's future
+    const sepPrev = subVector4(prevState.pos, observerPosition);
+    const sepCurr = subVector4(state.pos, observerPosition);
+    if (sepPrev.t < 0 && sepCurr.t < 0) continue;
+
+    const tParam = findLightlikeIntersectionParam(
+      prevState.pos,
+      state.pos,
+      observerPosition,
+    );
+
+    if (tParam >= 0 && tParam <= 1) {
+      // Check it's actually in the future
+      const intersectionT =
+        prevState.pos.t + tParam * (state.pos.t - prevState.pos.t);
+      if (intersectionT <= observerPosition.t) continue;
+      return prevState;
+    }
+  }
+
+  return null;
+};
+
+/**
  * Clear history.
  * JP: 履歴をクリア。
  */

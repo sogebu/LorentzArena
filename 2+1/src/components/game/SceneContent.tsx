@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import {
   createVector4,
+  futureLightConeIntersectionWorldLine,
   lorentzBoost,
   pastLightConeIntersectionWorldLine,
   positionAlongStraightWorldLine,
@@ -548,6 +549,31 @@ export const SceneContent = ({
       );
   }, [lasers, myPlayer, myId, observerPos, observerBoost]);
 
+  // Future light cone intersections: where a signal from the observer would reach each player
+  const futureLightConeIntersections = useMemo(() => {
+    if (!myPlayer || !myId) return [];
+    const results: { playerId: string; color: string; pos: Vector4 }[] = [];
+    for (const player of playerList) {
+      if (player.id === myId) continue;
+      const intersection = futureLightConeIntersectionWorldLine(
+        player.worldLine,
+        myPlayer.phaseSpace.pos,
+      );
+      if (intersection) {
+        results.push({
+          playerId: player.id,
+          color: player.color,
+          pos: transformEventForDisplay(
+            intersection.pos,
+            observerPos,
+            observerBoost,
+          ),
+        });
+      }
+    }
+    return results;
+  }, [myPlayer, myId, playerList, observerPos, observerBoost]);
+
   return (
     <>
       <ambientLight intensity={0.5} />
@@ -709,6 +735,40 @@ export const SceneContent = ({
                 emissiveIntensity={1.1}
                 roughness={0.25}
                 metalness={0.1}
+              />
+            </mesh>
+          </group>
+        );
+      })}
+
+      {/* 未来光円錐交差マーカー（うっすら表示） */}
+      {futureLightConeIntersections.map(({ playerId, color: colorText, pos }) => {
+        const color = getThreeColor(colorText);
+        return (
+          <group
+            key={`future-${playerId}`}
+            position={[pos.x, pos.y, pos.t]}
+          >
+            <mesh
+              geometry={sharedGeometries.intersectionSphere}
+              scale={[0.6, 0.6, 0.6]}
+            >
+              <meshBasicMaterial
+                color={color}
+                transparent
+                opacity={0.15}
+                depthWrite={false}
+              />
+            </mesh>
+            <mesh
+              geometry={sharedGeometries.intersectionRing}
+              scale={[0.8, 0.8, 0.8]}
+            >
+              <meshBasicMaterial
+                color={color}
+                transparent
+                opacity={0.12}
+                depthWrite={false}
               />
             </mesh>
           </group>
