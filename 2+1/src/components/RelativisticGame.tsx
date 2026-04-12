@@ -7,24 +7,14 @@ import {
   createVector4,
   createWorldLine,
   getVelocity4,
-  lorentzDotVector4,
-  subVector4,
-  type Vector4,
   vector3Zero,
 } from "../physics";
 import { getLaserColor } from "./game/colors";
 import {
   ENERGY_MAX,
-  ENERGY_PER_SHOT,
-  ENERGY_RECOVERY_RATE,
-  LASER_COOLDOWN,
-  LASER_RANGE,
   LIGHTHOUSE_ID_PREFIX,
-  MAX_LASERS,
   MAX_WORLDLINE_HISTORY,
   OFFSET,
-  RESPAWN_DELAY,
-  SPAWN_EFFECT_DURATION,
   SPAWN_RANGE,
 } from "./game/constants";
 import { HUD } from "./game/HUD";
@@ -51,21 +41,11 @@ import {
   MAX_DEBRIS,
   MAX_FROZEN_WORLDLINES,
 } from "./game/constants";
-import {
-  processCamera,
-  processPlayerPhysics,
-  processLighthouseAI,
-  processHitDetection,
-  processGhostPosition,
-} from "./game/gameLoop";
-import {
-  firePendingKillEvents,
-  firePendingSpawnEvents,
-} from "./game/causalEvents";
 import { useStaleDetection } from "../hooks/useStaleDetection";
 import { useKeyboardInput } from "../hooks/useKeyboardInput";
 import { useHighScoreSaver } from "../hooks/useHighScoreSaver";
 import { useHostMigration } from "../hooks/useHostMigration";
+import { useGameLoop } from "../hooks/useGameLoop";
 
 const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const {
@@ -113,8 +93,6 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const scoresRef = useRef<Record<string, number>>({});
   const [showInRestFrame, setShowInRestFrame] = useState(true);
   const [useOrthographic, setUseOrthographic] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastTimeRef = useRef<number>(Date.now());
   const playersRef = useRef<Map<string, RelativisticPlayer>>(new Map());
   const lasersRef = useRef<Laser[]>([]);
   const processedLasersRef = useRef<Set<string>>(new Set());
@@ -463,399 +441,20 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // ゲームループ
-  // biome-ignore lint/correctness/useExhaustiveDependencies: touchInput is a stable ref (like keysPressed) — reading .current in the loop is intentional
-  useEffect(() => {
-    if (!peerManager || !myId) return;
-
-    const gameLoop = () => {
-      if (document.hidden) {
-        lastTimeRef.current = Date.now();
-        return;
-      }
-
-      const currentTime = Date.now();
-      const rawDTau = (currentTime - lastTimeRef.current) / 1000;
-      const dTau = Math.min(rawDTau, 0.1);
-      lastTimeRef.current = currentTime;
-
-      // 期限切れスポーンエフェクト削除
-      setSpawns((prev) => {
-        const alive = prev.filter(
-          (e) => currentTime - e.startTime < SPAWN_EFFECT_DURATION,
-        );
-        return alive.length === prev.length ? prev : alive;
-      });
-
-      // 古いレーザー削除
-      const myT = playersRef.current.get(myId)?.phaseSpace.pos.t;
-      if (myT !== undefined && lasersRef.current.length > 0) {
-        const cutoff = myT - LASER_RANGE * 2;
-        setLasers((prev) => {
-          const alive = prev.filter(
-            (l) => l.emissionPos.t + l.range > cutoff,
-          );
-          return alive.length === prev.length ? prev : alive;
-        });
-      }
-
-      // FPS計算
-      const now = performance.now();
-      fpsRef.current.frameCount++;
-      const elapsed = now - fpsRef.current.lastTime;
-      if (elapsed >= 1000) {
-        setFps(Math.round((fpsRef.current.frameCount * 1000) / elapsed));
-        fpsRef.current.frameCount = 0;
-        fpsRef.current.lastTime = now;
-      }
-
-      // カメラ制御
-      const touch = touchInput.current;
-      const isDeadForCamera = playersRef.current.get(myId)?.isDead ?? false;
-      const cam = processCamera(
-        keysPressed.current,
-        touch,
-        dTau,
-        { yaw: cameraYawRef.current, pitch: cameraPitchRef.current },
-        isDeadForCamera,
-      );
-      cameraYawRef.current = cam.yaw;
-      cameraPitchRef.current = cam.pitch;
-      // Consume touch deltas
-      touch.yawDelta = 0;
-      if (isDeadForCamera) touch.pitchDelta = 0;
-
-      // 因果律遅延キル通知 + スコア
-      const myPos = playersRef.current.get(myId)?.phaseSpace.pos;
-      if (myPos && pendingKillEventsRef.current.length > 0) {
-        const result = firePendingKillEvents(
-          pendingKillEventsRef.current,
-          myPos,
-          myId,
-          scoresRef.current,
-        );
-        if (result.firedIndices.length > 0) {
-          pendingKillEventsRef.current = pendingKillEventsRef.current.filter(
-            (_, i) => !result.firedIndices.includes(i),
-          );
-          scoresRef.current = result.newScores;
-          setScores({ ...result.newScores });
-
-          if (result.effects.deathFlash) {
-            setDeathFlash(true);
-            setTimeout(() => setDeathFlash(false), 600);
-          }
-          if (result.effects.killNotification) {
-            setKillNotification(result.effects.killNotification);
-            setTimeout(() => setKillNotification(null), 1500);
-          }
-        }
-      }
-
-      // 因果律遅延スポーンエフェクト
-      if (myPos && pendingSpawnEventsRef.current.length > 0) {
-        const result = firePendingSpawnEvents(
-          pendingSpawnEventsRef.current,
-          myPos,
-          Date.now(),
-        );
-        if (result.firedSpawns.length > 0) {
-          pendingSpawnEventsRef.current = result.remaining;
-          setSpawns((prev) => [...prev, ...result.firedSpawns]);
-        }
-      }
-
-      const isDead = playersRef.current.get(myId)?.isDead ?? false;
-
-      // レーザー発射 + エネルギー管理
-      const firingNow =
-        !isDead && (keysPressed.current.has(" ") || touch.firing);
-      if (
-        firingNow &&
-        energyRef.current >= ENERGY_PER_SHOT &&
-        currentTime - lastLaserTimeRef.current > LASER_COOLDOWN
-      ) {
-        const myPlayer = playersRef.current.get(myId);
-        if (myPlayer) {
-          lastLaserTimeRef.current = currentTime;
-          energyRef.current -= ENERGY_PER_SHOT;
-          const dx = Math.cos(cameraYawRef.current);
-          const dy = Math.sin(cameraYawRef.current);
-
-          const newLaser: Laser = {
-            id: `${myId}-${currentTime}`,
-            playerId: myId,
-            emissionPos: {
-              t: myPlayer.phaseSpace.pos.t,
-              x: myPlayer.phaseSpace.pos.x,
-              y: myPlayer.phaseSpace.pos.y,
-              z: 0,
-            },
-            direction: { x: dx, y: dy, z: 0 },
-            range: LASER_RANGE,
-            color: getLaserColor(myPlayer.color),
-          };
-
-          setLasers((prev) => {
-            const updated = [...prev, newLaser];
-            return updated.length > MAX_LASERS
-              ? updated.slice(updated.length - MAX_LASERS)
-              : updated;
-          });
-
-          const laserMsg = {
-            type: "laser" as const,
-            id: newLaser.id,
-            playerId: newLaser.playerId,
-            emissionPos: newLaser.emissionPos,
-            direction: newLaser.direction,
-            range: newLaser.range,
-            color: newLaser.color,
-          };
-
-          if (peerManager.getIsHost()) {
-            peerManager.send(laserMsg);
-          } else {
-            const hostId = peerManager.getHostId();
-            if (hostId) {
-              peerManager.sendTo(hostId, laserMsg);
-            }
-          }
-        }
-      }
-
-      // エネルギー回復
-      if (!firingNow && !isDead) {
-        energyRef.current = Math.min(
-          ENERGY_MAX,
-          energyRef.current + ENERGY_RECOVERY_RATE * dTau,
-        );
-      }
-      setEnergy(energyRef.current);
-      setIsFiring(firingNow && energyRef.current >= ENERGY_PER_SHOT);
-
-      if (isDead) {
-        // 死亡中: ゴースト等速直線運動
-        ghostTauRef.current += dTau;
-        const de = myDeathEventRef.current;
-        if (de) {
-          const ghostPos = processGhostPosition(de, ghostTauRef.current);
-          setPlayers((prev) => {
-            const me = prev.get(myId);
-            if (!me || !me.isDead) return prev;
-            const next = new Map(prev);
-            next.set(myId, {
-              ...me,
-              phaseSpace: createPhaseSpace(
-                ghostPos,
-                { x: de.u.x, y: de.u.y, z: de.u.z },
-              ),
-            });
-            return next;
-          });
-        }
-      } else {
-        const me = playersRef.current.get(myId);
-        if (me) {
-          // Stale 検知
-          stale.checkStale(currentTime, playersRef.current, myId);
-
-          // 因果律の守護者
-          let frozen = false;
-          for (const [id, player] of playersRef.current) {
-            if (id === myId) continue;
-            if (player.isDead) continue;
-            if (isLighthouse(id)) continue;
-            if (stale.staleFrozenRef.current.has(id)) continue;
-            if (player.phaseSpace.pos.t > me.phaseSpace.pos.t) continue;
-            const diff = subVector4(player.phaseSpace.pos, me.phaseSpace.pos);
-            const l = lorentzDotVector4(diff, diff);
-            const threshold = causalFrozenRef.current ? 2.0 : 0;
-            if (l < -threshold) {
-              frozen = true;
-              break;
-            }
-          }
-          causalFrozenRef.current = frozen;
-
-          if (!frozen) {
-            // プレイヤー物理
-            const otherPositions: Vector4[] = [];
-            for (const [id, p] of playersRef.current) {
-              if (id !== myId) otherPositions.push(p.phaseSpace.pos);
-            }
-            const physics = processPlayerPhysics(
-              me,
-              keysPressed.current,
-              touch,
-              cameraYawRef.current,
-              dTau,
-              otherPositions,
-            );
-
-            setPlayers((prev) => {
-              const myPlayer = prev.get(myId);
-              if (!myPlayer) return prev;
-              const next = new Map(prev);
-              next.set(myId, {
-                ...myPlayer,
-                phaseSpace: physics.newPhaseSpace,
-                worldLine: physics.updatedWorldLine,
-              });
-              return next;
-            });
-
-            // ネットワーク送信
-            const isHostNow = peerManager.getIsHost();
-            const msg = {
-              type: "phaseSpace" as const,
-              senderId: myId,
-              position: physics.newPhaseSpace.pos,
-              velocity: physics.newPhaseSpace.u,
-            };
-            if (isHostNow) {
-              peerManager.send(msg);
-            } else {
-              const hostId = peerManager.getHostId();
-              if (hostId) {
-                peerManager.sendTo(hostId, msg);
-              }
-            }
-          }
-        }
-      }
-
-      // ホストのみ: Lighthouse AI
-      if (peerManager.getIsHost()) {
-        for (const [lhId, lh] of playersRef.current) {
-          if (!isLighthouse(lhId)) continue;
-          if (lh.isDead) continue;
-
-          const result = processLighthouseAI(
-            playersRef.current,
-            lhId,
-            lh,
-            dTau,
-            currentTime,
-            lighthouseLastFireRef.current,
-            lighthouseSpawnTimeRef.current,
-          );
-
-          setPlayers((prev) => {
-            const existing = prev.get(lhId);
-            if (!existing) return prev;
-            const next = new Map(prev);
-            next.set(lhId, {
-              ...existing,
-              phaseSpace: result.newPs,
-              worldLine: result.newWl,
-            });
-            return next;
-          });
-
-          peerManager.send({
-            type: "phaseSpace" as const,
-            senderId: lhId,
-            position: result.newPs.pos,
-            velocity: result.newPs.u,
-          });
-
-          if (result.laser) {
-            lighthouseLastFireRef.current.set(lhId, currentTime);
-            setLasers((prev) => {
-              const laser = result.laser;
-              if (!laser) return prev;
-              const updated = [...prev, laser];
-              return updated.length > MAX_LASERS
-                ? updated.slice(updated.length - MAX_LASERS)
-                : updated;
-            });
-            peerManager.send({
-              type: "laser" as const,
-              ...result.laser,
-            });
-          }
-        }
-      }
-
-      // ホストのみ: 当たり判定
-      if (peerManager.getIsHost()) {
-        const hitResult = processHitDetection(
-          playersRef.current,
-          lasersRef.current,
-          processedLasersRef.current,
-          deadPlayersRef.current,
-        );
-
-        // processedLasersRef クリーンアップ
-        const currentLaserIds = new Set(lasersRef.current.map((l) => l.id));
-        for (const id of processedLasersRef.current) {
-          if (!currentLaserIds.has(id)) {
-            processedLasersRef.current.delete(id);
-          }
-        }
-        if (processedLasersRef.current.size > 500) {
-          processedLasersRef.current.clear();
-        }
-
-        if (hitResult.kills.length > 0) {
-          for (const id of hitResult.hitLaserIds) {
-            processedLasersRef.current.add(id);
-          }
-
-          for (const { victimId, killerId, hitPos } of hitResult.kills) {
-            deadPlayersRef.current.add(victimId);
-
-            peerManager.send({
-              type: "kill" as const,
-              victimId,
-              killerId,
-              hitPos,
-            });
-
-            handleKill(victimId, killerId, hitPos);
-
-            const timerId = setTimeout(() => {
-              respawnTimeoutsRef.current.delete(timerId);
-              let maxT = Number.NEGATIVE_INFINITY;
-              for (const [, p] of playersRef.current) {
-                if (p.isDead) continue;
-                const t = p.phaseSpace.pos.t;
-                if (Number.isFinite(t) && t > maxT) maxT = t;
-              }
-              if (!Number.isFinite(maxT)) maxT = 0;
-              const respawnPos = {
-                t: maxT,
-                x: Math.random() * SPAWN_RANGE,
-                y: Math.random() * SPAWN_RANGE,
-                z: 0,
-              };
-              deadPlayersRef.current.delete(victimId);
-              peerManager.send({
-                type: "respawn" as const,
-                playerId: victimId,
-                position: respawnPos,
-              });
-              handleRespawn(victimId, respawnPos);
-            }, RESPAWN_DELAY);
-            respawnTimeoutsRef.current.add(timerId);
-          }
-        }
-      }
-    };
-
-    intervalRef.current = setInterval(gameLoop, 8);
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-      for (const id of respawnTimeoutsRef.current) {
-        clearTimeout(id);
-      }
-      respawnTimeoutsRef.current.clear();
-    };
-  }, [peerManager, myId, handleKill, handleRespawn, stale, keysPressed]);
+  // ゲームループ（useGameLoop hook に委譲）
+  useGameLoop({
+    peerManager, myId,
+    setPlayers, setLasers, setSpawns, setScores, setFps, setEnergy, setIsFiring,
+    setDeathFlash, setKillNotification,
+    playersRef, lasersRef, processedLasersRef, deadPlayersRef,
+    pendingKillEventsRef, pendingSpawnEventsRef, causalFrozenRef,
+    lighthouseLastFireRef, lighthouseSpawnTimeRef, lastLaserTimeRef,
+    myDeathEventRef, ghostTauRef, cameraYawRef, cameraPitchRef,
+    energyRef, fpsRef, scoresRef, respawnTimeoutsRef,
+    keysPressed, touchInput,
+    handleKill, handleRespawn, stale,
+    deathTimeMapRef,
+  });
 
   return (
     <div

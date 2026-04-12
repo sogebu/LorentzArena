@@ -12,7 +12,9 @@ import {
 } from "../../physics";
 import { getLaserColor } from "./colors";
 import {
+  ENERGY_PER_SHOT,
   HIT_RADIUS,
+  LASER_COOLDOWN,
   LASER_RANGE,
   LIGHTHOUSE_FIRE_INTERVAL,
   LIGHTHOUSE_SPAWN_GRACE,
@@ -271,5 +273,83 @@ export function processGhostPosition(
     deathEvent.pos.y + deathEvent.u.y * ghostTau,
     0,
   );
+}
+
+// --- Causality Guard ---
+
+/**
+ * Check if the player is in any other player's future light cone.
+ * If so, the player should be frozen to preserve causality.
+ * Uses hysteresis: threshold is 2.0 when already frozen, 0 otherwise.
+ */
+export function checkCausalFreeze(
+  players: Map<string, RelativisticPlayer>,
+  myId: string,
+  me: RelativisticPlayer,
+  staleFrozenIds: Set<string>,
+  wasFrozen: boolean,
+): boolean {
+  for (const [id, player] of players) {
+    if (id === myId) continue;
+    if (player.isDead) continue;
+    if (isLighthouse(id)) continue;
+    if (staleFrozenIds.has(id)) continue;
+    if (player.phaseSpace.pos.t > me.phaseSpace.pos.t) continue;
+    const diff = subVector4(player.phaseSpace.pos, me.phaseSpace.pos);
+    const l = lorentzDotVector4(diff, diff);
+    const threshold = wasFrozen ? 2.0 : 0;
+    if (l < -threshold) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// --- Laser Firing ---
+
+export interface LaserFiringResult {
+  laser: Laser | null;
+  newEnergy: number;
+  fired: boolean;
+}
+
+/**
+ * Create a laser if conditions are met (energy, cooldown, alive).
+ * Returns the laser to add and updated energy. Network send is caller's responsibility.
+ */
+export function processLaserFiring(
+  myPlayer: RelativisticPlayer,
+  myId: string,
+  cameraYaw: number,
+  currentTime: number,
+  energy: number,
+  lastLaserTime: number,
+  wantsFire: boolean,
+): LaserFiringResult {
+  if (
+    !wantsFire ||
+    energy < ENERGY_PER_SHOT ||
+    currentTime - lastLaserTime <= LASER_COOLDOWN
+  ) {
+    return { laser: null, newEnergy: energy, fired: false };
+  }
+
+  const dx = Math.cos(cameraYaw);
+  const dy = Math.sin(cameraYaw);
+  const laser: Laser = {
+    id: `${myId}-${currentTime}`,
+    playerId: myId,
+    emissionPos: {
+      t: myPlayer.phaseSpace.pos.t,
+      x: myPlayer.phaseSpace.pos.x,
+      y: myPlayer.phaseSpace.pos.y,
+      z: 0,
+    },
+    direction: { x: dx, y: dy, z: 0 },
+    range: LASER_RANGE,
+    color: getLaserColor(myPlayer.color),
+  };
+
+  return { laser, newEnergy: energy - ENERGY_PER_SHOT, fired: true };
 }
 
