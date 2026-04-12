@@ -114,7 +114,13 @@ const isRelayable = (msg: Message): boolean => {
     );
   }
   if (msg.type === "intro") {
-    return typeof msg.senderId === "string" && typeof msg.displayName === "string";
+    return (
+      typeof msg.senderId === "string" &&
+      msg.senderId.length > 0 &&
+      typeof msg.displayName === "string" &&
+      msg.displayName.length > 0 &&
+      msg.displayName.length <= 20
+    );
   }
   return false;
 };
