@@ -656,6 +656,13 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
           peerManager.disconnectPeer(roomPeerId);
           becomeSoloHost();
         }, BEACON_TIMEOUT);
+
+        // Track for cleanup
+        const prevCleanup = migrationTimerCleanupRef.current;
+        migrationTimerCleanupRef.current = () => {
+          prevCleanup?.();
+          clearTimeout(beaconTimer);
+        };
       };
 
       if (!newHostId) {
@@ -720,6 +727,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       clearInterval(timer);
       peerManager.offMessage("heartbeat");
       peerManager.offMessage("game_redirect");
+      peerManager.offMessage("beacon_fallback");
       migrationTimerCleanupRef.current?.();
       migrationTimerCleanupRef.current = null;
     };
@@ -752,6 +760,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     let retryTimer: ReturnType<typeof setTimeout>;
     let beaconFailCount = 0;
     let currentDiscoveryPm: PeerManager<Message> | null = null;
+    let currentDiscoveryTimeout: ReturnType<typeof setTimeout> | undefined;
     const MAX_BEACON_RETRIES = 3;
     const actualHostId = myId;
 
@@ -770,7 +779,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       );
       currentDiscoveryPm = discoveryPm;
 
-      const discoveryTimeout = setTimeout(() => {
+      currentDiscoveryTimeout = setTimeout(() => {
         // Beacon unreachable (may have crashed) — stay as host
         // eslint-disable-next-line no-console
         console.log("[PeerProvider] Beacon unreachable during demotion — staying as host");
@@ -783,7 +792,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
 
       discoveryPm.onPeerStatusChange((status) => {
         if (cancelled) {
-          clearTimeout(discoveryTimeout);
+          clearTimeout(currentDiscoveryTimeout);
           discoveryPm.destroy();
           currentDiscoveryPm = null;
           return;
@@ -795,7 +804,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
 
       discoveryPm.onMessage("demotion_redirect", (_senderId, msg) => {
         if (isRedirectMessage(msg)) {
-          clearTimeout(discoveryTimeout);
+          clearTimeout(currentDiscoveryTimeout);
           const realHostId = msg.hostId;
           // eslint-disable-next-line no-console
           console.log("[PeerProvider] Demotion: real host is", realHostId, "— redirecting clients");
@@ -871,6 +880,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         beaconRef.current.destroy();
         beaconRef.current = null;
       }
+      clearTimeout(currentDiscoveryTimeout);
       if (currentDiscoveryPm) {
         currentDiscoveryPm.destroy();
         currentDiscoveryPm = null;
