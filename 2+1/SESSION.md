@@ -31,6 +31,7 @@
 - `SceneContent.tsx` 923→513行: 4 Renderer を個別ファイルに分離（WorldLineRenderer, LaserBatchRenderer, SpawnRenderer, DebrisRenderer）
 - useGameLoop: deps オブジェクトによる毎レンダリング再実行バグ修正 → depsRef hack → 直接 closure 捕獲に簡素化
 - DESIGN.md 残存臭 #1（deadPlayersRef mirror）が setPlayers ラッパー実装により解決
+- `HUD.tsx` 430→84行: `hud/` サブディレクトリに ControlPanel, Speedometer, Overlays, utils を分離
 
 ## 既知の課題
 

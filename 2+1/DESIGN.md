@@ -2,6 +2,25 @@
 
 ## 設計判断の記録
 
+### リファクタリング現状評価（2026-04-12）
+
+HUD 分割後に全ソースを精査し、追加リファクタの要否を判断。結論: **今すぐ分割すべきファイルはない**。
+
+| ファイル | 行数 | 判断 | 理由 |
+|---|---|---|---|
+| `PeerProvider.tsx` | 692 | defer | 全 useEffect が同一 state 群を共有。分割すると state 受け渡しの Context/props が必要になり、useEffect 間の実行順序依存（Phase 1→2→connected→beacon）が見えにくくなる。各ブロックにコメントがあり現状で読める |
+| `RelativisticGame.tsx` | 540 | defer | 30+ の ref/state 宣言は重いが、ゲームの本質的複雑さ。gameLoop・handleKill/Respawn は既に分離済み。残りは state 宣言+初期化+JSX で、これ以上分割すると受け渡しコストが本体を上回る |
+| `useGameLoop.ts` | 490 | defer | 各フェーズの純関数は `gameLoop.ts`/`causalEvents.ts` に委譲済み。残りは「純関数を呼んで setState する」グルーコード。分割すると呼び出し順序の把握が困難に |
+| `SceneContent.tsx` | 513 | defer | 4種の交差計算は構造が似ているが入力型が異なり汎用化すると型安全性低下。マーカー JSX も各々のマテリアル設定が微妙に違う。Renderer 分離は済み |
+
+**再評価トリガー**: 新機能追加で useGameLoop の props が更に増えたとき、または PeerProvider に新しい接続モードを追加するとき。
+
+### game/ のファイル配置: flat vs subdirectory（2026-04-12）
+
+- **What**: SceneContent 分割の renderers は `game/` 直下に flat 配置（`WorldLineRenderer.tsx` 等）、HUD 分割は `game/hud/` サブディレクトリ
+- **Why**: Renderers は独立した描画モジュールで相互参照がなく、SceneContent.tsx からのみ import される。HUD サブコンポーネント（ControlPanel, Speedometer, Overlays, utils）は共有ユーティリティ（`utils.ts`）があり、テーマ的に密結合しているためサブディレクトリでグループ化。`game/` 直下のファイル数抑制（19→20 vs 19→23）も考慮
+- **基準**: 共有ユーティリティがあるか、3ファイル以上の密結合グループか → サブディレクトリ。独立モジュールの列挙 → flat
+
 ### visibilitychange によるゲームループ停止（2026-04-12）
 
 - **What**: `document.hidden` のとき、ゲームループ（`setInterval` 8ms）と PeerProvider の ping 送信をスキップ。`clearInterval` ではなくループ内チェック

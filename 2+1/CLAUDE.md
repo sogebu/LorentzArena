@@ -117,7 +117,11 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | `game/SpawnRenderer.tsx` | スポーンエフェクト描画（アニメーション付きリング+ピラー） |
 | `game/DebrisRenderer.tsx` | デブリ世界線描画（InstancedMesh シリンダー + 光円錐交差マーカー） |
 | `game/messageHandler.ts` | ネットワークメッセージ処理（ファクトリ関数、バリデーション付き） |
-| `game/HUD.tsx` | オーバーレイUI（コントロール、スピードメーター、キル通知、死亡カウントダウン） |
+| `game/HUD.tsx` | HUD オーケストレーター（子コンポーネント配置） |
+| `game/hud/ControlPanel.tsx` | 左上パネル（操作説明、トグルスイッチ、FPS、build、スコアボード） |
+| `game/hud/Speedometer.tsx` | 右下パネル（エネルギーゲージ、速度、γ、固有時、座標） |
+| `game/hud/Overlays.tsx` | 全オーバーレイ（死亡フラッシュ、ゴースト、FIRING、KILL 通知、CSS keyframes） |
+| `game/hud/utils.ts` | HUD ユーティリティ（isTouchDevice、hslToComponents） |
 | `game/touchInput.ts` | モバイルタッチ入力（全画面ジェスチャ: スワイプ heading/thrust + ダブルタップ fire） |
 
 カスタムフック（`src/hooks/`）:

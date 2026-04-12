@@ -1,69 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../../i18n";
-import { gamma, lengthVector3 } from "../../physics";
-import { RESPAWN_DELAY } from "./constants";
-import { isLighthouse } from "./lighthouse";
 import type { DeathEvent, RelativisticPlayer } from "./types";
-
-declare const __BUILD_TIME__: string;
-
-const isTouchDevice =
-  "ontouchstart" in window || navigator.maxTouchPoints > 0;
-
-const ToggleSwitch = ({
-  checked,
-  onChange,
-  labelLeft,
-  labelRight,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  labelLeft: string;
-  labelRight: string;
-}) => (
-  <button
-    type="button"
-    onClick={() => onChange(!checked)}
-    style={{
-      display: "flex",
-      alignItems: "center",
-      gap: "6px",
-      cursor: "pointer",
-      marginTop: "6px",
-      background: "none",
-      border: "none",
-      padding: 0,
-      color: "inherit",
-      font: "inherit",
-    }}
-  >
-    <span style={{ opacity: checked ? 1 : 0.4 }}>{labelLeft}</span>
-    <div
-      style={{
-        width: "36px",
-        height: "20px",
-        borderRadius: "10px",
-        backgroundColor: "rgba(255, 255, 255, 0.25)",
-        position: "relative",
-        flexShrink: 0,
-      }}
-    >
-      <div
-        style={{
-          width: "16px",
-          height: "16px",
-          borderRadius: "50%",
-          backgroundColor: "white",
-          position: "absolute",
-          top: "2px",
-          left: checked ? "2px" : "18px",
-          transition: "left 0.2s",
-        }}
-      />
-    </div>
-    <span style={{ opacity: checked ? 0.4 : 1 }}>{labelRight}</span>
-  </button>
-);
+import { ControlPanel } from "./hud/ControlPanel";
+import { Overlays } from "./hud/Overlays";
+import { Speedometer } from "./hud/Speedometer";
 
 type HUDProps = {
   players: Map<string, RelativisticPlayer>;
@@ -82,46 +21,6 @@ type HUDProps = {
   killNotification: { victimName: string; color: string } | null;
   myDeathEvent?: DeathEvent | null;
   getPlayerColor: (peerId: string) => string;
-};
-
-/** Convert "hsl(H, S%, L%)" to "H, S%, L%" for use in hsla(). */
-const hslToComponents = (hsl: string): string => {
-  const match = hsl.match(/hsl\((.+)\)/);
-  return match ? match[1] : "30, 80%, 60%"; // fallback orange
-};
-
-const RespawnCountdown = () => {
-  const [remaining, setRemaining] = useState(RESPAWN_DELAY / 1000);
-  useEffect(() => {
-    const start = Date.now();
-    const timer = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const left = Math.max(0, (RESPAWN_DELAY - elapsed) / 1000);
-      setRemaining(Math.ceil(left));
-    }, 100);
-    return () => clearInterval(timer);
-  }, []);
-  return (
-    <div
-      style={{
-        position: "absolute",
-        top: "50%",
-        left: "50%",
-        transform: "translate(-50%, -50%)",
-        zIndex: 250,
-        pointerEvents: "none",
-        textAlign: "center",
-        fontFamily: "monospace",
-      }}
-    >
-      <div style={{ fontSize: "36px", fontWeight: "bold", color: "#ff4444" }}>
-        DEAD
-      </div>
-      <div style={{ fontSize: "24px", color: "white", marginTop: "8px" }}>
-        {remaining}
-      </div>
-    </div>
-  );
 };
 
 export const HUD = ({
@@ -143,287 +42,41 @@ export const HUD = ({
   getPlayerColor,
 }: HUDProps) => {
   const { t } = useI18n();
-  const sortedScores = useMemo(
-    () => Object.entries(scores).sort(([, a], [, b]) => b - a),
-    [scores],
-  );
+  const myPlayer = myId ? players.get(myId) : undefined;
+
   return (
     <>
-      <div
-        style={{
-          position: "absolute",
-          top: "10px",
-          left: "10px",
-          color: "white",
-          fontSize: "14px",
-          fontFamily: "monospace",
-          zIndex: 100,
-        }}
-      >
-        <div>{t("hud.title")}</div>
-        {isTouchDevice ? (
-          <>
-            <div>{t("hud.controls.touch.heading")}</div>
-            <div>{t("hud.controls.touch.thrust")}</div>
-            <div>{t("hud.controls.touch.fire")}</div>
-          </>
-        ) : (
-          <>
-            <div>{t("hud.controls.forward")}</div>
-            <div>{t("hud.controls.cameraH")}</div>
-            <div>{t("hud.controls.cameraV")}</div>
-            <div>{t("hud.controls.fire")}</div>
-          </>
-        )}
-        <ToggleSwitch
-          checked={showInRestFrame}
-          onChange={setShowInRestFrame}
-          labelLeft={t("hud.restFrame")}
-          labelRight={t("hud.worldFrame")}
-        />
-        <ToggleSwitch
-          checked={useOrthographic}
-          onChange={setUseOrthographic}
-          labelLeft={t("hud.orthographic")}
-          labelRight={t("hud.perspective")}
-        />
-        <div
-          style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
-        >
-          FPS: {fps}
-        </div>
-        <div style={{ marginTop: "2px", fontSize: "13px", opacity: 0.6 }}>
-          build: {__BUILD_TIME__} JST
-        </div>
-        {Object.keys(scores).length > 0 && (
-          <div
-            style={{
-              marginTop: "8px",
-              borderTop: "1px solid rgba(255,255,255,0.3)",
-              paddingTop: "6px",
-              transition: "transform 0.15s ease-out",
-              transform: killGlow ? "scale(1.4)" : "scale(1)",
-              transformOrigin: "top left",
-            }}
-          >
-            <div style={{ fontWeight: "bold", marginBottom: "2px" }}>Kill</div>
-            {sortedScores.map(([id, kills]) => (
-              <div
-                key={id}
-                style={{
-                  color: players.get(id)?.color ?? getPlayerColor(id),
-                }}
-              >
-                {id === myId ? t("hud.you") : isLighthouse(id) ? "Lighthouse" : players.get(id)?.displayName ?? id.slice(0, 6)}: {kills}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <ControlPanel
+        players={players}
+        myId={myId}
+        scores={scores}
+        fps={fps}
+        showInRestFrame={showInRestFrame}
+        setShowInRestFrame={setShowInRestFrame}
+        useOrthographic={useOrthographic}
+        setUseOrthographic={setUseOrthographic}
+        killGlow={killGlow}
+        getPlayerColor={getPlayerColor}
+      />
 
-      {/* 速度計 + エネルギーゲージ + 死亡オーバーレイ */}
-      {(() => {
-        const myPlayer = myId ? players.get(myId) : undefined;
-        if (!myPlayer) return null;
-
-        const isDead = myPlayer.isDead;
-        const v = lengthVector3(myPlayer.phaseSpace.u);
-        const g = gamma(myPlayer.phaseSpace.u);
-
-        return (
-          <>
-            <div
-              style={{
-                position: "absolute",
-                bottom: "10px",
-                right: "10px",
-                color: "white",
-                fontSize: "14px",
-                fontFamily: "monospace",
-                textAlign: "right",
-                zIndex: 100,
-              }}
-            >
-              {/* エネルギーゲージ */}
-              <div
-                style={{
-                  width: "120px",
-                  height: "8px",
-                  backgroundColor: "rgba(255, 255, 255, 0.15)",
-                  borderRadius: "4px",
-                  marginBottom: "8px",
-                  marginLeft: "auto",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    width: `${energy * 100}%`,
-                    height: "100%",
-                    backgroundColor:
-                      energy < 0.2
-                        ? "rgba(255, 80, 80, 0.8)"
-                        : myLaserColor,
-                    borderRadius: "4px",
-                    transition: "width 0.05s linear",
-                  }}
-                />
-              </div>
-              <div>{t("hud.speed")}: {(v * 100).toFixed(1)}% c</div>
-              <div>{t("hud.gamma")}: {g.toFixed(3)}</div>
-              <div>{t("hud.properTime")}: {myPlayer.phaseSpace.pos.t.toFixed(2)}s</div>
-              <div>
-                {t("hud.position")}: ({myPlayer.phaseSpace.pos.x.toFixed(2)},{" "}
-                {myPlayer.phaseSpace.pos.y.toFixed(2)})
-              </div>
-            </div>
-
-            {/* 死亡カウントダウン */}
-            {isDead && (
-              <RespawnCountdown
-                key={`respawn-${myDeathEvent?.pos.t ?? 0}`}
-              />
-            )}
-
-            {/* ゴーストオーバーレイ */}
-            {isDead && (
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  backgroundColor: "rgba(100, 130, 180, 0.15)",
-                  zIndex: 90,
-                  pointerEvents: "none",
-                }}
-              />
-            )}
-          </>
-        );
-      })()}
-
-      {/* 死亡フラッシュ */}
-      {deathFlash && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            backgroundColor: "rgba(255, 50, 50, 0.6)",
-            zIndex: 200,
-            pointerEvents: "none",
-            animation: "flash-fade 0.6s ease-out forwards",
-          }}
-        />
-      )}
-      {/* 金色ボーダーグロー（キル時） */}
-      {killGlow && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            zIndex: 199,
-            pointerEvents: "none",
-            boxShadow:
-              "inset 0 0 80px rgba(255,215,0,0.5), inset 0 0 30px rgba(255,215,0,0.3)",
-            animation: "kill-glow 1.5s ease-out forwards",
-          }}
+      {myPlayer && (
+        <Speedometer
+          player={myPlayer}
+          energy={energy}
+          myLaserColor={myLaserColor}
+          t={t}
         />
       )}
 
-      {/* 射撃中グロー + FIRING テキスト（10Hz 点滅） */}
-      {isFiring && (
-        <>
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              zIndex: 198,
-              pointerEvents: "none",
-              boxShadow: `inset 0 0 60px hsla(${hslToComponents(myLaserColor)}, 0.5), inset 0 0 25px hsla(${hslToComponents(myLaserColor)}, 0.35)`,
-              animation: "firing-blink 100ms step-end infinite",
-            }}
-          />
-          <div
-            style={{
-              position: "absolute",
-              top: "46%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
-              zIndex: 199,
-              pointerEvents: "none",
-              fontSize: "24px",
-              fontWeight: "bold",
-              fontFamily: "monospace",
-              color: myLaserColor,
-              textShadow: `0 0 15px hsla(${hslToComponents(myLaserColor)}, 0.8), 0 0 30px hsla(${hslToComponents(myLaserColor)}, 0.4)`,
-              animation: "firing-blink 100ms step-end infinite",
-            }}
-          >
-            FIRING
-          </div>
-        </>
-      )}
-
-      {/* KILL テキスト（キラーの過去光円錐が hitPos に到達した瞬間に発火）*/}
-      {killNotification && (
-        <div
-          key={`kill-${killNotification.victimName}-${killNotification.color}`}
-          style={{
-            position: "absolute",
-            top: "30%",
-            left: "50%",
-            transform: "translate(-50%, -50%)",
-            zIndex: 300,
-            pointerEvents: "none",
-            textAlign: "center",
-            animation: "kill-notify 1.5s ease-out forwards",
-          }}
-        >
-          <div
-            style={{
-              fontSize: "48px",
-              fontWeight: "bold",
-              fontFamily: "monospace",
-              color: killNotification.color,
-              textShadow:
-                "0 0 20px rgba(255,215,0,0.8), 0 0 40px rgba(255,215,0,0.4)",
-            }}
-          >
-            KILL
-          </div>
-          <div
-            style={{
-              fontSize: "20px",
-              color: killNotification.color,
-              opacity: 0.9,
-            }}
-          >
-            {killNotification.victimName}
-          </div>
-        </div>
-      )}
-
-      <style>{`
-        @keyframes firing-blink {
-          0% { opacity: 1; }
-          50% { opacity: 0; }
-        }
-        @keyframes flash-fade {
-          0% { opacity: 1; }
-          100% { opacity: 0; }
-        }
-        @keyframes kill-notify {
-          0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
-          15% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
-          30% { transform: translate(-50%, -50%) scale(1); }
-          80% { opacity: 1; }
-          100% { opacity: 0; transform: translate(-50%, -60%) scale(1); }
-        }
-        @keyframes kill-glow {
-          0% { opacity: 0; }
-          15% { opacity: 1; }
-          100% { opacity: 0; }
-        }
-      `}</style>
+      <Overlays
+        isDead={myPlayer?.isDead ?? false}
+        deathFlash={deathFlash}
+        killGlow={killGlow}
+        isFiring={isFiring}
+        myLaserColor={myLaserColor}
+        killNotification={killNotification}
+        myDeathEvent={myDeathEvent}
+      />
     </>
   );
 };
