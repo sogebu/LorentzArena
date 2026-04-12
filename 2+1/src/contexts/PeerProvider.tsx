@@ -794,6 +794,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on demotion
   useEffect(() => {
     if (activeTransport !== "peerjs") return;
+    if (isMigrating) return; // Wait for migration state broadcast to complete
     if (!peerManager) return;
     if (!peerManager.getIsHost()) return;
     if (myId === roomPeerId) return; // Initial host already has room ID
@@ -928,7 +929,8 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         currentDiscoveryPm = null;
       }
     };
-  }, [activeTransport, peerManager, myId, roomPeerId, connectionPhase, dynamicIceServers, roleVersion]);
+  // isMigrating: triggers re-evaluation when client becomes host (setAsHost doesn't change peerManager ref)
+  }, [activeTransport, peerManager, myId, roomPeerId, connectionPhase, dynamicIceServers, roleVersion, isMigrating]);
 
   return (
     <PeerContext.Provider
