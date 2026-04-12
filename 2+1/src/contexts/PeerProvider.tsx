@@ -582,6 +582,60 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       }
     });
 
+    // Helper: become solo host (last resort when no peers are reachable)
+    const becomeSoloHost = () => {
+      // eslint-disable-next-line no-console
+      console.log("[PeerProvider] Becoming solo host (no peers reachable)");
+      peerManager.clearHost();
+      peerManager.setAsHost();
+      registerStandardHandlers(peerManager);
+    };
+
+    // Helper: try to discover the real host via beacon redirect.
+    // Falls back to becomeSoloHost if beacon is unreachable.
+    const BEACON_TIMEOUT = 8000;
+    const attemptBeaconFallback = () => {
+      if (activeTransport !== "peerjs") {
+        becomeSoloHost();
+        return;
+      }
+      // eslint-disable-next-line no-console
+      console.log("[PeerProvider] Attempting beacon fallback via", roomPeerId);
+      peerManager.clearHost();
+      peerManager.setHostId(roomPeerId);
+      peerManager.connect(roomPeerId);
+
+      // Listen for redirect from beacon
+      peerManager.onMessage("beacon_fallback", (_senderId, msg) => {
+        if (isRedirectMessage(msg)) {
+          const realHostId = msg.hostId;
+          // eslint-disable-next-line no-console
+          console.log("[PeerProvider] Beacon fallback → real host:", realHostId);
+          clearTimeout(beaconTimer);
+          peerManager.disconnectPeer(roomPeerId);
+          peerManager.setHostId(realHostId);
+          peerManager.connect(realHostId);
+          peerManager.offMessage("beacon_fallback");
+        }
+      });
+
+      // If beacon doesn't respond in time, become solo host
+      const beaconTimer = setTimeout(() => {
+        // eslint-disable-next-line no-console
+        console.log("[PeerProvider] Beacon fallback timeout — becoming solo host");
+        peerManager.offMessage("beacon_fallback");
+        peerManager.disconnectPeer(roomPeerId);
+        becomeSoloHost();
+      }, BEACON_TIMEOUT);
+
+      // Track for cleanup
+      const prevCleanup = migrationTimerCleanupRef.current;
+      migrationTimerCleanupRef.current = () => {
+        prevCleanup?.();
+        clearTimeout(beaconTimer);
+      };
+    };
+
     const timer = setInterval(() => {
       if (migrationTriggeredRef.current) return;
       const elapsed = Date.now() - lastPingRef.current;
@@ -610,60 +664,6 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       );
 
       const newHostId = candidates[0]; // first in join order = oldest client
-
-      // Helper: become solo host (last resort when no peers are reachable)
-      const becomeSoloHost = () => {
-        // eslint-disable-next-line no-console
-        console.log("[PeerProvider] Becoming solo host (no peers reachable)");
-        peerManager.clearHost();
-        peerManager.setAsHost();
-        registerStandardHandlers(peerManager);
-      };
-
-      // Helper: try to discover the real host via beacon redirect.
-      // Falls back to becomeSoloHost if beacon is unreachable.
-      const BEACON_TIMEOUT = 8000;
-      const attemptBeaconFallback = () => {
-        if (activeTransport !== "peerjs") {
-          becomeSoloHost();
-          return;
-        }
-        // eslint-disable-next-line no-console
-        console.log("[PeerProvider] Attempting beacon fallback via", roomPeerId);
-        peerManager.clearHost();
-        peerManager.setHostId(roomPeerId);
-        peerManager.connect(roomPeerId);
-
-        // Listen for redirect from beacon
-        peerManager.onMessage("beacon_fallback", (_senderId, msg) => {
-          if (isRedirectMessage(msg)) {
-            const realHostId = msg.hostId;
-            // eslint-disable-next-line no-console
-            console.log("[PeerProvider] Beacon fallback → real host:", realHostId);
-            clearTimeout(beaconTimer);
-            peerManager.disconnectPeer(roomPeerId);
-            peerManager.setHostId(realHostId);
-            peerManager.connect(realHostId);
-            peerManager.offMessage("beacon_fallback");
-          }
-        });
-
-        // If beacon doesn't respond in time, become solo host
-        const beaconTimer = setTimeout(() => {
-          // eslint-disable-next-line no-console
-          console.log("[PeerProvider] Beacon fallback timeout — becoming solo host");
-          peerManager.offMessage("beacon_fallback");
-          peerManager.disconnectPeer(roomPeerId);
-          becomeSoloHost();
-        }, BEACON_TIMEOUT);
-
-        // Track for cleanup
-        const prevCleanup = migrationTimerCleanupRef.current;
-        migrationTimerCleanupRef.current = () => {
-          prevCleanup?.();
-          clearTimeout(beaconTimer);
-        };
-      };
 
       if (!newHostId) {
         // No candidates — try beacon before falling back to solo host
