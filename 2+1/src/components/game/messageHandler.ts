@@ -14,6 +14,7 @@ export type MessageHandlerDeps = {
   peerManager: {
     getIsHost(): boolean;
     send(msg: unknown): void;
+    sendTo(peerId: string, msg: unknown): void;
   };
   setPlayers: React.Dispatch<
     React.SetStateAction<Map<string, RelativisticPlayer>>
@@ -66,7 +67,7 @@ const isValidColor = (v: unknown): v is string =>
 
 export const createMessageHandler =
   // biome-ignore lint/suspicious/noExplicitAny: Network messages require runtime validation
-  (deps: MessageHandlerDeps) => (_: string, msg: any) => {
+  (deps: MessageHandlerDeps) => (senderId: string, msg: any) => {
     if (!msg || typeof msg !== "object" || typeof msg.type !== "string") return;
     const {
       myId,
@@ -84,6 +85,20 @@ export const createMessageHandler =
       staleFrozenRef,
       displayNamesRef,
     } = deps;
+
+    // Host: respond to requestPeerList with syncTime (client may have missed
+    // the initial syncTime while still in the lobby before messageHandler was registered)
+    if (msg.type === "requestPeerList" && peerManager.getIsHost()) {
+      const me = playersRef.current.get(myId);
+      if (me) {
+        peerManager.sendTo(senderId, {
+          type: "syncTime" as const,
+          hostTime: me.phaseSpace.pos.t,
+          scores: scoresRef.current,
+        });
+      }
+      return;
+    }
 
     if (msg.type === "phaseSpace") {
       if (

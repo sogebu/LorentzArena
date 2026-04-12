@@ -508,6 +508,14 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       senderId: myId,
       displayName,
     });
+
+    // Client: request syncTime from host.
+    // syncTime may have been sent while we were in the lobby (before messageHandler
+    // was registered), so we need to re-request it now.
+    if (!peerManager.getIsHost()) {
+      peerManager.send({ type: "requestPeerList" });
+    }
+
     // Store own display name
     displayNamesRef.current.set(myId, displayName);
 
