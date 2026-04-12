@@ -225,6 +225,10 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   const [autoFallbackTriggered, setAutoFallbackTriggered] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
 
+  // Incremented when host/client role changes mid-session (demotion).
+  // Added to deps of effects that check getIsHost() to force re-evaluation.
+  const [roleVersion, setRoleVersion] = useState(0);
+
   // Ordered list of peer IDs (excluding host) for migration election.
   // Updated by the host on connection changes and by clients on peerList receipt.
   const peerOrderRef = useRef<string[]>([]);
@@ -400,6 +404,43 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     // If the room ID is held by a beacon (not the game host), the first
     // message will be { type: "redirect", hostId: "actual-host-id" }.
     let redirectTimer: ReturnType<typeof setTimeout> | undefined;
+    let redirectAttempts = 0;
+    const MAX_REDIRECT_ATTEMPTS = 3;
+    const REDIRECT_TIMEOUT = 10000;
+
+    const followRedirect = (hostId: string) => {
+      pm.disconnectPeer(roomPeerId);
+      pm.setHostId(hostId);
+      pm.connect(hostId);
+      pm.offMessage("redirect_handler");
+
+      redirectTimer = setTimeout(() => {
+        const conns = pm.getConnectedPeerIds();
+        if (conns.includes(hostId)) return; // connected — ok
+        redirectAttempts++;
+        if (redirectAttempts >= MAX_REDIRECT_ATTEMPTS) {
+          // eslint-disable-next-line no-console
+          console.log("[PeerProvider] Max redirect retries reached — giving up");
+          return;
+        }
+        // eslint-disable-next-line no-console
+        console.log("[PeerProvider] Redirect target", hostId, "unreachable — retrying beacon (attempt", redirectAttempts, ")");
+        pm.disconnectPeer(hostId);
+        pm.setHostId(roomPeerId);
+        pm.connect(roomPeerId);
+        pm.onMessage("redirect_handler", (_s, m) => {
+          if (
+            m &&
+            typeof m === "object" &&
+            (m as { type?: string }).type === "redirect" &&
+            typeof (m as { hostId?: string }).hostId === "string"
+          ) {
+            followRedirect((m as { hostId: string }).hostId);
+          }
+        });
+      }, REDIRECT_TIMEOUT);
+    };
+
     pm.onMessage("redirect_handler", (_senderId, msg) => {
       if (
         msg &&
@@ -410,38 +451,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         const realHostId = (msg as { hostId: string }).hostId;
         // eslint-disable-next-line no-console
         console.log("[PeerProvider] Redirect from beacon → real host:", realHostId);
-        pm.disconnectPeer(roomPeerId);
-        pm.setHostId(realHostId);
-        pm.connect(realHostId);
-        pm.offMessage("redirect_handler");
-
-        // If redirected host doesn't connect within 10s, retry via beacon
-        redirectTimer = setTimeout(() => {
-          const conns = pm.getConnectedPeerIds();
-          if (conns.includes(realHostId)) return; // connected — ok
-          // eslint-disable-next-line no-console
-          console.log("[PeerProvider] Redirect target", realHostId, "unreachable — retrying beacon");
-          pm.disconnectPeer(realHostId);
-          pm.setHostId(roomPeerId);
-          pm.connect(roomPeerId);
-          // Re-register redirect handler for next attempt
-          pm.onMessage("redirect_handler", (_s, m) => {
-            if (
-              m &&
-              typeof m === "object" &&
-              (m as { type?: string }).type === "redirect" &&
-              typeof (m as { hostId?: string }).hostId === "string"
-            ) {
-              const retryHostId = (m as { hostId: string }).hostId;
-              // eslint-disable-next-line no-console
-              console.log("[PeerProvider] Retry redirect → real host:", retryHostId);
-              pm.disconnectPeer(roomPeerId);
-              pm.setHostId(retryHostId);
-              pm.connect(retryHostId);
-              pm.offMessage("redirect_handler");
-            }
-          });
-        }, 10000);
+        followRedirect(realHostId);
       }
     });
 
@@ -480,6 +490,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
 
   // Host: proactively broadcast peerList when connections change.
   // Also update peerOrderRef on the host side.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on demotion
   useEffect(() => {
     if (!peerManager) return;
     if (!peerManager.getIsHost()) return;
@@ -493,12 +504,13 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     if (openPeers.length > 0) {
       peerManager.send({ type: "peerList", peers: openPeers });
     }
-  }, [connections, peerManager, connectionPhase]);
+  }, [connections, peerManager, connectionPhase, roleVersion]);
 
   // Host heartbeat: send ping every 3 seconds so clients can detect
   // host disconnection quickly (WebRTC ICE timeout is 30+ seconds).
   const HEARTBEAT_INTERVAL = 3000;
   const HEARTBEAT_TIMEOUT = 8000;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on demotion
   useEffect(() => {
     if (!peerManager) return;
     if (connectionPhase !== "connected") return;
@@ -514,13 +526,14 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     peerManager.send({ type: "ping" });
 
     return () => clearInterval(timer);
-  }, [peerManager, connectionPhase]);
+  }, [peerManager, connectionPhase, roleVersion]);
 
   // Client: detect host disconnect via heartbeat timeout.
   // When no ping is received for HEARTBEAT_TIMEOUT ms, trigger migration.
   const lastPingRef = useRef<number>(0);
   const migrationTriggeredRef = useRef(false);
   const migrationTimerCleanupRef = useRef<(() => void) | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on demotion
   useEffect(() => {
     if (!peerManager) return;
     if (connectionPhase !== "connected") return;
@@ -713,7 +726,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       migrationTimerCleanupRef.current?.();
       migrationTimerCleanupRef.current = null;
     };
-  }, [peerManager, connectionPhase, activeTransport, roomPeerId]);
+  }, [peerManager, connectionPhase, activeTransport, roomPeerId, roleVersion]);
 
   // WS Relay: register host_closed handler for migration peer list
   useEffect(() => {
@@ -730,6 +743,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   // Beacon: after migration, re-acquire la-{roomName} as a discovery-only peer.
   // New clients connecting to the beacon are redirected to the actual host.
   const beaconRef = useRef<PeerManager<Message> | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on demotion
   useEffect(() => {
     if (activeTransport !== "peerjs") return;
     if (!peerManager) return;
@@ -740,6 +754,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout>;
     let beaconFailCount = 0;
+    let currentDiscoveryPm: PeerManager<Message> | null = null;
     const MAX_BEACON_RETRIES = 3;
     const actualHostId = myId;
 
@@ -756,12 +771,14 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         Math.random().toString(36).substring(2, 11),
         opts,
       );
+      currentDiscoveryPm = discoveryPm;
 
       const discoveryTimeout = setTimeout(() => {
         // Beacon unreachable (may have crashed) — stay as host
         // eslint-disable-next-line no-console
         console.log("[PeerProvider] Beacon unreachable during demotion — staying as host");
         discoveryPm.destroy();
+        currentDiscoveryPm = null;
         // Resume beacon retry
         beaconFailCount = 0;
         if (!cancelled) retryTimer = setTimeout(tryBeacon, 3000);
@@ -771,6 +788,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         if (cancelled) {
           clearTimeout(discoveryTimeout);
           discoveryPm.destroy();
+          currentDiscoveryPm = null;
           return;
         }
         if (status.status === "open") {
@@ -790,6 +808,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
           // eslint-disable-next-line no-console
           console.log("[PeerProvider] Demotion: real host is", realHostId, "— redirecting clients");
           discoveryPm.destroy();
+          currentDiscoveryPm = null;
 
           if (cancelled) return;
 
@@ -803,6 +822,8 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
           peerManager.clearHost();
           peerManager.setHostId(realHostId);
           peerManager.connect(realHostId);
+          // Trigger effect re-evaluation (heartbeat, beacon, peerList)
+          setRoleVersion((v) => v + 1);
         }
       });
     };
@@ -858,8 +879,12 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         beaconRef.current.destroy();
         beaconRef.current = null;
       }
+      if (currentDiscoveryPm) {
+        currentDiscoveryPm.destroy();
+        currentDiscoveryPm = null;
+      }
     };
-  }, [activeTransport, peerManager, myId, roomPeerId, connectionPhase, dynamicIceServers]);
+  }, [activeTransport, peerManager, myId, roomPeerId, connectionPhase, dynamicIceServers, roleVersion]);
 
   return (
     <PeerContext.Provider
