@@ -5,6 +5,8 @@
 対戦可能。**`c5d8027` デプロイ済み** (build `2026/04/13 08:42:15 JST`)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
+main は `e06b696` まで push 済み（未デプロイ）。roleVersion 一貫化 + assumeHostRole 抽出。
+
 ## 直近の変更（2026-04-13）
 
 ### リスポーン座標時間バグ修正 + 重複排除 (`de38efa`, `ccd9a05`)
@@ -17,11 +19,14 @@
 - 選出ホスト未接続 → 10s タイムアウト + ビーコンフォールバック
 - peerOrderRef 空 → ビーコン優先（ソロホスト化は最終手段）
 - redirect 先オフライン → 最大 3 回リトライ
-- ビーコン作成遅延 → `isMigrating` ガード除去
 - dual-host 分裂 → ビーコンベースのホスト降格 + クライアント mid-game redirect
-- 降格後の heartbeat setInterval リーク → `roleVersion` state で effect 再評価
+- `roleVersion` state で全ロール変更時に effect 再評価（`assumeHostRole()` で不変条件を構造保証）
 
 cleanup 監査で 3 件の漏れを修正（beacon_fallback ハンドラ、beaconTimer、discoveryTimeout/discoveryPm）。
+
+### ビーコン修正 + roleVersion 一貫化 (`c5d8027`, `c7040ab`, `e06b696`)
+
+マイグレーション後にビーコンが作成されないバグを修正。原因: `peerManager.setAsHost()` が React state を変えないためビーコン effect が再実行されなかった。`isMigrating` をトリガーに流用する方式は二重目的で混乱を招いたため、`roleVersion` を全ロール変更時にインクリメントする一貫した設計に変更。`assumeHostRole()` で `setAsHost+roleVersion` の不変条件をバンドル。
 
 ### PeerProvider リファクタリング (`c8b191b`, `e85a1fb`, `14f2889`)
 

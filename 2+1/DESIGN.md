@@ -64,7 +64,7 @@
 | 2 | peerOrderRef ずれで間違ったホスト選出 | #1 のタイムアウトで自動緩和 |
 | 3 | peerOrderRef 空 → ルーム分裂 | ソロホスト化の前にビーコン接続を試行 |
 | 4 | ビーコン redirect 先がオフライン → ハング | 10s タイムアウト → ビーコン再接続、最大 3 回リトライ |
-| 5 | ビーコン作成が `isMigrating` 完了まで遅延 | ガード除去、ホスト昇格後すぐにビーコン作成 |
+| 5 | ビーコン作成が `isMigrating` 完了まで遅延 | `isMigrating` をビーコン effect から完全除去。`roleVersion` でトリガー |
 | 6 | dual-host 分裂（peerOrderRef ずれで 2 ノードが同時にホスト化） | ビーコン取得 3 回失敗 → 降格（下記） |
 
 #### ビーコンベースのホスト降格
@@ -77,9 +77,11 @@
 
 #### roleVersion による effect 再評価
 
-- **What**: `roleVersion` state を追加。降格時にインクリメントし、`getIsHost()` をチェックする 4 つの effect の deps に含める
-- **Why**: `peerManager.clearHost()` は PeerManager の内部フラグを変更するが React state は変わらない。effect の deps が変わらないと cleanup + 再実行が起きず、(a) 降格後もホストの ping setInterval が残る (b) クライアントの heartbeat 検知が始まらない (c) ビーコン effect が破棄されない
+- **What**: `roleVersion` state を追加。**全てのロール変更時**（ホスト昇格・ソロホスト化・降格）にインクリメントし、`getIsHost()` をチェックする 4 つの effect の deps に含める
+- **Why**: `peerManager.setAsHost()` / `clearHost()` は PeerManager の内部フラグを変更するが React state 参照は変わらない。effect の deps が変わらないと cleanup + 再実行が起きず、(a) ビーコンが作成されない (b) heartbeat send/detect の切り替えが起きない (c) peerList broadcast が開始/停止しない
+- **`assumeHostRole()`**: `clearHost + setAsHost + registerStandardHandlers + setRoleVersion` の4操作をバンドル。「`setAsHost()` には必ず `setRoleVersion` が伴う」という不変条件を構造的に保証。ホスト昇格・ソロホスト化の2箇所で使用
 - **biome-ignore**: `roleVersion` は effect body 内で直接参照されないため biome が「不要な dep」と警告する。`biome-ignore lint/correctness/useExhaustiveDependencies` で抑制
+- **教訓**: `isMigrating` をビーコン effect の deps に入れてトリガーに流用する方式は一度実装したが、ガードとトリガーの二重目的が混乱を招き即座にバグを再発させた。`roleVersion` のような単一目的のカウンターが正しい抽象化
 
 #### cleanup 監査結果
 
