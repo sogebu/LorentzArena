@@ -641,34 +641,8 @@ export const SceneContent = ({
                 <meshBasicMaterial
                   color={color}
                   transparent
-                  opacity={0.2}
-                  side={THREE.FrontSide}
-                  depthWrite={false}
-                />
-              </mesh>
-              <mesh
-                position={[pos.x, pos.y, pos.t + coneHeight / 2]}
-                rotation={[-Math.PI / 2, 0.0, 0.0]}
-                geometry={sharedGeometries.lightCone}
-              >
-                <meshBasicMaterial
-                  color={color}
-                  transparent
-                  opacity={0.3}
-                  side={THREE.FrontSide}
-                  wireframe
-                />
-              </mesh>
-              <mesh
-                position={[pos.x, pos.y, pos.t - coneHeight / 2]}
-                rotation={[Math.PI / 2, 0.0, 0.0]}
-                geometry={sharedGeometries.lightCone}
-              >
-                <meshBasicMaterial
-                  color={color}
-                  transparent
-                  opacity={0.2}
-                  side={THREE.FrontSide}
+                  opacity={0.1}
+                  side={THREE.DoubleSide}
                   depthWrite={false}
                 />
               </mesh>
@@ -680,9 +654,9 @@ export const SceneContent = ({
                 <meshBasicMaterial
                   color={color}
                   transparent
-                  opacity={0.3}
-                  side={THREE.FrontSide}
-                  wireframe
+                  opacity={0.1}
+                  side={THREE.DoubleSide}
+                  depthWrite={false}
                 />
               </mesh>
             </group>
