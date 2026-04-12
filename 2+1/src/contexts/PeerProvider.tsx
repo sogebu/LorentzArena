@@ -540,6 +540,31 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       }
     });
 
+    // Handle redirect from host during gameplay (dual-host demotion).
+    // When our host demotes, it sends redirect to all clients.
+    peerManager.onMessage("game_redirect", (_senderId, msg) => {
+      if (
+        msg &&
+        typeof msg === "object" &&
+        (msg as { type?: string }).type === "redirect" &&
+        typeof (msg as { hostId?: string }).hostId === "string"
+      ) {
+        const newHostId = (msg as { hostId: string }).hostId;
+        // eslint-disable-next-line no-console
+        console.log("[PeerProvider] Host redirected us to:", newHostId);
+        migrationTriggeredRef.current = true;
+
+        const oldHostId = peerManager.getHostId();
+        if (oldHostId) peerManager.disconnectPeer(oldHostId);
+
+        peerManager.clearHost();
+        peerManager.setHostId(newHostId);
+        peerManager.connect(newHostId);
+        lastPingRef.current = Date.now(); // reset heartbeat for new host
+        migrationTriggeredRef.current = false;
+      }
+    });
+
     const timer = setInterval(() => {
       if (migrationTriggeredRef.current) return;
       const elapsed = Date.now() - lastPingRef.current;
@@ -684,6 +709,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     return () => {
       clearInterval(timer);
       peerManager.offMessage("heartbeat");
+      peerManager.offMessage("game_redirect");
       migrationTimerCleanupRef.current?.();
       migrationTimerCleanupRef.current = null;
     };
@@ -713,7 +739,73 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
 
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout>;
+    let beaconFailCount = 0;
+    const MAX_BEACON_RETRIES = 3;
     const actualHostId = myId;
+
+    // When beacon acquisition fails repeatedly, another host exists.
+    // Demote self: discover real host via beacon, redirect own clients, reconnect.
+    const demoteToClient = () => {
+      if (cancelled) return;
+      // eslint-disable-next-line no-console
+      console.log("[PeerProvider] Beacon contention detected — demoting to client");
+
+      // Connect to beacon as client to discover the real host
+      const opts = buildPeerOptionsFromEnv(dynamicIceServers);
+      const discoveryPm = new PeerManager<Message>(
+        Math.random().toString(36).substring(2, 11),
+        opts,
+      );
+
+      const discoveryTimeout = setTimeout(() => {
+        // Beacon unreachable (may have crashed) — stay as host
+        // eslint-disable-next-line no-console
+        console.log("[PeerProvider] Beacon unreachable during demotion — staying as host");
+        discoveryPm.destroy();
+        // Resume beacon retry
+        beaconFailCount = 0;
+        if (!cancelled) retryTimer = setTimeout(tryBeacon, 3000);
+      }, 8000);
+
+      discoveryPm.onPeerStatusChange((status) => {
+        if (cancelled) {
+          clearTimeout(discoveryTimeout);
+          discoveryPm.destroy();
+          return;
+        }
+        if (status.status === "open") {
+          discoveryPm.connect(roomPeerId);
+        }
+      });
+
+      discoveryPm.onMessage("demotion_redirect", (_senderId, msg) => {
+        if (
+          msg &&
+          typeof msg === "object" &&
+          (msg as { type?: string }).type === "redirect" &&
+          typeof (msg as { hostId?: string }).hostId === "string"
+        ) {
+          clearTimeout(discoveryTimeout);
+          const realHostId = (msg as { hostId: string }).hostId;
+          // eslint-disable-next-line no-console
+          console.log("[PeerProvider] Demotion: real host is", realHostId, "— redirecting clients");
+          discoveryPm.destroy();
+
+          if (cancelled) return;
+
+          // Redirect all our clients to the real host
+          peerManager.broadcast({
+            type: "redirect",
+            hostId: realHostId,
+          } as Message);
+
+          // Demote self and reconnect as client
+          peerManager.clearHost();
+          peerManager.setHostId(realHostId);
+          peerManager.connect(realHostId);
+        }
+      });
+    };
 
     const tryBeacon = () => {
       if (cancelled) return;
@@ -726,6 +818,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
           return;
         }
         if (status.status === "open") {
+          beaconFailCount = 0;
           // eslint-disable-next-line no-console
           console.log("[PeerProvider] Beacon acquired:", roomPeerId, "→ redirecting to", actualHostId);
           beaconRef.current = beacon;
@@ -743,8 +836,14 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
           });
         } else if (status.status === "error" && status.type === "unavailable-id") {
           beacon.destroy();
+          beaconFailCount++;
           if (!cancelled) {
-            retryTimer = setTimeout(tryBeacon, 3000);
+            if (beaconFailCount >= MAX_BEACON_RETRIES) {
+              // Another host holds the beacon — demote self
+              demoteToClient();
+            } else {
+              retryTimer = setTimeout(tryBeacon, 3000);
+            }
           }
         }
       });
