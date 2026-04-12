@@ -99,6 +99,10 @@ const RelativisticGame = () => {
   );
   const pendingKillEventsRef = useRef<PendingKillEvent[]>([]);
   const pendingSpawnEventsRef = useRef<PendingSpawnEvent[]>([]);
+  // Track last phaseSpace update time for each peer (for staleness detection)
+  const lastUpdateTimeRef = useRef<Map<string, number>>(new Map());
+  // Players whose world lines were frozen due to staleness (distinguish from kill-dead)
+  const staleFrozenRef = useRef<Set<string>>(new Set());
   const [_screenSize, setScreenSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -307,16 +311,28 @@ const RelativisticGame = () => {
           idsToRemove.push(playerId);
         }
       }
-      if (idsToRemove.length === 0) return prev;
+      let changed = idsToRemove.length > 0;
       const next = new Map(prev);
+      // 切断プレイヤーを先に削除（色再計算の無駄を避ける）
       for (const id of idsToRemove) {
         next.delete(id);
         deadPlayersRef.current.delete(id);
         deathTimeMapRef.current.delete(id);
+        lastUpdateTimeRef.current.delete(id);
+        staleFrozenRef.current.delete(id);
       }
+      // 色の再計算: joinRegistry 更新後に正しい色を反映
+      for (const [id, player] of next) {
+        const correctColor = getPlayerColor(id);
+        if (player.color !== correctColor) {
+          next.set(id, { ...player, color: correctColor });
+          changed = true;
+        }
+      }
+      if (!changed) return prev;
       return next;
     });
-  }, [connections, myId, peerManager, isMigrating]);
+  }, [connections, myId, peerManager, isMigrating, getPlayerColor]);
 
   // Host migration: when promoted to host, broadcast game state and reconstruct respawn timers.
   useEffect(() => {
@@ -375,6 +391,7 @@ const RelativisticGame = () => {
         respawnTimeoutsRef.current.delete(timerId);
         let maxT = Number.NEGATIVE_INFINITY;
         for (const [, p] of playersRef.current) {
+          if (p.isDead) continue;
           const t = p.phaseSpace.pos.t;
           if (Number.isFinite(t) && t > maxT) maxT = t;
         }
@@ -425,6 +442,9 @@ const RelativisticGame = () => {
         handleKill,
         handleRespawn,
         getPlayerColor,
+        lastUpdateTimeRef,
+        playersRef,
+        staleFrozenRef,
       }),
     );
 
@@ -737,10 +757,23 @@ const RelativisticGame = () => {
         const me = playersRef.current.get(myId);
         if (me) {
           // 因果律の守護者
+          const STALE_THRESHOLD = 5000; // 5秒更新なしのプレイヤーはスキップ
+          // Stale 判定: 5秒更新なしのプレイヤーを記録（因果律ガードでスキップ、当たり判定は継続）
+          for (const [id, player] of playersRef.current) {
+            if (id === myId) continue;
+            if (player.isDead) continue; // 死亡中プレイヤーは stale 判定しない（通常 respawn が処理）
+            if (staleFrozenRef.current.has(id)) continue;
+            const lastUpdate = lastUpdateTimeRef.current.get(id);
+            if (lastUpdate && currentTime - lastUpdate > STALE_THRESHOLD) {
+              staleFrozenRef.current.add(id);
+            }
+          }
           let frozen = false;
           for (const [id, player] of playersRef.current) {
             if (id === myId) continue;
             if (player.isDead) continue;
+            // Stale プレイヤーは因果律ガードからスキップ（当たり判定は継続）
+            if (staleFrozenRef.current.has(id)) continue;
             if (player.phaseSpace.pos.t > me.phaseSpace.pos.t) continue;
             const diff = subVector4(player.phaseSpace.pos, me.phaseSpace.pos);
             const l = lorentzDotVector4(diff, diff);
@@ -958,8 +991,8 @@ const RelativisticGame = () => {
     <div
       style={{
         position: "relative",
-        width: "100vw",
-        height: "100vh",
+        width: "100dvw",
+        height: "100dvh",
         backgroundColor: "#000",
         overflow: "hidden",
       }}

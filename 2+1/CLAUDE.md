@@ -24,7 +24,7 @@ pnpm run analyze               # バンドルサイズ分析
 `pnpm run deploy` 後は、以下をユーザーに報告すること:
 - 本番 URL: https://sogebu.github.io/LorentzArena/
 - **build 値**（`dist/` 内のビルドタイムスタンプ）。ユーザーがスマホの HUD で表示される build 値と照合してキャッシュ更新を確認するために使う
-- build 値の取得: `grep -o '2026-[0-9T:.Z]*' dist/assets/index-*.js | head -1`
+- build 値の取得: `grep -oE '[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9:]+' dist/assets/index-*.js | head -1`
 
 ### ローカルプレビュー
 

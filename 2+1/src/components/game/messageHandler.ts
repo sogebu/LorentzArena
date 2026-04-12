@@ -6,7 +6,7 @@ import {
   createWorldLine,
 } from "../../physics";
 import { colorForPlayerId } from "./colors"; // fallback for syncTime init
-import { MAX_LASERS } from "./constants";
+import { MAX_LASERS, SPAWN_RANGE } from "./constants";
 import type { Laser, RelativisticPlayer, SpawnEffect } from "./types";
 
 export type MessageHandlerDeps = {
@@ -33,6 +33,9 @@ export type MessageHandlerDeps = {
     position: { t: number; x: number; y: number; z: number },
   ) => void;
   getPlayerColor: (peerId: string) => string;
+  lastUpdateTimeRef: React.MutableRefObject<Map<string, number>>;
+  playersRef: React.RefObject<Map<string, RelativisticPlayer>>;
+  staleFrozenRef: React.MutableRefObject<Set<string>>;
 };
 
 const isFiniteNumber = (v: unknown): v is number =>
@@ -76,6 +79,9 @@ export const createMessageHandler =
       handleKill,
       handleRespawn,
       getPlayerColor,
+      lastUpdateTimeRef,
+      playersRef,
+      staleFrozenRef,
     } = deps;
 
     if (msg.type === "phaseSpace") {
@@ -86,6 +92,36 @@ export const createMessageHandler =
       )
         return;
       const playerId = msg.senderId;
+
+      // Stale 復帰検知: stale 凍結されたプレイヤーから phaseSpace が来た
+      if (staleFrozenRef.current.has(playerId)) {
+        if (!peerManager.getIsHost()) return; // クライアントはホストの respawn を待つ
+        // ホスト: maxT + ランダム位置でリスポーン（通常 respawn と同じ）
+        let maxT = Number.NEGATIVE_INFINITY;
+        for (const [, p] of playersRef.current) {
+          if (p.isDead) continue;
+          const t = p.phaseSpace.pos.t;
+          if (Number.isFinite(t) && t > maxT) maxT = t;
+        }
+        if (!Number.isFinite(maxT)) maxT = 0;
+        const respawnPos = {
+          t: maxT,
+          x: Math.random() * SPAWN_RANGE,
+          y: Math.random() * SPAWN_RANGE,
+          z: 0,
+        };
+        staleFrozenRef.current.delete(playerId);
+        lastUpdateTimeRef.current.set(playerId, Date.now());
+        peerManager.send({
+          type: "respawn" as const,
+          playerId,
+          position: respawnPos,
+        });
+        handleRespawn(playerId, respawnPos);
+        return;
+      }
+
+      lastUpdateTimeRef.current.set(playerId, Date.now());
       setPlayers((prev) => {
         const phaseSpace = createPhaseSpace(msg.position, msg.velocity);
 
@@ -192,6 +228,8 @@ export const createMessageHandler =
     } else if (msg.type === "respawn") {
       if (peerManager.getIsHost()) return;
       if (!isValidString(msg.playerId) || !isValidVector4(msg.position)) return;
+      staleFrozenRef.current.delete(msg.playerId);
+      lastUpdateTimeRef.current.set(msg.playerId, Date.now());
       handleRespawn(msg.playerId, msg.position);
     } else if (msg.type === "score") {
       if (peerManager.getIsHost()) return;

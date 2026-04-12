@@ -191,7 +191,7 @@ export const HUD = ({
           FPS: {fps}
         </div>
         <div style={{ marginTop: "2px", fontSize: "13px", opacity: 0.6 }}>
-          build: {__BUILD_TIME__}
+          build: {__BUILD_TIME__} JST
         </div>
         {Object.keys(scores).length > 0 && (
           <div
@@ -327,17 +327,38 @@ export const HUD = ({
         />
       )}
 
-      {/* 射撃中グロー（レーザー色で光りっぱなし） */}
+      {/* 射撃中グロー + FIRING テキスト（10Hz 点滅） */}
       {isFiring && (
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            zIndex: 198,
-            pointerEvents: "none",
-            boxShadow: `inset 0 0 60px hsla(${hslToComponents(myLaserColor)}, 0.5), inset 0 0 25px hsla(${hslToComponents(myLaserColor)}, 0.35)`,
-          }}
-        />
+        <>
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              zIndex: 198,
+              pointerEvents: "none",
+              boxShadow: `inset 0 0 60px hsla(${hslToComponents(myLaserColor)}, 0.5), inset 0 0 25px hsla(${hslToComponents(myLaserColor)}, 0.35)`,
+              animation: "firing-blink 100ms step-end infinite",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              top: "46%",
+              left: "50%",
+              transform: "translate(-50%, -50%)",
+              zIndex: 199,
+              pointerEvents: "none",
+              fontSize: "24px",
+              fontWeight: "bold",
+              fontFamily: "monospace",
+              color: myLaserColor,
+              textShadow: `0 0 15px hsla(${hslToComponents(myLaserColor)}, 0.8), 0 0 30px hsla(${hslToComponents(myLaserColor)}, 0.4)`,
+              animation: "firing-blink 100ms step-end infinite",
+            }}
+          >
+            FIRING
+          </div>
+        </>
       )}
 
       {/* KILL テキスト（キラーの過去光円錐が hitPos に到達した瞬間に発火）*/}
@@ -380,6 +401,10 @@ export const HUD = ({
       )}
 
       <style>{`
+        @keyframes firing-blink {
+          0% { opacity: 1; }
+          50% { opacity: 0; }
+        }
         @keyframes flash-fade {
           0% { opacity: 1; }
           100% { opacity: 0; }
