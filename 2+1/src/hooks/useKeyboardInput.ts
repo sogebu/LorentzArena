@@ -7,8 +7,12 @@ const GAME_KEYS = [
   "ArrowDown",
   "w",
   "W",
+  "a",
+  "A",
   "s",
   "S",
+  "d",
+  "D",
   " ",
 ];
 

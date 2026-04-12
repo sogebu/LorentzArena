@@ -127,4 +127,16 @@ export type Message =
       type: "intro";
       senderId: string;
       displayName: string;
+    }
+  | {
+      /**
+       * Redirect from beacon peer to actual host after migration.
+       * The beacon holds the room's discoverable ID (la-{roomName})
+       * and tells new clients where the real host is.
+       *
+       * JP: マイグレーション後のビーコンからのリダイレクト。
+       * ビーコンはルーム発見用 ID を保持し、新クライアントに本当のホスト ID を通知。
+       */
+      type: "redirect";
+      hostId: string;
     };

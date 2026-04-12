@@ -82,9 +82,13 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 - `WsRelayManager.ts` — WebSocket Relay フォールバック
 - `PeerProvider.tsx` — 自動接続 + ホストマイグレーション
 
-自動接続フロー: ページを開くだけで同じルームに入る。`#room=name` で部屋分離。
+自動接続フロー: ページを開くだけで同じルームに入る。`#room=name` で部屋分離。最初に `la-{roomName}` PeerJS ID を取得したピアがホスト。
 
-ホストマイグレーション: ホストが切断すると最古参クライアントが自動昇格。ハートビート方式（3 秒間隔 `ping`、8 秒タイムアウト）で WebRTC ICE タイムアウト（30 秒+）に依存せず即時検知。新ホストは `hostMigration` メッセージでスコア・dead players を引き継ぎ、respawn タイマーを残り時間で再構築。PeerJS では旧ホストの `la-{roomName}` ID を再取得せず、新ホストが自分のランダム ID のまま他クライアントに直接接続（PeerServer ID 解放タイムラグを回避）。設計判断は DESIGN.md「ホストマイグレーション」参照。
+プレイヤー初期化: ホスト・クライアント共に START 直後に自己初期化（`OFFSET = Date.now()/1000` で座標時間 t ≈ 0 から開始）。クライアントがホストに接続すると `syncTime` で時刻座標を補正。ホスト未 START でもクライアントは独立にプレイ開始可能。
+
+ホストマイグレーション: ホストが切断すると最古参クライアントが自動昇格。ハートビート方式（3 秒間隔 `ping`、8 秒タイムアウト）で即時検知。新ホストは `hostMigration` メッセージでスコア・dead players を引き継ぎ、respawn タイマーを残り時間で再構築。
+
+ビーコンパターン: マイグレーション後、新ホスト（ランダム ID）が `la-{roomName}` で発見専用のビーコン PeerManager を作成。新クライアントがビーコンに接続すると `{ type: "redirect", hostId }` で本当のホストにリダイレクト。既存のゲーム接続には影響しない。設計判断は DESIGN.md「ホストマイグレーション」参照。
 
 ### ゲーム (`src/components/`)
 
@@ -94,7 +98,7 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 |---|---|
 | `RelativisticGame.tsx` | state/ref 管理、ゲームループ配線、Canvas 配置 |
 | `game/types.ts` | ゲーム固有型定義（`RelativisticPlayer`, `Laser` 等） |
-| `Lobby.tsx` | ロビー画面（言語選択 + プレイヤー名入力 + ハイスコア表） |
+| `Lobby.tsx` | ロビー画面（言語選択 + プレイヤー名入力 + ハイスコア表）※ `game/` の外 |
 | `game/constants.ts` | ゲーム定数（射程、リスポーン遅延、スポーン範囲等） |
 | `game/colors.ts` | プレイヤー色生成。`colorForJoinOrder(index)` が主（接続順 × 黄金角で保証分離）、`colorForPlayerId(id)` はフォールバック |
 | `game/threeCache.ts` | THREE.js ジオメトリ/マテリアル singleton + デブリマテリアルキャッシュ |
@@ -102,6 +106,7 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | `game/laserPhysics.ts` | レーザー当たり判定 + 光円錐交差 |
 | `game/debris.ts` | デブリ生成 + 光円錐交差 |
 | `game/killRespawn.ts` | `applyKill`/`applyRespawn` 純粋関数（ホスト/クライアント共通） |
+| `game/lighthouse.ts` | Lighthouse AI（`createLighthouse` ファクトリ、`isLighthouse` 判定、`computeInterceptDirection` 相対論的偏差射撃） |
 | `game/gameLoop.ts` | ゲームループ内の純関数群（カメラ制御、プレイヤー物理、Lighthouse AI、当たり判定、ゴースト移動） |
 | `game/causalEvents.ts` | 因果律遅延イベント処理（キル通知・スポーンエフェクトの過去光円錐チェック） |
 | `game/SceneContent.tsx` | 3Dシーン（WorldLine/Laser/Spawn/DebrisRenderer 含む） |
@@ -114,13 +119,13 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | ファイル | 内容 |
 |---|---|
 | `usePeer.ts` | PeerProvider コンテキスト hook |
-| `useKeyboardInput.ts` | キーボード入力管理（WASD + 矢印 + Space） |
+| `useKeyboardInput.ts` | キーボード入力管理（WASD + 矢印 + Space の preventDefault + keysPressed ref） |
 | `useStaleDetection.ts` | stale プレイヤー検知（壁時計/座標時間進行率ベース）、add/delete/cleanup を一箇所に集約 |
 | `useHighScoreSaver.ts` | beforeunload でハイスコア/リーダーボード保存 |
 | `useHostMigration.ts` | ホストマイグレーション（state ブロードキャスト + respawn タイマー再構築） |
 
 主要機能:
-- PC: W/S: 加速/減速、矢印: カメラ回転、Space: レーザー発射
+- PC: W/S: 前進/後退、A/D: 横移動、矢印: カメラ回転、Space: レーザー発射
 - モバイル: 横スワイプ heading、縦変位 thrust（連続値）、ダブルタップ 射撃（全操作同時実行可）
 - 正射影/透視投影カメラ切替
 - 自分の静止系/世界系表示切替
@@ -154,6 +159,7 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | `intro` | 双方向（host 中継） | プレイヤー表示名通知（接続時に 1 回送信） |
 | `peerList` | host → all | 接続ピア一覧（接続変化時に proactive 送信） |
 | `requestPeerList` | client → host | ピア一覧要求 |
+| `redirect` | beacon → client | マイグレーション後のホスト ID リダイレクト |
 
 **色は同期しない**: 全ピアが `colorForJoinOrder(index)` で接続順に基づく色を独立に算出（peerList から各自 append-only joinRegistry を構築）。peerList 未受信時は `colorForPlayerId(id)` にフォールバック。ネットワークで色を直接同期するメッセージはない。詳細: DESIGN.md「色割り当て」
 
@@ -178,13 +184,14 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 
 | パラメータ（コード内） | 値 | 説明 |
 |---|---|---|
-| `maxHistorySize` | 5000 | 世界線のサンプル数上限（`worldLine.ts`） |
+| `MAX_WORLDLINE_HISTORY` | 5000 | 世界線のサンプル数上限（`constants.ts`、`worldLine.ts` 内部名は `maxHistorySize`） |
 | 加速度 | 0.8 c/s | `8 / 10` |
 | 摩擦係数 | 0.5 | 速度に比例する減速 |
 | カメラ距離 | 正射影: 100, 透視: 15 | |
 | カメラ回転速度 | yaw: 0.8 rad/s, pitch: 0.5 rad/s | |
 | カメラ仰角範囲 | ±89.9° | |
 | ビーム opacity | 0.4 | レーザー世界線の透明度 |
+| デブリ opacity | 0.15 | デブリ世界線の透明度（レーザーより薄く区別） |
 | 光円錐高さ | 40 | 描画上の円錐サイズ |
 | デブリ速度 | 0.2c〜0.9c | ランダム方向 |
 | `TUBE_REGEN_INTERVAL` | 8 | TubeGeometry 再生成の間引き（version を 8 で量子化） |

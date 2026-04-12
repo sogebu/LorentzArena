@@ -641,7 +641,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
                 beacon.sendTo(conn.id, {
                   type: "redirect",
                   hostId: actualHostId,
-                } as Message);
+                });
               }
             }
           });
