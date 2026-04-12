@@ -353,7 +353,7 @@ const DebrisRenderer = ({
         startX: startDisplay.x, startY: startDisplay.y, startT: startDisplay.t,
         endX: endDisplay.x, endY: endDisplay.y, endT: endDisplay.t,
         r: debrisColor.r, g: debrisColor.g, b: debrisColor.b,
-        radius: p.size * 0.3,
+        radius: p.size * 0.2,
       });
 
       const intersection = pastLightConeIntersectionDebris(
