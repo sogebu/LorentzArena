@@ -34,6 +34,7 @@ export type MessageHandlerDeps = {
   ) => void;
   getPlayerColor: (peerId: string) => string;
   lastUpdateTimeRef: React.MutableRefObject<Map<string, number>>;
+  lastCoordTimeRef: React.MutableRefObject<Map<string, { wallTime: number; posT: number }>>;
   playersRef: React.RefObject<Map<string, RelativisticPlayer>>;
   staleFrozenRef: React.MutableRefObject<Set<string>>;
   displayNamesRef: React.MutableRefObject<Map<string, string>>;
@@ -81,6 +82,7 @@ export const createMessageHandler =
       handleRespawn,
       getPlayerColor,
       lastUpdateTimeRef,
+      lastCoordTimeRef,
       playersRef,
       staleFrozenRef,
       displayNamesRef,
@@ -138,6 +140,10 @@ export const createMessageHandler =
       }
 
       lastUpdateTimeRef.current.set(playerId, Date.now());
+      lastCoordTimeRef.current.set(playerId, {
+        wallTime: Date.now(),
+        posT: msg.position.t,
+      });
       setPlayers((prev) => {
         const phaseSpace = createPhaseSpace(msg.position, msg.velocity);
 

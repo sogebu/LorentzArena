@@ -114,8 +114,9 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const displayNamesRef = useRef<Map<string, string>>(new Map());
   const sessionStartTimeRef = useRef<number>(Date.now());
   const pendingSpawnEventsRef = useRef<PendingSpawnEvent[]>([]);
-  // Track last phaseSpace update time for each peer (for staleness detection)
+  // Track phaseSpace update for staleness detection: wall clock + coordinate time
   const lastUpdateTimeRef = useRef<Map<string, number>>(new Map());
+  const lastCoordTimeRef = useRef<Map<string, { wallTime: number; posT: number }>>(new Map());
   // Players whose world lines were frozen due to staleness (distinguish from kill-dead)
   const staleFrozenRef = useRef<Set<string>>(new Set());
   const causalFrozenRef = useRef<boolean>(false);
@@ -496,6 +497,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         handleRespawn,
         getPlayerColor,
         lastUpdateTimeRef,
+        lastCoordTimeRef,
         playersRef,
         staleFrozenRef,
         displayNamesRef,
@@ -869,18 +871,33 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         if (me) {
           // 因果律の守護者
           const STALE_WALL_THRESHOLD = 5000; // 壁時計5秒更新なし → stale
-          const STALE_COORD_THRESHOLD = 3; // 座標時間で3秒以上遅れている → stale
-          // Stale 判定: 更新が途絶えたプレイヤー、または世界線が進んでいない
-          // プレイヤー（バックグラウンドタブの throttle）を stale 扱い
+          const STALE_RATE_WINDOW = 3000; // 壁時計3秒間で座標時間の進行率を評価
+          const STALE_MIN_RATE = 0.1; // 最低進行率（正常なら ~1.0、throttle だと ~0）
+          // Stale 判定:
+          // (1) phaseSpace が壁時計5秒来ない → 切断/タブ停止
+          // (2) phaseSpace は来るが座標時間がほとんど進んでいない → タブ throttle
           for (const [id, player] of playersRef.current) {
             if (id === myId) continue;
             if (player.isDead) continue;
             if (staleFrozenRef.current.has(id)) continue;
+            // (1) 壁時計ベース
             const lastUpdate = lastUpdateTimeRef.current.get(id);
-            const noWallUpdate = lastUpdate && currentTime - lastUpdate > STALE_WALL_THRESHOLD;
-            const coordTimeLag = me.phaseSpace.pos.t - player.phaseSpace.pos.t > STALE_COORD_THRESHOLD;
-            if (noWallUpdate || coordTimeLag) {
+            if (lastUpdate && currentTime - lastUpdate > STALE_WALL_THRESHOLD) {
               staleFrozenRef.current.add(id);
+              continue;
+            }
+            // (2) 座標時間進行率ベース: 壁時計で RATE_WINDOW 以上経過しているのに
+            //     座標時間がほとんど進んでいない = ゲームループが throttle されている
+            const coordRecord = lastCoordTimeRef.current.get(id);
+            if (coordRecord) {
+              const wallElapsed = currentTime - coordRecord.wallTime;
+              if (wallElapsed > STALE_RATE_WINDOW) {
+                const coordElapsed = player.phaseSpace.pos.t - coordRecord.posT;
+                const rate = coordElapsed / (wallElapsed / 1000);
+                if (rate < STALE_MIN_RATE) {
+                  staleFrozenRef.current.add(id);
+                }
+              }
             }
           }
           let frozen = false;
