@@ -2,66 +2,60 @@
 
 ## 現在のステータス
 
-対戦可能。**`5d256ba` デプロイ済み** (build `2026/04/12 14:14:29 JST`)。
+対戦可能。**`cfcaf5e` デプロイ済み** (build `2026/04/12 15:10:25 JST`)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
-## 直近の変更（2026-04-12）
+## 直近の変更（2026-04-12 午後）
 
-### ロビー画面 + i18n + 表示名 + ハイスコア (`ddf13ca`)
+### バグ修正
 
-- ロビー画面: 言語選択（日本語 default / English）+ プレイヤー名入力 + ハイスコア表。PeerJS 接続はバックグラウンドで開始
-- i18n: 自前 Context + TypeScript 辞書。HUD / Connect の ~50 文字列を移行。localStorage 永続化
-- 表示名: `intro` メッセージ型で接続時に 1 回送信、ホストがリレー。スコアボード・キル通知に表示名を使用
-- ハイスコア: localStorage ベース、`beforeunload` で保存、ロビーに top 5 表示
+- **ゲスト先入り光円錐非表示** (`0d9f1d6`): ホスト init effect で既存接続に syncTime 送信
+- **クライアント syncTime 未受信** (`6936193`): クライアント mount 時に requestPeerList → ホストが syncTime を sendTo で返す
+- **因果律ガードチラつき** (`0d9f1d6`): `causalFrozenRef` でヒステリシス（lorentzDot < -0.5 で解除）
+- **世界線リスポーン接続** (`06cf2b3`): ゴースト reducer で `!me.isDead` チェック（React batch race 防止）
+- **Lighthouse migration 残存** (`cfcaf5e`): 新ホスト init で旧 Lighthouse を置換 + stale クリア
+- **intro リレー漏れ** (`2abc119`): `registerHostRelay` に `intro` 追加
+- **凍結世界線 key 衝突** (`2abc119`): intersection key にインデックス追加
+- **isRelayable intro バリデーション** (`e21d943`): 長さチェック追加
 
-### 4 軸レビュー修正 (`207442b`)
+### 新機能
 
-コード全体の 4 軸チェックで検出した 11 件を修正。正味 -86 行。
+- **ロビー + i18n** (`ddf13ca`): 初回言語選択 → 名前入力 → ゲーム。日本語/英語切替
+- **グローバルリーダーボード** (`c42d139`): Cloudflare KV。トップ 50 フィルタで write 節約
+- **Lighthouse ハイスコア** (`56ad452`): ホストが beforeunload で Lighthouse スコアも保存
+- **初回言語選択画面** (`5d256ba`): localStorage 未設定時のみ表示
+- **Lighthouse スポーングレース** (`804ffbf`): スポーン後 10 秒間は発射しない
+- **未来光円錐交差マーカー** (`87e6084`): うっすら表示（opacity 0.12-0.15）
+- **visibilitychange 対応** (`f89094b`): タブ非表示時にゲームループ + ping 停止
+- **stale 検知改善** (`615718f`): 座標時間進行率ベース（throttle タブ対応）
 
-- `syncTime` 型に `scores?` フィールド追加（型の穴を塞ぐ）
-- ハードコード `20` → `SPAWN_RANGE` 定数 (`messageHandler.ts`)
-- `SWIPE_SENSITIVITY_X` → `SWIPE_SENSITIVITY`（yaw/pitch 共用名に）
-- `as never` キャスト 3 箇所除去 (`PeerProvider.tsx`)
-- 光円錐交差ソルバーを `pastLightConeIntersectionSegment` に統一（`vector.ts` に抽出、`laserPhysics.ts`/`debris.ts` の ~60 行重複解消）
-- dead code `types/player.ts` 削除 + `types/index.ts` re-export 整理
-- joinRegistry append ロジックを `appendToJoinRegistry` ヘルパーに抽出（3 箇所→1 関数）
-- 未使用 `setSpawns` を `MessageHandlerDeps` から削除
-- `window.debugCaches` に `import.meta.env.DEV` ガード追加
-- 未使用 placeholder `pastLightConeIntersectionPhaseSpace` 削除
+### ドキュメント
 
-### Lighthouse AI 固定砲台 (`ae2d6c3`〜`2af525a`)
+- README に Relativistic Algorithms セクション追加（英日）
+- NETWORKING.md 英語版を Cloudflare TURN に同期
+- DESIGN.md に設計判断記録
 
-接待用 NPC「Lighthouse」。固定位置から相対論的照準でレーザーを撃つ。発射間隔 2 秒。慣性運動する敵には必中、加速で回避可能。詳細: `game/lighthouse.ts`、定数: `game/constants.ts` の `LIGHTHOUSE_*`。
+### 4 軸レビュー (`207442b`)
 
-### 色一貫性・stale プレイヤー・モバイル改善
-
-`3f8d735`〜`4741788` で修正。`joinRegistryVersion` で色再計算、stale プレイヤー自動復帰、`100vh`→`100dvh`、FIRING 表示、ゴースト中 pitch 操作、リスポーン時カメラリセット。
-
-### 以前の変更
-
-- 2026-04-11: ホストマイグレーション (`f6ba5ec`〜`cae791b`)、色割り当て改善、リスポーン時刻修正、クライアント初期スポーン修正
-- 2026-04-10: スポーンエフェクト因果律遅延 (`6574a02`)、Cloudflare TURN (`c884d98`)
-- 2026-04-06 以前: `git log` 参照
+11 件修正、正味 -86 行。光円錐交差ソルバー統一、dead code 削除等。
 
 ## 既知の課題
 
-- `pastLightConeIntersectionWorldLine` の PhaseSpace 補間 TODO (`worldLine.ts:294`)
-- Caddyfile にセキュリティヘッダー未設定
-- Docker Compose にリソース制限未設定
+- **RelativisticGame.tsx が 1335 行で肥大化** → 次セッションでリファクタリング（ゲームループ・stale/visibility・Lighthouse AI・ハイスコア等を hook/module に分割）
+- `pastLightConeIntersectionWorldLine` の PhaseSpace 補間 TODO (`worldLine.ts`)
+- DESIGN.md 残存する設計臭 #1-#4（全件 defer 中、リファクタリング時に再評価）
 
-### パフォーマンス検討課題（MEDIUM 以下、FPS 低下顕在化で着手）
+### パフォーマンス検討課題（FPS 低下顕在化で着手）
 
-- `appendWorldLine` の配列コピー O(n) → ring buffer で O(1) 化
-- ゲームループの setState 頻度 → Zustand 等で re-render 制御
-- `displayLasers`/`worldLineIntersections` の毎フレーム全再計算 → 空間インデックス/カリング
-- インラインマテリアル → 明示キャッシュ
-- RespawnCountdown の setInterval 100ms → 500ms
+- `appendWorldLine` O(n) → ring buffer
+- ゲームループ setState 頻度 → Zustand
+- useMemo 毎フレーム再計算 → カリング
 
 ## 次にやること
 
-- **制約ネットワーク検証待ち**: Cloudflare TURN (`c884d98`) をデプロイ済み。学校ネットで接続テスト
-- マルチプレイヤーテスト（バリデーション・パフォーマンス確認）
-- 各プレイヤーに固有時刻を表示（時間の遅れの実感用）
-- 3+1 次元への拡張検討
-- **スマホ UI 残課題**: レスポンシブ HUD、オンボーディング
-- **用語の再考**: 詳細は `EXPLORING.md` の「用語の再考」セクション参照
+- **RelativisticGame.tsx リファクタリング**（最優先）
+- 制約ネットワーク検証（学校ネットで Cloudflare TURN テスト）
+- 各プレイヤーに固有時刻表示
+- スマホ UI 残課題（レスポンシブ HUD、オンボーディング）
+- 用語の再考（`EXPLORING.md` 参照）
+- 音楽の時間同期（将来計画、`EXPLORING.md` 参照）
