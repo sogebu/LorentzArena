@@ -445,6 +445,23 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     };
   }, [peerManager, myId, handleKill, handleRespawn]);
 
+  // Client: periodically request syncTime until received (handles guest-before-host)
+  useEffect(() => {
+    if (!peerManager || !myId) return;
+    if (isHost) return;
+    if (timeSyncedRef.current) return;
+
+    const timer = setInterval(() => {
+      if (timeSyncedRef.current) {
+        clearInterval(timer);
+        return;
+      }
+      peerManager.send({ type: "requestPeerList" });
+    }, 3000);
+
+    return () => clearInterval(timer);
+  }, [peerManager, myId, isHost]);
+
   // ウィンドウリサイズの検出
   useEffect(() => {
     const handleResize = () => {
@@ -849,6 +866,28 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       respawnTimeoutsRef.current.clear();
     };
   }, [peerManager, myId, handleKill, handleRespawn, stale, keysPressed]);
+
+  // Client waiting for host to start
+  if (!isHost && myId && !players.has(myId)) {
+    return (
+      <div
+        style={{
+          position: "relative",
+          width: "100dvw",
+          height: "100dvh",
+          backgroundColor: "#000",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: "monospace",
+          color: "rgba(255,255,255,0.6)",
+          fontSize: "clamp(16px, 3vw, 24px)",
+        }}
+      >
+        Waiting for host to start...
+      </div>
+    );
+  }
 
   return (
     <div

@@ -396,10 +396,31 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       }
     });
 
+    // Handle redirect from beacon (post-migration host discovery).
+    // If the room ID is held by a beacon (not the game host), the first
+    // message will be { type: "redirect", hostId: "actual-host-id" }.
+    pm.onMessage("redirect_handler", (_senderId, msg) => {
+      if (
+        msg &&
+        typeof msg === "object" &&
+        (msg as { type?: string }).type === "redirect" &&
+        typeof (msg as { hostId?: string }).hostId === "string"
+      ) {
+        const realHostId = (msg as { hostId: string }).hostId;
+        // eslint-disable-next-line no-console
+        console.log("[PeerProvider] Redirect from beacon → real host:", realHostId);
+        pm.disconnectPeer(roomPeerId);
+        pm.setHostId(realHostId);
+        pm.connect(realHostId);
+        pm.offMessage("redirect_handler");
+      }
+    });
+
     pm.onConnectionChange((conns) => setConnections(conns));
 
     return () => {
       if (owned) pm.destroy();
+      pm.offMessage("redirect_handler");
     };
   }, [
     activeTransport,
@@ -582,6 +603,68 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       peerOrderRef.current = survivingPeers;
     });
   }, [activeTransport, peerManager]);
+
+  // Beacon: after migration, re-acquire la-{roomName} as a discovery-only peer.
+  // New clients connecting to the beacon are redirected to the actual host.
+  const beaconRef = useRef<PeerManager<Message> | null>(null);
+  useEffect(() => {
+    if (activeTransport !== "peerjs") return;
+    if (isMigrating) return;
+    if (!peerManager) return;
+    if (!peerManager.getIsHost()) return;
+    if (myId === roomPeerId) return; // Initial host already has room ID
+    if (connectionPhase !== "connected") return;
+
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout>;
+    const actualHostId = myId;
+
+    const tryBeacon = () => {
+      if (cancelled) return;
+      const opts = buildPeerOptionsFromEnv(dynamicIceServers);
+      const beacon = new PeerManager<Message>(roomPeerId, opts);
+
+      beacon.onPeerStatusChange((status) => {
+        if (cancelled) {
+          beacon.destroy();
+          return;
+        }
+        if (status.status === "open") {
+          // eslint-disable-next-line no-console
+          console.log("[PeerProvider] Beacon acquired:", roomPeerId, "→ redirecting to", actualHostId);
+          beaconRef.current = beacon;
+
+          // When a new client connects, send redirect
+          beacon.onConnectionChange((conns) => {
+            for (const conn of conns) {
+              if (conn.open) {
+                beacon.sendTo(conn.id, {
+                  type: "redirect",
+                  hostId: actualHostId,
+                } as Message);
+              }
+            }
+          });
+        } else if (status.status === "error" && status.type === "unavailable-id") {
+          beacon.destroy();
+          if (!cancelled) {
+            retryTimer = setTimeout(tryBeacon, 3000);
+          }
+        }
+      });
+    };
+
+    tryBeacon();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(retryTimer);
+      if (beaconRef.current) {
+        beaconRef.current.destroy();
+        beaconRef.current = null;
+      }
+    };
+  }, [activeTransport, isMigrating, peerManager, myId, roomPeerId, connectionPhase, dynamicIceServers]);
 
   return (
     <PeerContext.Provider
