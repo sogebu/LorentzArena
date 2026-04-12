@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
+import { useI18n } from "../../i18n";
 import { gamma, lengthVector3 } from "../../physics";
-// colorForPlayerId is no longer used here; colors come from getPlayerColor prop
 import { RESPAWN_DELAY } from "./constants";
 import { isLighthouse } from "./lighthouse";
 import type { DeathEvent, RelativisticPlayer } from "./types";
@@ -142,6 +142,7 @@ export const HUD = ({
   myDeathEvent,
   getPlayerColor,
 }: HUDProps) => {
+  const { t } = useI18n();
   const sortedScores = useMemo(
     () => Object.entries(scores).sort(([, a], [, b]) => b - a),
     [scores],
@@ -159,32 +160,32 @@ export const HUD = ({
           zIndex: 100,
         }}
       >
-        <div>相対論的アリーナ (2+1次元 時空図)</div>
+        <div>{t("hud.title")}</div>
         {isTouchDevice ? (
           <>
-            <div>スワイプ ←→: 方向転換</div>
-            <div>スワイプ ↑: 前進 ↓: 後退</div>
-            <div>ダブルタップ: レーザー発射</div>
+            <div>{t("hud.controls.touch.heading")}</div>
+            <div>{t("hud.controls.touch.thrust")}</div>
+            <div>{t("hud.controls.touch.fire")}</div>
           </>
         ) : (
           <>
-            <div>W/S: 前進/後退  A/D: 左右移動</div>
-            <div>←/→: カメラ水平回転</div>
-            <div>↑/↓: カメラ上下回転</div>
-            <div>Space: レーザー発射</div>
+            <div>{t("hud.controls.forward")}</div>
+            <div>{t("hud.controls.cameraH")}</div>
+            <div>{t("hud.controls.cameraV")}</div>
+            <div>{t("hud.controls.fire")}</div>
           </>
         )}
         <ToggleSwitch
           checked={showInRestFrame}
           onChange={setShowInRestFrame}
-          labelLeft="静止系"
-          labelRight="世界系"
+          labelLeft={t("hud.restFrame")}
+          labelRight={t("hud.worldFrame")}
         />
         <ToggleSwitch
           checked={useOrthographic}
           onChange={setUseOrthographic}
-          labelLeft="正射影"
-          labelRight="透視投影"
+          labelLeft={t("hud.orthographic")}
+          labelRight={t("hud.perspective")}
         />
         <div
           style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
@@ -213,7 +214,7 @@ export const HUD = ({
                   color: players.get(id)?.color ?? getPlayerColor(id),
                 }}
               >
-                {id === myId ? "You" : isLighthouse(id) ? "Lighthouse" : id.slice(0, 6)}: {kills}
+                {id === myId ? t("hud.you") : isLighthouse(id) ? "Lighthouse" : players.get(id)?.displayName ?? id.slice(0, 6)}: {kills}
               </div>
             ))}
           </div>
@@ -268,11 +269,11 @@ export const HUD = ({
                   }}
                 />
               </div>
-              <div>速度: {(v * 100).toFixed(1)}% c</div>
-              <div>ガンマ因子: {g.toFixed(3)}</div>
-              <div>固有時間: {myPlayer.phaseSpace.pos.t.toFixed(2)}s</div>
+              <div>{t("hud.speed")}: {(v * 100).toFixed(1)}% c</div>
+              <div>{t("hud.gamma")}: {g.toFixed(3)}</div>
+              <div>{t("hud.properTime")}: {myPlayer.phaseSpace.pos.t.toFixed(2)}s</div>
               <div>
-                位置: ({myPlayer.phaseSpace.pos.x.toFixed(2)},{" "}
+                {t("hud.position")}: ({myPlayer.phaseSpace.pos.x.toFixed(2)},{" "}
                 {myPlayer.phaseSpace.pos.y.toFixed(2)})
               </div>
             </div>

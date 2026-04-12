@@ -1,0 +1,60 @@
+import type { TranslationKey } from "./ja";
+
+export const en: Record<TranslationKey, string> = {
+  // HUD - title & controls
+  "hud.title": "Relativistic Arena (2+1D Spacetime)",
+  "hud.controls.forward": "W/S: Forward/Back  A/D: Strafe",
+  "hud.controls.cameraH": "←/→: Camera yaw",
+  "hud.controls.cameraV": "↑/↓: Camera pitch",
+  "hud.controls.fire": "Space: Fire laser",
+  "hud.controls.touch.heading": "Swipe ←→: Turn",
+  "hud.controls.touch.thrust": "Swipe ↑: Forward ↓: Backward",
+  "hud.controls.touch.fire": "Double-tap: Fire",
+  // HUD - toggles
+  "hud.restFrame": "Rest frame",
+  "hud.worldFrame": "World frame",
+  "hud.orthographic": "Orthographic",
+  "hud.perspective": "Perspective",
+  // HUD - stats
+  "hud.speed": "Speed",
+  "hud.gamma": "Gamma",
+  "hud.properTime": "Proper time",
+  "hud.position": "Position",
+  // HUD - scoreboard
+  "hud.you": "You",
+  // Connect panel
+  "connect.title": "Connection",
+  "connect.minimize": "Minimize",
+  "connect.expand": "Expand",
+  "connect.signaling.ok": "Signaling: Connected",
+  "connect.signaling.connecting": "Signaling: Connecting...",
+  "connect.signaling.disconnected": "Signaling: Disconnected",
+  "connect.signaling.error": "Signaling: Error",
+  "connect.signaling.unknown": "Signaling: Unknown",
+  "connect.transport": "Transport",
+  "connect.yourId": "Your ID",
+  "connect.generating": "Generating...",
+  "connect.phase.tryingHost": " connecting... (trying host)",
+  "connect.phase.connectingClient": " connecting... (client)",
+  "connect.phase.host": "Host",
+  "connect.phase.client": "Client",
+  "connect.phase.manual": "Manual connection mode",
+  "connect.networkHelp":
+    "WebRTC may be blocked on school/corporate networks. Try switching to WS Relay mode.",
+  "connect.autoFallback": "PeerJS failed. Auto-switched to WS Relay.",
+  "connect.peers": "Connected peers",
+  "connect.peerOpen": "open",
+  "connect.peerClosed": "connecting/failed",
+  "connect.networkSettings": "Network settings (env)",
+  // Lobby
+  "lobby.title": "Lorentz Arena",
+  "lobby.subtitle": "Relativistic Multiplayer Arena",
+  "lobby.nameLabel": "Player name",
+  "lobby.namePlaceholder": "Enter your name",
+  "lobby.start": "START",
+  "lobby.connecting": "Connecting...",
+  "lobby.highScores": "High Scores",
+  "lobby.noScores": "No records yet",
+  "lobby.kills": "Kills",
+  "lobby.duration": "Time",
+};

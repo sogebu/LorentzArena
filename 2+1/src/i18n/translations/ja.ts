@@ -1,0 +1,60 @@
+export const ja = {
+  // HUD - title & controls
+  "hud.title": "相対論的アリーナ (2+1次元 時空図)",
+  "hud.controls.forward": "W/S: 前進/後退  A/D: 左右移動",
+  "hud.controls.cameraH": "←/→: カメラ水平回転",
+  "hud.controls.cameraV": "↑/↓: カメラ上下回転",
+  "hud.controls.fire": "Space: レーザー発射",
+  "hud.controls.touch.heading": "スワイプ ←→: 方向転換",
+  "hud.controls.touch.thrust": "スワイプ ↑: 前進 ↓: 後退",
+  "hud.controls.touch.fire": "ダブルタップ: レーザー発射",
+  // HUD - toggles
+  "hud.restFrame": "静止系",
+  "hud.worldFrame": "世界系",
+  "hud.orthographic": "正射影",
+  "hud.perspective": "透視投影",
+  // HUD - stats
+  "hud.speed": "速度",
+  "hud.gamma": "ガンマ因子",
+  "hud.properTime": "固有時間",
+  "hud.position": "位置",
+  // HUD - scoreboard
+  "hud.you": "You",
+  // Connect panel
+  "connect.title": "接続設定",
+  "connect.minimize": "最小化",
+  "connect.expand": "展開",
+  "connect.signaling.ok": "シグナリング: 接続OK",
+  "connect.signaling.connecting": "シグナリング: 接続中...",
+  "connect.signaling.disconnected": "シグナリング: 切断",
+  "connect.signaling.error": "シグナリング: エラー",
+  "connect.signaling.unknown": "シグナリング: 状態不明",
+  "connect.transport": "通信方式",
+  "connect.yourId": "あなたのID",
+  "connect.generating": "生成中...",
+  "connect.phase.tryingHost": "に接続中...（ホスト試行）",
+  "connect.phase.connectingClient": "に接続中...（クライアント）",
+  "connect.phase.host": "ホスト",
+  "connect.phase.client": "クライアント",
+  "connect.phase.manual": "手動接続モード",
+  "connect.networkHelp":
+    "学校/社内ネットワークだと WebRTC が塞がれていることがあります。その場合は通信方式を WS Relay に切り替えてください。",
+  "connect.autoFallback": "PeerJS失敗のため WS Relay へ自動切替しました。",
+  "connect.peers": "接続中の相手",
+  "connect.peerOpen": "接続中",
+  "connect.peerClosed": "接続準備中/失敗",
+  "connect.networkSettings": "ネットワーク設定(env)",
+  // Lobby
+  "lobby.title": "Lorentz Arena",
+  "lobby.subtitle": "相対論的マルチプレイヤー対戦アリーナ",
+  "lobby.nameLabel": "プレイヤー名",
+  "lobby.namePlaceholder": "名前を入力",
+  "lobby.start": "START",
+  "lobby.connecting": "接続中...",
+  "lobby.highScores": "ハイスコア",
+  "lobby.noScores": "まだ記録がありません",
+  "lobby.kills": "キル",
+  "lobby.duration": "時間",
+} as const;
+
+export type TranslationKey = keyof typeof ja;

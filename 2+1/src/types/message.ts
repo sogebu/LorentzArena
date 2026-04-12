@@ -47,6 +47,7 @@ export type Message =
       type: "syncTime";
       hostTime: number;
       scores?: Record<string, number>;
+      displayName?: string;
     }
   | {
       /**
@@ -113,4 +114,17 @@ export type Message =
       newHostId: string;
       scores: Record<string, number>;
       deadPlayers: Array<{ playerId: string; deathTime: number }>;
+      displayNames?: Record<string, string>;
+    }
+  | {
+      /**
+       * Player introduction: display name announcement.
+       * Sent once on connection. Host relays to all peers.
+       *
+       * JP: プレイヤー自己紹介: 表示名の通知。
+       * 接続時に 1 回送信。ホストが全ピアにリレー。
+       */
+      type: "intro";
+      senderId: string;
+      displayName: string;
     };

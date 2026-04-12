@@ -45,6 +45,7 @@ import {
   isLighthouse,
 } from "./game/lighthouse";
 import { createMessageHandler } from "./game/messageHandler";
+import { saveHighScore } from "../services/highScores";
 import { SceneContent } from "./game/SceneContent";
 import { useTouchInput } from "./game/touchInput";
 import type {
@@ -58,7 +59,7 @@ import type {
   SpawnEffect,
 } from "./game/types";
 
-const RelativisticGame = () => {
+const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const {
     peerManager,
     myId,
@@ -108,6 +109,8 @@ const RelativisticGame = () => {
     new Set(),
   );
   const pendingKillEventsRef = useRef<PendingKillEvent[]>([]);
+  const displayNamesRef = useRef<Map<string, string>>(new Map());
+  const sessionStartTimeRef = useRef<number>(Date.now());
   const pendingSpawnEventsRef = useRef<PendingSpawnEvent[]>([]);
   // Track last phaseSpace update time for each peer (for staleness detection)
   const lastUpdateTimeRef = useRef<Map<string, number>>(new Map());
@@ -181,7 +184,7 @@ const RelativisticGame = () => {
         victimId,
         killerId,
         hitPos,
-        victimName: isLighthouse(victimId) ? "Lighthouse" : victimId.slice(0, 6),
+        victimName: isLighthouse(victimId) ? "Lighthouse" : (playersRef.current.get(victimId)?.displayName ?? victimId.slice(0, 6)),
         victimColor: victim.color,
       });
       // 上限を超えたら最古のイベントを削除（メモリ保護）
@@ -408,6 +411,7 @@ const RelativisticGame = () => {
       newHostId: myId,
       scores: scoresRef.current,
       deadPlayers: deadPlayersList,
+      displayNames: Object.fromEntries(displayNamesRef.current),
     });
 
     // Reconstruct respawn timers for dead players
@@ -473,13 +477,41 @@ const RelativisticGame = () => {
         lastUpdateTimeRef,
         playersRef,
         staleFrozenRef,
+        displayNamesRef,
       }),
     );
+
+    // Send intro message with display name
+    peerManager.send({
+      type: "intro",
+      senderId: myId,
+      displayName,
+    });
+    // Store own display name
+    displayNamesRef.current.set(myId, displayName);
 
     return () => {
       peerManager.offMessage("relativistic");
     };
   }, [peerManager, myId, handleKill, handleRespawn]);
+
+  // Save high score on tab close/reload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (!myId) return;
+      const myKills = scoresRef.current[myId] ?? 0;
+      if (myKills <= 0) return;
+      const duration = (Date.now() - sessionStartTimeRef.current) / 1000;
+      saveHighScore({
+        name: displayName,
+        kills: myKills,
+        date: new Date().toISOString(),
+        duration,
+      });
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [myId, displayName]);
 
   // ウィンドウリサイズの検出
   useEffect(() => {

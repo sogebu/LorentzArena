@@ -35,6 +35,7 @@ export type MessageHandlerDeps = {
   lastUpdateTimeRef: React.MutableRefObject<Map<string, number>>;
   playersRef: React.RefObject<Map<string, RelativisticPlayer>>;
   staleFrozenRef: React.MutableRefObject<Set<string>>;
+  displayNamesRef: React.MutableRefObject<Map<string, string>>;
 };
 
 const isFiniteNumber = (v: unknown): v is number =>
@@ -81,6 +82,7 @@ export const createMessageHandler =
       lastUpdateTimeRef,
       playersRef,
       staleFrozenRef,
+      displayNamesRef,
     } = deps;
 
     if (msg.type === "phaseSpace") {
@@ -140,6 +142,8 @@ export const createMessageHandler =
         // 色は ID から決定的に算出（joinRegistryVersion 変化時に再計算される）
         const color = existing?.color ?? getPlayerColor(playerId);
 
+        const displayName = existing?.displayName ?? displayNamesRef.current.get(playerId);
+
         const next = new Map(prev);
         next.set(playerId, {
           id: playerId,
@@ -147,7 +151,21 @@ export const createMessageHandler =
           worldLine,
           color,
           isDead: false,
+          displayName,
         });
+        return next;
+      });
+    } else if (msg.type === "intro") {
+      if (!isValidString(msg.senderId) || !isValidString(msg.displayName, 20))
+        return;
+      displayNamesRef.current.set(msg.senderId, msg.displayName);
+      // Update existing player if already in the map
+      setPlayers((prev) => {
+        const existing = prev.get(msg.senderId);
+        if (!existing) return prev;
+        if (existing.displayName === msg.displayName) return prev;
+        const next = new Map(prev);
+        next.set(msg.senderId, { ...existing, displayName: msg.displayName });
         return next;
       });
     } else if (msg.type === "syncTime") {
@@ -276,6 +294,18 @@ export const createMessageHandler =
       }
       scoresRef.current = scores;
       setScores(scores);
+      // Sync display names from migrating host
+      if (
+        msg.displayNames &&
+        typeof msg.displayNames === "object" &&
+        !Array.isArray(msg.displayNames)
+      ) {
+        for (const [id, name] of Object.entries(msg.displayNames)) {
+          if (isValidString(id) && isValidString(name, 20)) {
+            displayNamesRef.current.set(id, name as string);
+          }
+        }
+      }
       // eslint-disable-next-line no-console
       console.log(
         "[messageHandler] hostMigration received from",

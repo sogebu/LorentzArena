@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useI18n } from "../i18n";
 import { usePeer } from "../hooks/usePeer";
 
 const Connect = () => {
@@ -15,38 +16,39 @@ const Connect = () => {
     roomName,
     setActiveTransport,
   } = usePeer();
+  const { t } = useI18n();
   const [isMinimized, setIsMinimized] = useState(false);
 
   const peerStatusText = useMemo(() => {
     switch (peerStatus.status) {
       case "open":
-        return "シグナリング: 接続OK";
+        return t("connect.signaling.ok");
       case "connecting":
-        return "シグナリング: 接続中...";
+        return t("connect.signaling.connecting");
       case "disconnected":
-        return "シグナリング: 切断";
+        return t("connect.signaling.disconnected");
       case "error":
-        return `シグナリング: エラー${peerStatus.type ? `(${peerStatus.type})` : ""} ${peerStatus.message}`;
+        return `${t("connect.signaling.error")}${peerStatus.type ? `(${peerStatus.type})` : ""} ${peerStatus.message}`;
       default:
-        return "シグナリング: 状態不明";
+        return t("connect.signaling.unknown");
     }
-  }, [peerStatus]);
+  }, [peerStatus, t]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: connections triggers re-eval when peerManager.getIsHost() changes after migration
   const phaseText = useMemo(() => {
     switch (connectionPhase) {
       case "trying-host":
-        return `ルーム "${roomName}" に接続中...（ホスト試行）`;
+        return `${t("connect.transport")}: "${roomName}"${t("connect.phase.tryingHost")}`;
       case "connecting-client":
-        return `ルーム "${roomName}" に接続中...（クライアント）`;
+        return `${t("connect.transport")}: "${roomName}"${t("connect.phase.connectingClient")}`;
       case "connected":
         return peerManager?.getIsHost()
-          ? `ルーム "${roomName}" — ホスト`
-          : `ルーム "${roomName}" — クライアント`;
+          ? `ルーム "${roomName}" — ${t("connect.phase.host")}`
+          : `ルーム "${roomName}" — ${t("connect.phase.client")}`;
       case "manual":
-        return "手動接続モード";
+        return t("connect.phase.manual");
     }
-  }, [connectionPhase, roomName, peerManager, connections]);
+  }, [connectionPhase, roomName, peerManager, connections, t]);
 
   return (
     <div className="connection-panel">
@@ -58,7 +60,7 @@ const Connect = () => {
           marginBottom: "10px",
         }}
       >
-        <h3 style={{ margin: 0, fontSize: "1.1em" }}>接続設定</h3>
+        <h3 style={{ margin: 0, fontSize: "1.1em" }}>{t("connect.title")}</h3>
         <button
           type="button"
           onClick={() => setIsMinimized(!isMinimized)}
@@ -69,7 +71,7 @@ const Connect = () => {
             border: "1px solid rgba(255, 255, 255, 0.3)",
           }}
         >
-          {isMinimized ? "展開" : "最小化"}
+          {isMinimized ? t("connect.expand") : t("connect.minimize")}
         </button>
       </div>
 
@@ -86,11 +88,11 @@ const Connect = () => {
               {phaseText}
             </p>
             <p style={{ margin: "5px 0", fontSize: "0.9em" }}>
-              通信方式:{" "}
+              {t("connect.transport")}:{" "}
               {activeTransport === "peerjs" ? "PeerJS(WebRTC)" : "WS Relay"}
             </p>
             <p style={{ margin: "5px 0", fontSize: "0.9em" }}>
-              あなたのID: {myId || "生成中..."}
+              {t("connect.yourId")}: {myId || t("connect.generating")}
             </p>
             <p style={{ margin: "5px 0", fontSize: "0.85em", opacity: 0.9 }}>
               {peerStatusText}
@@ -105,9 +107,7 @@ const Connect = () => {
                     opacity: 0.85,
                   }}
                 >
-                  学校/社内ネットワークだと WebRTC
-                  が塞がれていることがあります。 その場合は通信方式を WS Relay
-                  に切り替えてください。
+                  {t("connect.networkHelp")}
                 </p>
               )}
 
@@ -119,21 +119,21 @@ const Connect = () => {
                   opacity: 0.9,
                 }}
               >
-                PeerJS失敗のため WS Relay へ自動切替しました。
+                {t("connect.autoFallback")}
               </p>
             )}
           </div>
 
           {connections.length > 0 && (
             <div className="connections-list">
-              <h3>接続中の相手</h3>
+              <h3>{t("connect.peers")}</h3>
               <ul>
                 {connections.map((conn) => (
                   <li
                     key={conn.id}
                     className={conn.open ? "connected" : "disconnected"}
                   >
-                    {conn.id} ({conn.open ? "接続中" : "接続準備中/失敗"})
+                    {conn.id} ({conn.open ? t("connect.peerOpen") : t("connect.peerClosed")})
                   </li>
                 ))}
               </ul>
@@ -142,7 +142,7 @@ const Connect = () => {
 
           <details style={{ marginTop: "8px" }}>
             <summary style={{ cursor: "pointer", fontSize: "0.85em" }}>
-              ▶ ネットワーク設定(env)
+              ▶ {t("connect.networkSettings")}
             </summary>
             <div style={{ fontSize: "0.8em", opacity: 0.9, marginTop: "6px" }}>
               <div>PeerServer host: {networkingEnv.peerHost}</div>
@@ -154,7 +154,7 @@ const Connect = () => {
               <div>Preferred transport: {networkingEnv.preferredTransport}</div>
               <div>WS relay URL: {networkingEnv.wsRelayUrl}</div>
               <div style={{ marginTop: "8px" }}>
-                <span>通信方式: </span>
+                <span>{t("connect.transport")}: </span>
                 <select
                   value={activeTransport}
                   onChange={(e) =>

@@ -47,6 +47,7 @@ export type RelativisticPlayer = {
   worldLine: WorldLine; // 現在の命の世界線（1本のみ）
   color: string;
   isDead: boolean;
+  displayName?: string;
 };
 
 export type Laser = {

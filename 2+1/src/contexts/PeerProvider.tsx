@@ -113,6 +113,9 @@ const isRelayable = (msg: Message): boolean => {
       msg.direction != null
     );
   }
+  if (msg.type === "intro") {
+    return typeof msg.senderId === "string" && typeof msg.displayName === "string";
+  }
   return false;
 };
 
