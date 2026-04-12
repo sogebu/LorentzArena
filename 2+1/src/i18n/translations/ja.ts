@@ -55,6 +55,8 @@ export const ja = {
   "lobby.noScores": "まだ記録がありません",
   "lobby.kills": "キル",
   "lobby.duration": "時間",
+  "lobby.globalLeaderboard": "グローバルランキング",
+  "lobby.loading": "読み込み中...",
 } as const;
 
 export type TranslationKey = keyof typeof ja;

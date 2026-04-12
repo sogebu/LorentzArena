@@ -1,7 +1,8 @@
-import { type FormEvent, useEffect, useMemo, useRef } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n, type Lang } from "../i18n";
 import { usePeer } from "../hooks/usePeer";
-import { getTopScores } from "../services/highScores";
+import { getTopScores, type HighScoreEntry } from "../services/highScores";
+import { fetchLeaderboard } from "../services/leaderboard";
 
 type LobbyProps = {
   displayName: string;
@@ -20,6 +21,13 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
 
   const isConnected = connectionPhase === "connected";
   const highScores = useMemo(() => getTopScores(5), []);
+  const [globalScores, setGlobalScores] = useState<HighScoreEntry[]>([]);
+
+  useEffect(() => {
+    const leaderboardUrl = import.meta.env.VITE_LEADERBOARD_URL;
+    if (!leaderboardUrl) return;
+    fetchLeaderboard(leaderboardUrl, 10).then(setGlobalScores);
+  }, []);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -178,6 +186,39 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
           {highScores.map((entry, i) => (
             <div
               key={`${entry.name}-${entry.date}`}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "3px 0",
+                borderBottom: "1px solid rgba(255,255,255,0.08)",
+              }}
+            >
+              <span>
+                {i + 1}. {entry.name}
+              </span>
+              <span>
+                {entry.kills} {t("lobby.kills")} / {Math.floor(entry.duration / 60)}:{String(Math.floor(entry.duration) % 60).padStart(2, "0")}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      {/* Global leaderboard */}
+      {globalScores.length > 0 && (
+        <div
+          style={{
+            marginTop: "24px",
+            width: "min(280px, 80vw)",
+            fontSize: "13px",
+            opacity: 0.6,
+          }}
+        >
+          <div style={{ fontWeight: "bold", marginBottom: "8px" }}>
+            {t("lobby.globalLeaderboard")}
+          </div>
+          {globalScores.map((entry, i) => (
+            <div
+              key={`g-${entry.name}-${entry.date}`}
               style={{
                 display: "flex",
                 justifyContent: "space-between",

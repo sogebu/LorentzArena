@@ -46,6 +46,7 @@ import {
 } from "./game/lighthouse";
 import { createMessageHandler } from "./game/messageHandler";
 import { saveHighScore } from "../services/highScores";
+import { submitScore } from "../services/leaderboard";
 import { SceneContent } from "./game/SceneContent";
 import { useTouchInput } from "./game/touchInput";
 import type {
@@ -502,12 +503,17 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       const myKills = scoresRef.current[myId] ?? 0;
       if (myKills <= 0) return;
       const duration = (Date.now() - sessionStartTimeRef.current) / 1000;
-      saveHighScore({
+      const entry = {
         name: displayName,
         kills: myKills,
         date: new Date().toISOString(),
         duration,
-      });
+      };
+      saveHighScore(entry);
+      const leaderboardUrl = import.meta.env.VITE_LEADERBOARD_URL;
+      if (leaderboardUrl) {
+        submitScore(leaderboardUrl, entry);
+      }
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);

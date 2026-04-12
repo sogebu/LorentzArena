@@ -57,4 +57,6 @@ export const en: Record<TranslationKey, string> = {
   "lobby.noScores": "No records yet",
   "lobby.kills": "Kills",
   "lobby.duration": "Time",
+  "lobby.globalLeaderboard": "Global Leaderboard",
+  "lobby.loading": "Loading...",
 };

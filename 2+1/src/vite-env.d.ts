@@ -13,6 +13,7 @@ interface ImportMetaEnv {
   readonly VITE_TURN_CREDENTIAL_URL?: string;
   readonly VITE_NETWORK_TRANSPORT?: "peerjs" | "wsrelay" | "auto";
   readonly VITE_WS_RELAY_URL?: string;
+  readonly VITE_LEADERBOARD_URL?: string;
 }
 
 interface ImportMeta {

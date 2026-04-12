@@ -6,3 +6,8 @@ compatibility_date = "2025-01-01"
 TURN_KEY_ID = "b9a0334715f43ec9f912878ecfe3a807"
 
 # TURN_API_TOKEN is secret — set via: npx wrangler secret put TURN_API_TOKEN
+
+[[kv_namespaces]]
+binding = "LEADERBOARD"
+id = "2f4ffaba9ba44e4384700893780e801a"
+preview_id = "7d4c30c4132b4f2195e0ce9a86d2dfda"
