@@ -326,7 +326,7 @@ const RelativisticGame = () => {
     setPlayers((prev) => {
       const idsToRemove: string[] = [];
       for (const playerId of prev.keys()) {
-        if (!connectedIds.has(playerId)) {
+        if (!connectedIds.has(playerId) && !isLighthouse(playerId)) {
           idsToRemove.push(playerId);
         }
       }
