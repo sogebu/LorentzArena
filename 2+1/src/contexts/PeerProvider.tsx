@@ -250,7 +250,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   const [autoFallbackTriggered, setAutoFallbackTriggered] = useState(false);
   const [isMigrating, setIsMigrating] = useState(false);
 
-  // Incremented when host/client role changes mid-session (demotion).
+  // Incremented on all host/client role changes (migration, solo host, demotion).
   // Added to deps of effects that check getIsHost() to force re-evaluation.
   const [roleVersion, setRoleVersion] = useState(0);
 
