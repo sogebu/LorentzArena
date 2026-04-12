@@ -49,8 +49,9 @@ const WorldLineRenderer = ({
   const prevHalfLineGeoRef = useRef<THREE.TubeGeometry | null>(null);
 
   // version を TUBE_REGEN_INTERVAL で量子化して再生成を間引く
+  // wl オブジェクト自体が変わった時（リスポーン）も確実に再生成するため wl を依存に含める
   const geoVersion = Math.floor(wl.version / TUBE_REGEN_INTERVAL);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: geoVersion throttles rebuild; wl.history has actual data
+  // biome-ignore lint/correctness/useExhaustiveDependencies: geoVersion throttles rebuild; wl included for respawn identity change
   const tubeGeo = useMemo(() => {
     prevTubeGeoRef.current?.dispose();
     if (wl.history.length < 2) {
@@ -65,7 +66,7 @@ const WorldLineRenderer = ({
     const geo = new THREE.TubeGeometry(curve, segments, 0.04, 6, false);
     prevTubeGeoRef.current = geo;
     return geo;
-  }, [geoVersion]);
+  }, [geoVersion, wl]);
 
   const halfLineGeo = useMemo(() => {
     prevHalfLineGeoRef.current?.dispose();
@@ -280,7 +281,18 @@ const SpawnRenderer = ({
   );
 };
 
-// デブリ描画コンポーネント（BufferGeometry のライフサイクル管理）
+// デブリ描画用の共有リソース（太いシリンダーで描画）
+const debrisCylinderGeo = new THREE.CylinderGeometry(1, 1, 1, 4, 1);
+const _debrisMatrix = new THREE.Matrix4();
+const _debrisStart = new THREE.Vector3();
+const _debrisEnd = new THREE.Vector3();
+const _debrisMid = new THREE.Vector3();
+const _debrisDir = new THREE.Vector3();
+const _debrisUp = new THREE.Vector3(0, 1, 0);
+const _debrisQuat = new THREE.Quaternion();
+const _debrisScale = new THREE.Vector3();
+
+// デブリ描画コンポーネント（InstancedMesh で太いシリンダー描画）
 const DebrisRenderer = ({
   debrisRecords,
   myPlayer,
@@ -292,18 +304,17 @@ const DebrisRenderer = ({
   observerPos: Vector4 | null;
   observerBoost: ReturnType<typeof lorentzBoost> | null;
 }) => {
-  const debrisLineGeoRef = useRef<THREE.BufferGeometry | null>(null);
+  const instancedRef = useRef<THREE.InstancedMesh>(null);
+  const materialRef = useRef<THREE.MeshBasicMaterial>(null);
 
-  // dispose on unmount or when debris changes
-  useEffect(() => {
-    return () => {
-      debrisLineGeoRef.current?.dispose();
-      debrisLineGeoRef.current = null;
-    };
-  }, []);
-
-  const lineVertices: number[] = [];
-  const lineColors: number[] = [];
+  // collect all debris segments + markers
+  type DebrisSegment = {
+    startX: number; startY: number; startT: number;
+    endX: number; endY: number; endT: number;
+    r: number; g: number; b: number;
+    radius: number;
+  };
+  const segments: DebrisSegment[] = [];
   const markerElements: React.ReactNode[] = [];
 
   for (let di = 0; di < debrisRecords.length; di++) {
@@ -316,9 +327,6 @@ const DebrisRenderer = ({
     );
     const maxLambda = 5;
     const debrisColor = getThreeColor(debris.color);
-    const r = debrisColor.r;
-    const g = debrisColor.g;
-    const b = debrisColor.b;
 
     const startDisplay = transformEventForDisplay(
       deathEvent,
@@ -340,15 +348,13 @@ const DebrisRenderer = ({
         observerPos,
         observerBoost,
       );
-      lineVertices.push(
-        startDisplay.x,
-        startDisplay.y,
-        startDisplay.t,
-        endDisplay.x,
-        endDisplay.y,
-        endDisplay.t,
-      );
-      lineColors.push(r, g, b, r, g, b);
+
+      segments.push({
+        startX: startDisplay.x, startY: startDisplay.y, startT: startDisplay.t,
+        endX: endDisplay.x, endY: endDisplay.y, endT: endDisplay.t,
+        r: debrisColor.r, g: debrisColor.g, b: debrisColor.b,
+        radius: p.size * 0.06,
+      });
 
       const intersection = pastLightConeIntersectionDebris(
         deathEvent,
@@ -376,23 +382,55 @@ const DebrisRenderer = ({
     }
   }
 
-  if (lineVertices.length === 0) return <>{markerElements}</>;
+  // update instanced mesh
+  const mesh = instancedRef.current;
+  if (mesh) {
+    const colorAttr = new Float32Array(segments.length * 3);
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      _debrisStart.set(seg.startX, seg.startY, seg.startT);
+      _debrisEnd.set(seg.endX, seg.endY, seg.endT);
+      _debrisMid.addVectors(_debrisStart, _debrisEnd).multiplyScalar(0.5);
+      _debrisDir.subVectors(_debrisEnd, _debrisStart);
+      const len = _debrisDir.length();
+      if (len < 0.001) {
+        _debrisScale.set(0, 0, 0);
+        _debrisMatrix.compose(_debrisMid, _debrisQuat, _debrisScale);
+      } else {
+        _debrisDir.normalize();
+        _debrisQuat.setFromUnitVectors(_debrisUp, _debrisDir);
+        _debrisScale.set(seg.radius, len, seg.radius);
+        _debrisMatrix.compose(_debrisMid, _debrisQuat, _debrisScale);
+      }
+      mesh.setMatrixAt(i, _debrisMatrix);
+      colorAttr[i * 3] = seg.r;
+      colorAttr[i * 3 + 1] = seg.g;
+      colorAttr[i * 3 + 2] = seg.b;
+    }
+    mesh.count = segments.length;
+    mesh.instanceMatrix.needsUpdate = true;
+    // per-instance color
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(colorAttr, 3);
+    mesh.instanceColor.needsUpdate = true;
+  }
 
-  // 前回の geometry を dispose して新しいものを作成
-  debrisLineGeoRef.current?.dispose();
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute(
-    "position",
-    new THREE.Float32BufferAttribute(lineVertices, 3),
-  );
-  geom.setAttribute("color", new THREE.Float32BufferAttribute(lineColors, 3));
-  debrisLineGeoRef.current = geom;
+  // max possible instances: MAX_DEBRIS * EXPLOSION_PARTICLE_COUNT
+  const maxInstances = 20 * 30;
 
   return (
     <>
-      <lineSegments geometry={geom}>
-        <lineBasicMaterial vertexColors transparent opacity={0.15} />
-      </lineSegments>
+      <instancedMesh
+        ref={instancedRef}
+        args={[debrisCylinderGeo, undefined, maxInstances]}
+        frustumCulled={false}
+      >
+        <meshBasicMaterial
+          ref={materialRef}
+          transparent
+          opacity={0.10}
+          depthWrite={false}
+        />
+      </instancedMesh>
       {markerElements}
     </>
   );

@@ -1,21 +1,40 @@
 import {
   createVector4,
   pastLightConeIntersectionSegment,
+  type Vector3,
   type Vector4,
 } from "../../physics";
 import { EXPLOSION_PARTICLE_COUNT } from "./constants";
 
-// 爆発パーティクルの方向を事前生成（未来光円錐内をランダムに飛散）
-export const generateExplosionParticles = () => {
+/**
+ * 爆発パーティクルの方向を生成（未来光円錐内をランダムに飛散）。
+ * victimU（4元速度の空間成分 = 固有速度 γv）が与えられた場合、
+ * その成分にランダム摂動を加え、ut = √(1 + ux² + uy² + uz²) で正規化。
+ * 3速度 v = u_spatial / γ なので |v| < 1 は自動的に保証される。
+ */
+export const generateExplosionParticles = (victimU?: Vector3) => {
   const particles: { dx: number; dy: number; speed: number; size: number }[] =
     [];
+
+  const baseUx = victimU?.x ?? 0;
+  const baseUy = victimU?.y ?? 0;
+
   for (let i = 0; i < EXPLOSION_PARTICLE_COUNT; i++) {
     const angle = Math.random() * Math.PI * 2;
-    // speed < 1 (光速未満) → 未来光円錐の内側を進む
-    const speed = 0.2 + Math.random() * 0.7; // 0.2c ~ 0.9c
+    // 固有速度空間でのランダム摂動幅: 0.2 ~ 2.0 (γv 単位)
+    const kick = 0.2 + Math.random() * 1.8;
+    const ux = baseUx + Math.cos(angle) * kick;
+    const uy = baseUy + Math.sin(angle) * kick;
+    // ut = γ = √(1 + |u|²)
+    const ut = Math.sqrt(1 + ux * ux + uy * uy);
+    // 3速度 = u_spatial / γ (自動的に |v| < 1)
+    const dx = ux / ut;
+    const dy = uy / ut;
+    const speed = Math.sqrt(dx * dx + dy * dy);
+
     particles.push({
-      dx: Math.cos(angle) * speed,
-      dy: Math.sin(angle) * speed,
+      dx,
+      dy,
       speed,
       size: 0.2 + Math.random() * 0.4,
     });

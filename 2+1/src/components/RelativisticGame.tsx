@@ -176,7 +176,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         return [...prev, frozen].slice(-MAX_FROZEN_WORLDLINES);
       });
 
-      const explosionParticles = generateExplosionParticles();
+      const explosionParticles = generateExplosionParticles(victim.phaseSpace.u);
       setDebrisRecords((prev) => {
         const newDebris: DebrisRecord = {
           deathPos: hitPos,
