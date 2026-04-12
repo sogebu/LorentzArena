@@ -98,21 +98,14 @@ export interface GameLoopDeps {
 export function useGameLoop(deps: GameLoopDeps): void {
   const lastTimeRef = useRef<number>(Date.now());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // deps を ref に保存して useEffect の再実行を防ぐ
+  // （オブジェクトリテラルは毎レンダリングで新規作成されるため依存に入れると毎回 cleanup → 再生成）
+  const depsRef = useRef(deps);
+  depsRef.current = deps;
 
+  // peerManager と myId のみが真の依存（null → 値の遷移で effect 再起動が必要）
+  const { peerManager, myId } = deps;
   useEffect(() => {
-    const {
-      peerManager, myId,
-      setPlayers, setLasers, setSpawns, setScores, setFps, setEnergy, setIsFiring,
-      setDeathFlash, setKillNotification,
-      playersRef, lasersRef, processedLasersRef, deadPlayersRef,
-      pendingKillEventsRef, pendingSpawnEventsRef, causalFrozenRef,
-      lighthouseLastFireRef, lighthouseSpawnTimeRef, lastLaserTimeRef,
-      myDeathEventRef, ghostTauRef, cameraYawRef, cameraPitchRef,
-      energyRef, fpsRef, scoresRef, respawnTimeoutsRef,
-      keysPressed, touchInput,
-      handleKill, handleRespawn, stale,
-    } = deps;
-
     if (!peerManager || !myId) return;
 
     const gameLoop = () => {
@@ -120,6 +113,19 @@ export function useGameLoop(deps: GameLoopDeps): void {
         lastTimeRef.current = Date.now();
         return;
       }
+
+      // 毎 tick で最新の deps を読む（handleKill/handleRespawn 等が変わりうる）
+      const {
+        setPlayers, setLasers, setSpawns, setScores, setFps, setEnergy, setIsFiring,
+        setDeathFlash, setKillNotification,
+        playersRef, lasersRef, processedLasersRef, deadPlayersRef,
+        pendingKillEventsRef, pendingSpawnEventsRef, causalFrozenRef,
+        lighthouseLastFireRef, lighthouseSpawnTimeRef, lastLaserTimeRef,
+        myDeathEventRef, ghostTauRef, cameraYawRef, cameraPitchRef,
+        energyRef, fpsRef, scoresRef, respawnTimeoutsRef,
+        keysPressed, touchInput,
+        handleKill, handleRespawn, stale,
+      } = depsRef.current;
 
       const currentTime = Date.now();
       const rawDTau = (currentTime - lastTimeRef.current) / 1000;
@@ -444,10 +450,10 @@ export function useGameLoop(deps: GameLoopDeps): void {
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
-      for (const id of deps.respawnTimeoutsRef.current) {
+      for (const id of depsRef.current.respawnTimeoutsRef.current) {
         clearTimeout(id);
       }
-      deps.respawnTimeoutsRef.current.clear();
+      depsRef.current.respawnTimeoutsRef.current.clear();
     };
-  }, [deps]);
+  }, [peerManager, myId]);
 }
