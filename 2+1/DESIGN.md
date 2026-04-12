@@ -2,6 +2,33 @@
 
 ## 設計判断の記録
 
+### visibilitychange によるゲームループ停止（2026-04-12）
+
+- **What**: `document.hidden` のとき、ゲームループ（`setInterval` 8ms）と PeerProvider の ping 送信をスキップ。`clearInterval` ではなくループ内チェック
+- **Why**: ブラウザはバックグラウンドタブの `setInterval` を throttle する（Chrome: ~1s、Safari: もっと遅い）。throttle されたループが中途半端な頻度で走ると、(1) stale な phaseSpace を低頻度で送信し続ける (2) Lighthouse AI が極低速で動く (3) 座標時間の進行率が異常に低くなる等の不整合が生じる。完全に止めるのが正しい
+- **チェック位置をループ内にした理由**: `clearInterval` + `visibilitychange` で再開するアプローチでは、ループ本体のクロージャを再構築する必要がある（useEffect の deps 問題）。ループ先頭の 1 行 `if (document.hidden) { lastTimeRef.current = Date.now(); return; }` で同等の効果を得られ、`lastTimeRef` 更新で復帰時のジャンプも防止
+- **既存メカニズムとの連携**: ping 停止 → クライアントがハートビートタイムアウト → migration。phaseSpace 停止 → stale 検知。新しいプロトコル不要
+
+### syncTime のタイミング問題とその解決（2026-04-12）
+
+- **What**: ロビー導入で PeerProvider と RelativisticGame が別のライフサイクルになった結果、クライアントの syncTime が失われる問題が発生
+- **根本原因**: PeerProvider はロビー中に接続する → ホストが即座に syncTime を送信 → しかしクライアントの RelativisticGame（messageHandler を登録する）はまだ mount されていない → syncTime は誰にも処理されず消失
+- **修正**: クライアントの RelativisticGame mount 時に `requestPeerList` を送信。ホスト側の messageHandler が `requestPeerList` を受信したら `sendTo` で syncTime を返す（ブロードキャストではなく、要求元だけに unicast）
+- **教訓**: PeerProvider（常時 mount）と RelativisticGame（条件付き mount）の間でメッセージが失われるパターン。新しいメッセージ型を追加する際は、両方の mount 状態を考慮すること
+
+### ゴースト reducer の React batch race（2026-04-12）
+
+- **What**: リスポーン時に旧世界線と新世界線が繋がる
+- **根本原因**: ゴースト中の `setPlayers((prev) => ({ ...me, phaseSpace: ghostPos }))` と `applyRespawn` の `setPlayers` が同じ React 18 batch で実行されると、ゴースト reducer の `...me` スプレッドが respawn で作った新 WorldLine を旧 WorldLine で上書きする
+- **修正**: ゴースト reducer で `if (!me.isDead) return prev` を追加。respawn が先に走っていれば isDead は false → ゴースト更新スキップ
+- **教訓**: 「setState reducer は純関数に保つ」の延長。**同じ state を更新する複数の setPlayers が同一バッチに入る場合、各 reducer は他の reducer が先に走った可能性を考慮すべき**。isDead フラグはここで「respawn 済みか」の判定に使える
+
+### グローバルリーダーボード: Cloudflare KV 単一キー設計（2026-04-12）
+
+- **What**: リーダーボード全エントリを KV の単一キー `"top"` に JSON 配列として格納。Worker 側でトップ 50 フィルタ（read → 比較 → 条件付き write）
+- **Why**: KV は値サイズ 25 MB まで。50 エントリ × ~100 bytes ≈ 5 KB で十分収まる。単一キーなら read 1 回 + write 最大 1 回で完結。トップ 50 に入らないスコアは read only（無料枠 100K reads/日で十分）。write は条件付きなので無料枠 1K writes/日を大幅に節約
+- **トレードオフ**: 同時書き込みの last-write-wins。物理デモゲームでは許容
+
 ### Stale プレイヤー処理の設計整理（2026-04-12 監査）
 
 現状の stale 処理は複数のバグ修正で有機的に成長し、以下の問題を抱えている。次回リファクタリングで統一的に修正する。
