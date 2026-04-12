@@ -868,28 +868,28 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         const me = playersRef.current.get(myId);
         if (me) {
           // 因果律の守護者
-          const STALE_THRESHOLD = 5000; // 5秒更新なしのプレイヤーはスキップ
-          // Stale 判定: 5秒更新なしのプレイヤーを記録（因果律ガードでスキップ、当たり判定は継続）
+          const STALE_WALL_THRESHOLD = 5000; // 壁時計5秒更新なし → stale
+          const STALE_COORD_THRESHOLD = 3; // 座標時間で3秒以上遅れている → stale
+          // Stale 判定: 更新が途絶えたプレイヤー、または世界線が進んでいない
+          // プレイヤー（バックグラウンドタブの throttle）を stale 扱い
           for (const [id, player] of playersRef.current) {
             if (id === myId) continue;
-            if (player.isDead) continue; // 死亡中プレイヤーは stale 判定しない（通常 respawn が処理）
+            if (player.isDead) continue;
             if (staleFrozenRef.current.has(id)) continue;
             const lastUpdate = lastUpdateTimeRef.current.get(id);
-            if (lastUpdate && currentTime - lastUpdate > STALE_THRESHOLD) {
+            const noWallUpdate = lastUpdate && currentTime - lastUpdate > STALE_WALL_THRESHOLD;
+            const coordTimeLag = me.phaseSpace.pos.t - player.phaseSpace.pos.t > STALE_COORD_THRESHOLD;
+            if (noWallUpdate || coordTimeLag) {
               staleFrozenRef.current.add(id);
             }
           }
           let frozen = false;
-          const COORDINATE_TIME_LAG_LIMIT = 5; // 座標時間で5秒以上遅れたプレイヤーはガード対象外
           for (const [id, player] of playersRef.current) {
             if (id === myId) continue;
             if (player.isDead) continue;
-            if (isLighthouse(id)) continue; // NPC は因果律ガードに影響しない
+            if (isLighthouse(id)) continue;
             if (staleFrozenRef.current.has(id)) continue;
             if (player.phaseSpace.pos.t > me.phaseSpace.pos.t) continue;
-            // バックグラウンドタブでゲームループが throttle され座標時間が
-            // 大幅に遅れたプレイヤーは因果律ガードから除外
-            if (me.phaseSpace.pos.t - player.phaseSpace.pos.t > COORDINATE_TIME_LAG_LIMIT) continue;
             const diff = subVector4(player.phaseSpace.pos, me.phaseSpace.pos);
             const l = lorentzDotVector4(diff, diff);
             // Hysteresis: require margin to exit frozen state (prevents flickering
