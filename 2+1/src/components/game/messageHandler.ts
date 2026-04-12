@@ -6,7 +6,7 @@ import {
   createWorldLine,
 } from "../../physics";
 import { colorForPlayerId } from "./colors"; // fallback for syncTime init
-import { MAX_LASERS, SPAWN_RANGE } from "./constants";
+import { MAX_LASERS, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
 import type { Laser, RelativisticPlayer, SpawnEffect } from "./types";
 
 export type MessageHandlerDeps = {
@@ -133,7 +133,7 @@ export const createMessageHandler =
         const worldLine = existingWorldLine
           ? appendWorldLine(existingWorldLine, phaseSpace)
           : (() => {
-              let wl = createWorldLine(5000, phaseSpace); // 新規プレイヤー: origin 付き
+              let wl = createWorldLine(MAX_WORLDLINE_HISTORY, phaseSpace); // 新規プレイヤー: origin 付き
               wl = appendWorldLine(wl, phaseSpace);
               return wl;
             })();
@@ -186,7 +186,7 @@ export const createMessageHandler =
           ),
           me?.phaseSpace.u ?? { x: 0, y: 0, z: 0 },
         );
-        let newWorldLine = createWorldLine(5000, synced);
+        let newWorldLine = createWorldLine(MAX_WORLDLINE_HISTORY, synced);
         newWorldLine = appendWorldLine(newWorldLine, synced);
         const next = new Map(prev);
         next.set(myId, {

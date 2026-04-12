@@ -29,6 +29,7 @@ import {
   MAX_DEBRIS,
   MAX_FROZEN_WORLDLINES,
   MAX_LASERS,
+  MAX_WORLDLINE_HISTORY,
   OFFSET,
   RESPAWN_DELAY,
   SPAWN_EFFECT_DURATION,
@@ -261,7 +262,7 @@ const RelativisticGame = () => {
       ),
       vector3Zero(),
     );
-    let initialWorldLine = createWorldLine(5000, initialPhaseSpace);
+    let initialWorldLine = createWorldLine(MAX_WORLDLINE_HISTORY, initialPhaseSpace);
     initialWorldLine = appendWorldLine(initialWorldLine, initialPhaseSpace);
     const initialColor = getPlayerColor(myId);
 

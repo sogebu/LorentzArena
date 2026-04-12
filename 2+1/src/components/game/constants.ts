@@ -32,6 +32,9 @@ export const ENERGY_MAX = 1.0;
 export const ENERGY_PER_SHOT = 1.0 / 30; // 30 発で枯渇（≈3 秒連射）
 export const ENERGY_RECOVERY_RATE = 1.0 / 6; // 6 秒で 0→満タン（撃っていないときのみ回復）
 
+// 世界線の最大サンプル数
+export const MAX_WORLDLINE_HISTORY = 5000;
+
 // 爆発パーティクル数
 export const EXPLOSION_PARTICLE_COUNT = 30;
 

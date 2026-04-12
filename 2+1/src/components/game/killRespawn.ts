@@ -5,6 +5,7 @@ import {
   createWorldLine,
   vector3Zero,
 } from "../../physics";
+import { MAX_WORLDLINE_HISTORY } from "./constants";
 import type { RelativisticPlayer } from "./types";
 
 /**
@@ -36,7 +37,7 @@ export const applyRespawn = (
     createVector4(position.t, position.x, position.y, position.z),
     vector3Zero(),
   );
-  let newWorldLine = createWorldLine(5000); // リスポーン: origin なし（過去に半直線を伸ばさない）
+  let newWorldLine = createWorldLine(MAX_WORLDLINE_HISTORY); // リスポーン: origin なし（過去に半直線を伸ばさない）
   newWorldLine = appendWorldLine(newWorldLine, ps);
   const next = new Map(prev);
   next.set(playerId, {

@@ -8,7 +8,7 @@ import {
   type Vector3,
   type Vector4,
 } from "../../physics";
-import { LIGHTHOUSE_COLOR, LIGHTHOUSE_ID_PREFIX, SPAWN_RANGE } from "./constants";
+import { LIGHTHOUSE_COLOR, LIGHTHOUSE_ID_PREFIX, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
 import type { RelativisticPlayer } from "./types";
 
 /** Check if a player ID belongs to a Lighthouse NPC. */
@@ -28,7 +28,7 @@ export const createLighthouse = (
     createVector4(time, spawnX, spawnY, 0),
     vector3Zero(),
   );
-  let wl = createWorldLine(5000, ps);
+  let wl = createWorldLine(MAX_WORLDLINE_HISTORY, ps);
   wl = appendWorldLine(wl, ps);
   return {
     id,
