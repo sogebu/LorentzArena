@@ -1,10 +1,12 @@
 import {
   appendWorldLine,
-  type createPhaseSpace,
+  createPhaseSpace,
   createVector3,
   createVector4,
   evolvePhaseSpace,
+  lorentzDotVector4,
   pastLightConeIntersectionWorldLine,
+  subVector4,
   vector3Zero,
   type Vector4,
 } from "../../physics";
@@ -121,7 +123,30 @@ export function processLighthouseAI(
   lastFireMap: Map<string, number>,
   spawnTimeMap: Map<string, number>,
 ): LighthouseResult {
-  const lhNewPs = evolvePhaseSpace(lh.phaseSpace, vector3Zero(), dTau);
+  let lhNewPs = evolvePhaseSpace(lh.phaseSpace, vector3Zero(), dTau);
+
+  // 因果律ジャンプ: 灯台が誰かの過去光円錐内に落ちたら、
+  // 一番過去にいる生存プレイヤーの座標時間までジャンプして因果律を保つ
+  let needsJump = false;
+  let minPlayerT = Number.POSITIVE_INFINITY;
+  for (const [pId, player] of players) {
+    if (isLighthouse(pId)) continue;
+    if (player.isDead) continue;
+    minPlayerT = Math.min(minPlayerT, player.phaseSpace.pos.t);
+    if (player.phaseSpace.pos.t <= lhNewPs.pos.t) continue;
+    const diff = subVector4(lhNewPs.pos, player.phaseSpace.pos);
+    const l = lorentzDotVector4(diff, diff);
+    if (l < 0) {
+      needsJump = true;
+    }
+  }
+  if (needsJump && minPlayerT > lhNewPs.pos.t) {
+    lhNewPs = createPhaseSpace(
+      createVector4(minPlayerT, lhNewPs.pos.x, lhNewPs.pos.y, 0),
+      vector3Zero(),
+    );
+  }
+
   const lhNewWl = appendWorldLine(lh.worldLine, lhNewPs);
 
   // Grace period after spawn
