@@ -500,24 +500,32 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (!myId) return;
-      const myKills = scoresRef.current[myId] ?? 0;
-      if (myKills <= 0) return;
       const duration = (Date.now() - sessionStartTimeRef.current) / 1000;
-      const entry = {
-        name: displayName,
-        kills: myKills,
-        date: new Date().toISOString(),
-        duration,
-      };
-      saveHighScore(entry);
       const leaderboardUrl = import.meta.env.VITE_LEADERBOARD_URL;
-      if (leaderboardUrl) {
-        submitScore(leaderboardUrl, entry);
+      const now = new Date().toISOString();
+
+      // Save player's own score
+      const myKills = scoresRef.current[myId] ?? 0;
+      if (myKills > 0) {
+        const entry = { name: displayName, kills: myKills, date: now, duration };
+        saveHighScore(entry);
+        if (leaderboardUrl) submitScore(leaderboardUrl, entry);
+      }
+
+      // Save Lighthouse score (host only — host runs the AI)
+      if (peerManager?.getIsHost()) {
+        for (const [id, kills] of Object.entries(scoresRef.current)) {
+          if (isLighthouse(id) && kills > 0) {
+            const entry = { name: "Lighthouse", kills, date: now, duration };
+            saveHighScore(entry);
+            if (leaderboardUrl) submitScore(leaderboardUrl, entry);
+          }
+        }
       }
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [myId, displayName]);
+  }, [myId, displayName, peerManager]);
 
   // ウィンドウリサイズの検出
   useEffect(() => {
