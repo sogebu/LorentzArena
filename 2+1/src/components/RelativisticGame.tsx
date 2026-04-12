@@ -208,6 +208,7 @@ const RelativisticGame = () => {
       if (playerId === myId) {
         myDeathEventRef.current = null;
         ghostTauRef.current = 0;
+        cameraYawRef.current = 0;
         cameraPitchRef.current = Math.PI / 6;
         energyRef.current = ENERGY_MAX;
       }
