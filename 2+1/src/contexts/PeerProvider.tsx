@@ -528,6 +528,49 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     }
   }, [connections, peerManager, connectionPhase, roleVersion]);
 
+  // Host: release PeerJS IDs when tab is hidden for >5s.
+  // This allows the new host (post-migration) to create a beacon at la-{roomName}.
+  // On tab return, reconnect from scratch via Phase 1.
+  const HOST_HIDDEN_GRACE = 5000;
+  const tabHiddenTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const wasDestroyedByHideRef = useRef(false);
+  const peerManagerForHideRef = useRef(peerManager);
+  peerManagerForHideRef.current = peerManager;
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        const pm = peerManagerForHideRef.current;
+        if (pm?.getIsHost()) {
+          tabHiddenTimerRef.current = setTimeout(() => {
+            tabHiddenTimerRef.current = undefined;
+            wasDestroyedByHideRef.current = true;
+            if (beaconRef.current) {
+              beaconRef.current.destroy();
+              beaconRef.current = null;
+            }
+            pm.destroy();
+            setPeerManager(null);
+          }, HOST_HIDDEN_GRACE);
+        }
+      } else {
+        if (tabHiddenTimerRef.current != null) {
+          // Returned within grace period → cancel
+          clearTimeout(tabHiddenTimerRef.current);
+          tabHiddenTimerRef.current = undefined;
+        } else if (wasDestroyedByHideRef.current) {
+          // PeerManager was destroyed while hidden → reconnect
+          wasDestroyedByHideRef.current = false;
+          setConnectionPhase("trying-host");
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      clearTimeout(tabHiddenTimerRef.current);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
   // Host heartbeat: send ping every 3 seconds so clients can detect
   // host disconnection quickly (WebRTC ICE timeout is 30+ seconds).
   // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on demotion
