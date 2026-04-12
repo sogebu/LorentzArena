@@ -24,7 +24,7 @@ export type TouchInputState = {
 
 const DOUBLE_TAP_INTERVAL = 300; // ms between taps to count as double-tap
 const DOUBLE_TAP_DISTANCE = 30; // px max distance between taps
-const SWIPE_SENSITIVITY_X = 0.008; // radians per pixel of horizontal movement
+const SWIPE_SENSITIVITY = 0.008; // radians per pixel of swipe movement (yaw and pitch)
 const THRUST_SENSITIVITY_Y = 0.015; // thrust per pixel of vertical displacement
 
 /** Find a specific touch by identifier in a TouchList, or null. */
@@ -112,9 +112,9 @@ export const useTouchInput = (): React.RefObject<TouchInputState> => {
       if (!touch) return;
 
       // Heading: horizontal movement delta (accumulated between game loop ticks)
-      state.yawDelta += -(touch.clientX - active.lastX) * SWIPE_SENSITIVITY_X;
+      state.yawDelta += -(touch.clientX - active.lastX) * SWIPE_SENSITIVITY;
       // Pitch: vertical movement delta (used for camera pitch when dead)
-      state.pitchDelta += -(touch.clientY - active.lastY) * SWIPE_SENSITIVITY_X;
+      state.pitchDelta += -(touch.clientY - active.lastY) * SWIPE_SENSITIVITY;
 
       // Thrust: vertical displacement from touch origin (position-based)
       // Up = negative clientY delta = forward thrust (positive)

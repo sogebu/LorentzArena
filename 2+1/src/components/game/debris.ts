@@ -1,7 +1,6 @@
 import {
   createVector4,
-  lorentzDotVector4,
-  subVector4,
+  pastLightConeIntersectionSegment,
   type Vector4,
 } from "../../physics";
 import { EXPLOSION_PARTICLE_COUNT } from "./constants";
@@ -26,9 +25,9 @@ export const generateExplosionParticles = () => {
 
 /**
  * Past light cone intersection for a debris particle (timelike straight worldline).
+ * Delegates to the generic pastLightConeIntersectionSegment solver.
  *
- * Particle trajectory: P(λ) = start + λ * (dx, dy, 0, 1),  λ ∈ [0, maxLambda]
- * Solve lorentzDot(observer - P(λ), observer - P(λ)) = 0 for past intersection.
+ * JP: デブリ粒子の時空直線と観測者の過去光円錐の交差を汎用ソルバーで求める。
  */
 export const pastLightConeIntersectionDebris = (
   start: Vector4,
@@ -39,39 +38,5 @@ export const pastLightConeIntersectionDebris = (
 ): Vector4 | null => {
   // delta = direction 4-vector = (1, dx, dy, 0) * maxLambda → normalized to λ ∈ [0, 1]
   const delta = createVector4(maxLambda, dx * maxLambda, dy * maxLambda, 0);
-  const sep = subVector4(observerPos, start);
-
-  const a = lorentzDotVector4(delta, delta);
-  const b = -2 * lorentzDotVector4(sep, delta);
-  const c = lorentzDotVector4(sep, sep);
-
-  const EPS = 1e-9;
-  const candidates: number[] = [];
-
-  if (Math.abs(a) < EPS) {
-    if (Math.abs(b) < EPS) return null;
-    candidates.push(-c / b);
-  } else {
-    const disc = b * b - 4 * a * c;
-    if (disc < 0) return null;
-    const sqrtDisc = Math.sqrt(Math.max(0, disc));
-    candidates.push((-b - sqrtDisc) / (2 * a));
-    candidates.push((-b + sqrtDisc) / (2 * a));
-  }
-
-  let best: Vector4 | null = null;
-  for (const lambda of candidates) {
-    if (lambda < -EPS || lambda > 1 + EPS) continue;
-    const t = Math.min(1, Math.max(0, lambda));
-    const point = createVector4(
-      start.t + delta.t * t,
-      start.x + delta.x * t,
-      start.y + delta.y * t,
-      start.z + delta.z * t,
-    );
-    if (observerPos.t - point.t <= EPS) continue;
-    if (!best || point.t > best.t) best = point;
-  }
-
-  return best;
+  return pastLightConeIntersectionSegment(start, delta, observerPos);
 };

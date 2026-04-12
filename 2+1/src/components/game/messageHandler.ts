@@ -7,7 +7,7 @@ import {
 } from "../../physics";
 import { colorForPlayerId } from "./colors"; // fallback for syncTime init
 import { MAX_LASERS, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
-import type { Laser, RelativisticPlayer, SpawnEffect } from "./types";
+import type { Laser, RelativisticPlayer } from "./types";
 
 export type MessageHandlerDeps = {
   myId: string;
@@ -20,7 +20,6 @@ export type MessageHandlerDeps = {
   >;
   setLasers: React.Dispatch<React.SetStateAction<Laser[]>>;
   setScores: React.Dispatch<React.SetStateAction<Record<string, number>>>;
-  setSpawns: React.Dispatch<React.SetStateAction<SpawnEffect[]>>;
   scoresRef: React.RefObject<Record<string, number>>;
   timeSyncedRef: React.MutableRefObject<boolean>;
   handleKill: (
@@ -170,8 +169,8 @@ export const createMessageHandler =
         setScores(scores);
       }
       // ランダム値を reducer 外で生成（StrictMode 安全）
-      const spawnX = Math.random() * 20; // SPAWN_RANGE
-      const spawnY = Math.random() * 20;
+      const spawnX = Math.random() * SPAWN_RANGE;
+      const spawnY = Math.random() * SPAWN_RANGE;
       setPlayers((prev) => {
         const me = prev.get(myId);
         // ホストの座標時刻でプレイヤーを作成/更新。

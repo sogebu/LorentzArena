@@ -46,6 +46,7 @@ export type Message =
        */
       type: "syncTime";
       hostTime: number;
+      scores?: Record<string, number>;
     }
   | {
       /**

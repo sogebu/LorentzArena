@@ -71,6 +71,29 @@ interface PeerProviderProps {
   roomName: string;
 }
 
+/**
+ * Append peer IDs to joinRegistry (append-only, no duplicates).
+ * Returns true if the registry changed.
+ */
+const appendToJoinRegistry = (
+  joinRegistryRef: { current: string[] },
+  ids: string[],
+  hostFirst?: string,
+): boolean => {
+  let changed = false;
+  if (hostFirst && !joinRegistryRef.current.includes(hostFirst)) {
+    joinRegistryRef.current.unshift(hostFirst);
+    changed = true;
+  }
+  for (const id of ids) {
+    if (!joinRegistryRef.current.includes(id)) {
+      joinRegistryRef.current.push(id);
+      changed = true;
+    }
+  }
+  return changed;
+};
+
 /** Basic validation before relaying messages to all peers. */
 const isRelayable = (msg: Message): boolean => {
   if (!msg || typeof msg !== "object" || typeof msg.type !== "string")
@@ -112,21 +135,9 @@ const registerPeerOrderListener = (
       const peers = (msg as { peers?: string[] }).peers;
       if (Array.isArray(peers)) {
         peerOrderRef.current = peers;
-        let changed = false;
-        // Ensure host is at index 0 of joinRegistry
-        const hostId = pm.getHostId();
-        if (hostId && !joinRegistryRef.current.includes(hostId)) {
-          joinRegistryRef.current.unshift(hostId);
-          changed = true;
+        if (appendToJoinRegistry(joinRegistryRef, peers, pm.getHostId() ?? undefined)) {
+          onRegistryChange();
         }
-        // Append-only: add new peers to joinRegistry (never remove)
-        for (const id of peers) {
-          if (!joinRegistryRef.current.includes(id)) {
-            joinRegistryRef.current.push(id);
-            changed = true;
-          }
-        }
-        if (changed) onRegistryChange();
       }
     }
   });
@@ -318,9 +329,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         pm.setAsHost();
         setMyId(roomPeerId);
         // ホスト自身を joinRegistry の先頭に登録
-        if (!joinRegistryRef.current.includes(roomPeerId)) {
-          joinRegistryRef.current.unshift(roomPeerId);
-        }
+        appendToJoinRegistry(joinRegistryRef, [], roomPeerId);
         registerHostRelay(pm);
         registerPeerOrderListener(pm, peerOrderRef, joinRegistryRef, () => setJoinRegistryVersion((v) => v + 1));
         setPeerManager(pm);
@@ -417,23 +426,12 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     if (connectionPhase !== "connected") return;
     const openPeers = connections.filter((c) => c.open).map((c) => c.id);
     peerOrderRef.current = openPeers;
-    // Ensure host is in joinRegistry (important after migration)
-    let changed = false;
-    const myPeerId = peerManager.id();
-    if (myPeerId && !joinRegistryRef.current.includes(myPeerId)) {
-      joinRegistryRef.current.unshift(myPeerId);
-      changed = true;
+    // Ensure host and all open peers are in joinRegistry (append-only)
+    if (appendToJoinRegistry(joinRegistryRef, openPeers, peerManager.id() ?? undefined)) {
+      setJoinRegistryVersion((v) => v + 1);
     }
-    // Append-only joinRegistry (host side)
-    for (const id of openPeers) {
-      if (!joinRegistryRef.current.includes(id)) {
-        joinRegistryRef.current.push(id);
-        changed = true;
-      }
-    }
-    if (changed) setJoinRegistryVersion((v) => v + 1);
     if (openPeers.length > 0) {
-      peerManager.send({ type: "peerList", peers: openPeers } as never);
+      peerManager.send({ type: "peerList", peers: openPeers });
     }
   }, [connections, peerManager, connectionPhase]);
 
@@ -447,10 +445,10 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     if (!peerManager.getIsHost()) return;
 
     const timer = setInterval(() => {
-      peerManager.send({ type: "ping" } as never);
+      peerManager.send({ type: "ping" });
     }, HEARTBEAT_INTERVAL);
     // Send first ping immediately
-    peerManager.send({ type: "ping" } as never);
+    peerManager.send({ type: "ping" });
 
     return () => clearInterval(timer);
   }, [peerManager, connectionPhase]);

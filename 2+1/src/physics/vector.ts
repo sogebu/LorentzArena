@@ -224,3 +224,55 @@ export const intervalTypeVector4 = (
   if (s2 === 0) return "lightlike";
   return "spacelike";
 };
+
+/**
+ * Find the intersection of a spacetime segment with the observer's past light cone.
+ *
+ * The segment is parametrized as X(λ) = start + λ * delta, λ ∈ [0, 1].
+ * Solves lorentzDot(observer - X, observer - X) = 0 and returns the latest
+ * past intersection point, or null if none exists.
+ *
+ * JP: 時空区間 X(λ) = start + λ * delta (λ ∈ [0,1]) と
+ * 観測者の過去光円錐の交点を求める。最も未来側の過去交点を返す。
+ */
+export const pastLightConeIntersectionSegment = (
+  start: Vector4,
+  delta: Vector4,
+  observerPos: Vector4,
+): Vector4 | null => {
+  const sep = subVector4(observerPos, start);
+
+  const a = lorentzDotVector4(delta, delta);
+  const b = -2 * lorentzDotVector4(sep, delta);
+  const c = lorentzDotVector4(sep, sep);
+
+  const EPS = 1e-9;
+  const candidates: number[] = [];
+
+  if (Math.abs(a) < EPS) {
+    if (Math.abs(b) < EPS) return null;
+    candidates.push(-c / b);
+  } else {
+    const disc = b * b - 4 * a * c;
+    if (disc < 0) return null;
+    const sqrtDisc = Math.sqrt(Math.max(0, disc));
+    candidates.push((-b - sqrtDisc) / (2 * a));
+    candidates.push((-b + sqrtDisc) / (2 * a));
+  }
+
+  let best: Vector4 | null = null;
+  for (const lambda of candidates) {
+    if (lambda < -EPS || lambda > 1 + EPS) continue;
+    const t = Math.min(1, Math.max(0, lambda));
+    const point = createVector4(
+      start.t + delta.t * t,
+      start.x + delta.x * t,
+      start.y + delta.y * t,
+      start.z + delta.z * t,
+    );
+    if (observerPos.t - point.t <= EPS) continue;
+    if (!best || point.t > best.t) best = point;
+  }
+
+  return best;
+};

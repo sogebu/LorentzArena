@@ -47,7 +47,7 @@ export const getDebrisMaterial = (
 };
 
 // デバッグ用: キャッシュサイズの監視（ブラウザコンソールで window.debugCaches を参照）
-if (typeof window !== "undefined") {
+if (import.meta.env.DEV && typeof window !== "undefined") {
   (window as unknown as Record<string, unknown>).debugCaches = {
     colorCache,
     sharedGeometries,

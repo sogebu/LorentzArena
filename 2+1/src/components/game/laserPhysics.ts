@@ -1,6 +1,6 @@
 import {
   createVector4,
-  lorentzDotVector4,
+  pastLightConeIntersectionSegment,
   subVector4,
   type Vector4,
   type WorldLine,
@@ -82,17 +82,9 @@ export const findLaserHitPosition = (
 
 /**
  * Find intersection of "observer past light cone" and a laser world-line segment.
+ * Delegates to the generic pastLightConeIntersectionSegment solver.
  *
- * English:
- *   - Laser trajectory is modeled as a spacetime segment:
- *       X(lambda) = start + lambda * (end - start), lambda in [0, 1]
- *   - We solve lorentzDot(observer - X, observer - X) = 0 and keep the past solution.
- *
- * 日本語:
- *   - レーザー軌跡を時空区間として扱い、
- *       X(lambda) = start + lambda * (end - start), lambda in [0, 1]
- *   - lorentzDot(observer - X, observer - X) = 0 を解いて、
- *     観測者より過去にある解のみ採用します。
+ * JP: レーザー軌跡を時空区間に変換し、汎用ソルバーで過去光円錐交差を求める。
  */
 export const pastLightConeIntersectionLaser = (
   laser: Laser,
@@ -110,45 +102,5 @@ export const pastLightConeIntersectionLaser = (
     laser.emissionPos.y + laser.direction.y * laser.range,
     laser.emissionPos.z + laser.direction.z * laser.range,
   );
-
-  const delta = subVector4(end, start);
-  const separationAtStart = subVector4(observerPos, start);
-
-  // a*lambda^2 + b*lambda + c = 0
-  const a = lorentzDotVector4(delta, delta);
-  const b = -2 * lorentzDotVector4(separationAtStart, delta);
-  const c = lorentzDotVector4(separationAtStart, separationAtStart);
-
-  const EPS = 1e-9;
-  const candidates: number[] = [];
-
-  // Laser segment is (almost) lightlike, so treat near-linear case robustly.
-  if (Math.abs(a) < EPS) {
-    if (Math.abs(b) < EPS) return null;
-    candidates.push(-c / b);
-  } else {
-    const discriminant = b * b - 4 * a * c;
-    if (discriminant < 0) return null;
-    const sqrtDiscriminant = Math.sqrt(Math.max(0, discriminant));
-    candidates.push((-b - sqrtDiscriminant) / (2 * a));
-    candidates.push((-b + sqrtDiscriminant) / (2 * a));
-  }
-
-  let best: Vector4 | null = null;
-  for (const lambda of candidates) {
-    if (lambda < -EPS || lambda > 1 + EPS) continue;
-    const t = Math.min(1, Math.max(0, lambda));
-    const point = createVector4(
-      start.t + delta.t * t,
-      start.x + delta.x * t,
-      start.y + delta.y * t,
-      start.z + delta.z * t,
-    );
-
-    // We only want events in observer's past.
-    if (observerPos.t - point.t <= EPS) continue;
-    if (!best || point.t > best.t) best = point;
-  }
-
-  return best;
+  return pastLightConeIntersectionSegment(start, subVector4(end, start), observerPos);
 };

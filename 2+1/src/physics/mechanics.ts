@@ -87,20 +87,3 @@ export const evolvePhaseSpace = (
   return createPhaseSpace(newPos, newU);
 };
 
-/**
- * Past light-cone intersection (what the observer can actually see).
- *
- * English:
- *   - This is a placeholder and is not used by the current renderer.
- *   - The actual intersection logic lives in the game component.
- *
- * 日本語:
- *   - これは未実装のプレースホルダで、現状の描画では使っていません。
- *   - 実際の交点計算はコンポーネント側にあります。
- */
-export const pastLightConeIntersectionPhaseSpace = (
-  _observerPos: Vector4,
-  worldline: PhaseSpace[],
-): PhaseSpace | null => {
-  return worldline[worldline.length - 1] || null;
-};

@@ -465,7 +465,6 @@ const RelativisticGame = () => {
         setPlayers,
         setLasers,
         setScores,
-        setSpawns,
         scoresRef,
         timeSyncedRef,
         handleKill,
