@@ -10,27 +10,31 @@ interface I18nContextValue {
   lang: Lang;
   setLang: (l: Lang) => void;
   t: (key: TranslationKey) => string;
+  langChosen: boolean;
 }
 
 const I18nContext = createContext<I18nContextValue | null>(null);
 
 const STORAGE_KEY = "la-lang";
 
-const getInitialLang = (): Lang => {
+const getStoredLang = (): Lang | null => {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === "en" || stored === "ja") return stored;
   } catch {
-    // localStorage unavailable (private browsing etc.)
+    // localStorage unavailable
   }
-  return "ja";
+  return null;
 };
 
 export const I18nProvider = ({ children }: { children: ReactNode }) => {
-  const [lang, setLangState] = useState<Lang>(getInitialLang);
+  const stored = getStoredLang();
+  const [lang, setLangState] = useState<Lang>(stored ?? "ja");
+  const [langChosen, setLangChosen] = useState(stored !== null);
 
   const setLang = useCallback((l: Lang) => {
     setLangState(l);
+    setLangChosen(true);
     try {
       localStorage.setItem(STORAGE_KEY, l);
     } catch {
@@ -46,7 +50,7 @@ export const I18nProvider = ({ children }: { children: ReactNode }) => {
   );
 
   return (
-    <I18nContext.Provider value={{ lang, setLang, t }}>
+    <I18nContext.Provider value={{ lang, setLang, t, langChosen }}>
       {children}
     </I18nContext.Provider>
   );
