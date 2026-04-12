@@ -305,6 +305,19 @@ export const createMessageHandler =
             displayNamesRef.current.set(id, name as string);
           }
         }
+        // Propagate display names into existing player entries immediately
+        setPlayers((prev) => {
+          let changed = false;
+          const next = new Map(prev);
+          for (const [id, player] of next) {
+            const dn = displayNamesRef.current.get(id);
+            if (dn && player.displayName !== dn) {
+              next.set(id, { ...player, displayName: dn });
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
       }
       // eslint-disable-next-line no-console
       console.log(

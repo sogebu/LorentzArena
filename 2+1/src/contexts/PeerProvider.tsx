@@ -166,7 +166,7 @@ const registerHostRelay = (pm: NetworkManager) => {
     }
 
     if (
-      (msg.type === "phaseSpace" || msg.type === "laser") &&
+      (msg.type === "phaseSpace" || msg.type === "laser" || msg.type === "intro") &&
       isRelayable(msg)
     ) {
       pm.broadcast(msg, senderId);

@@ -496,14 +496,15 @@ export const SceneContent = ({
     }
 
     // 凍結世界線も検索
-    for (const fw of frozenWorldLines) {
+    for (let fi = 0; fi < frozenWorldLines.length; fi++) {
+      const fw = frozenWorldLines[fi];
       const intersection = pastLightConeIntersectionWorldLine(
         fw.worldLine,
         myPlayer.phaseSpace.pos,
       );
       if (intersection) {
         results.push({
-          playerId: `frozen-${fw.worldLine.history[0]?.pos.t ?? 0}`,
+          playerId: `frozen-${fi}-${fw.worldLine.history[0]?.pos.t ?? 0}`,
           color: fw.color,
           pos: transformEventForDisplay(
             intersection.pos,
