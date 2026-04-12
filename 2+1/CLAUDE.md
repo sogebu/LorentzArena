@@ -90,7 +90,13 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 
 ホストマイグレーション: ホストが切断すると最古参クライアントが自動昇格。ハートビート方式（3 秒間隔 `ping`、8 秒タイムアウト）で即時検知。新ホストは `hostMigration` メッセージでスコア・dead players を引き継ぎ、respawn タイマーを残り時間で再構築。
 
-ビーコンパターン: マイグレーション後、新ホスト（ランダム ID）が `la-{roomName}` で発見専用のビーコン PeerManager を作成。新クライアントがビーコンに接続すると `{ type: "redirect", hostId }` で本当のホストにリダイレクト。既存のゲーム接続には影響しない。設計判断は DESIGN.md「ホストマイグレーション」参照。
+ビーコンパターン: マイグレーション後、新ホスト（ランダム ID）が `la-{roomName}` で発見専用のビーコン PeerManager を作成。新クライアントがビーコンに接続すると `{ type: "redirect", hostId }` で本当のホストにリダイレクト。既存のゲーム接続には影響しない。
+
+マイグレーションのフォールバック: 選出ホストが 10 秒応答しない場合、ビーコン経由で発見を試みる。ビーコンも 8 秒応答なければソロホスト化。peerOrderRef が空の場合もビーコン優先。新規クライアントの redirect 先がオフラインなら最大 3 回リトライ。
+
+ビーコンベースのホスト降格: peerOrderRef のずれで 2 ノードが同時にホスト化した場合（dual-host）、ビーコン PeerJS ID の一意性で解決。ビーコン取得に 3 回失敗したホストは、ビーコン経由で本物のホストを発見 → 自分のクライアントに redirect を broadcast → 自分はクライアントに降格。`roleVersion` state で全 role 依存 effect を再評価。
+
+設計判断は DESIGN.md「ホストマイグレーション堅牢化」参照。
 
 ### ゲーム (`src/components/`)
 
@@ -108,6 +114,7 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | `game/laserPhysics.ts` | レーザー当たり判定 + 光円錐交差 |
 | `game/debris.ts` | デブリ生成 + 光円錐交差 |
 | `game/killRespawn.ts` | `applyKill`/`applyRespawn` 純粋関数（ホスト/クライアント共通） |
+| `game/respawnTime.ts` | `getRespawnCoordTime`（生存者最大 t、全員死亡時は壁時計）、`createRespawnPosition`（座標時間 + ランダム空間位置） |
 | `game/lighthouse.ts` | Lighthouse AI（`createLighthouse` ファクトリ、`isLighthouse` 判定、`computeInterceptDirection` 相対論的偏差射撃） |
 | `game/gameLoop.ts` | ゲームループ内の純関数群（カメラ制御、プレイヤー物理、Lighthouse AI、当たり判定、ゴースト移動、因果律ガード、レーザー発射） |
 | `game/causalEvents.ts` | 因果律遅延イベント処理（キル通知・スポーンエフェクトの過去光円錐チェック） |

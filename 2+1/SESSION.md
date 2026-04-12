@@ -5,38 +5,47 @@
 対戦可能。**`68c7b7a` デプロイ済み** (build `2026/04/12 22:52:48 JST`)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
-## 直近の変更（2026-04-12 後半）
+main は `14f2889` まで push 済み（未デプロイ）。デプロイ前に動作確認推奨。
 
-### stale ref 根絶 (`172b600`)
+## 直近の変更（2026-04-13）
 
-`setPlayers` ラッパーで `playersRef.current` を即座に同期。`useEffect` 遅延同期を廃止。リスポーン時の世界線リーク（前の命の最後の1点が混入）が構造的に不可能に。
+### リスポーン座標時間バグ修正 + 重複排除 (`de38efa`, `ccd9a05`)
 
-### デブリ改善 (`637d330`)
+全員死亡時のリスポーン座標時間が `t=0`（ページロード直後）にフォールバックしていたバグを修正。`getRespawnCoordTime()` と `createRespawnPosition()` を `game/respawnTime.ts` に抽出し、3箇所（useGameLoop, useHostMigration, messageHandler）の重複を解消。
 
-- **見た目**: `LineSegments` → `InstancedMesh` + `CylinderGeometry`（太い半透明チューブ、opacity 0.10、radius `size * 0.2`）
-- **物理**: 被撃破機の固有速度（γv）にランダム kick（0〜0.8 γv）を加算。`ut = √(1+ux²+uy²)` で正規化 → |v|<1 自動保証。高速移動中の撃破でデブリが進行方向に偏る
+### ホストマイグレーション堅牢化 (`36bb7f9`, `1e97f1d`, `7cff94a`)
 
-### 灯台因果律ジャンプ (`08bd65c`)
+エッジケース監査で 6 件の問題を発見・修正:
+- 選出ホスト未接続 → 10s タイムアウト + ビーコンフォールバック
+- peerOrderRef 空 → ビーコン優先（ソロホスト化は最終手段）
+- redirect 先オフライン → 最大 3 回リトライ
+- ビーコン作成遅延 → `isMigrating` ガード除去
+- dual-host 分裂 → ビーコンベースのホスト降格 + クライアント mid-game redirect
+- 降格後の heartbeat setInterval リーク → `roleVersion` state で effect 再評価
 
-因果律ガード（フリーズ）ではなく、灯台が誰かの過去光円錐内に落ちたら最も過去の生存プレイヤーの座標時間までジャンプ。
+cleanup 監査で 3 件の漏れを修正（beacon_fallback ハンドラ、beaconTimer、discoveryTimeout/discoveryPm）。
 
-### PhaseSpace 補間 (`d75f3ee`)
+### PeerProvider リファクタリング (`c8b191b`, `e85a1fb`, `14f2889`)
 
-過去・未来光円錐交差で `prevState` 近似 → 線形補間。灯台ジャンプの垂直セグメントでも正確な交差位置を返す。
+- `isRedirectMessage()` 型ガード: 5箇所の redirect バリデーション重複を解消
+- `isPingMessage()` 型ガード: 一貫性のため追加
+- `registerStandardHandlers()`: registerHostRelay + registerPeerOrderListener ペア 5箇所を 1 行に
+- ネットワーク定数 7 個をモジュールスコープに集約
+- `becomeSoloHost` / `attemptBeaconFallback` を setInterval 外に hoist
 
-### リファクタリング (`63e82e4`, `fc064f9`)
+## 前回の変更（2026-04-12 後半）
 
-- `RelativisticGame.tsx` 941→540行: ゲームループを `useGameLoop` hook に分離
-- `gameLoop.ts` に `checkCausalFreeze`, `processLaserFiring` 純関数を追加
-- `SceneContent.tsx` 923→513行: 4 Renderer を個別ファイルに分離（WorldLineRenderer, LaserBatchRenderer, SpawnRenderer, DebrisRenderer）
-- useGameLoop: deps オブジェクトによる毎レンダリング再実行バグ修正 → depsRef hack → 直接 closure 捕獲に簡素化
-- DESIGN.md 残存臭 #1（deadPlayersRef mirror）が setPlayers ラッパー実装により解決
-- `HUD.tsx` 430→84行: `hud/` サブディレクトリに ControlPanel, Speedometer, Overlays, utils を分離
+- stale ref 根絶 (`172b600`): setPlayers ラッパーで playersRef.current を即座に同期
+- デブリ改善 (`637d330`): InstancedMesh + 固有速度空間での kick
+- 灯台因果律ジャンプ (`08bd65c`)、PhaseSpace 補間 (`d75f3ee`)
+- 大規模リファクタリング: RelativisticGame 941→540行、SceneContent 923→513行、HUD 430→84行
 
 ## 既知の課題
 
-- DESIGN.md 残存する設計臭 #2-#4（defer 中。#1 は setPlayers ラッパーで解決済み）
+- DESIGN.md 残存する設計臭 #2-#4（defer 中。#1 は解決済み）
+- DESIGN.md Stale リファクタ S-1〜S-5（defer 中。un-defer トリガー未発生）
 - 色調をポップで明るく（方向性未定、グラデーション案は却下）
+- dual-host 後のビーコン `roomPeerId` 接続が cleanup で未切断（PeerJS idle タイムアウトに委任）
 
 ### パフォーマンス検討課題（FPS 低下顕在化で着手）
 
