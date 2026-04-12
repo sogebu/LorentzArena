@@ -45,7 +45,6 @@ export function useHostMigration({
     if (!myId) return;
 
     const openConns = connections.filter((c) => c.open);
-    if (openConns.length === 0) return;
 
     console.log(
       "[RelativisticGame] Host migration: broadcasting state to",
