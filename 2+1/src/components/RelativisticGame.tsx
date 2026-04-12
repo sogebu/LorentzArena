@@ -204,10 +204,11 @@ const RelativisticGame = () => {
 
       deathTimeMapRef.current.delete(playerId);
 
-      // 自分のリスポーン: ゴースト解除 + エネルギー満タン
+      // 自分のリスポーン: ゴースト解除 + エネルギー満タン + カメラリセット
       if (playerId === myId) {
         myDeathEventRef.current = null;
         ghostTauRef.current = 0;
+        cameraPitchRef.current = Math.PI / 6;
         energyRef.current = ENERGY_MAX;
       }
 
