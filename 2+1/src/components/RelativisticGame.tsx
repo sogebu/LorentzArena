@@ -11,6 +11,7 @@ import {
   getVelocity4,
   isInPastLightCone,
   lorentzDotVector4,
+  pastLightConeIntersectionWorldLine,
   subVector4,
   type Vector4,
   vector3Zero,
@@ -23,6 +24,8 @@ import {
   HIT_RADIUS,
   LASER_COOLDOWN,
   LASER_RANGE,
+  LIGHTHOUSE_FIRE_INTERVAL,
+  LIGHTHOUSE_ID_PREFIX,
   MAX_DEBRIS,
   MAX_FROZEN_WORLDLINES,
   MAX_LASERS,
@@ -35,6 +38,11 @@ import { generateExplosionParticles } from "./game/debris";
 import { HUD } from "./game/HUD";
 import { applyKill, applyRespawn } from "./game/killRespawn";
 import { findLaserHitPosition } from "./game/laserPhysics";
+import {
+  computeInterceptDirection,
+  createLighthouse,
+  isLighthouse,
+} from "./game/lighthouse";
 import { createMessageHandler } from "./game/messageHandler";
 import { SceneContent } from "./game/SceneContent";
 import { useTouchInput } from "./game/touchInput";
@@ -104,6 +112,8 @@ const RelativisticGame = () => {
   const lastUpdateTimeRef = useRef<Map<string, number>>(new Map());
   // Players whose world lines were frozen due to staleness (distinguish from kill-dead)
   const staleFrozenRef = useRef<Set<string>>(new Set());
+  // Lighthouse last fire time per turret
+  const lighthouseLastFireRef = useRef<Map<string, number>>(new Map());
   const [_screenSize, setScreenSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -255,6 +265,13 @@ const RelativisticGame = () => {
     initialWorldLine = appendWorldLine(initialWorldLine, initialPhaseSpace);
     const initialColor = getPlayerColor(myId);
 
+    // Lighthouse NPC 作成（ホスト初期化時に同時生成）
+    const lighthouseId = `${LIGHTHOUSE_ID_PREFIX}0`;
+    const lighthouse = createLighthouse(
+      lighthouseId,
+      Date.now() / 1000 - OFFSET,
+    );
+
     setPlayers((prev) => {
       if (prev.has(myId)) return prev;
       const next = new Map(prev);
@@ -265,6 +282,7 @@ const RelativisticGame = () => {
         color: initialColor,
         isDead: false,
       });
+      next.set(lighthouseId, lighthouse);
       return next;
     });
   }, [myId, isHost]);
@@ -859,6 +877,92 @@ const RelativisticGame = () => {
                 }
               }
             }
+          }
+        }
+      }
+
+      // ホストのみ: Lighthouse AI ループ
+      if (peerManager.getIsHost()) {
+        for (const [lhId, lh] of playersRef.current) {
+          if (!isLighthouse(lhId)) continue;
+          if (lh.isDead) continue;
+
+          // 世界線を時間方向に伸ばす（速度ゼロ、加速なし）
+          const lhNewPs = evolvePhaseSpace(lh.phaseSpace, vector3Zero(), dTau);
+          const lhNewWl = appendWorldLine(lh.worldLine, lhNewPs);
+          setPlayers((prev) => {
+            const existing = prev.get(lhId);
+            if (!existing) return prev;
+            const next = new Map(prev);
+            next.set(lhId, {
+              ...existing,
+              phaseSpace: lhNewPs,
+              worldLine: lhNewWl,
+            });
+            return next;
+          });
+
+          // 発射間隔チェック
+          const lastFire = lighthouseLastFireRef.current.get(lhId) ?? 0;
+          if (currentTime - lastFire < LIGHTHOUSE_FIRE_INTERVAL) continue;
+
+          // 全プレイヤーから最適ターゲットを選択（最も近いプレイヤー）
+          let bestDir: { x: number; y: number; z: number } | null = null;
+          let bestDist = Number.POSITIVE_INFINITY;
+          let bestColor = lh.color;
+
+          for (const [pId, player] of playersRef.current) {
+            if (isLighthouse(pId)) continue;
+            if (player.isDead) continue;
+
+            const observed = pastLightConeIntersectionWorldLine(
+              player.worldLine,
+              lhNewPs.pos,
+            );
+            if (!observed) continue;
+
+            const dir = computeInterceptDirection(
+              lhNewPs.pos,
+              observed.pos,
+              observed.u,
+            );
+            if (!dir) continue;
+
+            const dx = observed.pos.x - lhNewPs.pos.x;
+            const dy = observed.pos.y - lhNewPs.pos.y;
+            const dist = dx * dx + dy * dy;
+            if (dist < bestDist) {
+              bestDist = dist;
+              bestDir = dir;
+              bestColor = lh.color;
+            }
+          }
+
+          if (bestDir) {
+            lighthouseLastFireRef.current.set(lhId, currentTime);
+            const newLaser = {
+              id: `${lhId}-${currentTime}`,
+              playerId: lhId,
+              emissionPos: {
+                t: lhNewPs.pos.t,
+                x: lhNewPs.pos.x,
+                y: lhNewPs.pos.y,
+                z: 0,
+              },
+              direction: bestDir,
+              range: LASER_RANGE,
+              color: getLaserColor(bestColor),
+            };
+            setLasers((prev) => {
+              const updated = [...prev, newLaser];
+              return updated.length > MAX_LASERS
+                ? updated.slice(updated.length - MAX_LASERS)
+                : updated;
+            });
+            peerManager.send({
+              type: "laser" as const,
+              ...newLaser,
+            });
           }
         }
       }
