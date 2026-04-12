@@ -602,13 +602,14 @@ const RelativisticGame = () => {
         cameraYawRef.current += touch.yawDelta;
         touch.yawDelta = 0; // consume the delta
       }
-      // Touch: 幽霊中は縦スワイプをカメラ pitch に流用（加速できないので）
+      // Touch: 幽霊中は縦スワイプをカメラ pitch に使用（yaw と同じデルタ方式）
       const isDeadForCamera = playersRef.current.get(myId)?.isDead ?? false;
-      if (isDeadForCamera && touch.thrust !== 0) {
+      if (isDeadForCamera && touch.pitchDelta !== 0) {
         cameraPitchRef.current = Math.max(
           pitchMin,
-          Math.min(pitchMax, cameraPitchRef.current + touch.thrust * pitchSpeed * dTau * 3),
+          Math.min(pitchMax, cameraPitchRef.current + touch.pitchDelta),
         );
+        touch.pitchDelta = 0;
       }
 
       // 因果律遅延キル通知 + スコア: pending kill events の過去光円錐チェック

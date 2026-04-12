@@ -14,6 +14,8 @@ import { useEffect, useRef } from "react";
 export type TouchInputState = {
   /** Heading delta accumulated since last consumption (radians). Positive = left (CCW). */
   yawDelta: number;
+  /** Pitch delta accumulated since last consumption (radians). Positive = up. */
+  pitchDelta: number;
   /** Thrust value: positive = forward, negative = backward. Range [-1, 1]. */
   thrust: number;
   /** Whether fire is active (double-tap held). */
@@ -48,6 +50,7 @@ const isInteractiveElement = (target: EventTarget | null): boolean => {
 export const useTouchInput = (): React.RefObject<TouchInputState> => {
   const stateRef = useRef<TouchInputState>({
     yawDelta: 0,
+    pitchDelta: 0,
     thrust: 0,
     firing: false,
   });
@@ -110,6 +113,8 @@ export const useTouchInput = (): React.RefObject<TouchInputState> => {
 
       // Heading: horizontal movement delta (accumulated between game loop ticks)
       state.yawDelta += -(touch.clientX - active.lastX) * SWIPE_SENSITIVITY_X;
+      // Pitch: vertical movement delta (used for camera pitch when dead)
+      state.pitchDelta += -(touch.clientY - active.lastY) * SWIPE_SENSITIVITY_X;
 
       // Thrust: vertical displacement from touch origin (position-based)
       // Up = negative clientY delta = forward thrust (positive)
@@ -140,6 +145,7 @@ export const useTouchInput = (): React.RefObject<TouchInputState> => {
       // Reset all state
       touchRef.current = null;
       state.yawDelta = 0;
+      state.pitchDelta = 0;
       state.thrust = 0;
       state.firing = false;
     };
