@@ -2,6 +2,43 @@
 
 ## 設計判断の記録
 
+### Stale プレイヤー処理の設計整理（2026-04-12 監査）
+
+現状の stale 処理は複数のバグ修正で有機的に成長し、以下の問題を抱えている。次回リファクタリングで統一的に修正する。
+
+#### 現在の構造
+
+```
+stale 検知（ゲームループ内、毎 tick）
+├── 壁時計 5 秒更新なし → staleFrozenRef.add(id)  [切断・タブ停止]
+└── 座標時間進行率 < 0.1 → staleFrozenRef.add(id) [タブ throttle]
+
+stale 回復（messageHandler、phaseSpace 受信時）
+└── staleFrozenRef.has(playerId) かつ isHost → respawn + delete
+
+stale 除外
+├── 因果律ガード: staleFrozenRef.has(id) → skip
+├── 死亡中プレイヤー: isDead → stale 検知しない
+└── visibilitychange: document.hidden → ゲームループ停止 → 検知も止まる
+```
+
+#### 修正すべき問題（リファクタリング時に対応）
+
+| # | 問題 | 重要度 | 修正方針 |
+|---|---|---|---|
+| S-1 | **Lighthouse が stale 検知から除外されていない**。クライアント側でホストが遅延すると Lighthouse が stale 凍結され、回復しない（クライアントは `!isHost` で stale recovery をスキップ） | Medium | stale 検知ループで `isLighthouse(id)` → continue（因果律ガードと同様） |
+| S-2 | **Kill + stale の重複**: stale プレイヤーがレーザーに当たると kill → respawn → 次の phaseSpace で stale recovery → 二重 respawn | Low | `handleKill` で `staleFrozenRef.delete(victimId)` を追加 |
+| S-3 | **`lastCoordTimeRef` の cleanup 漏れ**: 切断時に `lastUpdateTimeRef` と `staleFrozenRef` は削除されるが `lastCoordTimeRef` はされない（メモリリーク、機能的には無害） | Trivial | cleanup に `lastCoordTimeRef.current.delete(id)` 追加 |
+| S-4 | **stale recovery 時に `lastCoordTimeRef` 未リセット**: recovery 直後に rate チェックが旧値を参照して即座に再 stale になる可能性 | Low | stale recovery で `lastCoordTimeRef.current.set(playerId, { wallTime: Date.now(), posT: position.t })` |
+| S-5 | **死亡中は他プレイヤーの stale 検知が止まる**: isDead ブランチでは stale 検知ループが走らない（最大 10+5 秒の遅延） | Low | stale 検知を isDead 分岐の外に移動 |
+
+#### 設計方針（リファクタリング時）
+
+- `staleFrozenRef` の add/delete を一箇所に集約する custom hook `useStaleDetection` を作る
+- stale 検知・回復・cleanup の 3 操作を統一的に管理
+- Lighthouse 除外は検知ループで明示的に `isLighthouse` チェック
+- kill 時の stale クリアも hook 内で処理
+
 ### ロビー画面 + i18n + 表示名 + ハイスコア（2026-04-12）
 
 #### ロビー画面: PeerProvider の内側で gate
