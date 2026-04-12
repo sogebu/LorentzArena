@@ -2,10 +2,17 @@
 
 ## 現在のステータス
 
-対戦可能。**`207442b` デプロイ前** (ソース push 済み、4 軸レビュー修正 + ドキュメント更新)。
+対戦可能。**`ddf13ca` デプロイ前** (ソース push 済み)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
 ## 直近の変更（2026-04-12）
+
+### ロビー画面 + i18n + 表示名 + ハイスコア (`ddf13ca`)
+
+- ロビー画面: 言語選択（日本語 default / English）+ プレイヤー名入力 + ハイスコア表。PeerJS 接続はバックグラウンドで開始
+- i18n: 自前 Context + TypeScript 辞書。HUD / Connect の ~50 文字列を移行。localStorage 永続化
+- 表示名: `intro` メッセージ型で接続時に 1 回送信、ホストがリレー。スコアボード・キル通知に表示名を使用
+- ハイスコア: localStorage ベース、`beforeunload` で保存、ロビーに top 5 表示
 
 ### 4 軸レビュー修正 (`207442b`)
 

@@ -2,6 +2,32 @@
 
 ## 設計判断の記録
 
+### ロビー画面 + i18n + 表示名 + ハイスコア（2026-04-12）
+
+#### ロビー画面: PeerProvider の内側で gate
+
+- **What**: App.tsx に `gameStarted` state を追加。PeerProvider は即座に mount（接続開始）し、ロビー画面を表示。Start 押下で RelativisticGame を mount
+- **Why**: PeerJS 接続に数秒かかる。ロビー表示中にバックグラウンドで接続を確立すれば、Start 後の待ち時間ゼロ
+- **Alternative rejected**: PeerProvider の外側で gate → Start 後に接続開始で数秒待ち
+
+#### i18n: 自前 Context + TypeScript 辞書（ライブラリなし）
+
+- **What**: `src/i18n/` に `I18nContext` + `translations/{ja,en}.ts`。`useI18n()` hook で `t(key)` 関数を取得。言語は localStorage `"la-lang"` に永続化、default `"ja"`
+- **Why**: ~50 文字列で pluralization 不要。react-intl / i18next は過剰。0 依存で ~60 行
+- **型安全**: `TranslationKey` 型を `ja.ts` から export し、`t()` の引数を compile-time チェック
+
+#### 表示名: 専用 `intro` メッセージ型
+
+- **What**: 接続時に `{ type: "intro", senderId, displayName }` を 1 回送信。ホストが全ピアにリレー。`hostMigration` に `displayNames?: Record<string, string>` を含めてマイグレーション時に引き継ぎ
+- **Why**: phaseSpace に相乗りすると毎フレーム +20 bytes/peer の帯域消費。intro は 1 回きりなので帯域ゼロに近い。phaseSpace は物理データのみに保つ関心分離
+- **Fallback**: intro 到着前は `player.displayName ?? id.slice(0, 6)` で表示
+
+#### ハイスコア: localStorage のみ
+
+- **What**: `src/services/highScores.ts` に純関数。localStorage key `"la-highscores"`、JSON 配列、最大 20 件、kills 降順。`beforeunload` でセッション終了時に保存（kills > 0 時のみ）
+- **Why**: relay server は stateless message bus で DB なし。Cloudflare KV は物理デモには過剰。localStorage はデバイス単位だが、1 デバイス = 1 プレイヤーで実用上問題なし
+- **セッション境界**: Start 押下 → タブ close/reload
+
 ### ホストマイグレーション（2026-04-11）
 
 - **What**: ホスト切断時に最古参クライアントが自動昇格し、ゲームを継続する仕組み。PeerJS / WS Relay 両方で動作

@@ -55,6 +55,18 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 
 ## アーキテクチャ
 
+### i18n (`src/i18n/`)
+
+自前の軽量 i18n 基盤（ライブラリなし）。`I18nProvider` で wrap、`useI18n()` hook で `{ lang, setLang, t }` を取得。言語は localStorage `"la-lang"` に永続化。
+
+- `translations/ja.ts` — 日本語辞書（default）+ `TranslationKey` 型定義
+- `translations/en.ts` — 英語辞書
+- `I18nContext.tsx` — Provider + `useI18n` hook
+
+### ハイスコア (`src/services/highScores.ts`)
+
+localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(entry)`, `getTopScores(n)` の純関数。localStorage key `"la-highscores"`、最大 20 件。
+
 ### 物理エンジン (`src/physics/`)
 
 - `vector.ts` — 3D/4D ベクトル演算、ミンコフスキー内積 (+,+,+,-)、`isInPastLightCone(event, observer)`、`pastLightConeIntersectionSegment(start, delta, observer)`（汎用光円錐交差ソルバー、laser/debris が共通利用）
@@ -82,6 +94,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 |---|---|
 | `RelativisticGame.tsx` | state/ref 管理、ゲームループ、Canvas 配置 |
 | `game/types.ts` | ゲーム固有型定義（`RelativisticPlayer`, `Laser` 等） |
+| `Lobby.tsx` | ロビー画面（言語選択 + プレイヤー名入力 + ハイスコア表） |
 | `game/constants.ts` | ゲーム定数（射程、リスポーン遅延、スポーン範囲等） |
 | `game/colors.ts` | プレイヤー色生成。`colorForJoinOrder(index)` が主（接続順 × 黄金角で保証分離）、`colorForPlayerId(id)` はフォールバック |
 | `game/threeCache.ts` | THREE.js ジオメトリ/マテリアル singleton + デブリマテリアルキャッシュ |
@@ -125,7 +138,8 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `respawn` | host → all | リスポーン位置指示 |
 | `score` | host → all | スコア更新 |
 | `ping` | host → all | ハートビート（3秒間隔、8秒タイムアウトでホスト切断検知） |
-| `hostMigration` | new host → all | ホストマイグレーション（スコア + dead players 引継ぎ） |
+| `hostMigration` | new host → all | ホストマイグレーション（スコア + dead players + displayNames 引継ぎ） |
+| `intro` | 双方向（host 中継） | プレイヤー表示名通知（接続時に 1 回送信） |
 | `peerList` | host → all | 接続ピア一覧（接続変化時に proactive 送信） |
 | `requestPeerList` | client → host | ピア一覧要求 |
 
