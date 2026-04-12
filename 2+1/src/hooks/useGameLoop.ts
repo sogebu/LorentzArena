@@ -47,7 +47,7 @@ export interface GameLoopDeps {
   peerManager: PeerManager | null;
   myId: string | null;
 
-  // State setters
+  // State setters (React guarantees stable references)
   setPlayers: (updater: (prev: Map<string, RelativisticPlayer>) => Map<string, RelativisticPlayer>) => void;
   setLasers: React.Dispatch<React.SetStateAction<Laser[]>>;
   setSpawns: React.Dispatch<React.SetStateAction<SpawnEffect[]>>;
@@ -62,12 +62,12 @@ export interface GameLoopDeps {
     hitPos: { t: number; x: number; y: number; z: number };
   } | null>>;
 
-  // Refs
+  // Refs (stable references, read via .current)
   playersRef: RefObject<Map<string, RelativisticPlayer>>;
   lasersRef: RefObject<Laser[]>;
   processedLasersRef: RefObject<Set<string>>;
   deadPlayersRef: RefObject<Set<string>>;
-  deathTimeMapRef: RefObject<Map<string, number>>; // used by handleKill/handleRespawn, passed through
+  deathTimeMapRef: RefObject<Map<string, number>>;
   pendingKillEventsRef: RefObject<PendingKillEvent[]>;
   pendingSpawnEventsRef: RefObject<PendingSpawnEvent[]>;
   causalFrozenRef: RefObject<boolean>;
@@ -83,11 +83,11 @@ export interface GameLoopDeps {
   scoresRef: RefObject<Record<string, number>>;
   respawnTimeoutsRef: RefObject<Set<ReturnType<typeof setTimeout>>>;
 
-  // Input
+  // Input (refs, stable references)
   keysPressed: RefObject<Set<string>>;
   touchInput: ReturnType<typeof useTouchInput>;
 
-  // Callbacks
+  // Callbacks (change only when myId changes, which is in effect deps)
   handleKill: (victimId: string, killerId: string, hitPos: { t: number; x: number; y: number; z: number }) => void;
   handleRespawn: (playerId: string, position: { t: number; x: number; y: number; z: number }) => void;
   stale: ReturnType<typeof useStaleDetection>;
@@ -95,16 +95,60 @@ export interface GameLoopDeps {
 
 // --- Hook ---
 
-export function useGameLoop(deps: GameLoopDeps): void {
+/**
+ * Dependency stability analysis (why only peerManager/myId are in useEffect deps):
+ *
+ * - Refs (playersRef, etc.): stable object, read via .current — always fresh
+ * - React setState (setLasers, etc.): React guarantees stable reference
+ * - setPlayers: useCallback([]) — stable
+ * - handleKill/handleRespawn: useCallback([myId, setPlayers]) — change only when myId changes
+ * - stale: properties are refs — reading via .current is always fresh
+ * - touchInput/keysPressed: refs — stable
+ * - peerManager: can transition null → value — must be in deps
+ * - myId: can transition null → string — must be in deps
+ *
+ * When myId changes, the effect re-runs, capturing new handleKill/handleRespawn closures.
+ */
+export function useGameLoop({
+  peerManager,
+  myId,
+  setPlayers,
+  setLasers,
+  setSpawns,
+  setScores,
+  setFps,
+  setEnergy,
+  setIsFiring,
+  setDeathFlash,
+  setKillNotification,
+  playersRef,
+  lasersRef,
+  processedLasersRef,
+  deadPlayersRef,
+  pendingKillEventsRef,
+  pendingSpawnEventsRef,
+  causalFrozenRef,
+  lighthouseLastFireRef,
+  lighthouseSpawnTimeRef,
+  lastLaserTimeRef,
+  myDeathEventRef,
+  ghostTauRef,
+  cameraYawRef,
+  cameraPitchRef,
+  energyRef,
+  fpsRef,
+  scoresRef,
+  respawnTimeoutsRef,
+  keysPressed,
+  touchInput,
+  handleKill,
+  handleRespawn,
+  stale,
+}: GameLoopDeps): void {
   const lastTimeRef = useRef<number>(Date.now());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // deps を ref に保存して useEffect の再実行を防ぐ
-  // （オブジェクトリテラルは毎レンダリングで新規作成されるため依存に入れると毎回 cleanup → 再生成）
-  const depsRef = useRef(deps);
-  depsRef.current = deps;
 
-  // peerManager と myId のみが真の依存（null → 値の遷移で effect 再起動が必要）
-  const { peerManager, myId } = deps;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see stability analysis above — all other deps are refs or stable callbacks
   useEffect(() => {
     if (!peerManager || !myId) return;
 
@@ -113,19 +157,6 @@ export function useGameLoop(deps: GameLoopDeps): void {
         lastTimeRef.current = Date.now();
         return;
       }
-
-      // 毎 tick で最新の deps を読む（handleKill/handleRespawn 等が変わりうる）
-      const {
-        setPlayers, setLasers, setSpawns, setScores, setFps, setEnergy, setIsFiring,
-        setDeathFlash, setKillNotification,
-        playersRef, lasersRef, processedLasersRef, deadPlayersRef,
-        pendingKillEventsRef, pendingSpawnEventsRef, causalFrozenRef,
-        lighthouseLastFireRef, lighthouseSpawnTimeRef, lastLaserTimeRef,
-        myDeathEventRef, ghostTauRef, cameraYawRef, cameraPitchRef,
-        energyRef, fpsRef, scoresRef, respawnTimeoutsRef,
-        keysPressed, touchInput,
-        handleKill, handleRespawn, stale,
-      } = depsRef.current;
 
       const currentTime = Date.now();
       const rawDTau = (currentTime - lastTimeRef.current) / 1000;
@@ -450,10 +481,10 @@ export function useGameLoop(deps: GameLoopDeps): void {
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
-      for (const id of depsRef.current.respawnTimeoutsRef.current) {
+      for (const id of respawnTimeoutsRef.current) {
         clearTimeout(id);
       }
-      depsRef.current.respawnTimeoutsRef.current.clear();
+      respawnTimeoutsRef.current.clear();
     };
   }, [peerManager, myId]);
 }
