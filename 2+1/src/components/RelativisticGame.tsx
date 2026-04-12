@@ -26,6 +26,7 @@ import {
   LASER_RANGE,
   LIGHTHOUSE_FIRE_INTERVAL,
   LIGHTHOUSE_ID_PREFIX,
+  LIGHTHOUSE_SPAWN_GRACE,
   MAX_DEBRIS,
   MAX_FROZEN_WORLDLINES,
   MAX_LASERS,
@@ -120,6 +121,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const causalFrozenRef = useRef<boolean>(false);
   // Lighthouse last fire time per turret
   const lighthouseLastFireRef = useRef<Map<string, number>>(new Map());
+  const lighthouseSpawnTimeRef = useRef<Map<string, number>>(new Map());
   const [_screenSize, setScreenSize] = useState({
     width: window.innerWidth,
     height: window.innerHeight,
@@ -279,6 +281,8 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       lighthouseId,
       Date.now() / 1000 - OFFSET,
     );
+
+    lighthouseSpawnTimeRef.current.set(lighthouseId, Date.now());
 
     setPlayers((prev) => {
       if (prev.has(myId)) return prev;
@@ -999,6 +1003,10 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             position: lhNewPs.pos,
             velocity: lhNewPs.u,
           });
+
+          // スポーン直後は撃たない
+          const spawnTime = lighthouseSpawnTimeRef.current.get(lhId) ?? 0;
+          if (currentTime - spawnTime < LIGHTHOUSE_SPAWN_GRACE) continue;
 
           // 発射間隔チェック
           const lastFire = lighthouseLastFireRef.current.get(lhId) ?? 0;

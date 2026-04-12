@@ -41,4 +41,5 @@ export const EXPLOSION_PARTICLE_COUNT = 30;
 // Lighthouse（AI 固定砲台）
 export const LIGHTHOUSE_ID_PREFIX = "lighthouse-";
 export const LIGHTHOUSE_FIRE_INTERVAL = 2000; // ms
+export const LIGHTHOUSE_SPAWN_GRACE = 10000; // ms — don't fire for this long after spawn
 export const LIGHTHOUSE_COLOR = "hsl(200, 60%, 80%)"; // 薄い水色
