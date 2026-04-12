@@ -66,10 +66,12 @@ export class PeerManager<T> {
       };
       this.peerStatusCallback?.(this.peerStatus);
 
-      // Console log is useful when running in school/corporate networks.
-      // (e.g. websocket blocked, ICE failed, etc.)
-      // eslint-disable-next-line no-console
-      console.error("[PeerManager] Peer error", err);
+      // unavailable-id is expected in auto-connect flow (room discovery).
+      // Only log actual errors (websocket blocked, ICE failed, etc.)
+      if (e.type !== "unavailable-id") {
+        // eslint-disable-next-line no-console
+        console.error("[PeerManager] Peer error", err);
+      }
     });
 
     this.peer.on("connection", (dc) => this.register(dc));
