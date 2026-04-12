@@ -109,9 +109,13 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | `game/debris.ts` | デブリ生成 + 光円錐交差 |
 | `game/killRespawn.ts` | `applyKill`/`applyRespawn` 純粋関数（ホスト/クライアント共通） |
 | `game/lighthouse.ts` | Lighthouse AI（`createLighthouse` ファクトリ、`isLighthouse` 判定、`computeInterceptDirection` 相対論的偏差射撃） |
-| `game/gameLoop.ts` | ゲームループ内の純関数群（カメラ制御、プレイヤー物理、Lighthouse AI、当たり判定、ゴースト移動） |
+| `game/gameLoop.ts` | ゲームループ内の純関数群（カメラ制御、プレイヤー物理、Lighthouse AI、当たり判定、ゴースト移動、因果律ガード、レーザー発射） |
 | `game/causalEvents.ts` | 因果律遅延イベント処理（キル通知・スポーンエフェクトの過去光円錐チェック） |
-| `game/SceneContent.tsx` | 3Dシーン（WorldLine/Laser/Spawn/DebrisRenderer 含む） |
+| `game/SceneContent.tsx` | 3Dシーンオーケストレーター（交差計算 + カメラ制御 + 子コンポーネント配置） |
+| `game/WorldLineRenderer.tsx` | 世界線チューブ描画（TubeGeometry、version throttling） |
+| `game/LaserBatchRenderer.tsx` | レーザー世界線バッチ描画（LineSegments） |
+| `game/SpawnRenderer.tsx` | スポーンエフェクト描画（アニメーション付きリング+ピラー） |
+| `game/DebrisRenderer.tsx` | デブリ世界線描画（InstancedMesh シリンダー + 光円錐交差マーカー） |
 | `game/messageHandler.ts` | ネットワークメッセージ処理（ファクトリ関数、バリデーション付き） |
 | `game/HUD.tsx` | オーバーレイUI（コントロール、スピードメーター、キル通知、死亡カウントダウン） |
 | `game/touchInput.ts` | モバイルタッチ入力（全画面ジェスチャ: スワイプ heading/thrust + ダブルタップ fire） |
@@ -125,6 +129,7 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | `useStaleDetection.ts` | stale プレイヤー検知（壁時計/座標時間進行率ベース）、add/delete/cleanup を一箇所に集約 |
 | `useHighScoreSaver.ts` | beforeunload でハイスコア/リーダーボード保存 |
 | `useHostMigration.ts` | ホストマイグレーション（state ブロードキャスト + respawn タイマー再構築） |
+| `useGameLoop.ts` | ゲームループ本体（setInterval ライフサイクル + 全フェーズの dispatch） |
 
 主要機能:
 - PC: W/S: 前進/後退、A/D: 横移動、矢印: カメラ回転、Space: レーザー発射
@@ -143,7 +148,7 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 - 世界線管理: `player.worldLine` 1本のみ。過去のライフは `frozenWorldLines[]` に格納
 - 世界線の過去延長: `WorldLine.origin` で制御。最初のライフのみ origin から半直線延長
 - プレイヤー色は `colorForPlayerId(id)` で決定的に算出（純関数、ネットワーク同期不要）。詳細は DESIGN.md「色割り当て: 決定的純関数」
-- 因果律の守護者: 他プレイヤーの未来光円錐内で操作凍結。死亡プレイヤーは除外（DESIGN.md 参照）
+- 因果律の守護者: 他プレイヤーの未来光円錐内で操作凍結。死亡プレイヤー・灯台は除外。灯台は別方式: 誰かの過去光円錐に落ちたら最も過去の生存プレイヤーの座標時間にジャンプ
 - 光円錐描画: FrontSide 半透明サーフェス（opacity 0.2）+ FrontSide ワイヤーフレーム（opacity 0.3）で手前/奥の区別
 
 ### メッセージタイプ (`src/types/message.ts`)
@@ -193,9 +198,9 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | カメラ回転速度 | yaw: 0.8 rad/s, pitch: 0.5 rad/s | |
 | カメラ仰角範囲 | ±89.9° | |
 | ビーム opacity | 0.4 | レーザー世界線の透明度 |
-| デブリ opacity | 0.15 | デブリ世界線の透明度（レーザーより薄く区別） |
+| デブリ opacity | 0.10 | デブリ世界線の透明度（InstancedMesh シリンダー、レーザーより薄く区別） |
 | 光円錐高さ | 40 | 描画上の円錐サイズ |
-| デブリ速度 | 0.2c〜0.9c | ランダム方向 |
+| デブリ速度 | 被撃破機の固有速度 + kick 0.2〜2.0 | 固有速度空間で加算後 3速度に正規化（\|v\|<1 自動保証） |
 | `TUBE_REGEN_INTERVAL` | 8 | TubeGeometry 再生成の間引き（version を 8 で量子化） |
 | ゲームループ | 8 ms interval | `setInterval`（タブ非アクティブ対応） |
 | dτ 上限 | 100 ms | タブ復帰時の巨大ジャンプ防止 |

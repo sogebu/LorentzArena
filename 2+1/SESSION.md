@@ -2,51 +2,37 @@
 
 ## 現在のステータス
 
-対戦可能。**`43dc577` デプロイ済み** (build `2026/04/12 20:00:19 JST`)。
+対戦可能。**`63e82e4` デプロイ済み** (build `2026/04/12 21:55:41 JST`)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
-## 直近の変更（2026-04-12）
+## 直近の変更（2026-04-12 後半）
 
-### RelativisticGame.tsx リファクタリング (`296be3b`)
+### stale ref 根絶 (`172b600`)
 
-1335 行 → ~900 行。ゲームループ内のロジックを純関数・カスタムフックに分離:
+`setPlayers` ラッパーで `playersRef.current` を即座に同期。`useEffect` 遅延同期を廃止。リスポーン時の世界線リーク（前の命の最後の1点が混入）が構造的に不可能に。
 
-- `game/gameLoop.ts` — カメラ制御、プレイヤー物理、Lighthouse AI、当たり判定、ゴースト移動
-- `game/causalEvents.ts` — 因果律遅延キル通知/スポーンエフェクト
-- `hooks/useStaleDetection.ts` — stale プレイヤー検知（一箇所に集約）
-- `hooks/useKeyboardInput.ts` — キーボード入力
-- `hooks/useHighScoreSaver.ts` — ハイスコア保存
-- `hooks/useHostMigration.ts` — ホストマイグレーション
+### デブリ改善 (`637d330`)
 
-### 接続設計の改善
+- **見た目**: `LineSegments` → `InstancedMesh` + `CylinderGeometry`（太い半透明チューブ、opacity 0.10、radius `size * 0.2`）
+- **物理**: 被撃破機の固有速度（γv）にランダム kick を加算。`ut = √(1+ux²+uy²)` で正規化 → |v|<1 自動保証。高速移動中の撃破でデブリが進行方向に偏る
 
-- **ビーコン Peer パターン** (`911fc4b`): マイグレーション後、新ホストが `la-{roomName}` で発見専用ビーコンを作成。新クライアントをリダイレクト
-- **クライアント自己初期化** (`43dc577`): init effect をホスト・クライアント共通化。syncTime 到着前でもゲーム開始可能（黒画面解消）
-- **OFFSET 設計**: 固定値（1735689600）を試したが Float32 精度問題で `Date.now()/1000` に戻し。syncTime は時刻補正として機能
-- **`timeSyncedRef` 削除** (`43dc577`): 3軸レビューで dead code と判定、完全削除
+### 灯台因果律ジャンプ (`08bd65c`)
 
-### バグ修正
+因果律ガード（フリーズ）ではなく、灯台が誰かの過去光円錐内に落ちたら最も過去の生存プレイヤーの座標時間までジャンプ。
 
-- **useStaleDetection 返り値不安定** (`cd827ff`): `useMemo` で安定化
-- **灯台スポーングレース未リセット** (`5ad8e8e`): `handleRespawn` で spawn time リセット
-- **灯台色上書き** (`5ad8e8e`): joinRegistry 色再計算で Lighthouse 除外
-- **因果律ガードヒステリシス強化** (`5ad8e8e`): 閾値 0.5 → 2.0
-- **マイグレーション completeMigration 未呼出** (`a9b997f`): ソロ時の early return 削除
+### PhaseSpace 補間 (`d75f3ee`)
 
-### 調整
+過去・未来光円錐交差で `prevState` 近似 → 線形補間。灯台ジャンプの垂直セグメントでも正確な交差位置を返す。
 
-- 灯台発射間隔: 2秒 → 3秒
-- デブリ世界線: opacity 0.4 → 0.15
+### リファクタリング (`63e82e4`)
 
-### 新機能
-
-- **レーザー未来光円錐交差マーカー** (`0dbaebb`): laserPhysics.ts に追加、SceneContent で描画
+- `RelativisticGame.tsx` 941→540行: ゲームループを `useGameLoop` hook に分離
+- `gameLoop.ts` に `checkCausalFreeze`, `processLaserFiring` 純関数を追加
+- `SceneContent.tsx` 923→513行: 4 Renderer を個別ファイルに分離（WorldLineRenderer, LaserBatchRenderer, SpawnRenderer, DebrisRenderer）
 
 ## 既知の課題
 
-- `pastLightConeIntersectionWorldLine` の PhaseSpace 補間 TODO (`worldLine.ts`)
 - DESIGN.md 残存する設計臭 #1-#4（全件 defer 中）
-- DebrisRenderer が render 中に BufferGeometry を毎回作成（W-C4、useMemo 化で改善可能）
 - 色調をポップで明るく（方向性未定、グラデーション案は却下）
 
 ### パフォーマンス検討課題（FPS 低下顕在化で着手）
