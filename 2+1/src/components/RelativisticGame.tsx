@@ -117,6 +117,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const lastUpdateTimeRef = useRef<Map<string, number>>(new Map());
   // Players whose world lines were frozen due to staleness (distinguish from kill-dead)
   const staleFrozenRef = useRef<Set<string>>(new Set());
+  const causalFrozenRef = useRef<boolean>(false);
   // Lighthouse last fire time per turret
   const lighthouseLastFireRef = useRef<Map<string, number>>(new Map());
   const [_screenSize, setScreenSize] = useState({
@@ -292,6 +293,21 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       next.set(lighthouseId, lighthouse);
       return next;
     });
+
+    // Send syncTime to clients that connected while host was in the lobby.
+    // The connection effect can't send syncTime until the host player exists,
+    // but by this point the host player is initialized.
+    if (peerManager) {
+      for (const conn of connections) {
+        if (conn.open) {
+          peerManager.sendTo(conn.id, {
+            type: "syncTime",
+            hostTime: initialPhaseSpace.pos.t,
+            scores: scoresRef.current,
+          });
+        }
+      }
+    }
   }, [myId, isHost]);
 
   // ref を最新の state に同期
@@ -861,11 +877,15 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             if (player.phaseSpace.pos.t > me.phaseSpace.pos.t) continue;
             const diff = subVector4(player.phaseSpace.pos, me.phaseSpace.pos);
             const l = lorentzDotVector4(diff, diff);
-            if (l < 0) {
+            // Hysteresis: require margin to exit frozen state (prevents flickering
+            // at the light cone boundary where frozen/unfrozen toggles every tick)
+            const threshold = causalFrozenRef.current ? 0.5 : 0;
+            if (l < -threshold) {
               frozen = true;
               break;
             }
           }
+          causalFrozenRef.current = frozen;
 
           if (!frozen) {
             let forwardAccel = 0;
