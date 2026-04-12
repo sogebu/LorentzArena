@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import type { RelativisticPlayer } from "../components/game/types";
 
 const STALE_WALL_THRESHOLD = 5000;
@@ -66,12 +66,16 @@ export function useStaleDetection() {
     }
   };
 
-  return {
-    staleFrozenRef,
-    lastUpdateTimeRef,
-    lastCoordTimeRef,
-    checkStale,
-    recoverStale,
-    cleanupDisconnected,
-  };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: all values are stable refs or closures over refs — never change
+  return useMemo(
+    () => ({
+      staleFrozenRef,
+      lastUpdateTimeRef,
+      lastCoordTimeRef,
+      checkStale,
+      recoverStale,
+      cleanupDisconnected,
+    }),
+    [],
+  );
 }
