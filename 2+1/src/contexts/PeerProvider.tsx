@@ -110,6 +110,11 @@ const registerPeerOrderListener = (
       const peers = (msg as { peers?: string[] }).peers;
       if (Array.isArray(peers)) {
         peerOrderRef.current = peers;
+        // Ensure host is at index 0 of joinRegistry
+        const hostId = pm.getHostId();
+        if (hostId && !joinRegistryRef.current.includes(hostId)) {
+          joinRegistryRef.current.unshift(hostId);
+        }
         // Append-only: add new peers to joinRegistry (never remove)
         for (const id of peers) {
           if (!joinRegistryRef.current.includes(id)) {
@@ -208,21 +213,15 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   }, []);
 
   // Deterministic color from join order (golden angle separation).
-  // Host = index 0, clients = index 1, 2, ... in joinRegistry order.
+  // All players (including host) are in joinRegistry. Index determines color.
   // Fallback to hash-based color if peer not yet in registry.
   const getPlayerColor = useCallback(
     (peerId: string): string => {
-      // Host is always index 0
-      if (peerManager?.getIsHost() && peerId === peerManager.id()) {
-        return colorForJoinOrder(0);
-      }
-      const hostId = peerManager?.getHostId();
-      if (peerId === hostId) return colorForJoinOrder(0);
       const idx = joinRegistryRef.current.indexOf(peerId);
-      if (idx >= 0) return colorForJoinOrder(idx + 1);
+      if (idx >= 0) return colorForJoinOrder(idx);
       return colorForPlayerId(peerId); // fallback
     },
-    [peerManager],
+    [],
   );
 
   const setActiveTransport = useCallback(
@@ -310,6 +309,10 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         owned = false; // 所有権を setPeerManager に移譲
         pm.setAsHost();
         setMyId(roomPeerId);
+        // ホスト自身を joinRegistry の先頭に登録
+        if (!joinRegistryRef.current.includes(roomPeerId)) {
+          joinRegistryRef.current.unshift(roomPeerId);
+        }
         registerHostRelay(pm);
         registerPeerOrderListener(pm, peerOrderRef, joinRegistryRef);
         setPeerManager(pm);
@@ -406,6 +409,11 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     if (connectionPhase !== "connected") return;
     const openPeers = connections.filter((c) => c.open).map((c) => c.id);
     peerOrderRef.current = openPeers;
+    // Ensure host is in joinRegistry (important after migration)
+    const myPeerId = peerManager.id();
+    if (myPeerId && !joinRegistryRef.current.includes(myPeerId)) {
+      joinRegistryRef.current.unshift(myPeerId);
+    }
     // Append-only joinRegistry (host side)
     for (const id of openPeers) {
       if (!joinRegistryRef.current.includes(id)) {
