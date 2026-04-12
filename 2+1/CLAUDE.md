@@ -92,7 +92,7 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 
 | ファイル | 内容 |
 |---|---|
-| `RelativisticGame.tsx` | state/ref 管理、ゲームループ、Canvas 配置 |
+| `RelativisticGame.tsx` | state/ref 管理、ゲームループ配線、Canvas 配置 |
 | `game/types.ts` | ゲーム固有型定義（`RelativisticPlayer`, `Laser` 等） |
 | `Lobby.tsx` | ロビー画面（言語選択 + プレイヤー名入力 + ハイスコア表） |
 | `game/constants.ts` | ゲーム定数（射程、リスポーン遅延、スポーン範囲等） |
@@ -102,10 +102,22 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | `game/laserPhysics.ts` | レーザー当たり判定 + 光円錐交差 |
 | `game/debris.ts` | デブリ生成 + 光円錐交差 |
 | `game/killRespawn.ts` | `applyKill`/`applyRespawn` 純粋関数（ホスト/クライアント共通） |
+| `game/gameLoop.ts` | ゲームループ内の純関数群（カメラ制御、プレイヤー物理、Lighthouse AI、当たり判定、ゴースト移動） |
+| `game/causalEvents.ts` | 因果律遅延イベント処理（キル通知・スポーンエフェクトの過去光円錐チェック） |
 | `game/SceneContent.tsx` | 3Dシーン（WorldLine/Laser/Spawn/DebrisRenderer 含む） |
 | `game/messageHandler.ts` | ネットワークメッセージ処理（ファクトリ関数、バリデーション付き） |
 | `game/HUD.tsx` | オーバーレイUI（コントロール、スピードメーター、キル通知、死亡カウントダウン） |
 | `game/touchInput.ts` | モバイルタッチ入力（全画面ジェスチャ: スワイプ heading/thrust + ダブルタップ fire） |
+
+カスタムフック（`src/hooks/`）:
+
+| ファイル | 内容 |
+|---|---|
+| `usePeer.ts` | PeerProvider コンテキスト hook |
+| `useKeyboardInput.ts` | キーボード入力管理（WASD + 矢印 + Space） |
+| `useStaleDetection.ts` | stale プレイヤー検知（壁時計/座標時間進行率ベース）、add/delete/cleanup を一箇所に集約 |
+| `useHighScoreSaver.ts` | beforeunload でハイスコア/リーダーボード保存 |
+| `useHostMigration.ts` | ホストマイグレーション（state ブロードキャスト + respawn タイマー再構築） |
 
 主要機能:
 - PC: W/S: 加速/減速、矢印: カメラ回転、Space: レーザー発射

@@ -5,7 +5,22 @@
 対戦可能。**`cfcaf5e` デプロイ済み** (build `2026/04/12 15:10:25 JST`)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
-## 直近の変更（2026-04-12 午後）
+## 直近の変更（2026-04-12 夕方）
+
+### RelativisticGame.tsx リファクタリング
+
+1335 行 → 927 行（-408 行）。ゲームループ内のロジックを純関数・カスタムフックに分離:
+
+- `game/gameLoop.ts` — カメラ制御、プレイヤー物理、Lighthouse AI、当たり判定、ゴースト移動の純関数
+- `game/causalEvents.ts` — 因果律遅延キル通知/スポーンエフェクトの過去光円錐チェック
+- `hooks/useStaleDetection.ts` — stale プレイヤー検知（DESIGN.md 設計方針に従い一箇所に集約）
+- `hooks/useKeyboardInput.ts` — キーボード入力
+- `hooks/useHighScoreSaver.ts` — ハイスコア保存（beforeunload）
+- `hooks/useHostMigration.ts` — ホストマイグレーション effect
+
+DESIGN.md の設計臭 #1-#4 は触っていない（全件 defer 中）。
+
+## 過去の変更（2026-04-12 午後）
 
 ### バグ修正
 
@@ -41,7 +56,7 @@
 
 ## 既知の課題
 
-- **RelativisticGame.tsx が 1335 行で肥大化** → 次セッションでリファクタリング（ゲームループ・stale/visibility・Lighthouse AI・ハイスコア等を hook/module に分割）
+- **RelativisticGame.tsx は 927 行** — リファクタリング済み。ゲームループ内ロジックは `game/gameLoop.ts`・`game/causalEvents.ts` に、横断的関心事は `hooks/use*.ts` に分離。さらなる分割は必要に応じて
 - `pastLightConeIntersectionWorldLine` の PhaseSpace 補間 TODO (`worldLine.ts`)
 - DESIGN.md 残存する設計臭 #1-#4（全件 defer 中、リファクタリング時に再評価）
 
@@ -53,7 +68,6 @@
 
 ## 次にやること
 
-- **RelativisticGame.tsx リファクタリング**（最優先）
 - 制約ネットワーク検証（学校ネットで Cloudflare TURN テスト）
 - 各プレイヤーに固有時刻表示
 - スマホ UI 残課題（レスポンシブ HUD、オンボーディング）
