@@ -688,11 +688,19 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             setPlayers((prev) => {
               const myPlayer = prev.get(myId);
               if (!myPlayer) return prev;
+              // playersRef は useEffect で同期されるため、リスポーン直後は
+              // 古い worldLine ベースの physics.updatedWorldLine になりうる。
+              // prev（React 最新 state）の worldLine に append し直す。
+              const freshWorldLine = appendWorldLine(
+                myPlayer.worldLine,
+                physics.newPhaseSpace,
+                otherPositions,
+              );
               const next = new Map(prev);
               next.set(myId, {
                 ...myPlayer,
                 phaseSpace: physics.newPhaseSpace,
-                worldLine: physics.updatedWorldLine,
+                worldLine: freshWorldLine,
               });
               return next;
             });
