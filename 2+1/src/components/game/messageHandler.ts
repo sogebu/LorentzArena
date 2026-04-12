@@ -22,7 +22,6 @@ export type MessageHandlerDeps = {
   setLasers: React.Dispatch<React.SetStateAction<Laser[]>>;
   setScores: React.Dispatch<React.SetStateAction<Record<string, number>>>;
   scoresRef: React.RefObject<Record<string, number>>;
-  timeSyncedRef: React.MutableRefObject<boolean>;
   handleKill: (
     victimId: string,
     killerId: string,
@@ -77,7 +76,6 @@ export const createMessageHandler =
       setLasers,
       setScores,
       scoresRef,
-      timeSyncedRef,
       handleKill,
       handleRespawn,
       getPlayerColor,
@@ -191,7 +189,6 @@ export const createMessageHandler =
       });
     } else if (msg.type === "syncTime") {
       if (!isFiniteNumber(msg.hostTime)) return;
-      timeSyncedRef.current = true;
       // スコア同期（途中参加時に過去のキルスコアを引き継ぐ）
       if (
         msg.scores &&
@@ -207,14 +204,13 @@ export const createMessageHandler =
         scoresRef.current = scores;
         setScores(scores);
       }
-      // ランダム値を reducer 外で生成（StrictMode 安全）
+      // Correct time coordinate to match host's time origin.
+      // Player may already exist (self-initialized) — syncTime updates
+      // the time coordinate and resets the world line.
       const spawnX = Math.random() * SPAWN_RANGE;
       const spawnY = Math.random() * SPAWN_RANGE;
       setPlayers((prev) => {
         const me = prev.get(myId);
-        // ホストの座標時刻でプレイヤーを作成/更新。
-        // クライアントはこの時点で初めてプレイヤーを作成する
-        // （init effect はホスト専用、クライアントは syncTime で初期化）。
         const synced = createPhaseSpace(
           createVector4(
             msg.hostTime,

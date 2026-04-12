@@ -14,7 +14,6 @@ export interface KillEventsResult {
   firedIndices: number[];
   newScores: Record<string, number>;
   effects: KillEventEffects;
-  scoreUpdated: boolean;
 }
 
 export function firePendingKillEvents(
@@ -25,7 +24,6 @@ export function firePendingKillEvents(
 ): KillEventsResult {
   const firedIndices: number[] = [];
   let newScores = scores;
-  let scoreUpdated = false;
   let deathFlash = false;
   let killNotification: KillEventEffects["killNotification"] = null;
 
@@ -38,8 +36,6 @@ export function firePendingKillEvents(
         ...newScores,
         [ev.killerId]: (newScores[ev.killerId] || 0) + 1,
       };
-      scoreUpdated = true;
-
       if (ev.victimId === myId) {
         deathFlash = true;
       }
@@ -53,7 +49,7 @@ export function firePendingKillEvents(
     }
   }
 
-  return { firedIndices, newScores, effects: { deathFlash, killNotification }, scoreUpdated };
+  return { firedIndices, newScores, effects: { deathFlash, killNotification } };
 }
 
 export interface SpawnEventsResult {

@@ -106,7 +106,6 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const lastTimeRef = useRef<number>(Date.now());
   const playersRef = useRef<Map<string, RelativisticPlayer>>(new Map());
   const lasersRef = useRef<Laser[]>([]);
-  const timeSyncedRef = useRef<boolean>(false);
   const processedLasersRef = useRef<Set<string>>(new Set());
   const deadPlayersRef = useRef<Set<string>>(new Set());
   const deathTimeMapRef = useRef<Map<string, number>>(new Map());
@@ -133,6 +132,17 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const touchInput = useTouchInput();
   const stale = useStaleDetection();
   useHighScoreSaver(myId, displayName, peerManager, scoresRef);
+
+  // Stable ref wrapper for handleRespawn (defined further below).
+  // Declared here so useHostMigration can reference it without forward-reference issues.
+  const handleRespawnRef = useRef<(id: string, pos: { t: number; x: number; y: number; z: number }) => void>(() => {});
+  const handleRespawnStable = useCallback(
+    (playerId: string, position: { t: number; x: number; y: number; z: number }) => {
+      handleRespawnRef.current(playerId, position);
+    },
+    [],
+  );
+
   const respawnTimeoutsRef = useHostMigration({
     isMigrating,
     peerManager,
@@ -143,13 +153,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     deadPlayersRef,
     deathTimeMapRef,
     displayNamesRef,
-    // biome-ignore lint/correctness/useExhaustiveDependencies: handleRespawnImpl is a stable ref wrapper (defined below) — not a reactive dependency
-    handleRespawn: useCallback(
-      (playerId: string, position: { t: number; x: number; y: number; z: number }) => {
-        handleRespawnImpl(playerId, position);
-      },
-      [],
-    ),
+    handleRespawn: handleRespawnStable,
     completeMigration,
   });
 
@@ -261,23 +265,16 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     [myId],
   );
 
-  // Stable reference for useHostMigration (avoids circular dependency)
-  const handleRespawnRef = useRef(handleRespawn);
+  // Keep handleRespawnRef in sync with the latest handleRespawn
   handleRespawnRef.current = handleRespawn;
-  const handleRespawnImpl = useCallback(
-    (playerId: string, position: { t: number; x: number; y: number; z: number }) => {
-      handleRespawnRef.current(playerId, position);
-    },
-    [],
-  );
 
-  // 初期化: ホストは即座にプレイヤー作成
+  // 初期化: ホスト・クライアント共通でプレイヤー作成（固定 OFFSET により syncTime 不要）
   const isHost = peerManager?.getIsHost() ?? false;
   // biome-ignore lint/correctness/useExhaustiveDependencies: getPlayerColor is read at init time only
   useEffect(() => {
     if (!myId) return;
-    if (!isHost) return;
 
+    // 非決定的な値を reducer 外で計算（StrictMode 安全）
     const initialPhaseSpace = createPhaseSpace(
       createVector4(
         Date.now() / 1000 - OFFSET,
@@ -291,21 +288,8 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     initialWorldLine = appendWorldLine(initialWorldLine, initialPhaseSpace);
     const initialColor = getPlayerColor(myId);
 
-    const lighthouseId = `${LIGHTHOUSE_ID_PREFIX}0`;
-    const lighthouse = createLighthouse(
-      lighthouseId,
-      Date.now() / 1000 - OFFSET,
-    );
-
-    lighthouseSpawnTimeRef.current.set(lighthouseId, Date.now());
-    stale.staleFrozenRef.current.delete(lighthouseId);
-
     setPlayers((prev) => {
-      if (prev.has(myId)) {
-        const next = new Map(prev);
-        next.set(lighthouseId, lighthouse);
-        return next;
-      }
+      if (prev.has(myId)) return prev; // Already initialized (reconnect/migration)
       const next = new Map(prev);
       next.set(myId, {
         id: myId,
@@ -314,18 +298,35 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         color: initialColor,
         isDead: false,
       });
-      next.set(lighthouseId, lighthouse);
       return next;
     });
 
-    if (peerManager) {
-      for (const conn of connections) {
-        if (conn.open) {
-          peerManager.sendTo(conn.id, {
-            type: "syncTime",
-            hostTime: initialPhaseSpace.pos.t,
-            scores: scoresRef.current,
-          });
+    // Host only: Lighthouse AI + score sync to connected clients
+    if (isHost) {
+      const lighthouseId = `${LIGHTHOUSE_ID_PREFIX}0`;
+      const lighthouse = createLighthouse(
+        lighthouseId,
+        Date.now() / 1000 - OFFSET,
+      );
+
+      lighthouseSpawnTimeRef.current.set(lighthouseId, Date.now());
+      stale.staleFrozenRef.current.delete(lighthouseId);
+
+      setPlayers((prev) => {
+        const next = new Map(prev);
+        next.set(lighthouseId, lighthouse);
+        return next;
+      });
+
+      if (peerManager) {
+        for (const conn of connections) {
+          if (conn.open) {
+            peerManager.sendTo(conn.id, {
+              type: "syncTime",
+              hostTime: initialPhaseSpace.pos.t,
+              scores: scoresRef.current,
+            });
+          }
         }
       }
     }
@@ -416,7 +417,6 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         setLasers,
         setScores,
         scoresRef,
-        timeSyncedRef,
         handleKill,
         handleRespawn,
         getPlayerColor,
@@ -445,22 +445,6 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     };
   }, [peerManager, myId, handleKill, handleRespawn]);
 
-  // Client: periodically request syncTime until received (handles guest-before-host)
-  useEffect(() => {
-    if (!peerManager || !myId) return;
-    if (isHost) return;
-    if (timeSyncedRef.current) return;
-
-    const timer = setInterval(() => {
-      if (timeSyncedRef.current) {
-        clearInterval(timer);
-        return;
-      }
-      peerManager.send({ type: "requestPeerList" });
-    }, 3000);
-
-    return () => clearInterval(timer);
-  }, [peerManager, myId, isHost]);
 
   // ウィンドウリサイズの検出
   useEffect(() => {
@@ -715,20 +699,18 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
 
             // ネットワーク送信
             const isHostNow = peerManager.getIsHost();
-            if (isHostNow || timeSyncedRef.current) {
-              const msg = {
-                type: "phaseSpace" as const,
-                senderId: myId,
-                position: physics.newPhaseSpace.pos,
-                velocity: physics.newPhaseSpace.u,
-              };
-              if (isHostNow) {
-                peerManager.send(msg);
-              } else {
-                const hostId = peerManager.getHostId();
-                if (hostId) {
-                  peerManager.sendTo(hostId, msg);
-                }
+            const msg = {
+              type: "phaseSpace" as const,
+              senderId: myId,
+              position: physics.newPhaseSpace.pos,
+              velocity: physics.newPhaseSpace.u,
+            };
+            if (isHostNow) {
+              peerManager.send(msg);
+            } else {
+              const hostId = peerManager.getHostId();
+              if (hostId) {
+                peerManager.sendTo(hostId, msg);
               }
             }
           }
@@ -866,28 +848,6 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       respawnTimeoutsRef.current.clear();
     };
   }, [peerManager, myId, handleKill, handleRespawn, stale, keysPressed]);
-
-  // Client waiting for host to start
-  if (!isHost && myId && !players.has(myId)) {
-    return (
-      <div
-        style={{
-          position: "relative",
-          width: "100dvw",
-          height: "100dvh",
-          backgroundColor: "#000",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontFamily: "monospace",
-          color: "rgba(255,255,255,0.6)",
-          fontSize: "clamp(16px, 3vw, 24px)",
-        }}
-      >
-        Waiting for host to start...
-      </div>
-    );
-  }
 
   return (
     <div

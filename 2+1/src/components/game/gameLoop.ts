@@ -248,5 +248,3 @@ export function processGhostPosition(
   );
 }
 
-// --- Host init player creation ---
-
