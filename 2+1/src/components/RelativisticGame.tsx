@@ -284,9 +284,16 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     );
 
     lighthouseSpawnTimeRef.current.set(lighthouseId, Date.now());
+    staleFrozenRef.current.delete(lighthouseId); // Clear stale state from previous host
 
     setPlayers((prev) => {
-      if (prev.has(myId)) return prev;
+      // Migration: already have own player, but need to ensure Lighthouse exists.
+      // After migration, the old host's Lighthouse may be stale or absent.
+      if (prev.has(myId)) {
+        const next = new Map(prev);
+        next.set(lighthouseId, lighthouse); // Replace stale or create new
+        return next;
+      }
       const next = new Map(prev);
       next.set(myId, {
         id: myId,
