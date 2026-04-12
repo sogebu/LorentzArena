@@ -2,12 +2,12 @@
 
 ## 現在のステータス
 
-対戦可能。**`cfcaf5e` デプロイ済み** (build `2026/04/12 15:10:25 JST`)。
+対戦可能。**`a9b997f` デプロイ済み** (build `2026/04/12 16:33:43 JST`)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
-## 直近の変更（2026-04-12 夕方）
+## 直近の変更（2026-04-12 夕方〜夜）
 
-### RelativisticGame.tsx リファクタリング
+### RelativisticGame.tsx リファクタリング (`296be3b`)
 
 1335 行 → 927 行（-408 行）。ゲームループ内のロジックを純関数・カスタムフックに分離:
 
@@ -18,7 +18,59 @@
 - `hooks/useHighScoreSaver.ts` — ハイスコア保存（beforeunload）
 - `hooks/useHostMigration.ts` — ホストマイグレーション effect
 
-DESIGN.md の設計臭 #1-#4 は触っていない（全件 defer 中）。
+### バグ修正
+
+- **useStaleDetection 返り値不安定** (`cd827ff`): `useMemo` で安定化。毎レンダーで新オブジェクトを返していたため、ゲームループ effect が再実行されリスポーンタイマーがクリアされていた
+- **灯台スポーングレース未リセット** (`5ad8e8e`): `handleRespawn` で `lighthouseSpawnTimeRef` をリセット。リスポーン後すぐ発射していた
+- **灯台色上書き** (`5ad8e8e`): `joinRegistryVersion` 変化時の色再計算で Lighthouse を除外。`getPlayerColor` が `LIGHTHOUSE_COLOR` を上書きしていた
+- **因果律ガードヒステリシス強化** (`5ad8e8e`): 閾値 0.5 → 2.0
+- **マイグレーション completeMigration 未呼出** (`a9b997f`): ソロ時 `openConns.length === 0` で early return していた → Lighthouse 再作成されず
+
+### 調整
+
+- 灯台発射間隔: 2秒 → 3秒 (`5ad8e8e`)
+- デブリ世界線: opacity 0.4 → 0.15 (`5ad8e8e`)
+
+### 新機能
+
+- **レーザー未来光円錐交差マーカー** (`0dbaebb`): `futureLightConeIntersectionLaser` を laserPhysics.ts に追加、SceneContent で描画（opacity 0.15）
+
+## 既知の課題（要修正）
+
+### ホストマイグレーション設計問題（最優先）
+
+マイグレーション後に新クライアントが接続できない根本問題:
+
+1. **新規参加者が繋がらない**: 旧ホストが `la-{roomName}` PeerJS ID を持っていたが、新ホストはランダム ID のまま。新クライアントは `la-{roomName}` に接続しようとして ID が無いため自分がホストになる
+2. **ホスト START 前にゲスト START → 黒画面**: syncTime が送信されず、クライアントのゲームが初期化されない
+3. **コード複雑化**: PeerProvider / useHostMigration / RelativisticGame init effect の三つ巴。パッチの積み重ねで見通しが悪い
+
+**設計方針案**:
+- 新ホストが `la-{roomName}` ID を再取得する（PeerServer の解放タイムラグ問題をどう回避するか）
+- または PeerServer の ID 解放を待って retry
+- ゲスト先入り問題: クライアント側で「ホスト待ち」UI を表示し、syncTime 受信まで START を無効にする or ゲーム画面に「Waiting for host...」表示
+
+### その他
+
+- **RelativisticGame.tsx は 927 行** — さらなる分割は必要に応じて
+- `pastLightConeIntersectionWorldLine` の PhaseSpace 補間 TODO (`worldLine.ts`)
+- DESIGN.md 残存する設計臭 #1-#4（全件 defer 中）
+- 色調をポップで明るく（方向性未定、グラデーション案は却下）
+
+### パフォーマンス検討課題（FPS 低下顕在化で着手）
+
+- `appendWorldLine` O(n) → ring buffer
+- ゲームループ setState 頻度 → Zustand
+- useMemo 毎フレーム再計算 → カリング
+
+## 次にやること
+
+- **ホストマイグレーション設計のクリーンアップ**（最優先）
+- 制約ネットワーク検証（学校ネットで Cloudflare TURN テスト）
+- 各プレイヤーに固有時刻表示
+- スマホ UI 残課題（レスポンシブ HUD、オンボーディング）
+- 用語の再考（`EXPLORING.md` 参照）
+- 音楽の時間同期（将来計画、`EXPLORING.md` 参照）
 
 ## 過去の変更（2026-04-12 午後）
 
@@ -53,23 +105,3 @@ DESIGN.md の設計臭 #1-#4 は触っていない（全件 defer 中）。
 ### 4 軸レビュー (`207442b`)
 
 11 件修正、正味 -86 行。光円錐交差ソルバー統一、dead code 削除等。
-
-## 既知の課題
-
-- **RelativisticGame.tsx は 927 行** — リファクタリング済み。ゲームループ内ロジックは `game/gameLoop.ts`・`game/causalEvents.ts` に、横断的関心事は `hooks/use*.ts` に分離。さらなる分割は必要に応じて
-- `pastLightConeIntersectionWorldLine` の PhaseSpace 補間 TODO (`worldLine.ts`)
-- DESIGN.md 残存する設計臭 #1-#4（全件 defer 中、リファクタリング時に再評価）
-
-### パフォーマンス検討課題（FPS 低下顕在化で着手）
-
-- `appendWorldLine` O(n) → ring buffer
-- ゲームループ setState 頻度 → Zustand
-- useMemo 毎フレーム再計算 → カリング
-
-## 次にやること
-
-- 制約ネットワーク検証（学校ネットで Cloudflare TURN テスト）
-- 各プレイヤーに固有時刻表示
-- スマホ UI 残課題（レスポンシブ HUD、オンボーディング）
-- 用語の再考（`EXPLORING.md` 参照）
-- 音楽の時間同期（将来計画、`EXPLORING.md` 参照）
