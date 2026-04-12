@@ -454,6 +454,9 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     if (!peerManager.getIsHost()) return;
 
     const timer = setInterval(() => {
+      // Don't send pings when tab is hidden. Clients will detect heartbeat
+      // timeout and trigger host migration automatically.
+      if (document.hidden) return;
       peerManager.send({ type: "ping" });
     }, HEARTBEAT_INTERVAL);
     // Send first ping immediately

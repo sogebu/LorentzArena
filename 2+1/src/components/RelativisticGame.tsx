@@ -611,6 +611,17 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     if (!peerManager || !myId) return;
 
     const gameLoop = () => {
+      // Tab is backgrounded: skip all processing. This prevents stale worldlines
+      // from accumulating, and for the host, stops pings from the game loop side.
+      // Existing mechanisms handle the rest:
+      //   - Host: ping interval (PeerProvider) also checks hidden → clients detect
+      //     heartbeat timeout → migration triggers
+      //   - Client: no phaseSpace sent → host's stale detection kicks in
+      if (document.hidden) {
+        lastTimeRef.current = Date.now(); // Prevent time jump on resume
+        return;
+      }
+
       const currentTime = Date.now();
       const rawDTau = (currentTime - lastTimeRef.current) / 1000;
       const dTau = Math.min(rawDTau, 0.1);
