@@ -513,7 +513,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
 
   // Host: proactively broadcast peerList when connections change.
   // Also update peerOrderRef on the host side.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on demotion
+  // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on role change
   useEffect(() => {
     if (!peerManager) return;
     if (!peerManager.getIsHost()) return;
@@ -570,7 +570,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
 
   // Host heartbeat: send ping every 3 seconds so clients can detect
   // host disconnection quickly (WebRTC ICE timeout is 30+ seconds).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on demotion
+  // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on role change
   useEffect(() => {
     if (!peerManager) return;
     if (connectionPhase !== "connected") return;
@@ -593,7 +593,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   const lastPingRef = useRef<number>(0);
   const migrationTriggeredRef = useRef(false);
   const migrationTimerCleanupRef = useRef<(() => void) | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on demotion
+  // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on role change
   useEffect(() => {
     if (!peerManager) return;
     if (connectionPhase !== "connected") return;
@@ -634,6 +634,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       peerManager.clearHost();
       peerManager.setAsHost();
       registerStandardHandlers(peerManager);
+      setRoleVersion((v) => v + 1);
     };
 
     // Helper: try to discover the real host via beacon redirect.
@@ -724,6 +725,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         peerManager.clearHost();
         peerManager.setAsHost();
         registerStandardHandlers(peerManager);
+        setRoleVersion((v) => v + 1); // Trigger re-eval of role-dependent effects
 
         if (activeTransport === "peerjs") {
           // Connect to all remaining peers (still registered on PeerServer)
@@ -791,10 +793,9 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   // Beacon: after migration, re-acquire la-{roomName} as a discovery-only peer.
   // New clients connecting to the beacon are redirected to the actual host.
   const beaconRef = useRef<PeerManager<Message> | null>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on demotion
+  // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on role change
   useEffect(() => {
     if (activeTransport !== "peerjs") return;
-    if (isMigrating) return; // Wait for migration state broadcast to complete
     if (!peerManager) return;
     if (!peerManager.getIsHost()) return;
     if (myId === roomPeerId) return; // Initial host already has room ID
@@ -929,8 +930,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         currentDiscoveryPm = null;
       }
     };
-  // isMigrating: triggers re-evaluation when client becomes host (setAsHost doesn't change peerManager ref)
-  }, [activeTransport, peerManager, myId, roomPeerId, connectionPhase, dynamicIceServers, roleVersion, isMigrating]);
+  }, [activeTransport, peerManager, myId, roomPeerId, connectionPhase, dynamicIceServers, roleVersion]);
 
   return (
     <PeerContext.Provider
