@@ -203,6 +203,7 @@ const ELECTED_HOST_TIMEOUT = 10000; // Wait for elected host before beacon fallb
 const REDIRECT_TIMEOUT = 10000; // Wait for redirected host before retrying beacon
 const MAX_REDIRECT_ATTEMPTS = 3; // Max beacon redirect retries for new clients
 const MAX_BEACON_RETRIES = 3; // Beacon acquisition failures before demotion
+const HOST_HIDDEN_GRACE = 5000; // Destroy host PeerManager after this long hidden (must be < HEARTBEAT_TIMEOUT)
 
 export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   const [peerManager, setPeerManager] = useState<NetworkManager | null>(null);
@@ -531,16 +532,12 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   // Host: release PeerJS IDs when tab is hidden for >5s.
   // This allows the new host (post-migration) to create a beacon at la-{roomName}.
   // On tab return, reconnect from scratch via Phase 1.
-  const HOST_HIDDEN_GRACE = 5000;
   const tabHiddenTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const wasDestroyedByHideRef = useRef(false);
-  const peerManagerForHideRef = useRef(peerManager);
-  peerManagerForHideRef.current = peerManager;
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        const pm = peerManagerForHideRef.current;
-        if (pm?.getIsHost()) {
+        if (peerManager?.getIsHost()) {
           tabHiddenTimerRef.current = setTimeout(() => {
             tabHiddenTimerRef.current = undefined;
             wasDestroyedByHideRef.current = true;
@@ -548,7 +545,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
               beaconRef.current.destroy();
               beaconRef.current = null;
             }
-            pm.destroy();
+            peerManager.destroy();
             setPeerManager(null);
           }, HOST_HIDDEN_GRACE);
         }
@@ -569,7 +566,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       clearTimeout(tabHiddenTimerRef.current);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, []);
+  }, [peerManager]);
 
   // Host heartbeat: send ping every 3 seconds so clients can detect
   // host disconnection quickly (WebRTC ICE timeout is 30+ seconds).
