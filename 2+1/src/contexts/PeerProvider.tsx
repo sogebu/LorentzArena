@@ -94,6 +94,15 @@ const appendToJoinRegistry = (
   return changed;
 };
 
+/** Type guard: is this a valid redirect message with a hostId? */
+const isRedirectMessage = (
+  msg: unknown,
+): msg is { type: "redirect"; hostId: string } =>
+  msg != null &&
+  typeof msg === "object" &&
+  (msg as { type?: string }).type === "redirect" &&
+  typeof (msg as { hostId?: string }).hostId === "string";
+
 /** Basic validation before relaying messages to all peers. */
 const isRelayable = (msg: Message): boolean => {
   if (!msg || typeof msg !== "object" || typeof msg.type !== "string")
@@ -244,6 +253,18 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     setIsMigrating(false);
   }, []);
 
+  // Register both standard message handlers on a peer manager.
+  // Called at 5 points: host init, client init, WS relay init, migration (new host), migration (solo fallback).
+  const registerStandardHandlers = useCallback(
+    (pm: NetworkManager) => {
+      registerHostRelay(pm);
+      registerPeerOrderListener(pm, peerOrderRef, joinRegistryRef, () =>
+        setJoinRegistryVersion((v) => v + 1),
+      );
+    },
+    [],
+  );
+
   // Deterministic color from join order (golden angle separation).
   // All players (including host) are in joinRegistry. Index determines color.
   // Fallback to hash-based color if peer not yet in registry.
@@ -312,14 +333,13 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
 
     pm.onPeerStatusChange((status) => setPeerStatus(status));
     pm.onConnectionChange((conns) => setConnections(conns));
-    registerHostRelay(pm);
-    registerPeerOrderListener(pm, peerOrderRef, joinRegistryRef, () => setJoinRegistryVersion((v) => v + 1));
+    registerStandardHandlers(pm);
     setPeerManager(pm);
 
     return () => {
       pm.destroy();
     };
-  }, [activeTransport, wsRelayUrl]);
+  }, [activeTransport, wsRelayUrl, registerStandardHandlers]);
 
   // PeerJS: Phase 1 — ルーム ID でホスト試行
   useEffect(() => {
@@ -343,8 +363,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         setMyId(roomPeerId);
         // ホスト自身を joinRegistry の先頭に登録
         appendToJoinRegistry(joinRegistryRef, [], roomPeerId);
-        registerHostRelay(pm);
-        registerPeerOrderListener(pm, peerOrderRef, joinRegistryRef, () => setJoinRegistryVersion((v) => v + 1));
+        registerStandardHandlers(pm);
         setPeerManager(pm);
         setConnectionPhase("connected");
       } else if (
@@ -369,6 +388,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     roomPeerId,
     credentialsFetched,
     dynamicIceServers,
+    registerStandardHandlers,
   ]);
 
   // PeerJS: Phase 2 — ランダム ID でクライアント接続
@@ -393,8 +413,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         pm.setHostId(roomPeerId);
         pm.connect(roomPeerId);
         setMyId(localId);
-        registerHostRelay(pm);
-        registerPeerOrderListener(pm, peerOrderRef, joinRegistryRef, () => setJoinRegistryVersion((v) => v + 1));
+        registerStandardHandlers(pm);
         setPeerManager(pm);
         setConnectionPhase("connected");
       }
@@ -429,29 +448,18 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         pm.setHostId(roomPeerId);
         pm.connect(roomPeerId);
         pm.onMessage("redirect_handler", (_s, m) => {
-          if (
-            m &&
-            typeof m === "object" &&
-            (m as { type?: string }).type === "redirect" &&
-            typeof (m as { hostId?: string }).hostId === "string"
-          ) {
-            followRedirect((m as { hostId: string }).hostId);
+          if (isRedirectMessage(m)) {
+            followRedirect(m.hostId);
           }
         });
       }, REDIRECT_TIMEOUT);
     };
 
     pm.onMessage("redirect_handler", (_senderId, msg) => {
-      if (
-        msg &&
-        typeof msg === "object" &&
-        (msg as { type?: string }).type === "redirect" &&
-        typeof (msg as { hostId?: string }).hostId === "string"
-      ) {
-        const realHostId = (msg as { hostId: string }).hostId;
+      if (isRedirectMessage(msg)) {
         // eslint-disable-next-line no-console
-        console.log("[PeerProvider] Redirect from beacon → real host:", realHostId);
-        followRedirect(realHostId);
+        console.log("[PeerProvider] Redirect from beacon → real host:", msg.hostId);
+        followRedirect(msg.hostId);
       }
     });
 
@@ -468,6 +476,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     roomPeerId,
     credentialsFetched,
     dynamicIceServers,
+    registerStandardHandlers,
   ]);
 
   // Auto-fallback: PeerJS → WS Relay
@@ -556,13 +565,8 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     // Handle redirect from host during gameplay (dual-host demotion).
     // When our host demotes, it sends redirect to all clients.
     peerManager.onMessage("game_redirect", (_senderId, msg) => {
-      if (
-        msg &&
-        typeof msg === "object" &&
-        (msg as { type?: string }).type === "redirect" &&
-        typeof (msg as { hostId?: string }).hostId === "string"
-      ) {
-        const newHostId = (msg as { hostId: string }).hostId;
+      if (isRedirectMessage(msg)) {
+        const newHostId = msg.hostId;
         // eslint-disable-next-line no-console
         console.log("[PeerProvider] Host redirected us to:", newHostId);
         migrationTriggeredRef.current = true;
@@ -613,8 +617,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         console.log("[PeerProvider] Becoming solo host (no peers reachable)");
         peerManager.clearHost();
         peerManager.setAsHost();
-        registerHostRelay(peerManager);
-        registerPeerOrderListener(peerManager, peerOrderRef, joinRegistryRef, () => setJoinRegistryVersion((v) => v + 1));
+        registerStandardHandlers(peerManager);
       };
 
       // Helper: try to discover the real host via beacon redirect.
@@ -633,13 +636,8 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
 
         // Listen for redirect from beacon
         peerManager.onMessage("beacon_fallback", (_senderId, msg) => {
-          if (
-            msg &&
-            typeof msg === "object" &&
-            (msg as { type?: string }).type === "redirect" &&
-            typeof (msg as { hostId?: string }).hostId === "string"
-          ) {
-            const realHostId = (msg as { hostId: string }).hostId;
+          if (isRedirectMessage(msg)) {
+            const realHostId = msg.hostId;
             // eslint-disable-next-line no-console
             console.log("[PeerProvider] Beacon fallback → real host:", realHostId);
             clearTimeout(beaconTimer);
@@ -674,8 +672,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         );
         peerManager.clearHost();
         peerManager.setAsHost();
-        registerHostRelay(peerManager);
-        registerPeerOrderListener(peerManager, peerOrderRef, joinRegistryRef, () => setJoinRegistryVersion((v) => v + 1));
+        registerStandardHandlers(peerManager);
 
         if (activeTransport === "peerjs") {
           // Connect to all remaining peers (still registered on PeerServer)
@@ -797,14 +794,9 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       });
 
       discoveryPm.onMessage("demotion_redirect", (_senderId, msg) => {
-        if (
-          msg &&
-          typeof msg === "object" &&
-          (msg as { type?: string }).type === "redirect" &&
-          typeof (msg as { hostId?: string }).hostId === "string"
-        ) {
+        if (isRedirectMessage(msg)) {
           clearTimeout(discoveryTimeout);
-          const realHostId = (msg as { hostId: string }).hostId;
+          const realHostId = msg.hostId;
           // eslint-disable-next-line no-console
           console.log("[PeerProvider] Demotion: real host is", realHostId, "— redirecting clients");
           discoveryPm.destroy();
