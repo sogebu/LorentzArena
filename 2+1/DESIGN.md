@@ -182,6 +182,15 @@ stale 除外
 - **What**: `src/services/highScores.ts` に純関数。localStorage key `"la-highscores"`、JSON 配列、最大 20 件、kills 降順。`beforeunload` でセッション終了時に保存（kills > 0 時のみ）
 - **Why**: relay server は stateless message bus で DB なし。Cloudflare KV は物理デモには過剰。localStorage はデバイス単位だが、1 デバイス = 1 プレイヤーで実用上問題なし
 - **セッション境界**: Start 押下 → タブ close/reload
+- **pagehide 対応 (2026-04-13)**: モバイル Safari では `beforeunload` がバックグラウンド化時に発火しない。`pagehide` リスナーを追加し、`savedRef` フラグで同一アンロードシーケンスの二重保存を防止。`pageshow` で `persisted === true`（bfcache 復帰）なら `savedRef` をリセットし、追加プレイ分を次回 exit で保存可能に
+
+### ホストタブ hidden 時の PeerJS ID 解放（2026-04-13）
+
+- **What**: ホストのタブが 5 秒以上 hidden になったら PeerManager + ビーコンを destroy し、`la-{roomName}` PeerJS ID を解放。タブ復帰時は Phase 1 から再接続
+- **Why**: ホストのタブが hidden でも PeerJS シグナリング WebSocket は生きたまま。`la-{roomName}` が解放されず、新ホストのビーコン作成が永続的に失敗 → MAX_BEACON_RETRIES で誤った降格が発動していた
+- **`HOST_HIDDEN_GRACE = 5000`**: `HEARTBEAT_TIMEOUT = 8000` より短い必要がある（クライアントがマイグレーション発動する前に ID を解放するため）。5 秒未満の alt-tab はキャンセルされ無害
+- **タブ復帰**: `wasDestroyedByHideRef` で「hidden 中に破壊されたか」を追跡。復帰時に `setConnectionPhase("trying-host")` → Phase 1 で `la-{roomName}` が空なら再ホスト化、ビーコンが持っていればクライアントとして参加
+- **effect deps**: `[peerManager]` — PM が null になると effect 再実行、新しい listener が登録される。PM 破壊前の古い listener は cleanup で除去
 
 ### ホストマイグレーション（2026-04-11）
 
