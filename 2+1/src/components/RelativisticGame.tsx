@@ -180,7 +180,7 @@ const RelativisticGame = () => {
         victimId,
         killerId,
         hitPos,
-        victimName: victimId.slice(0, 6),
+        victimName: isLighthouse(victimId) ? "Lighthouse" : victimId.slice(0, 6),
         victimColor: victim.color,
       });
       // 上限を超えたら最古のイベントを削除（メモリ保護）
@@ -798,6 +798,7 @@ const RelativisticGame = () => {
           for (const [id, player] of playersRef.current) {
             if (id === myId) continue;
             if (player.isDead) continue;
+            if (isLighthouse(id)) continue; // NPC は因果律ガードに影響しない
             // Stale プレイヤーは因果律ガードからスキップ（当たり判定は継続）
             if (staleFrozenRef.current.has(id)) continue;
             if (player.phaseSpace.pos.t > me.phaseSpace.pos.t) continue;
@@ -811,16 +812,28 @@ const RelativisticGame = () => {
 
           if (!frozen) {
             let forwardAccel = 0;
+            let lateralAccel = 0;
             const accel = 8 / 10;
             if (keysPressed.current.has("w")) forwardAccel += accel;
             if (keysPressed.current.has("s")) forwardAccel -= accel;
+            if (keysPressed.current.has("a")) lateralAccel -= accel;
+            if (keysPressed.current.has("d")) lateralAccel += accel;
             // Touch: vertical swipe thrust (continuous, -1 to 1)
             if (touch.thrust !== 0) {
               forwardAccel += accel * touch.thrust;
             }
+            // 斜め移動の正規化（W+D 等で加速度が √2 倍にならないようにする）
+            const rawLen = Math.sqrt(forwardAccel * forwardAccel + lateralAccel * lateralAccel);
+            if (rawLen > accel) {
+              forwardAccel *= accel / rawLen;
+              lateralAccel *= accel / rawLen;
+            }
 
-            const ax = Math.cos(cameraYawRef.current) * forwardAccel;
-            const ay = Math.sin(cameraYawRef.current) * forwardAccel;
+            const yaw = cameraYawRef.current;
+            const ax =
+              Math.cos(yaw) * forwardAccel + Math.cos(yaw + Math.PI / 2) * lateralAccel;
+            const ay =
+              Math.sin(yaw) * forwardAccel + Math.sin(yaw + Math.PI / 2) * lateralAccel;
 
             const mu = 0.5;
             const frictionX = -me.phaseSpace.u.x * mu;

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { gamma, lengthVector3 } from "../../physics";
 // colorForPlayerId is no longer used here; colors come from getPlayerColor prop
 import { RESPAWN_DELAY } from "./constants";
+import { isLighthouse } from "./lighthouse";
 import type { DeathEvent, RelativisticPlayer } from "./types";
 
 declare const __BUILD_TIME__: string;
@@ -167,7 +168,7 @@ export const HUD = ({
           </>
         ) : (
           <>
-            <div>W/S: 前進/後退</div>
+            <div>W/S: 前進/後退  A/D: 左右移動</div>
             <div>←/→: カメラ水平回転</div>
             <div>↑/↓: カメラ上下回転</div>
             <div>Space: レーザー発射</div>
@@ -212,7 +213,7 @@ export const HUD = ({
                   color: players.get(id)?.color ?? getPlayerColor(id),
                 }}
               >
-                {id === myId ? "You" : id.slice(0, 6)}: {kills}
+                {id === myId ? "You" : isLighthouse(id) ? "Lighthouse" : id.slice(0, 6)}: {kills}
               </div>
             ))}
           </div>
