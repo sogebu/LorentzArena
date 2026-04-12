@@ -16,7 +16,7 @@ import {
   buildDisplayMatrix,
   transformEventForDisplay,
 } from "./displayTransform";
-import { pastLightConeIntersectionLaser } from "./laserPhysics";
+import { futureLightConeIntersectionLaser, pastLightConeIntersectionLaser } from "./laserPhysics";
 import {
   getDebrisMaterial,
   getThreeColor,
@@ -549,6 +549,30 @@ export const SceneContent = ({
       );
   }, [lasers, myPlayer, myId, observerPos, observerBoost]);
 
+  // Future light cone intersections with lasers
+  const laserFutureIntersections = useMemo(() => {
+    if (!myPlayer || !myId) return [];
+    return lasers
+      .map((laser) => {
+        const intersection = futureLightConeIntersectionLaser(
+          laser,
+          myPlayer.phaseSpace.pos,
+        );
+        if (!intersection) return null;
+        return {
+          laser,
+          pos: transformEventForDisplay(
+            intersection,
+            observerPos,
+            observerBoost,
+          ),
+        };
+      })
+      .filter(
+        (value): value is { laser: Laser; pos: Vector4 } => value !== null,
+      );
+  }, [lasers, myPlayer, myId, observerPos, observerBoost]);
+
   // Future light cone intersections: where a signal from the observer would reach each player
   const futureLightConeIntersections = useMemo(() => {
     if (!myPlayer || !myId) return [];
@@ -735,6 +759,29 @@ export const SceneContent = ({
                 emissiveIntensity={1.1}
                 roughness={0.25}
                 metalness={0.1}
+              />
+            </mesh>
+          </group>
+        );
+      })}
+
+      {/* レーザー未来光円錐交差マーカー（うっすら表示） */}
+      {laserFutureIntersections.map(({ laser, pos }) => {
+        const color = getThreeColor(laser.color);
+        return (
+          <group
+            key={`laser-future-${laser.id}`}
+            position={[pos.x, pos.y, pos.t]}
+          >
+            <mesh
+              geometry={sharedGeometries.laserIntersectionDot}
+              scale={[0.7, 0.7, 0.7]}
+            >
+              <meshBasicMaterial
+                color={color}
+                transparent
+                opacity={0.15}
+                depthWrite={false}
               />
             </mesh>
           </group>

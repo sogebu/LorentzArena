@@ -1,5 +1,6 @@
 import {
   createVector4,
+  futureLightConeIntersectionSegment,
   pastLightConeIntersectionSegment,
   subVector4,
   type Vector4,
@@ -103,4 +104,29 @@ export const pastLightConeIntersectionLaser = (
     laser.emissionPos.z + laser.direction.z * laser.range,
   );
   return pastLightConeIntersectionSegment(start, subVector4(end, start), observerPos);
+};
+
+/**
+ * Find intersection of "observer future light cone" and a laser world-line segment.
+ *
+ * JP: 観測者の未来光円錐とレーザー軌跡の交差点。
+ * 「自分が今発した光がレーザー世界線に追いつく時空点」を表す。
+ */
+export const futureLightConeIntersectionLaser = (
+  laser: Laser,
+  observerPos: Vector4,
+): Vector4 | null => {
+  const start = createVector4(
+    laser.emissionPos.t,
+    laser.emissionPos.x,
+    laser.emissionPos.y,
+    laser.emissionPos.z,
+  );
+  const end = createVector4(
+    laser.emissionPos.t + laser.range,
+    laser.emissionPos.x + laser.direction.x * laser.range,
+    laser.emissionPos.y + laser.direction.y * laser.range,
+    laser.emissionPos.z + laser.direction.z * laser.range,
+  );
+  return futureLightConeIntersectionSegment(start, subVector4(end, start), observerPos);
 };
