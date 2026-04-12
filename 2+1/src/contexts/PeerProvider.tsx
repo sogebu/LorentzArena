@@ -59,6 +59,7 @@ interface PeerContextValue {
   roomName: string;
   isMigrating: boolean;
   getPlayerColor: (peerId: string) => string;
+  joinRegistryVersion: number;
   setActiveTransport: (transport: ActiveTransport) => void;
   completeMigration: () => void;
 }
@@ -100,6 +101,7 @@ const registerPeerOrderListener = (
   pm: NetworkManager,
   peerOrderRef: { current: string[] },
   joinRegistryRef: { current: string[] },
+  onRegistryChange: () => void,
 ) => {
   pm.onMessage("peerOrder", (_senderId, msg) => {
     if (
@@ -110,17 +112,21 @@ const registerPeerOrderListener = (
       const peers = (msg as { peers?: string[] }).peers;
       if (Array.isArray(peers)) {
         peerOrderRef.current = peers;
+        let changed = false;
         // Ensure host is at index 0 of joinRegistry
         const hostId = pm.getHostId();
         if (hostId && !joinRegistryRef.current.includes(hostId)) {
           joinRegistryRef.current.unshift(hostId);
+          changed = true;
         }
         // Append-only: add new peers to joinRegistry (never remove)
         for (const id of peers) {
           if (!joinRegistryRef.current.includes(id)) {
             joinRegistryRef.current.push(id);
+            changed = true;
           }
         }
+        if (changed) onRegistryChange();
       }
     }
   });
@@ -207,6 +213,8 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   // Used for deterministic color assignment via golden angle.
   // Never shrinks — disconnected peers keep their index for color stability.
   const joinRegistryRef = useRef<string[]>([]);
+  // Version counter: incremented when joinRegistry changes, triggers color recalculation
+  const [joinRegistryVersion, setJoinRegistryVersion] = useState(0);
 
   const completeMigration = useCallback(() => {
     setIsMigrating(false);
@@ -281,7 +289,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     pm.onPeerStatusChange((status) => setPeerStatus(status));
     pm.onConnectionChange((conns) => setConnections(conns));
     registerHostRelay(pm);
-    registerPeerOrderListener(pm, peerOrderRef, joinRegistryRef);
+    registerPeerOrderListener(pm, peerOrderRef, joinRegistryRef, () => setJoinRegistryVersion((v) => v + 1));
     setPeerManager(pm);
 
     return () => {
@@ -314,7 +322,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
           joinRegistryRef.current.unshift(roomPeerId);
         }
         registerHostRelay(pm);
-        registerPeerOrderListener(pm, peerOrderRef, joinRegistryRef);
+        registerPeerOrderListener(pm, peerOrderRef, joinRegistryRef, () => setJoinRegistryVersion((v) => v + 1));
         setPeerManager(pm);
         setConnectionPhase("connected");
       } else if (
@@ -364,7 +372,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         pm.connect(roomPeerId);
         setMyId(localId);
         registerHostRelay(pm);
-        registerPeerOrderListener(pm, peerOrderRef, joinRegistryRef);
+        registerPeerOrderListener(pm, peerOrderRef, joinRegistryRef, () => setJoinRegistryVersion((v) => v + 1));
         setPeerManager(pm);
         setConnectionPhase("connected");
       }
@@ -410,16 +418,20 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     const openPeers = connections.filter((c) => c.open).map((c) => c.id);
     peerOrderRef.current = openPeers;
     // Ensure host is in joinRegistry (important after migration)
+    let changed = false;
     const myPeerId = peerManager.id();
     if (myPeerId && !joinRegistryRef.current.includes(myPeerId)) {
       joinRegistryRef.current.unshift(myPeerId);
+      changed = true;
     }
     // Append-only joinRegistry (host side)
     for (const id of openPeers) {
       if (!joinRegistryRef.current.includes(id)) {
         joinRegistryRef.current.push(id);
+        changed = true;
       }
     }
+    if (changed) setJoinRegistryVersion((v) => v + 1);
     if (openPeers.length > 0) {
       peerManager.send({ type: "peerList", peers: openPeers } as never);
     }
@@ -500,7 +512,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         peerManager.clearHost();
         peerManager.setAsHost();
         registerHostRelay(peerManager);
-        registerPeerOrderListener(peerManager, peerOrderRef, joinRegistryRef);
+        registerPeerOrderListener(peerManager, peerOrderRef, joinRegistryRef, () => setJoinRegistryVersion((v) => v + 1));
         return;
       }
 
@@ -513,6 +525,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         peerManager.clearHost();
         peerManager.setAsHost();
         registerHostRelay(peerManager);
+        registerPeerOrderListener(peerManager, peerOrderRef, joinRegistryRef, () => setJoinRegistryVersion((v) => v + 1));
 
         if (activeTransport === "peerjs") {
           // Connect to all remaining peers (still registered on PeerServer)
@@ -575,6 +588,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         roomName,
         isMigrating,
         getPlayerColor,
+        joinRegistryVersion,
         setActiveTransport,
         completeMigration,
       }}

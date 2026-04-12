@@ -138,8 +138,8 @@ export const createMessageHandler =
               return wl;
             })();
 
-        // 色は joinRegistry から毎回再計算（peerList 到着前はフォールバック、到着後に正しい色に収束）
-        const color = getPlayerColor(playerId);
+        // 色は ID から決定的に算出（joinRegistryVersion 変化時に再計算される）
+        const color = existing?.color ?? getPlayerColor(playerId);
 
         const next = new Map(prev);
         next.set(playerId, {

@@ -57,6 +57,7 @@ const RelativisticGame = () => {
     isMigrating,
     completeMigration,
     getPlayerColor,
+    joinRegistryVersion,
   } = usePeer();
   const [players, setPlayers] = useState<Map<string, RelativisticPlayer>>(
     new Map(),
@@ -311,9 +312,8 @@ const RelativisticGame = () => {
           idsToRemove.push(playerId);
         }
       }
-      let changed = idsToRemove.length > 0;
+      if (idsToRemove.length === 0) return prev;
       const next = new Map(prev);
-      // 切断プレイヤーを先に削除（色再計算の無駄を避ける）
       for (const id of idsToRemove) {
         next.delete(id);
         deadPlayersRef.current.delete(id);
@@ -321,7 +321,16 @@ const RelativisticGame = () => {
         lastUpdateTimeRef.current.delete(id);
         staleFrozenRef.current.delete(id);
       }
-      // 色の再計算: joinRegistry 更新後に正しい色を反映
+      return next;
+    });
+  }, [connections, myId, peerManager, isMigrating]);
+
+  // joinRegistry 変化時に全プレイヤーの色を再計算
+  useEffect(() => {
+    if (joinRegistryVersion === 0) return; // 初期値はスキップ
+    setPlayers((prev) => {
+      let changed = false;
+      const next = new Map(prev);
       for (const [id, player] of next) {
         const correctColor = getPlayerColor(id);
         if (player.color !== correctColor) {
@@ -329,10 +338,9 @@ const RelativisticGame = () => {
           changed = true;
         }
       }
-      if (!changed) return prev;
-      return next;
+      return changed ? next : prev;
     });
-  }, [connections, myId, peerManager, isMigrating, getPlayerColor]);
+  }, [joinRegistryVersion, getPlayerColor]);
 
   // Host migration: when promoted to host, broadcast game state and reconstruct respawn timers.
   useEffect(() => {
