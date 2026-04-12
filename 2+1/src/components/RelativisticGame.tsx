@@ -862,7 +862,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
           );
           setPlayers((prev) => {
             const me = prev.get(myId);
-            if (!me) return prev;
+            if (!me || !me.isDead) return prev; // Respawn may have already run in this batch
             const next = new Map(prev);
             next.set(myId, {
               ...me,
