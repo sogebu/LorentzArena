@@ -2,10 +2,8 @@
 
 ## 現在のステータス
 
-対戦可能。**`c5d8027` デプロイ済み** (build `2026/04/13 08:42:15 JST`)。
+対戦可能。**`7f9e3cb` デプロイ済み** (build `2026/04/13 08:57:46 JST`)。
 本番 URL: https://sogebu.github.io/LorentzArena/
-
-main は `e06b696` まで push 済み（未デプロイ）。roleVersion 一貫化 + assumeHostRole 抽出。
 
 ## 直近の変更（2026-04-13）
 
