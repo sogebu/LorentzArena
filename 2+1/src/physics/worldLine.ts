@@ -291,9 +291,14 @@ export const pastLightConeIntersectionWorldLine = (
     );
 
     if (tParam >= 0 && tParam <= 1) {
-      // TODO: interpolate PhaseSpace between prevState and state using tParam.
-      // For now we return the older endpoint as an approximation.
-      return prevState;
+      const t1 = 1 - tParam;
+      const interpPos = createVector4(
+        prevState.pos.t * t1 + state.pos.t * tParam,
+        prevState.pos.x * t1 + state.pos.x * tParam,
+        prevState.pos.y * t1 + state.pos.y * tParam,
+        prevState.pos.z * t1 + state.pos.z * tParam,
+      );
+      return createPhaseSpace(interpPos, prevState.u);
     }
   }
 
@@ -352,11 +357,16 @@ export const futureLightConeIntersectionWorldLine = (
     );
 
     if (tParam >= 0 && tParam <= 1) {
-      // Check it's actually in the future
-      const intersectionT =
-        prevState.pos.t + tParam * (state.pos.t - prevState.pos.t);
+      const t1 = 1 - tParam;
+      const intersectionT = prevState.pos.t * t1 + state.pos.t * tParam;
       if (intersectionT <= observerPosition.t) continue;
-      return prevState;
+      const interpPos = createVector4(
+        intersectionT,
+        prevState.pos.x * t1 + state.pos.x * tParam,
+        prevState.pos.y * t1 + state.pos.y * tParam,
+        prevState.pos.z * t1 + state.pos.z * tParam,
+      );
+      return createPhaseSpace(interpPos, prevState.u);
     }
   }
 
