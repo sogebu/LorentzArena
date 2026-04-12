@@ -9,10 +9,14 @@ export function useHighScoreSaver(
   scoresRef: React.RefObject<Record<string, number>>,
 ) {
   const sessionStartTimeRef = useRef<number>(Date.now());
+  const savedRef = useRef(false);
 
   useEffect(() => {
-    const handleBeforeUnload = () => {
+    const saveScores = () => {
+      if (savedRef.current) return;
       if (!myId) return;
+      savedRef.current = true;
+
       const duration = (Date.now() - sessionStartTimeRef.current) / 1000;
       const leaderboardUrl = import.meta.env.VITE_LEADERBOARD_URL;
       const now = new Date().toISOString();
@@ -34,7 +38,21 @@ export function useHighScoreSaver(
         }
       }
     };
+
+    // pagehide fires on mobile when backgrounding (beforeunload often doesn't)
+    const handlePageHide = () => saveScores();
+    const handleBeforeUnload = () => saveScores();
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) savedRef.current = false; // bfcache restore → allow re-save
+    };
+
     window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("pageshow", handlePageShow);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("pageshow", handlePageShow);
+    };
   }, [myId, displayName, peerManager, scoresRef]);
 }
