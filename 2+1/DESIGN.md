@@ -36,7 +36,7 @@
 - **Key decisions**:
   - `pendingKillEventsRef` に全キルイベントを積む（以前は自分が当事者のときのみ）
   - スコアは各プレイヤーがローカルで加算。全員が同じイベントセットを受け取るので最終的に一致（加算は可換）
-  - `score` ブロードキャストメッセージは廃止。途中参加時は `syncTime` にスコアを含めて一括同期
+  - `score` ブロードキャストメッセージの送信を廃止。途中参加時は `syncTime` にスコアを含めて一括同期。型定義・受信ハンドラは後方互換で残存（旧バージョンクライアントが送る可能性を保持）
 
 ### モバイルタッチ入力: 全画面ジェスチャ + UI 要素ゼロ（2026-04-11）
 
@@ -120,13 +120,21 @@
 
 - **What**: ページを開くと自動でルーム ID（`la-{roomName}`）でホスト登録を試行。ID が既に使われていれば（unavailable-id エラー）クライアントとして接続
 - **Why**: ID の手動共有が不要になる。「URL を開くだけ」で参加可能
-- **Tradeoff**: WS Relay モードでは使えない（PeerJS のシグナリングサーバーに依存）。ホスト切断時の自動復旧は未実装
+- **Tradeoff**: WS Relay モードでは使えない（PeerJS のシグナリングサーバーに依存）。ホスト切断時の自動復旧はホストマイグレーション（2026-04-11）で実装済み
 
 ### レンダリング: 過去光円錐に基づく描画
 
 - **What**: プレイヤーは他オブジェクトの「現在位置」ではなく過去光円錐上の位置を見る
 - **Why**: 特殊相対論を正確に反映するゲームメカニクスの根幹
 - **Tradeoff**: 計算コストが増えるが、ゲームの存在意義そのもの
+
+### 過去光円錐交差の統一ソルバー: `pastLightConeIntersectionSegment`（2026-04-12）
+
+- **What**: レーザー・デブリ・世界線の過去光円錐交差計算で共通の二次方程式ソルバーを `physics/vector.ts` に抽出。`laserPhysics.ts` と `debris.ts` はこのソルバーに委譲
+- **Why**: レーザー (`pastLightConeIntersectionLaser`) とデブリ (`pastLightConeIntersectionDebris`) が ~30 行の同一アルゴリズム（パラメータ lambda の二次方程式 `a*lambda^2 + b*lambda + c = 0` を解いて過去側の最新交点を返す）を重複実装していた。数学的に同一の問題: 時空区間 X(lambda) = start + lambda * delta (lambda in [0,1]) と観測者の過去光円錐の交差
+- **配置**: `physics/vector.ts`。`lorentzDotVector4`, `isInPastLightCone` と同レベルのミンコフスキー幾何の基本操作
+- **呼び出し元**: レーザー描画（`laserPhysics.ts` が start/end を構築して渡す）、デブリ描画（`debris.ts` が direction * maxLambda を delta として渡す）。世界線の描画は引き続き `worldLine.ts` 内の独自実装（セグメント列の走査 + binary search + 半直線延長があるため、単一セグメントソルバーへの単純委譲ではない）
+- **Tradeoff**: なし。正味 -60 行、動作同一
 
 ### WorldLine 描画最適化: ローレンツ変換を THREE.js 行列で適用（2+1 限定）
 
@@ -179,6 +187,11 @@ index 0 = ホスト、1 = 最初のクライアント、2 = 次、...
 - **旧 stateful 方式（2026-04-06 に廃止）**: ホストが色を管理・配信 → StrictMode 二重実行、接続 race、HMR state 保持で 5 連バグ
 - **ハッシュ方式（2026-04-06〜）**: 純関数で race 消滅。ただし 2 人で約 1/6 の確率で近い色になる
 - **joinOrder 方式（2026-04-11〜）**: 連続整数 × 黄金角で色分離を保証。append-only 配列 1 本のみの軽量 state で、旧方式の副作用問題を踏まない
+
+#### joinRegistry 更新の統一: `appendToJoinRegistry` ヘルパー（2026-04-12）
+
+- **What**: PeerProvider 内の 3 箇所（`registerPeerOrderListener` / Phase 1 ホスト成功 / ホスト connection change effect）で重複していた joinRegistry append ロジックを `appendToJoinRegistry(joinRegistryRef, ids, hostFirst?)` ヘルパーに抽出
+- **Why**: append-only の不変条件（`includes` チェック → `push`/`unshift`）が 3 箇所に分散していると、1 箇所だけ変更して不整合を起こすリスクがある。ホスト ID を先頭に入れるロジックの統一も兼ねる
 
 #### 注意: getPlayerColor を useEffect deps に入れない
 
@@ -341,6 +354,11 @@ index 0 = ホスト、1 = 最初のクライアント、2 = 次、...
 - **Why**: 同じ物理判定（`lorentzDot(diff, diff) <= 0 && observer.t > event.t`）が kill と spawn で重複していた。条件を変更する際（例: 許容誤差追加）に 2 箇所変更になるのは物理コードとして不適切
 - **配置**: `physics/vector.ts`。理由: `lorentzDotVector4` と同レベルのミンコフスキー幾何の基本操作。`pastLightConeIntersection*` 群（軌跡との交差計算）とは抽象レベルが異なる
 - **スコープ外**: 因果律の守護者（`RelativisticGame.tsx` L557）は未来光円錐判定（strict `< 0`、方向逆）で別の操作。`isInPastLightCone` に統合しない
+
+### `pastLightConeIntersectionPhaseSpace` 削除（2026-04-12）
+
+- **What**: `mechanics.ts` の `pastLightConeIntersectionPhaseSpace` を削除。常に末尾要素を返すだけの placeholder で、どこからも呼ばれていなかった
+- **Why**: `physics/index.ts` が re-export しており、実際の交差計算 (`worldLine.ts` の `pastLightConeIntersectionWorldLine`) と混同するリスクがあった。名前が似ているが挙動が全く異なる関数が公開 API に並ぶのは危険
 
 ### 時間積分: Semi-implicit Euler
 
