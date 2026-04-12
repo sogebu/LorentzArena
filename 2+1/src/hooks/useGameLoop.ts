@@ -7,9 +7,8 @@ import {
   MAX_LASERS,
   RESPAWN_DELAY,
   SPAWN_EFFECT_DURATION,
-  SPAWN_RANGE,
 } from "../components/game/constants";
-import { getRespawnCoordTime } from "../components/game/respawnTime";
+import { createRespawnPosition } from "../components/game/respawnTime";
 import { isLighthouse } from "../components/game/lighthouse";
 import {
   processCamera,
@@ -451,12 +450,7 @@ export function useGameLoop({
 
             const timerId = setTimeout(() => {
               respawnTimeoutsRef.current.delete(timerId);
-              const respawnPos = {
-                t: getRespawnCoordTime(playersRef.current),
-                x: Math.random() * SPAWN_RANGE,
-                y: Math.random() * SPAWN_RANGE,
-                z: 0,
-              };
+              const respawnPos = createRespawnPosition(playersRef.current);
               deadPlayersRef.current.delete(victimId);
               peerManager.send({
                 type: "respawn" as const,

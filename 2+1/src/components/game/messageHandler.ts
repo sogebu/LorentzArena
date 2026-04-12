@@ -7,7 +7,7 @@ import {
 } from "../../physics";
 import { colorForPlayerId } from "./colors"; // fallback for syncTime init
 import { MAX_LASERS, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
-import { getRespawnCoordTime } from "./respawnTime";
+import { createRespawnPosition } from "./respawnTime";
 import type { Laser, RelativisticPlayer } from "./types";
 
 export type MessageHandlerDeps = {
@@ -113,13 +113,7 @@ export const createMessageHandler =
       // Stale 復帰検知: stale 凍結されたプレイヤーから phaseSpace が来た
       if (staleFrozenRef.current.has(playerId)) {
         if (!peerManager.getIsHost()) return; // クライアントはホストの respawn を待つ
-        // ホスト: maxT + ランダム位置でリスポーン（通常 respawn と同じ）
-        const respawnPos = {
-          t: getRespawnCoordTime(playersRef.current),
-          x: Math.random() * SPAWN_RANGE,
-          y: Math.random() * SPAWN_RANGE,
-          z: 0,
-        };
+        const respawnPos = createRespawnPosition(playersRef.current);
         staleFrozenRef.current.delete(playerId);
         lastUpdateTimeRef.current.set(playerId, Date.now());
         peerManager.send({

@@ -1,4 +1,4 @@
-import { OFFSET } from "./constants";
+import { OFFSET, SPAWN_RANGE } from "./constants";
 import type { RelativisticPlayer } from "./types";
 
 /**
@@ -16,3 +16,15 @@ export const getRespawnCoordTime = (
   }
   return Number.isFinite(maxT) ? maxT : Date.now() / 1000 - OFFSET;
 };
+
+/**
+ * リスポーン位置を生成（座標時間 + ランダム空間位置）。
+ */
+export const createRespawnPosition = (
+  players: Map<string, RelativisticPlayer>,
+): { t: number; x: number; y: number; z: number } => ({
+  t: getRespawnCoordTime(players),
+  x: Math.random() * SPAWN_RANGE,
+  y: Math.random() * SPAWN_RANGE,
+  z: 0,
+});

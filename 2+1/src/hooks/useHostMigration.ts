@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { RESPAWN_DELAY, SPAWN_RANGE } from "../components/game/constants";
-import { getRespawnCoordTime } from "../components/game/respawnTime";
+import { RESPAWN_DELAY } from "../components/game/constants";
+import { createRespawnPosition } from "../components/game/respawnTime";
 import type { RelativisticPlayer } from "../components/game/types";
 interface UseHostMigrationArgs {
   isMigrating: boolean;
@@ -91,12 +91,7 @@ export function useHostMigration({
 
       const timerId = setTimeout(() => {
         respawnTimeoutsRef.current.delete(timerId);
-        const respawnPos = {
-          t: getRespawnCoordTime(playersRef.current),
-          x: Math.random() * SPAWN_RANGE,
-          y: Math.random() * SPAWN_RANGE,
-          z: 0,
-        };
+        const respawnPos = createRespawnPosition(playersRef.current);
         deadPlayersRef.current.delete(playerId);
         peerManager.send({
           type: "respawn" as const,
