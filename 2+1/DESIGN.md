@@ -16,6 +16,31 @@
 - **修正**: クライアントの RelativisticGame mount 時に `requestPeerList` を送信。ホスト側の messageHandler が `requestPeerList` を受信したら `sendTo` で syncTime を返す（ブロードキャストではなく、要求元だけに unicast）
 - **教訓**: PeerProvider（常時 mount）と RelativisticGame（条件付き mount）の間でメッセージが失われるパターン。新しいメッセージ型を追加する際は、両方の mount 状態を考慮すること
 
+### setPlayers ラッパーによる stale ref 根絶（2026-04-12）
+
+- **What**: `setPlayers` を useCallback ラッパーに置き換え、updater 内で `playersRef.current = next` を即座に同期。従来の `useEffect(() => { playersRef.current = players }, [players])` による遅延同期を廃止
+- **Why**: ゲームループは `setInterval` で走り、`playersRef.current` を読んで `setPlayers` で書く。`useEffect` 同期は次の render まで遅れるため、リスポーン直後のティックで古い worldLine を読んで上書きするバグが繰り返し再発した（3回修正しても根本原因が残っていた）。構造的に stale 読みが不可能になる設計が必要
+- **トレードオフ**: updater 内の ref 代入は technically a side effect だが、React 18 の同期 batching では実害なし。これにより DESIGN.md 残存臭 #1（deadPlayersRef mirror）の根本原因も解消
+
+### 灯台因果律ジャンプ（2026-04-12）
+
+- **What**: 灯台（Lighthouse AI）が誰かの過去光円錐内に落ちたら、最も過去にいる生存プレイヤーの座標時間にジャンプ
+- **Why**: 灯台は静止（γ=1, dt=dτ）だがプレイヤーが加速すると dt=γ·dτ で座標時間が速く進み、灯台が置いていかれる。従来は因果律ガード（フリーズ）から灯台を除外していたため因果律が破れていた。フリーズは灯台には不適切（プレイヤーに入力がないので永久にフリーズし続ける）。ジャンプなら灯台の世界線は時間方向に不連続になるが、因果律は保たれる
+- **検出条件**: 任意のプレイヤー P について、灯台 L との差 `L.pos - P.pos` がミンコフスキー的に時間的（l < 0）かつ L.t < P.t → L は P の過去光円錐内
+- **ジャンプ先**: 全生存プレイヤーの座標時間の最小値。最も遅れているプレイヤーに合わせることで、全員に対して因果律を回復
+
+### デブリの相対論的速度合成（2026-04-12）
+
+- **What**: デブリ速度を被撃破機の固有速度空間で生成。ランダム kick を固有速度 (γv) に加算し、`ut = √(1+ux²+uy²)` で正規化してから 3速度 `v = u/γ` に変換
+- **Why**: 従来はランダム方向のみで被撃破機の速度を無視していた。ローレンツブースト行列による変換（最初の実装）は正しいが重い。固有速度空間での加算はより自然で軽量: (1) 足し算なので直感的 (2) `|v| < 1` が正規化で自動保証 (3) 行列演算不要
+- **パラメータ**: kick 幅 0.2〜2.0 (γv 単位)。高速移動中の撃破ではデブリが進行方向に偏る
+
+### useGameLoop の依存管理設計（2026-04-12）
+
+- **What**: useGameLoop hook の useEffect 依存を `[peerManager, myId]` のみにし、他の deps は全て closure で直接捕獲
+- **Why**: 初回実装では deps オブジェクトを `[deps]` で依存に入れたが、オブジェクトリテラルは毎レンダリングで新規作成されるため毎回 cleanup → 再生成が走り、respawn タイマーがクリアされてリスポーン不能になった。depsRef パターンで迂回したが、これは新たなスパゲッティ。真の分析: 30+ フィールドのうち参照が変わりうるのは peerManager と myId のみ（ref は安定、React setState は安定、useCallback([]) は安定、handleKill/handleRespawn は myId 依存で連動）
+- **教訓**: useEffect の依存配列は「何が変わりうるか」の安定性分析が必須。オブジェクトをまとめて渡すと分析が隠蔽される
+
 ### ゴースト reducer の React batch race（2026-04-12）
 
 - **What**: リスポーン時に旧世界線と新世界線が繋がる
