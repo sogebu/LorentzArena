@@ -103,6 +103,12 @@ const isRedirectMessage = (
   (msg as { type?: string }).type === "redirect" &&
   typeof (msg as { hostId?: string }).hostId === "string";
 
+/** Type guard: is this a ping (heartbeat) message? */
+const isPingMessage = (msg: unknown): msg is { type: "ping" } =>
+  msg != null &&
+  typeof msg === "object" &&
+  (msg as { type?: string }).type === "ping";
+
 /** Basic validation before relaying messages to all peers. */
 const isRelayable = (msg: Message): boolean => {
   if (!msg || typeof msg !== "object" || typeof msg.type !== "string")
@@ -188,6 +194,15 @@ const registerHostRelay = (pm: NetworkManager) => {
     }
   });
 };
+
+// --- Network timing constants ---
+const HEARTBEAT_INTERVAL = 3000; // Host sends ping every 3s
+const HEARTBEAT_TIMEOUT = 8000; // Client triggers migration after 8s without ping
+const BEACON_TIMEOUT = 8000; // Beacon fallback: give up and become solo host
+const ELECTED_HOST_TIMEOUT = 10000; // Wait for elected host before beacon fallback
+const REDIRECT_TIMEOUT = 10000; // Wait for redirected host before retrying beacon
+const MAX_REDIRECT_ATTEMPTS = 3; // Max beacon redirect retries for new clients
+const MAX_BEACON_RETRIES = 3; // Beacon acquisition failures before demotion
 
 export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   const [peerManager, setPeerManager] = useState<NetworkManager | null>(null);
@@ -424,8 +439,6 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     // message will be { type: "redirect", hostId: "actual-host-id" }.
     let redirectTimer: ReturnType<typeof setTimeout> | undefined;
     let redirectAttempts = 0;
-    const MAX_REDIRECT_ATTEMPTS = 3;
-    const REDIRECT_TIMEOUT = 10000;
 
     const followRedirect = (hostId: string) => {
       pm.disconnectPeer(roomPeerId);
@@ -517,8 +530,6 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
 
   // Host heartbeat: send ping every 3 seconds so clients can detect
   // host disconnection quickly (WebRTC ICE timeout is 30+ seconds).
-  const HEARTBEAT_INTERVAL = 3000;
-  const HEARTBEAT_TIMEOUT = 8000;
   // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on demotion
   useEffect(() => {
     if (!peerManager) return;
@@ -553,13 +564,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     migrationTriggeredRef.current = false;
 
     peerManager.onMessage("heartbeat", (_senderId, msg) => {
-      if (
-        msg &&
-        typeof msg === "object" &&
-        (msg as { type?: string }).type === "ping"
-      ) {
-        lastPingRef.current = Date.now();
-      }
+      if (isPingMessage(msg)) lastPingRef.current = Date.now();
     });
 
     // Handle redirect from host during gameplay (dual-host demotion).
@@ -593,7 +598,6 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
 
     // Helper: try to discover the real host via beacon redirect.
     // Falls back to becomeSoloHost if beacon is unreachable.
-    const BEACON_TIMEOUT = 8000;
     const attemptBeaconFallback = () => {
       if (activeTransport !== "peerjs") {
         becomeSoloHost();
@@ -707,7 +711,6 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         }
 
         // Timeout: if elected host never connects, fall back to beacon discovery
-        const ELECTED_HOST_TIMEOUT = 10000;
         const electedHostTimer = setTimeout(() => {
           // Check if we got a connection from the elected host
           const conns = peerManager.getConnectedPeerIds();
@@ -761,7 +764,6 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     let beaconFailCount = 0;
     let currentDiscoveryPm: PeerManager<Message> | null = null;
     let currentDiscoveryTimeout: ReturnType<typeof setTimeout> | undefined;
-    const MAX_BEACON_RETRIES = 3;
     const actualHostId = myId;
 
     // When beacon acquisition fails repeatedly, another host exists.
