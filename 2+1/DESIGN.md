@@ -498,12 +498,7 @@ index 0 = ホスト、1 = 最初のクライアント、2 = 次、...
   - もし反映が不確実なら、**`playersRef.current` を sync で更新する専用の setState ラッパー**を作る（setPlayers 直後に `playersRef.current = nextValue` を代入、ただし reducer 内ではなく呼び出し側で実施）
 - **優先度**: 高（mirror 同期忘れバグは潜在的に高リスク）、難易度: 中
 - **検証手順**: `deadPlayersRef` を削除して、その場に `playersRef.current.get(id)?.isDead` + `killedThisFrame` の組み合わせに置き換えてみる。2 人プレイで速射テスト（同一ティックで複数ヒット）を走らせて regression がないか確認。
-- **現状判断 (2026-04-06 再評価)**: **defer**。
-  - コード再読で `RelativisticGame.tsx:221-223` の `playersRef.current = players` は **useEffect 内**であることを確認した。つまり ref 同期は React コミット後に起きるので、`setPlayers(applyKill)` 直後の次ティックまでに commit が流れる保証は React scheduler 次第で、負荷時には stale になりうる
-  - 加えて `killedThisFrame` は既存（`:621`）で intra-tick dedup はカバー済み、cross-tick は実害なしで動いている
-  - mirror は「症状」ではなく impedance mismatch への **対処**。消すと新しい cross-tick race を生むリスクがある。直すなら setPlayers ラッパーで呼び出し側 sync 更新という大きい改修が必要で、DESIGN.md「setState reducer は純関数に保つ」の原則と両立させるのに手間がかかる
-  - 現時点で実害ゼロ、真の fix は非自明、コスト非ゼロ → defer
-  - **un-defer トリガー**: 実際に「kill したはずのプレイヤーが次ティックで生きている」類の race バグが観測されたとき、または setPlayers 周辺を大改修する別動機が発生したとき
+- **解決 (2026-04-12)**: `setPlayers` ラッパーで `playersRef.current` を updater 内で即座に同期する方式を実装 (`172b600`)。`useEffect` による遅延同期を廃止。これにより `deadPlayersRef` mirror は不要になった（`playersRef.current.get(id)?.isDead` が常に最新値を返す）。ただし `deadPlayersRef` 自体の削除は未実施（動いているので低優先度）。
 
 #### 残存臭 #2: connections useEffect で外部イベントを React state 経由で diff している
 
@@ -647,7 +642,7 @@ index 0 = ホスト、1 = 最初のクライアント、2 = 次、...
 
 | smell | 得られるもの | コスト | 現バグ | 将来トリガー |
 |---|---|---|---|---|
-| #1 mirror | 見た目の冗長さ解消 | 真の fix は setPlayers ラッパー設計。消すだけだと cross-tick race を新たに生むリスク | なし | なし |
+| #1 mirror | ~~見た目の冗長さ解消~~ **解決済み** (`172b600`): setPlayers ラッパーで sync 更新実装。deadPlayersRef 削除は低優先度で残存 | — | — | — |
 | #2 diffing | 〜20 行削減、API の美学 | PeerManager + WsRelayManager 2 transport 同期、3 ファイル配線変更 | なし | なし（syncTime 差し替え時に同時対応で十分） |
 | #3 dual entry | guard 削除、制御フロー統一 | kill/respawn/score 3 経路同時変更、タイミング回帰リスク高 | なし（DESIGN.md 自身が明記） | なし |
 | #4 timeSyncedRef | 層の原則の体現、2 行の副作用消去 | 純行数はむしろ増える可能性 | なし | なし（phase 概念を必要とする機能要求発生時に同時対応で十分） |

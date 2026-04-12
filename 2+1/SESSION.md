@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**`63e82e4` デプロイ済み** (build `2026/04/12 21:55:41 JST`)。
+対戦可能。**`fc064f9` デプロイ済み** (build `2026/04/12 22:16:52 JST`)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
 ## 直近の変更（2026-04-12 後半）
@@ -24,11 +24,13 @@
 
 過去・未来光円錐交差で `prevState` 近似 → 線形補間。灯台ジャンプの垂直セグメントでも正確な交差位置を返す。
 
-### リファクタリング (`63e82e4`)
+### リファクタリング (`63e82e4`, `fc064f9`)
 
 - `RelativisticGame.tsx` 941→540行: ゲームループを `useGameLoop` hook に分離
 - `gameLoop.ts` に `checkCausalFreeze`, `processLaserFiring` 純関数を追加
 - `SceneContent.tsx` 923→513行: 4 Renderer を個別ファイルに分離（WorldLineRenderer, LaserBatchRenderer, SpawnRenderer, DebrisRenderer）
+- useGameLoop: deps オブジェクトによる毎レンダリング再実行バグ修正 → depsRef hack → 直接 closure 捕獲に簡素化
+- DESIGN.md 残存臭 #1（deadPlayersRef mirror）が setPlayers ラッパー実装により解決
 
 ## 既知の課題
 
