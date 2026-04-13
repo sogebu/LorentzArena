@@ -430,6 +430,15 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         pm.setHostId(roomPeerId);
         pm.connect(roomPeerId);
         setMyId(localId);
+        // If reconnecting after host-hidden (ID changed from la-{room} to random),
+        // replace the old roomPeerId entry in joinRegistry to preserve color index.
+        const oldIdx = joinRegistryRef.current.indexOf(roomPeerId);
+        if (oldIdx >= 0 && !joinRegistryRef.current.includes(localId)) {
+          joinRegistryRef.current[oldIdx] = localId;
+          setJoinRegistryVersion((v) => v + 1);
+        } else if (appendToJoinRegistry(joinRegistryRef, [localId])) {
+          setJoinRegistryVersion((v) => v + 1);
+        }
         registerStandardHandlers(pm);
         setPeerManager(pm);
         setConnectionPhase("connected");
