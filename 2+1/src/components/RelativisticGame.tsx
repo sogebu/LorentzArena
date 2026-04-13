@@ -299,6 +299,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       });
       return next;
     });
+    invincibleUntilRef.current.set(myId, Date.now() + INVINCIBILITY_DURATION);
 
     // Lighthouse AI + score sync to connected clients
     const lighthouseId = `${LIGHTHOUSE_ID_PREFIX}0`;
@@ -419,6 +420,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         playersRef,
         staleFrozenRef: stale.staleFrozenRef,
         displayNamesRef,
+        invincibleUntilRef,
       }),
     );
 

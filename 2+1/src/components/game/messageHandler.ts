@@ -6,7 +6,7 @@ import {
   createWorldLine,
 } from "../../physics";
 import { colorForPlayerId } from "./colors"; // fallback for syncTime init
-import { MAX_LASERS, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
+import { INVINCIBILITY_DURATION, MAX_LASERS, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
 import { createRespawnPosition } from "./respawnTime";
 import type { Laser, RelativisticPlayer } from "./types";
 
@@ -38,6 +38,7 @@ export type MessageHandlerDeps = {
   playersRef: React.RefObject<Map<string, RelativisticPlayer>>;
   staleFrozenRef: React.MutableRefObject<Set<string>>;
   displayNamesRef: React.MutableRefObject<Map<string, string>>;
+  invincibleUntilRef: React.MutableRefObject<Map<string, number>>;
 };
 
 const isFiniteNumber = (v: unknown): v is number =>
@@ -96,6 +97,7 @@ export const createMessageHandler =
       playersRef,
       staleFrozenRef,
       displayNamesRef,
+      invincibleUntilRef,
     } = deps;
 
     if (msg.type === "phaseSpace") {
@@ -207,6 +209,7 @@ export const createMessageHandler =
         });
         return next;
       });
+      invincibleUntilRef.current.set(myId, Date.now() + INVINCIBILITY_DURATION);
     } else if (msg.type === "laser") {
       if (
         !isValidString(msg.id) ||
