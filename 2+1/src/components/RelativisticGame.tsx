@@ -107,6 +107,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         worldLine: initialWorldLine,
         color: initialColor,
         isDead: false,
+        displayName,
       });
       return next;
     });
