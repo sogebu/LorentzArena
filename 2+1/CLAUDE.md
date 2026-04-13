@@ -191,10 +191,11 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 
 | パラメータ | 値 | 説明 |
 |---|---|---|
-| `SPAWN_RANGE` | 20 | スポーン範囲 x,y ∈ [0, SPAWN_RANGE] |
+| `SPAWN_RANGE` | 10 | スポーン範囲 x,y ∈ [0, SPAWN_RANGE] |
 | `RESPAWN_DELAY` | 10000 ms | 死亡→リスポーンの待機時間 |
+| `INVINCIBILITY_DURATION` | 10000 ms | スポーン/リスポーン後の無敵時間 |
 | `SPAWN_EFFECT_DURATION` | 1500 ms | スポーンエフェクト表示時間 |
-| `LASER_RANGE` | 20 | レーザー射程（アフィンパラメータ λ の上限、c=1 で座標時間=空間距離） |
+| `LASER_RANGE` | 10 | レーザー射程（アフィンパラメータ λ の上限、c=1 で座標時間=空間距離） |
 | `LASER_COOLDOWN` | 100 ms | レーザー連射間隔 |
 | `HIT_RADIUS` | 0.5 | 当たり判定の半径 |
 | `MAX_LASERS` | 1000 | レーザー保持上限 |
@@ -204,10 +205,10 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | `MAX_WORLDLINE_HISTORY` | 5000 | 世界線のサンプル数上限 |
 | `PLAYER_ACCELERATION` | 0.8 c/s | プレイヤー加速度 |
 | `FRICTION_COEFFICIENT` | 0.5 | 速度に比例する減速 |
-| `CAMERA_DISTANCE_*` | 正射影: 100, 透視: 15 | カメラ距離 |
+| `CAMERA_DISTANCE_*` | 正射影: 50, 透視: 10 | カメラ距離 |
 | `CAMERA_YAW/PITCH_SPEED` | yaw: 0.8, pitch: 0.5 rad/s | カメラ回転速度 |
 | `CAMERA_PITCH_MIN/MAX` | ±89.9° | カメラ仰角範囲 |
-| `LIGHT_CONE_HEIGHT` | 40 | 描画上の円錐サイズ |
+| `LIGHT_CONE_HEIGHT` | 20 | 描画上の円錐サイズ（c=1 で radius=height） |
 | `GAME_LOOP_INTERVAL` | 8 ms | `setInterval`（タブ非アクティブ対応） |
 | `MAX_DELTA_TAU` | 100 ms | タブ復帰時の巨大ジャンプ防止 |
 | `CAUSAL_FREEZE_HYSTERESIS` | 2.0 | 因果律凍結の振動防止閾値 |

@@ -44,6 +44,33 @@
 
 **期待効果**: 新しいゲーム状態の追加が「store に 1 行 + 使う側に 1 行」で完結。現在の 7 ファイル配線が不要に。
 
+### リスポーン後無敵（2026-04-13）
+
+- **What**: リスポーン後 10 秒間（`INVINCIBILITY_DURATION`）レーザー被弾しない。初回スポーンも同様。視覚表現は opacity パルス（0.3–1.0、~2Hz）
+- **Why**: リスポーン直後に即死するフラストレーション防止
+- **設計判断**:
+  - **ホスト権威で完結**: `invincibleUntilRef: Map<string, number>` を host の hit detection で参照。新ネットワークメッセージ不要 — 全クライアントが respawn メッセージ受信時に独立にタイマー開始（視覚用）
+  - **Lighthouse 除外**: AI は無敵にしない（既存の `LIGHTHOUSE_SPAWN_GRACE` で射撃遅延を別途管理）
+  - **ref で管理**: 壁時計ベースのタイマーを state に入れると毎 tick re-render になるため ref で管理。描画側は `Date.now()` ベースの sin 波で参照
+- **props drilling 税**: 7 ファイル変更が必要だった → Zustand 移行計画の直接的な動機
+
+### 世界スケール半減（2026-04-13）
+
+- **What**: `SPAWN_RANGE` と `LASER_RANGE` を 20→10 光秒に。連動パラメータも半減: `CAMERA_DISTANCE_ORTHOGRAPHIC` 100→50, `CAMERA_DISTANCE_PERSPECTIVE` 15→10, `LIGHT_CONE_HEIGHT` 40→20, Canvas initial position z=100→50
+- **Why**: ゲーム空間が広すぎて対戦が散漫。射程と同じ範囲にスポーンすることで即座に交戦可能に
+- **教訓: ジオメトリの定数未連動**: `threeCache.ts` の `ConeGeometry(40, 40)` がハードコードで `LIGHT_CONE_HEIGHT` と同期していなかった。定数を変更しても描画が追従しなかった。修正: `ConeGeometry(LIGHT_CONE_HEIGHT, LIGHT_CONE_HEIGHT, ...)` で定数から生成。**定数化したらジオメトリ生成も必ず定数参照にする**
+
+### 光円錐描画の再調整（2026-04-13）
+
+- **What**: サーフェス opacity 0.1→0.08 + ワイヤーフレーム opacity 0.12 の 2 層構造に変更（未来/過去各 2 メッシュ、計 4 メッシュ）
+- **Why**: サーフェスだけだと円錐に見えないと言われた。旧 DESIGN.md「光円錐の奥行き知覚」エントリの設計を引き継ぎつつ、全体を薄くして骨組みで形を出す方針
+- **旧エントリとの差分**: 旧は「FrontSide サーフェス 0.2 + FrontSide ワイヤーフレーム 0.3」→ 今は「DoubleSide サーフェス 0.08 + ワイヤーフレーム 0.12」。DoubleSide に戻したのはスケール半減で光円錐が小さくなり、FrontSide だと見えにくくなったため
+
+### FIRING 表示バグ修正（2026-04-13）
+
+- **What**: エネルギー切れでも FIRING 表示が出ていた。`setIsFiring(wantsFire && energyRef.current >= 0)` → `>= ENERGY_PER_SHOT` に修正
+- **Why**: `energyRef.current >= 0` は常に true（エネルギーは 0 以上）。条件が「撃ちたい AND エネルギーが 1 発分ある」であるべき
+
 ### コードベース一括整理（2026-04-13）
 
 深い監査の結果、以下を一括実施:
