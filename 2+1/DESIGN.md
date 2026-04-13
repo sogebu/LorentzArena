@@ -94,6 +94,7 @@ heartbeat detection effect と beacon effect の全リソースを監査。3 件
 
 - redirect リトライ最大 3 回で打ち切り（4 連続ホストクラッシュは非対応）
 - 降格後のビーコン `roomPeerId` 接続が cleanup で切断されない（PeerJS の idle タイムアウトに委任）
+- **ホスト ID 問題（次セッションで根本修正予定）**: ホストが `la-{roomName}` を PeerJS ID として使うため、tab-hidden からの復帰時に ID が `la-{roomName}` → ランダム ID に変わり、色が変わる（joinRegistry index が変わる）。ad-hoc パッチ（`previousId` in intro）を試みたが複雑すぎたため revert。**根本修正方針: ホストもランダム ID を使い、`la-{roomName}` はビーコン専用にする。** Phase 1 で `la-{roomName}` を取得 → ホスト確定 → 即座にビーコンに転用 → ランダム ID でゲーム用 PM を新規作成。これにより tab-hidden 復帰・マイグレーション・降格すべてで ID が不変になり、色・identity 問題が構造的に解消される
 
 ### デブリの相対論的速度合成（2026-04-12）
 
