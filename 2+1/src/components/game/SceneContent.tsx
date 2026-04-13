@@ -323,6 +323,7 @@ export const SceneContent = ({
 
           return (
             <group key={`lightcone-${player.id}`}>
+              {/* Future cone: surface + wireframe */}
               <mesh
                 position={[pos.x, pos.y, pos.t + LIGHT_CONE_HEIGHT / 2]}
                 rotation={[-Math.PI / 2, 0.0, 0.0]}
@@ -331,7 +332,34 @@ export const SceneContent = ({
                 <meshBasicMaterial
                   color={color}
                   transparent
-                  opacity={0.1}
+                  opacity={0.08}
+                  side={THREE.DoubleSide}
+                  depthWrite={false}
+                />
+              </mesh>
+              <mesh
+                position={[pos.x, pos.y, pos.t + LIGHT_CONE_HEIGHT / 2]}
+                rotation={[-Math.PI / 2, 0.0, 0.0]}
+                geometry={sharedGeometries.lightCone}
+              >
+                <meshBasicMaterial
+                  color={color}
+                  transparent
+                  opacity={0.12}
+                  wireframe
+                  depthWrite={false}
+                />
+              </mesh>
+              {/* Past cone: surface + wireframe */}
+              <mesh
+                position={[pos.x, pos.y, pos.t - LIGHT_CONE_HEIGHT / 2]}
+                rotation={[Math.PI / 2, 0.0, 0.0]}
+                geometry={sharedGeometries.lightCone}
+              >
+                <meshBasicMaterial
+                  color={color}
+                  transparent
+                  opacity={0.08}
                   side={THREE.DoubleSide}
                   depthWrite={false}
                 />
@@ -344,8 +372,8 @@ export const SceneContent = ({
                 <meshBasicMaterial
                   color={color}
                   transparent
-                  opacity={0.1}
-                  side={THREE.DoubleSide}
+                  opacity={0.12}
+                  wireframe
                   depthWrite={false}
                 />
               </mesh>
