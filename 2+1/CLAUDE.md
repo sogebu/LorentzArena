@@ -197,7 +197,7 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | `SPAWN_EFFECT_DURATION` | 1500 ms | スポーンエフェクト表示時間 |
 | `LASER_RANGE` | 10 | レーザー射程（アフィンパラメータ λ の上限、c=1 で座標時間=空間距離） |
 | `LASER_COOLDOWN` | 100 ms | レーザー連射間隔 |
-| `HIT_RADIUS` | 0.5 | 当たり判定の半径 |
+| `HIT_RADIUS` | 0.25 | 当たり判定の半径 |
 | `MAX_LASERS` | 1000 | レーザー保持上限 |
 | `MAX_FROZEN_WORLDLINES` | 20 | 凍結世界線の保持上限 |
 | `MAX_DEBRIS` | 20 | デブリの保持上限 |
