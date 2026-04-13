@@ -53,11 +53,30 @@
 - **ルール**: 配列フィールドの更新は必ず `useGameStore.setState({ field: newArray })` を使う。直接再代入は禁止
 - gameLoop では `set()` を跨ぐ読み取りが多いため、causal events セクションのみ `setState()` を使い、他のセクションは各 `set()` 呼び出しが独立で stale にならないことを確認済み
 
+### 世界線ジャンプの根本原因と修正（2026-04-13 夜）
+
+- **What**: リスポーン後に世界線が前の位置に飛ぶ現象。過去 3 回の対症療法（stale ref 同期、shadow ref ラッパー、fresh getState 再取得）で治らなかった
+- **根本原因**: 自分の phaseSpace メッセージがホスト経由でリレーされて戻ってくる。死亡前の phaseSpace がリスポーン後に到着 → `appendWorldLine`（インプレース変更）が新 WorldLine に古い位置を追加
+- **修正**: messageHandler で `playerId === myId` の phaseSpace を無視（ゲームループが自分の位置を管理するため不要）。defense-in-depth として physics updater に WorldLine identity guard (`me.worldLine !== freshMe.worldLine` なら skip) も追加
+- **教訓**: `appendWorldLine` がインプレース変更であることが根本の脆弱性。ネットワークリレーによる古いメッセージの到着タイミングと組み合わさって発現。対症療法（読み取り側の fresh 化）では根治できず、**書き込み元を断つ**必要があった
+
+### レーザー方向マーカー（2026-04-13 夜）
+
+- **What**: トリガー中に自機から過去光円錐方向（45° 下向き）に 3 つの三角形マーカーを表示。シーケンシャル方向指示器風（0s/0.5s/1s で順次出現）
+- **Why**: レーザーが時空図上でどの方向に飛んでいるか分からないというフィードバック
+- **設計**: 三角形は過去光円錐の 45° 斜面上に同一平面で配置。向き = `(cos(yaw), sin(yaw), -1)` を正規化。回転行列で ShapeGeometry を斜面に乗せる。`isFiring` prop を SceneContent に追加
+- **配置の考え方**: 発射点から斜め 45° 下に向かって三角形が並ぶ。レーザーのラインは未来方向（上）に伸びるが、マーカーは過去光円錐方向（下）に出すことで「この方向に弾が飛んでいる」ことを示す
+
+### A/D 横移動方向修正（2026-04-13 夜）
+
+- **What**: A キーで右、D キーで左に移動していた。符号を反転して修正
+- **Why**: `lateralAccel` の符号が逆。カメラ yaw に対して `yaw + π/2` 方向が lateral なので、A（左）が正、D（右）が負であるべき
+
 ### 初回スポーンの統一（2026-04-13 夜）
 
-- **What**: 初回スポーンの過去半直線延長を廃止。全 `createWorldLine()` 呼び出しから origin パラメータを削除（RelativisticGame, messageHandler, lighthouse）。初回スポーンにもリスポーンと同じエフェクトを `pendingSpawnEvents` 経由で追加（自機 + Lighthouse）
-- **Why**: 初回スポーンで過去に世界線を無限延長し、過去光円錐交差マーカーを表示していたが、物理的に不自然（その人物はスポーン前には存在しない）。リスポーンと同じ扱いに統一することで一貫性を確保
-- **影響**: `WorldLine.origin` が常に null になるため、`showHalfLine` は常に false。WorldLineRenderer の半直線描画コードは残っているが発火しない（将来削除可）
+- **What**: 初回スポーンの過去半直線延長を廃止。全 `createWorldLine()` 呼び出しから origin パラメータを削除。初回スポーンにもリスポーンと同じエフェクトを `pendingSpawnEvents` 経由で追加（自機 + Lighthouse）
+- **Why**: 初回スポーンで過去に世界線を無限延長し、過去光円錐交差マーカーを表示していたが、物理的に不自然。リスポーンと同じ扱いに統一
+- **影響**: `WorldLine.origin` 常に null。半直線描画コード削除済み。`FrozenWorldLine.showHalfLine` フィールドも削除
 
 ### リスポーン後無敵（2026-04-13）
 
