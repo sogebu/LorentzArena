@@ -13,6 +13,13 @@ import { LaserBatchRenderer } from "./LaserBatchRenderer";
 import { SpawnRenderer } from "./SpawnRenderer";
 import { WorldLineRenderer } from "./WorldLineRenderer";
 import {
+  CAMERA_DISTANCE_ORTHOGRAPHIC,
+  CAMERA_DISTANCE_PERSPECTIVE,
+  LIGHT_CONE_HEIGHT,
+  PLAYER_MARKER_SIZE_OTHER,
+  PLAYER_MARKER_SIZE_SELF,
+} from "./constants";
+import {
   transformEventForDisplay,
 } from "./displayTransform";
 import { futureLightConeIntersectionLaser, pastLightConeIntersectionLaser } from "./laserPhysics";
@@ -88,7 +95,7 @@ export const SceneContent = ({
 
     const yaw = cameraYawRef.current;
     const pitch = cameraPitchRef.current;
-    const distance = useOrthographic ? 100 : 15;
+    const distance = useOrthographic ? CAMERA_DISTANCE_ORTHOGRAPHIC : CAMERA_DISTANCE_PERSPECTIVE;
     const camX = targetX + distance * Math.cos(pitch) * Math.cos(yaw + Math.PI);
     const camY = targetY + distance * Math.cos(pitch) * Math.sin(yaw + Math.PI);
     const camT = targetT + distance * Math.sin(pitch);
@@ -266,7 +273,7 @@ export const SceneContent = ({
         );
         const isMe = player.id === myId;
         const color = getThreeColor(player.color);
-        const size = isMe ? 0.42 : 0.2;
+        const size = isMe ? PLAYER_MARKER_SIZE_SELF : PLAYER_MARKER_SIZE_OTHER;
 
         return (
           <group key={`player-${player.id}`} position={[pos.x, pos.y, pos.t]}>
@@ -308,12 +315,11 @@ export const SceneContent = ({
             observerBoost,
           );
           const color = getThreeColor(player.color);
-          const coneHeight = 40;
 
           return (
             <group key={`lightcone-${player.id}`}>
               <mesh
-                position={[pos.x, pos.y, pos.t + coneHeight / 2]}
+                position={[pos.x, pos.y, pos.t + LIGHT_CONE_HEIGHT / 2]}
                 rotation={[-Math.PI / 2, 0.0, 0.0]}
                 geometry={sharedGeometries.lightCone}
               >
@@ -326,7 +332,7 @@ export const SceneContent = ({
                 />
               </mesh>
               <mesh
-                position={[pos.x, pos.y, pos.t - coneHeight / 2]}
+                position={[pos.x, pos.y, pos.t - LIGHT_CONE_HEIGHT / 2]}
                 rotation={[Math.PI / 2, 0.0, 0.0]}
                 geometry={sharedGeometries.lightCone}
               >
@@ -342,109 +348,56 @@ export const SceneContent = ({
           );
         })}
 
-      {/* 世界線の過去光円錐交差マーカー */}
+      {/* 世界線の過去光円錐交差マーカー（実体: 球+コア+リング） */}
       {worldLineIntersections.map(({ playerId, color: colorText, pos }) => {
-        const color = getThreeColor(colorText);
+        const c = getThreeColor(colorText);
         return (
-          <group
-            key={`intersection-${playerId}`}
-            position={[pos.x, pos.y, pos.t]}
-          >
+          <group key={`intersection-${playerId}`} position={[pos.x, pos.y, pos.t]}>
             <mesh geometry={sharedGeometries.intersectionSphere}>
-              <meshStandardMaterial
-                color={color}
-                emissive={color}
-                emissiveIntensity={1.15}
-              />
+              <meshStandardMaterial color={c} emissive={c} emissiveIntensity={1.15} />
             </mesh>
             <mesh geometry={sharedGeometries.intersectionCore}>
               <meshBasicMaterial color="#ffffff" />
             </mesh>
             <mesh geometry={sharedGeometries.intersectionRing}>
-              <meshBasicMaterial
-                color={color}
-                transparent
-                opacity={0.9}
-                side={THREE.DoubleSide}
-              />
+              <meshBasicMaterial color={c} transparent opacity={0.9} side={THREE.DoubleSide} />
             </mesh>
           </group>
         );
       })}
 
-      {/* レーザー交差マーカー */}
+      {/* レーザー過去光円錐交差マーカー（ドット） */}
       {laserIntersections.map(({ laser, pos }) => {
-        const color = getThreeColor(laser.color);
+        const c = getThreeColor(laser.color);
         return (
-          <group
-            key={`laser-intersection-${laser.id}`}
-            position={[pos.x, pos.y, pos.t]}
-          >
+          <group key={`laser-intersection-${laser.id}`} position={[pos.x, pos.y, pos.t]}>
             <mesh geometry={sharedGeometries.laserIntersectionDot}>
-              <meshStandardMaterial
-                color={color}
-                emissive={color}
-                emissiveIntensity={1.1}
-                roughness={0.25}
-                metalness={0.1}
-              />
+              <meshStandardMaterial color={c} emissive={c} emissiveIntensity={1.1} roughness={0.25} metalness={0.1} />
             </mesh>
           </group>
         );
       })}
 
-      {/* レーザー未来光円錐交差マーカー（うっすら表示） */}
+      {/* 未来光円錐交差マーカー（うっすら表示: レーザー + 世界線） */}
       {laserFutureIntersections.map(({ laser, pos }) => {
-        const color = getThreeColor(laser.color);
+        const c = getThreeColor(laser.color);
         return (
-          <group
-            key={`laser-future-${laser.id}`}
-            position={[pos.x, pos.y, pos.t]}
-          >
-            <mesh
-              geometry={sharedGeometries.laserIntersectionDot}
-              scale={[0.7, 0.7, 0.7]}
-            >
-              <meshBasicMaterial
-                color={color}
-                transparent
-                opacity={0.15}
-                depthWrite={false}
-              />
+          <group key={`laser-future-${laser.id}`} position={[pos.x, pos.y, pos.t]}>
+            <mesh geometry={sharedGeometries.laserIntersectionDot} scale={[0.7, 0.7, 0.7]}>
+              <meshBasicMaterial color={c} transparent opacity={0.15} depthWrite={false} />
             </mesh>
           </group>
         );
       })}
-
-      {/* 未来光円錐交差マーカー（うっすら表示） */}
       {futureLightConeIntersections.map(({ playerId, color: colorText, pos }) => {
-        const color = getThreeColor(colorText);
+        const c = getThreeColor(colorText);
         return (
-          <group
-            key={`future-${playerId}`}
-            position={[pos.x, pos.y, pos.t]}
-          >
-            <mesh
-              geometry={sharedGeometries.intersectionSphere}
-              scale={[0.6, 0.6, 0.6]}
-            >
-              <meshBasicMaterial
-                color={color}
-                transparent
-                opacity={0.15}
-                depthWrite={false}
-              />
+          <group key={`future-${playerId}`} position={[pos.x, pos.y, pos.t]}>
+            <mesh geometry={sharedGeometries.intersectionSphere} scale={[0.6, 0.6, 0.6]}>
+              <meshBasicMaterial color={c} transparent opacity={0.15} depthWrite={false} />
             </mesh>
-            <mesh
-              geometry={sharedGeometries.intersectionRing}
-              scale={[0.8, 0.8, 0.8]}
-            >
-              <meshBasicMaterial
-                color={color}
-                transparent
-                opacity={0.12}
-                depthWrite={false}
-              />
+            <mesh geometry={sharedGeometries.intersectionRing} scale={[0.8, 0.8, 0.8]}>
+              <meshBasicMaterial color={c} transparent opacity={0.12} depthWrite={false} />
             </mesh>
           </group>
         );
@@ -464,40 +417,23 @@ export const SceneContent = ({
       )}
 
       {/* キル通知（キル時空点に 3D 表示） */}
-      {killNotification &&
-        observerPos &&
-        (() => {
-          const displayPos = transformEventForDisplay(
-            createVector4(
-              killNotification.hitPos.t,
-              killNotification.hitPos.x,
-              killNotification.hitPos.y,
-              killNotification.hitPos.z,
-            ),
-            observerPos,
-            observerBoost,
-          );
-          const killColor = getThreeColor(killNotification.color);
-          return (
-            <group position={[displayPos.x, displayPos.y, displayPos.t]}>
-              <mesh geometry={sharedGeometries.killSphere}>
-                <meshBasicMaterial
-                  color={killColor}
-                  transparent
-                  opacity={0.6}
-                />
-              </mesh>
-              <mesh geometry={sharedGeometries.killRing}>
-                <meshBasicMaterial
-                  color={killColor}
-                  transparent
-                  opacity={0.8}
-                  side={THREE.DoubleSide}
-                />
-              </mesh>
-            </group>
-          );
-        })()}
+      {killNotification && observerPos && (() => {
+        const dp = transformEventForDisplay(
+          createVector4(killNotification.hitPos.t, killNotification.hitPos.x, killNotification.hitPos.y, killNotification.hitPos.z),
+          observerPos, observerBoost,
+        );
+        const kc = getThreeColor(killNotification.color);
+        return (
+          <group position={[dp.x, dp.y, dp.t]}>
+            <mesh geometry={sharedGeometries.killSphere}>
+              <meshBasicMaterial color={kc} transparent opacity={0.6} />
+            </mesh>
+            <mesh geometry={sharedGeometries.killRing}>
+              <meshBasicMaterial color={kc} transparent opacity={0.8} side={THREE.DoubleSide} />
+            </mesh>
+          </group>
+        );
+      })()}
 
       {/* スポーンエフェクト */}
       {spawns.map((spawn) => (

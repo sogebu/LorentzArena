@@ -3,8 +3,11 @@ import { createPhaseSpace, type Vector4 } from "../physics";
 import {
   ENERGY_MAX,
   ENERGY_RECOVERY_RATE,
+  GAME_LOOP_INTERVAL,
   LASER_RANGE,
+  MAX_DELTA_TAU,
   MAX_LASERS,
+  PROCESSED_LASERS_CLEANUP_THRESHOLD,
   RESPAWN_DELAY,
   SPAWN_EFFECT_DURATION,
 } from "../components/game/constants";
@@ -152,6 +155,16 @@ export function useGameLoop({
   useEffect(() => {
     if (!peerManager || !myId) return;
 
+    /** Send a message to the network: host broadcasts, client sends to host. */
+    const sendToNetwork = (msg: unknown) => {
+      if (peerManager.getIsHost()) {
+        peerManager.send(msg);
+      } else {
+        const hostId = peerManager.getHostId();
+        if (hostId) peerManager.sendTo(hostId, msg);
+      }
+    };
+
     const gameLoop = () => {
       if (document.hidden) {
         lastTimeRef.current = Date.now();
@@ -160,7 +173,7 @@ export function useGameLoop({
 
       const currentTime = Date.now();
       const rawDTau = (currentTime - lastTimeRef.current) / 1000;
-      const dTau = Math.min(rawDTau, 0.1);
+      const dTau = Math.min(rawDTau, MAX_DELTA_TAU);
       lastTimeRef.current = currentTime;
 
       // --- Cleanup ---
@@ -273,16 +286,7 @@ export function useGameLoop({
               : updated;
           });
 
-          const laserMsg = {
-            type: "laser" as const,
-            ...laserResult.laser,
-          };
-          if (peerManager.getIsHost()) {
-            peerManager.send(laserMsg);
-          } else {
-            const hostId = peerManager.getHostId();
-            if (hostId) peerManager.sendTo(hostId, laserMsg);
-          }
+          sendToNetwork({ type: "laser" as const, ...laserResult.laser });
         }
       }
 
@@ -295,6 +299,9 @@ export function useGameLoop({
       }
       setEnergy(energyRef.current);
       setIsFiring(wantsFire && energyRef.current >= 0);
+
+      // S-5: stale 検知は死亡中も走らせる（他プレイヤーの stale を検知するため）
+      stale.checkStale(currentTime, playersRef.current, myId);
 
       // --- Ghost or physics ---
       if (isDead) {
@@ -317,7 +324,6 @@ export function useGameLoop({
           });
         }
       } else if (myPlayer) {
-        stale.checkStale(currentTime, playersRef.current, myId);
 
         const frozen = checkCausalFreeze(
           playersRef.current,
@@ -355,23 +361,20 @@ export function useGameLoop({
           });
 
           // Network send
-          const msg = {
+          sendToNetwork({
             type: "phaseSpace" as const,
             senderId: myId,
             position: physics.newPhaseSpace.pos,
             velocity: physics.newPhaseSpace.u,
-          };
-          if (peerManager.getIsHost()) {
-            peerManager.send(msg);
-          } else {
-            const hostId = peerManager.getHostId();
-            if (hostId) peerManager.sendTo(hostId, msg);
-          }
+          });
         }
       }
 
-      // --- Host: Lighthouse AI ---
+      // --- Host: Lighthouse AI (batched updates) ---
       if (peerManager.getIsHost()) {
+        const lhUpdates: Array<{ id: string; ps: ReturnType<typeof createPhaseSpace>; wl: RelativisticPlayer["worldLine"] }> = [];
+        const lhLasers: Laser[] = [];
+
         for (const [lhId, lh] of playersRef.current) {
           if (!isLighthouse(lhId)) continue;
           if (lh.isDead) continue;
@@ -386,18 +389,7 @@ export function useGameLoop({
             lighthouseSpawnTimeRef.current,
           );
 
-          setPlayers((prev) => {
-            const existing = prev.get(lhId);
-            if (!existing) return prev;
-            const next = new Map(prev);
-            next.set(lhId, {
-              ...existing,
-              phaseSpace: result.newPs,
-              worldLine: result.newWl,
-            });
-            return next;
-          });
-
+          lhUpdates.push({ id: lhId, ps: result.newPs, wl: result.newWl });
           peerManager.send({
             type: "phaseSpace" as const,
             senderId: lhId,
@@ -407,16 +399,31 @@ export function useGameLoop({
 
           if (result.laser) {
             lighthouseLastFireRef.current.set(lhId, currentTime);
-            setLasers((prev) => {
-              const laser = result.laser;
-              if (!laser) return prev;
-              const updated = [...prev, laser];
-              return updated.length > MAX_LASERS
-                ? updated.slice(updated.length - MAX_LASERS)
-                : updated;
-            });
+            lhLasers.push(result.laser);
             peerManager.send({ type: "laser" as const, ...result.laser });
           }
+        }
+
+        // Batch apply all lighthouse state updates
+        if (lhUpdates.length > 0) {
+          setPlayers((prev) => {
+            const next = new Map(prev);
+            for (const { id, ps, wl } of lhUpdates) {
+              const existing = next.get(id);
+              if (existing) {
+                next.set(id, { ...existing, phaseSpace: ps, worldLine: wl });
+              }
+            }
+            return next;
+          });
+        }
+        if (lhLasers.length > 0) {
+          setLasers((prev) => {
+            const updated = [...prev, ...lhLasers];
+            return updated.length > MAX_LASERS
+              ? updated.slice(updated.length - MAX_LASERS)
+              : updated;
+          });
         }
       }
 
@@ -434,7 +441,7 @@ export function useGameLoop({
         for (const id of processedLasersRef.current) {
           if (!currentLaserIds.has(id)) processedLasersRef.current.delete(id);
         }
-        if (processedLasersRef.current.size > 500) {
+        if (processedLasersRef.current.size > PROCESSED_LASERS_CLEANUP_THRESHOLD) {
           processedLasersRef.current.clear();
         }
 
@@ -445,6 +452,7 @@ export function useGameLoop({
 
           for (const { victimId, killerId, hitPos } of hitResult.kills) {
             deadPlayersRef.current.add(victimId);
+            stale.staleFrozenRef.current.delete(victimId); // S-2: kill で stale クリア（二重 respawn 防止）
             peerManager.send({ type: "kill" as const, victimId, killerId, hitPos });
             handleKill(victimId, killerId, hitPos);
 
@@ -465,7 +473,7 @@ export function useGameLoop({
       }
     };
 
-    intervalRef.current = setInterval(gameLoop, 8);
+    intervalRef.current = setInterval(gameLoop, GAME_LOOP_INTERVAL);
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);

@@ -66,6 +66,17 @@ const isValidString = (v: unknown, maxLen = 200): v is string =>
 const isValidColor = (v: unknown): v is string =>
   typeof v === "string" && v.length < 100 && /^(hsl|rgb|#)/i.test(v);
 
+/** Validate and extract a scores object. Returns null if invalid. */
+const parseScores = (raw: unknown): Record<string, number> | null => {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const scores: Record<string, number> = {};
+  for (const [key, val] of Object.entries(raw)) {
+    if (!isValidString(key) || !isFiniteNumber(val)) return null;
+    scores[key] = val as number;
+  }
+  return scores;
+};
+
 export const createMessageHandler =
   // biome-ignore lint/suspicious/noExplicitAny: Network messages require runtime validation
   (deps: MessageHandlerDeps) => (_senderId: string, msg: any) => {
@@ -164,19 +175,10 @@ export const createMessageHandler =
     } else if (msg.type === "syncTime") {
       if (!isFiniteNumber(msg.hostTime)) return;
       // スコア同期（途中参加時に過去のキルスコアを引き継ぐ）
-      if (
-        msg.scores &&
-        typeof msg.scores === "object" &&
-        !Array.isArray(msg.scores)
-      ) {
-        const scores: Record<string, number> = {};
-        for (const [key, val] of Object.entries(msg.scores)) {
-          if (isValidString(key) && isFiniteNumber(val)) {
-            scores[key] = val as number;
-          }
-        }
-        scoresRef.current = scores;
-        setScores(scores);
+      const syncScores = parseScores(msg.scores);
+      if (syncScores) {
+        scoresRef.current = syncScores;
+        setScores(syncScores);
       }
       // Initialize client player at the host's current coordinate time.
       // This is the client's first player creation (init effect skips for non-hosts).
@@ -240,18 +242,8 @@ export const createMessageHandler =
       handleRespawn(msg.playerId, msg.position);
     } else if (msg.type === "score") {
       if (peerManager.getIsHost()) return;
-      if (
-        !msg.scores ||
-        typeof msg.scores !== "object" ||
-        Array.isArray(msg.scores)
-      )
-        return;
-      // Validate each score entry
-      const scores: Record<string, number> = {};
-      for (const [key, val] of Object.entries(msg.scores)) {
-        if (!isValidString(key) || !isFiniteNumber(val)) return;
-        scores[key] = val as number;
-      }
+      const scores = parseScores(msg.scores);
+      if (!scores) return;
       scoresRef.current = scores;
       setScores(scores);
     } else if (msg.type === "kill") {
@@ -268,20 +260,9 @@ export const createMessageHandler =
       // Host migration: sync scores from new host.
       // Skip if we ARE the new host (we already have the state).
       if (peerManager.getIsHost()) return;
-      if (
-        !isValidString(msg.newHostId) ||
-        !msg.scores ||
-        typeof msg.scores !== "object" ||
-        Array.isArray(msg.scores)
-      )
-        return;
-      // Sync scores
-      const scores: Record<string, number> = {};
-      for (const [key, val] of Object.entries(msg.scores)) {
-        if (isValidString(key) && isFiniteNumber(val)) {
-          scores[key] = val as number;
-        }
-      }
+      if (!isValidString(msg.newHostId)) return;
+      const scores = parseScores(msg.scores);
+      if (!scores) return;
       scoresRef.current = scores;
       setScores(scores);
       // Sync display names from migrating host

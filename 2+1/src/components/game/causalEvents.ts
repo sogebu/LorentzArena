@@ -23,7 +23,7 @@ export function firePendingKillEvents(
   scores: Record<string, number>,
 ): KillEventsResult {
   const firedIndices: number[] = [];
-  let newScores = scores;
+  const newScores = { ...scores };
   let deathFlash = false;
   let killNotification: KillEventEffects["killNotification"] = null;
 
@@ -32,10 +32,7 @@ export function firePendingKillEvents(
     const hitPosV4 = createVector4(ev.hitPos.t, ev.hitPos.x, ev.hitPos.y, ev.hitPos.z);
     if (isInPastLightCone(hitPosV4, myPos)) {
       firedIndices.push(i);
-      newScores = {
-        ...newScores,
-        [ev.killerId]: (newScores[ev.killerId] || 0) + 1,
-      };
+      newScores[ev.killerId] = (newScores[ev.killerId] || 0) + 1;
       if (ev.victimId === myId) {
         deathFlash = true;
       }

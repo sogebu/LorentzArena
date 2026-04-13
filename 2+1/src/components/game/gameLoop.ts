@@ -12,12 +12,19 @@ import {
 } from "../../physics";
 import { getLaserColor } from "./colors";
 import {
+  CAMERA_PITCH_MAX,
+  CAMERA_PITCH_MIN,
+  CAMERA_PITCH_SPEED,
+  CAMERA_YAW_SPEED,
+  CAUSAL_FREEZE_HYSTERESIS,
   ENERGY_PER_SHOT,
+  FRICTION_COEFFICIENT,
   HIT_RADIUS,
   LASER_COOLDOWN,
   LASER_RANGE,
   LIGHTHOUSE_FIRE_INTERVAL,
   LIGHTHOUSE_SPAWN_GRACE,
+  PLAYER_ACCELERATION,
 } from "./constants";
 import { computeInterceptDirection, isLighthouse } from "./lighthouse";
 import { findLaserHitPosition } from "./laserPhysics";
@@ -30,11 +37,6 @@ export interface CameraState {
   pitch: number;
 }
 
-const YAW_SPEED = 0.8;
-const PITCH_SPEED = 0.5;
-const PITCH_MIN = (-Math.PI * 89.9) / 180;
-const PITCH_MAX = (Math.PI * 89.9) / 180;
-
 export function processCamera(
   keys: Set<string>,
   touch: { yawDelta: number; pitchDelta: number },
@@ -44,17 +46,17 @@ export function processCamera(
 ): CameraState {
   let { yaw, pitch } = camera;
 
-  if (keys.has("ArrowLeft")) yaw += YAW_SPEED * dTau;
-  if (keys.has("ArrowRight")) yaw -= YAW_SPEED * dTau;
-  if (keys.has("ArrowUp")) pitch = Math.min(PITCH_MAX, pitch + PITCH_SPEED * dTau);
-  if (keys.has("ArrowDown")) pitch = Math.max(PITCH_MIN, pitch - PITCH_SPEED * dTau);
+  if (keys.has("ArrowLeft")) yaw += CAMERA_YAW_SPEED * dTau;
+  if (keys.has("ArrowRight")) yaw -= CAMERA_YAW_SPEED * dTau;
+  if (keys.has("ArrowUp")) pitch = Math.min(CAMERA_PITCH_MAX, pitch + CAMERA_PITCH_SPEED * dTau);
+  if (keys.has("ArrowDown")) pitch = Math.max(CAMERA_PITCH_MIN, pitch - CAMERA_PITCH_SPEED * dTau);
 
   if (touch.yawDelta !== 0) {
     yaw += touch.yawDelta;
   }
 
   if (isDeadForCamera && touch.pitchDelta !== 0) {
-    pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, pitch + touch.pitchDelta));
+    pitch = Math.max(CAMERA_PITCH_MIN, Math.min(CAMERA_PITCH_MAX, pitch + touch.pitchDelta));
   }
 
   return { yaw, pitch };
@@ -75,31 +77,29 @@ export function processPlayerPhysics(
   dTau: number,
   otherPositions: Vector4[],
 ): PhysicsResult {
-  const accel = 8 / 10;
   let forwardAccel = 0;
   let lateralAccel = 0;
 
-  if (keys.has("w")) forwardAccel += accel;
-  if (keys.has("s")) forwardAccel -= accel;
-  if (keys.has("a")) lateralAccel -= accel;
-  if (keys.has("d")) lateralAccel += accel;
+  if (keys.has("w")) forwardAccel += PLAYER_ACCELERATION;
+  if (keys.has("s")) forwardAccel -= PLAYER_ACCELERATION;
+  if (keys.has("a")) lateralAccel -= PLAYER_ACCELERATION;
+  if (keys.has("d")) lateralAccel += PLAYER_ACCELERATION;
 
   if (touch.thrust !== 0) {
-    forwardAccel += accel * touch.thrust;
+    forwardAccel += PLAYER_ACCELERATION * touch.thrust;
   }
 
   const rawLen = Math.sqrt(forwardAccel * forwardAccel + lateralAccel * lateralAccel);
-  if (rawLen > accel) {
-    forwardAccel *= accel / rawLen;
-    lateralAccel *= accel / rawLen;
+  if (rawLen > PLAYER_ACCELERATION) {
+    forwardAccel *= PLAYER_ACCELERATION / rawLen;
+    lateralAccel *= PLAYER_ACCELERATION / rawLen;
   }
 
   const ax = Math.cos(yaw) * forwardAccel + Math.cos(yaw + Math.PI / 2) * lateralAccel;
   const ay = Math.sin(yaw) * forwardAccel + Math.sin(yaw + Math.PI / 2) * lateralAccel;
 
-  const mu = 0.5;
-  const frictionX = -me.phaseSpace.u.x * mu;
-  const frictionY = -me.phaseSpace.u.y * mu;
+  const frictionX = -me.phaseSpace.u.x * FRICTION_COEFFICIENT;
+  const frictionY = -me.phaseSpace.u.y * FRICTION_COEFFICIENT;
 
   const acceleration = createVector3(ax + frictionX, ay + frictionY, 0);
   const newPhaseSpace = evolvePhaseSpace(me.phaseSpace, acceleration, dTau);
@@ -297,7 +297,7 @@ export function checkCausalFreeze(
     if (player.phaseSpace.pos.t > me.phaseSpace.pos.t) continue;
     const diff = subVector4(player.phaseSpace.pos, me.phaseSpace.pos);
     const l = lorentzDotVector4(diff, diff);
-    const threshold = wasFrozen ? 2.0 : 0;
+    const threshold = wasFrozen ? CAUSAL_FREEZE_HYSTERESIS : 0;
     if (l < -threshold) {
       return true;
     }

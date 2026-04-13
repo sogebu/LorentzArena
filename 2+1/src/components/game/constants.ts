@@ -45,3 +45,35 @@ export const LIGHTHOUSE_ID_PREFIX = "lighthouse-";
 export const LIGHTHOUSE_FIRE_INTERVAL = 3000; // ms
 export const LIGHTHOUSE_SPAWN_GRACE = 10000; // ms — don't fire for this long after spawn
 export const LIGHTHOUSE_COLOR = "hsl(200, 60%, 80%)"; // 薄い水色
+
+// --- Player physics ---
+export const PLAYER_ACCELERATION = 0.8; // c/s
+export const FRICTION_COEFFICIENT = 0.5; // 速度に比例する減速
+
+// --- Camera ---
+export const CAMERA_YAW_SPEED = 0.8; // rad/s
+export const CAMERA_PITCH_SPEED = 0.5; // rad/s
+export const CAMERA_PITCH_MIN = (-Math.PI * 89.9) / 180;
+export const CAMERA_PITCH_MAX = (Math.PI * 89.9) / 180;
+export const CAMERA_DISTANCE_ORTHOGRAPHIC = 100;
+export const CAMERA_DISTANCE_PERSPECTIVE = 15;
+export const DEFAULT_CAMERA_PITCH = Math.PI / 6;
+
+// --- Causality guard ---
+export const CAUSAL_FREEZE_HYSTERESIS = 2.0; // ヒステリシス: 既に凍結中は閾値を上げて振動防止
+
+// --- Game loop ---
+export const GAME_LOOP_INTERVAL = 8; // ms
+export const MAX_DELTA_TAU = 0.1; // s — タブ復帰時の巨大ジャンプ防止
+export const PROCESSED_LASERS_CLEANUP_THRESHOLD = 500;
+
+// --- Pending events caps ---
+export const MAX_PENDING_KILL_EVENTS = 100;
+export const MAX_PENDING_SPAWN_EVENTS = 50;
+
+// --- Light cone rendering ---
+export const LIGHT_CONE_HEIGHT = 40;
+
+// --- Player marker sizes ---
+export const PLAYER_MARKER_SIZE_SELF = 0.42;
+export const PLAYER_MARKER_SIZE_OTHER = 0.2;

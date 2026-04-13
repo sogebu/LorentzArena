@@ -6,12 +6,27 @@
 
 | ファイル | 行数 | 判断 | 理由 |
 |---|---|---|---|
-| `PeerProvider.tsx` | 916 | defer | 2026-04-13 のマイグレーション堅牢化で 692→916 行に増加。hook 分離を検討したが引数 8-10 個で逆効果。代わりに (1) ヘルパー関数を setInterval 外に hoist (2) `isRedirectMessage`/`isPingMessage` 型ガード (3) `registerStandardHandlers` で 5 箇所の重複排除 (4) 7 定数をモジュールスコープに集約。分割しない理由は依然有効: 全 useEffect が同一 state 群を共有、effect 間の実行順序依存 |
-| `RelativisticGame.tsx` | 540 | defer | 変更なし |
-| `useGameLoop.ts` | 478 | defer | `createRespawnPosition` 抽出で微減。変更は小 |
-| `SceneContent.tsx` | 513 | defer | 変更なし |
+| `PeerProvider.tsx` | 1023 | defer | joinRegistry 色修正で微増。Phase 1 effect (L310-530) のコールバックネストは深いが、PeerJS ライフサイクルと密結合しているため分離リスクが高い。分割しない理由は依然有効: 全 useEffect が同一 state 群を共有、effect 間の実行順序依存 |
+| `RelativisticGame.tsx` | 539 | defer | マジックナンバー定数化のみ。構造変更なし |
+| `useGameLoop.ts` | 486 | defer | `sendToNetwork` ヘルパー抽出で 3 箇所のネットワーク送信重複を解消。Lighthouse ループ内の setPlayers/setLasers をバッチ化。行数は微増（バッチ化コードの追加分）だが構造は改善 |
+| `SceneContent.tsx` | 449 | — | マジックナンバー定数化 + マーカー描画のインライン圧縮で 513→449 行に削減 |
 
-**再評価トリガー**: 新機能追加で useGameLoop の props が更に増えたとき、または PeerProvider に新しい接続モードを追加するとき。PeerProvider が 1000 行を超えたら分割を再検討。
+**再評価トリガー**: 新機能追加で useGameLoop の props が更に増えたとき、または PeerProvider に新しい接続モードを追加するとき。PeerProvider が 1100 行を超えたら分割を再検討。
+
+### コードベース一括整理（2026-04-13）
+
+深い監査の結果、以下を一括実施:
+
+1. **マジックナンバー `constants.ts` 集約**: gameLoop.ts / useGameLoop.ts / SceneContent.tsx / RelativisticGame.tsx に散在していた物理パラメータ（加速度 0.8, 摩擦 0.5, ヒステリシス 2.0）、カメラ定数、ゲームループ定数、描画定数を `constants.ts` に統合。値の変更が 1 箇所で済むように
+2. **`sendToNetwork` ヘルパー**: useGameLoop.ts の「ホスト→broadcast / クライアント→sendToHost」パターンが 3 箇所重複 → ヘルパー関数で 1 箇所に
+3. **Lighthouse setPlayers バッチ化**: ループ内の個別 `setPlayers`/`setLasers` 呼び出し → ループ外で 1 回のバッチ適用
+4. **S-1〜S-5 stale バグ一括修正**: Lighthouse stale 除外、kill+stale 二重 respawn 防止、cleanup 漏れ、recovery 後即座再 stale、死亡中 stale 検知停止
+5. **`purgeDisconnected` ヘルパー**: useStaleDetection.ts の 3 重コピペ cleanup ループを共通化
+6. **`parseScores` ヘルパー**: messageHandler.ts のスコアバリデーション 3 重重複を共通化
+7. **`causalEvents.ts` スコア蓄積最適化**: ループ内の `{ ...scores, [key]: val }` spread → 事前コピー + 直接代入
+8. **SceneContent.tsx マジックナンバー定数化**: 光円錐高さ 40、カメラ距離 100/15、プレイヤーマーカーサイズ 0.42/0.2
+
+defer 理由: PeerProvider.tsx の Phase 1 callback hell (L310-530) は PeerJS ライフサイクルと密結合しており、refactor リスクが利益を上回る。RelativisticGame.tsx の state/ref 30 個は分割しても引数爆発するため現状維持。残存臭 #2-#4 は引き続き defer（DESIGN.md 末尾の判断に変更なし）。
 
 ### game/ のファイル配置: flat vs subdirectory（2026-04-12）
 
@@ -163,22 +178,17 @@ stale 除外
 └── visibilitychange: document.hidden → ゲームループ停止 → 検知も止まる
 ```
 
-#### 修正すべき問題（リファクタリング時に対応）
+#### 修正済み（2026-04-13 一括解消）
 
-| # | 問題 | 重要度 | 修正方針 |
-|---|---|---|---|
-| S-1 | **Lighthouse が stale 検知から除外されていない**。クライアント側でホストが遅延すると Lighthouse が stale 凍結され、回復しない（クライアントは `!isHost` で stale recovery をスキップ） | Medium | stale 検知ループで `isLighthouse(id)` → continue（因果律ガードと同様） |
-| S-2 | **Kill + stale の重複**: stale プレイヤーがレーザーに当たると kill → respawn → 次の phaseSpace で stale recovery → 二重 respawn | Low | `handleKill` で `staleFrozenRef.delete(victimId)` を追加 |
-| S-3 | **`lastCoordTimeRef` の cleanup 漏れ**: 切断時に `lastUpdateTimeRef` と `staleFrozenRef` は削除されるが `lastCoordTimeRef` はされない（メモリリーク、機能的には無害） | Trivial | cleanup に `lastCoordTimeRef.current.delete(id)` 追加 |
-| S-4 | **stale recovery 時に `lastCoordTimeRef` 未リセット**: recovery 直後に rate チェックが旧値を参照して即座に再 stale になる可能性 | Low | stale recovery で `lastCoordTimeRef.current.set(playerId, { wallTime: Date.now(), posT: position.t })` |
-| S-5 | **死亡中は他プレイヤーの stale 検知が止まる**: isDead ブランチでは stale 検知ループが走らない（最大 10+5 秒の遅延） | Low | stale 検知を isDead 分岐の外に移動 |
+| # | 問題 | 修正 |
+|---|---|---|
+| S-1 | Lighthouse が stale 検知から除外されていない | `checkStale` で `isLighthouse(id) → continue` 追加 |
+| S-2 | Kill + stale の二重 respawn | `useGameLoop` の kill 処理で `staleFrozenRef.delete(victimId)` 追加 |
+| S-3 | `lastCoordTimeRef` の cleanup 漏れ | `purgeDisconnected` ヘルパーで 3 ref 一括 cleanup |
+| S-4 | stale recovery 時の `lastCoordTimeRef` 未リセット | `recoverStale` で `lastCoordTimeRef.delete(playerId)` 追加 |
+| S-5 | 死亡中に stale 検知が止まる | `stale.checkStale` を isDead 分岐の外に移動 |
 
-#### 設計方針（リファクタリング時）
-
-- `staleFrozenRef` の add/delete を一箇所に集約する custom hook `useStaleDetection` を作る
-- stale 検知・回復・cleanup の 3 操作を統一的に管理
-- Lighthouse 除外は検知ループで明示的に `isLighthouse` チェック
-- kill 時の stale クリアも hook 内で処理
+`useStaleDetection` hook に 3 重コピペだった cleanup ループを `purgeDisconnected` ヘルパーに統一。
 
 ### ロビー画面 + i18n + 表示名 + ハイスコア（2026-04-12）
 

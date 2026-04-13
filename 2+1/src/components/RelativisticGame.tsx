@@ -11,8 +11,11 @@ import {
 } from "../physics";
 import { getLaserColor } from "./game/colors";
 import {
+  DEFAULT_CAMERA_PITCH,
   ENERGY_MAX,
   LIGHTHOUSE_ID_PREFIX,
+  MAX_PENDING_KILL_EVENTS,
+  MAX_PENDING_SPAWN_EVENTS,
   MAX_WORLDLINE_HISTORY,
   OFFSET,
   SPAWN_RANGE,
@@ -112,7 +115,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const [fps, setFps] = useState(0);
   const fpsRef = useRef({ frameCount: 0, lastTime: performance.now() });
   const cameraYawRef = useRef(0);
-  const cameraPitchRef = useRef(Math.PI / 6);
+  const cameraPitchRef = useRef(DEFAULT_CAMERA_PITCH);
   const energyRef = useRef(ENERGY_MAX);
   const [energy, setEnergy] = useState(ENERGY_MAX);
 
@@ -194,7 +197,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         victimName: isLighthouse(victimId) ? "Lighthouse" : (playersRef.current.get(victimId)?.displayName ?? victimId.slice(0, 6)),
         victimColor: victim.color,
       });
-      if (pendingKillEventsRef.current.length > 100) {
+      if (pendingKillEventsRef.current.length > MAX_PENDING_KILL_EVENTS) {
         pendingKillEventsRef.current =
           pendingKillEventsRef.current.slice(-100);
       }
@@ -222,7 +225,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         myDeathEventRef.current = null;
         ghostTauRef.current = 0;
         cameraYawRef.current = 0;
-        cameraPitchRef.current = Math.PI / 6;
+        cameraPitchRef.current = DEFAULT_CAMERA_PITCH;
         energyRef.current = ENERGY_MAX;
       }
 
@@ -245,7 +248,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
           ...pendingSpawnEventsRef.current,
           { id: `spawn-${playerId}-${now}`, pos: position, color },
         ];
-        if (pendingSpawnEventsRef.current.length > 50) {
+        if (pendingSpawnEventsRef.current.length > MAX_PENDING_SPAWN_EVENTS) {
           pendingSpawnEventsRef.current =
             pendingSpawnEventsRef.current.slice(-50);
         }
