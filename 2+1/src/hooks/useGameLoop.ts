@@ -71,6 +71,7 @@ export interface GameLoopDeps {
   lasersRef: RefObject<Laser[]>;
   processedLasersRef: RefObject<Set<string>>;
   deadPlayersRef: RefObject<Set<string>>;
+  invincibleUntilRef: RefObject<Map<string, number>>;
   deathTimeMapRef: RefObject<Map<string, number>>;
   pendingKillEventsRef: RefObject<PendingKillEvent[]>;
   pendingSpawnEventsRef: RefObject<PendingSpawnEvent[]>;
@@ -129,6 +130,7 @@ export function useGameLoop({
   lasersRef,
   processedLasersRef,
   deadPlayersRef,
+  invincibleUntilRef,
   pendingKillEventsRef,
   pendingSpawnEventsRef,
   causalFrozenRef,
@@ -430,11 +432,19 @@ export function useGameLoop({
 
       // --- Host: Hit detection ---
       if (peerManager.getIsHost()) {
+        // Build invincible set (prune expired entries)
+        const invincibleIds = new Set<string>();
+        for (const [id, until] of invincibleUntilRef.current) {
+          if (currentTime < until) invincibleIds.add(id);
+          else invincibleUntilRef.current.delete(id);
+        }
+
         const hitResult = processHitDetection(
           playersRef.current,
           lasersRef.current,
           processedLasersRef.current,
           deadPlayersRef.current,
+          invincibleIds,
         );
 
         // Cleanup processedLasers

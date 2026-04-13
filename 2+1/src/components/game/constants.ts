@@ -46,6 +46,9 @@ export const LIGHTHOUSE_FIRE_INTERVAL = 3000; // ms
 export const LIGHTHOUSE_SPAWN_GRACE = 10000; // ms — don't fire for this long after spawn
 export const LIGHTHOUSE_COLOR = "hsl(200, 60%, 80%)"; // 薄い水色
 
+// リスポーン後の無敵時間（ミリ秒）
+export const INVINCIBILITY_DURATION = 10000;
+
 // --- Player physics ---
 export const PLAYER_ACCELERATION = 0.8; // c/s
 export const FRICTION_COEFFICIENT = 0.5; // 速度に比例する減速

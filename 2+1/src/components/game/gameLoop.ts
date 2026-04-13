@@ -223,6 +223,7 @@ export function processHitDetection(
   lasers: Laser[],
   processedIds: Set<string>,
   deadIds: Set<string>,
+  invincibleIds: Set<string>,
 ): HitDetectionResult {
   const kills: HitDetectionResult["kills"] = [];
   const hitLaserIds: string[] = [];
@@ -248,6 +249,7 @@ export function processHitDetection(
       if (playerId === laser.playerId) continue;
       if (killedThisFrame.has(playerId)) continue;
       if (deadIds.has(playerId)) continue;
+      if (invincibleIds.has(playerId)) continue;
       const hitPos = findLaserHitPosition(laser, player.worldLine, HIT_RADIUS);
       if (hitPos) {
         kills.push({ victimId: playerId, killerId: laser.playerId, hitPos });

@@ -13,6 +13,7 @@ import { getLaserColor } from "./game/colors";
 import {
   DEFAULT_CAMERA_PITCH,
   ENERGY_MAX,
+  INVINCIBILITY_DURATION,
   LIGHTHOUSE_ID_PREFIX,
   MAX_PENDING_KILL_EVENTS,
   MAX_PENDING_SPAWN_EVENTS,
@@ -100,6 +101,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const lasersRef = useRef<Laser[]>([]);
   const processedLasersRef = useRef<Set<string>>(new Set());
   const deadPlayersRef = useRef<Set<string>>(new Set());
+  const invincibleUntilRef = useRef<Map<string, number>>(new Map());
   const deathTimeMapRef = useRef<Map<string, number>>(new Map());
   const pendingKillEventsRef = useRef<PendingKillEvent[]>([]);
   const displayNamesRef = useRef<Map<string, string>>(new Map());
@@ -215,6 +217,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       setPlayers((prev) => applyRespawn(prev, playerId, position));
 
       deathTimeMapRef.current.delete(playerId);
+      invincibleUntilRef.current.set(playerId, Date.now() + INVINCIBILITY_DURATION);
 
       // Lighthouse: reset spawn grace timer on respawn
       if (isLighthouse(playerId)) {
@@ -445,7 +448,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     peerManager, myId,
     setPlayers, setLasers, setSpawns, setScores, setFps, setEnergy, setIsFiring,
     setDeathFlash, setKillNotification,
-    playersRef, lasersRef, processedLasersRef, deadPlayersRef,
+    playersRef, lasersRef, processedLasersRef, deadPlayersRef, invincibleUntilRef,
     pendingKillEventsRef, pendingSpawnEventsRef, causalFrozenRef,
     lighthouseLastFireRef, lighthouseSpawnTimeRef, lastLaserTimeRef,
     myDeathEventRef, ghostTauRef, cameraYawRef, cameraPitchRef,
@@ -513,6 +516,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             useOrthographic={true}
             cameraYawRef={cameraYawRef}
             cameraPitchRef={cameraPitchRef}
+            invincibleUntilRef={invincibleUntilRef}
           />
         </Canvas>
       ) : (
@@ -529,6 +533,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             useOrthographic={false}
             cameraYawRef={cameraYawRef}
             cameraPitchRef={cameraPitchRef}
+            invincibleUntilRef={invincibleUntilRef}
           />
         </Canvas>
       )}
