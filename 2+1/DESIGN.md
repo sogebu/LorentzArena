@@ -53,6 +53,24 @@
 - **ルール**: 配列フィールドの更新は必ず `useGameStore.setState({ field: newArray })` を使う。直接再代入は禁止
 - gameLoop では `set()` を跨ぐ読み取りが多いため、causal events セクションのみ `setState()` を使い、他のセクションは各 `set()` 呼び出しが独立で stale にならないことを確認済み
 
+### MAX_DELTA_TAU 撤廃（2026-04-14）
+
+- **What**: `MAX_DELTA_TAU` (100ms → 500ms → 2s → 撤廃) でゲームループの dTau をキャップしていたが、完全に削除
+- **Why**: タブ切り替え時の 1-6 秒スパイクで座標時間が削られ、ホストがクライアントより過去に落ちていた。`document.hidden` チェックがタブ復帰を既に処理しているためキャップは二重防御。物理的不安定性リスクは低い（静止時 `pos.t += dTau` のみ、加速中も摩擦が速度を制限）
+- **教訓**: 座標時間の進行を壁時計から切り離すとプレイヤー間で累積的にずれる。座標時間は常に壁時計に忠実であるべき
+
+### スポーンエフェクト色の遅延解決（2026-04-14）
+
+- **What**: `PendingSpawnEvent` に `playerId` フィールドを追加。`firePendingSpawnEvents` が発火時に `players.get(playerId)?.color` で最新色を解決
+- **Why**: syncTime 時点では joinRegistry 未受信のため `colorForPlayerId`（ハッシュフォールバック）が使われ、peerList 到着後に正しい色に更新されるが、既に作成済みのスポーンエフェクトは古い色のまま。発火時解決にすれば peerList 到着後の正しい色が使われる
+- **副次修正**: syncTime プレイヤー作成でも `colorForPlayerId` → `getPlayerColor` に統一。Lighthouse の色は `LIGHTHOUSE_COLOR` 定数を messageHandler に適用（クライアントで別色になる問題を修正）
+
+### gameLoop 後半セクションの stale state 修正（2026-04-14）
+
+- **What**: useGameLoop の Lighthouse AI セクションと hit detection セクションが tick 冒頭の stale `store` スナップショットを使用していた → 各セクション冒頭で `useGameStore.getState()` を再取得
+- **Why**: tick 前半の `setPlayers`/`setLasers`/`setState` で state が更新された後、Lighthouse AI が古い `store.players` を読むと因果律ジャンプが正しく発動しない。hit detection も古い位置で判定してしまう
+- **パターン**: gameLoop は 1 tick 内で複数の `set()` を呼ぶため、tick を 3 フェーズに分割: (1) cleanup/camera/causal events (stale store OK), (2) ghost/physics (fresh re-read), (3) lighthouse/hit detection (fresh re-read)
+
 ### 世界線ジャンプの根本原因と修正（2026-04-13 夜）
 
 - **What**: リスポーン後に世界線が前の位置に飛ぶ現象。過去 3 回の対症療法（stale ref 同期、shadow ref ラッパー、fresh getState 再取得）で治らなかった

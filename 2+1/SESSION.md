@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**`1be3bc6` デプロイ済み** (build `2026/04/14 00:02:26 JST`)。
+対戦可能。**`2297841` デプロイ済み** (build `2026/04/14 01:09:55 JST`)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
 ## 直近の変更（2026-04-13 夜）
@@ -26,6 +26,14 @@
 - **過去半直線延長を廃止**: 初回スポーンもリスポーンと同じ方式（origin なし）
 - **初回スポーンエフェクト追加**: 自機・Lighthouse ともに `pendingSpawnEvents` 経由で過去光円錐到達時に発火
 - **自機 displayName 修正**: ホスト初期化時に displayName を含めていなかった → Kill 欄に ID が表示されていた
+
+### 座標時間同期・色・表示修正
+
+- **MAX_DELTA_TAU 撤廃**: 100ms キャップが座標時間を削り、ホストがクライアントより過去に落ちる原因だった。`document.hidden` がタブ復帰を処理するのでキャップ不要
+- **スポーンエフェクト色の遅延解決**: PendingSpawnEvent に `playerId` を追加し、発火時にプレイヤーの最新色を解決。peerList 到着前の仮色が使われる問題を修正
+- **Lighthouse 色のクライアント不一致**: messageHandler で Lighthouse の phaseSpace 受信時に `LIGHTHOUSE_COLOR` を使用。以前は `getPlayerColor` で別の色になっていた
+- **速度表示修正**: `|u|`（固有速度）→ `v = |u|/γ`（3-速さ）。ラベル「速度」→「速さ」
+- **Lighthouse AI / hit detection の stale state**: gameLoop 後半セクションで fresh `getState()` を使用
 
 ### バグ修正
 
