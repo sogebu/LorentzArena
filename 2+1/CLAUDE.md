@@ -208,6 +208,8 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | `CAMERA_DISTANCE_*` | 正射影: 50, 透視: 10 | カメラ距離 |
 | `CAMERA_YAW/PITCH_SPEED` | yaw: 0.8, pitch: 0.5 rad/s | カメラ回転速度 |
 | `CAMERA_PITCH_MIN/MAX` | ±89.9° | カメラ仰角範囲 |
+| `PLAYER_MARKER_SIZE_SELF` | 0.42 | 自機マーカーサイズ（playerSphere geo 0.5 × scale） |
+| `PLAYER_MARKER_SIZE_OTHER` | 0.2 | 他機マーカーサイズ |
 | `LIGHT_CONE_HEIGHT` | 20 | 描画上の円錐サイズ（c=1 で radius=height） |
 | `GAME_LOOP_INTERVAL` | 8 ms | `setInterval`（タブ非アクティブ対応） |
 | `MAX_DELTA_TAU` | 100 ms | タブ復帰時の巨大ジャンプ防止 |

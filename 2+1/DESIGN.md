@@ -7,10 +7,10 @@
 | ファイル | 行数 | 判断 | 理由 |
 |---|---|---|---|
 | `PeerProvider.tsx` | 1023 | defer | Phase 1 effect のコールバックネストは PeerJS ライフサイクルと密結合。分割しない理由は依然有効 |
-| `RelativisticGame.tsx` | ~310 | — | Zustand 移行で 539→310 行に大幅削減。state/ref/callback の大半を store に移行済み |
-| `useGameLoop.ts` | ~470 | defer | GameLoopDeps 34→14 props に縮小。内部 ref 化で依存が明確に。行数は微減だがロジック密度は高い |
-| `SceneContent.tsx` | ~490 | — | store selectors で self-contained。SceneContentProps 12→5 |
-| `game-store.ts` | ~250 | — | 新規。handleKill/handleRespawn を store actions として集約 |
+| `RelativisticGame.tsx` | ~340 | — | Zustand 移行で 539→340 行に大幅削減。state/ref/callback の大半を store に移行済み |
+| `useGameLoop.ts` | ~480 | defer | GameLoopDeps 34→14 props に縮小。内部 ref 化で依存が明確に。行数は微減だがロジック密度は高い |
+| `SceneContent.tsx` | ~545 | — | store selectors + レーザー方向マーカー追加で微増。SceneContentProps 12→6 |
+| `game-store.ts` | ~255 | — | 新規。handleKill/handleRespawn を store actions として集約 |
 
 **再評価トリガー**: PeerProvider が 1100 行を超えたら分割を再検討。
 
