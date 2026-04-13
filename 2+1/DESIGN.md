@@ -26,12 +26,9 @@
 - **チェック位置をループ内にした理由**: `clearInterval` + `visibilitychange` で再開するアプローチでは、ループ本体のクロージャを再構築する必要がある（useEffect の deps 問題）。ループ先頭の 1 行 `if (document.hidden) { lastTimeRef.current = Date.now(); return; }` で同等の効果を得られ、`lastTimeRef` 更新で復帰時のジャンプも防止
 - **既存メカニズムとの連携**: ping 停止 → クライアントがハートビートタイムアウト → migration。phaseSpace 停止 → stale 検知。新しいプロトコル不要
 
-### syncTime のタイミング問題とその解決（2026-04-12）
+### ~~syncTime のタイミング問題とその解決~~（2026-04-12 → 2026-04-13 廃止）
 
-- **What**: ロビー導入で PeerProvider と RelativisticGame が別のライフサイクルになった結果、クライアントの syncTime が失われる問題が発生
-- **根本原因**: PeerProvider はロビー中に接続する → ホストが即座に syncTime を送信 → しかしクライアントの RelativisticGame（messageHandler を登録する）はまだ mount されていない → syncTime は誰にも処理されず消失
-- **修正**: クライアントの RelativisticGame mount 時に `requestPeerList` を送信。ホスト側の messageHandler が `requestPeerList` を受信したら `sendTo` で syncTime を返す（ブロードキャストではなく、要求元だけに unicast）
-- **教訓**: PeerProvider（常時 mount）と RelativisticGame（条件付き mount）の間でメッセージが失われるパターン。新しいメッセージ型を追加する際は、両方の mount 状態を考慮すること
+~~`requestPeerList` による syncTime 再送パターン。~~ PeerProvider を START 後にマウントする設計変更（「START でホスト決定」参照）で問題自体が消滅し、`requestPeerList` メッセージ型は完全に削除された
 
 ### setPlayers ラッパーによる stale ref 根絶（2026-04-12）
 
@@ -183,11 +180,10 @@ stale 除外
 
 ### ロビー画面 + i18n + 表示名 + ハイスコア（2026-04-12）
 
-#### ロビー画面: PeerProvider の内側で gate
+#### ロビー画面: ~~PeerProvider の内側で gate~~ → START で PeerProvider マウント
 
-- **What**: App.tsx に `gameStarted` state を追加。PeerProvider は即座に mount（接続開始）し、ロビー画面を表示。Start 押下で RelativisticGame を mount
-- **Why**: PeerJS 接続に数秒かかる。ロビー表示中にバックグラウンドで接続を確立すれば、Start 後の待ち時間ゼロ
-- **Alternative rejected**: PeerProvider の外側で gate → Start 後に接続開始で数秒待ち
+- ~~旧設計 (2026-04-12): PeerProvider を常時マウントし、ロビー裏で接続完了~~
+- **現設計 (2026-04-13)**: PeerProvider を `gameStarted` 内に移動。START を押した人がホスト。Lobby は PeerProvider の外（`usePeer()` 不使用）。接続レイテンシ ~300-500ms は体感的に問題なし。詳細は「START でホスト決定」参照
 
 #### i18n: 自前 Context + TypeScript 辞書（ライブラリなし）
 
@@ -230,7 +226,7 @@ stale 除外
   - **relay server**: `host_closed` に surviving peers リストを同梱。`promote_host` ハンドラで新ルーム作成
 - **ハートビート方式**: WebRTC DataConnection の close イベントは ICE タイムアウト依存で 30 秒以上（localhost では事実上無限）。ホストが 3 秒ごとに `ping` メッセージを送信し、クライアントが 8 秒間受信しなければホスト切断と判定。テストで即時検知を確認
 - **stale 接続クリーンアップ**: マイグレーション時に `disconnectPeer(oldHostId)` で旧ホストの DataConnection を明示的に close + conns から除去。UI に旧ホストが残り続ける問題を解消
-- **制限**: マイグレーション後に新規ジョイナーが `la-{roomName}` で入ると別セッションになる（新ホストを発見できない）。小規模ゲームでは許容
+- ~~**制限**: マイグレーション後に新規ジョイナーが別セッションになる~~ → **解決済み**: ビーコン専用化（「ホスト ID 根本修正」参照）で新規ジョイナーは常にビーコン経由でリアルホストに接続
 
 ### レーザーエネルギー制（2026-04-11）
 

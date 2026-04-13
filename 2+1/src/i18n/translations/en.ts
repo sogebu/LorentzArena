@@ -52,7 +52,6 @@ export const en: Record<TranslationKey, string> = {
   "lobby.nameLabel": "Player name",
   "lobby.namePlaceholder": "Enter your name",
   "lobby.start": "START",
-  "lobby.connecting": "Connecting...",
   "lobby.highScores": "High Scores",
   "lobby.noScores": "No records yet",
   "lobby.kills": "Kills",

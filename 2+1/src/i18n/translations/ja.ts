@@ -50,7 +50,6 @@ export const ja = {
   "lobby.nameLabel": "プレイヤー名",
   "lobby.namePlaceholder": "名前を入力",
   "lobby.start": "START",
-  "lobby.connecting": "接続中...",
   "lobby.highScores": "ハイスコア",
   "lobby.noScores": "まだ記録がありません",
   "lobby.kills": "キル",

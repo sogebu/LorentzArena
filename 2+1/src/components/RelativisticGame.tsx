@@ -420,10 +420,6 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       displayName,
     });
 
-    if (!peerManager.getIsHost()) {
-      peerManager.send({ type: "requestPeerList" });
-    }
-
     displayNamesRef.current.set(myId, displayName);
 
     return () => {

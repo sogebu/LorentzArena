@@ -34,13 +34,6 @@ export type Message =
     }
   | {
       /**
-       * Request a peer list from the host.
-       * JP: ホストに peerList を要求する。
-       */
-      type: "requestPeerList";
-    }
-  | {
-      /**
        * Time synchronization from host to newly connected client.
        * JP: ホストから新規クライアントへの世界系時刻同期。
        */

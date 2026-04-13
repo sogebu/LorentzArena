@@ -176,7 +176,7 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | `hostMigration` | new host → all | ホストマイグレーション（スコア + dead players + displayNames 引継ぎ） |
 | `intro` | 双方向（host 中継） | プレイヤー表示名通知（接続時に 1 回送信） |
 | `peerList` | host → all | 接続ピア一覧（接続変化時に proactive 送信） |
-| `requestPeerList` | client → host | ピア一覧要求 |
+
 | `redirect` | beacon → client | マイグレーション後のホスト ID リダイレクト |
 
 **色は同期しない**: 全ピアが `colorForJoinOrder(index)` で接続順に基づく色を独立に算出（peerList から各自 append-only joinRegistry を構築）。peerList 未受信時は `colorForPlayerId(id)` にフォールバック。ネットワークで色を直接同期するメッセージはない。詳細: DESIGN.md「色割り当て」

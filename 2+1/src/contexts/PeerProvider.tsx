@@ -173,20 +173,6 @@ const registerHostRelay = (pm: NetworkManager) => {
   pm.onMessage("host", (senderId, msg) => {
     if (!pm.getIsHost()) return;
 
-    if (msg.type === "requestPeerList") {
-      const peerIds = pm.getConnectedPeerIds();
-      pm.sendTo(senderId, { type: "peerList", peers: peerIds });
-      for (const peerId of peerIds) {
-        if (peerId !== senderId) {
-          pm.sendTo(peerId, {
-            type: "peerList",
-            peers: [...peerIds, senderId],
-          });
-        }
-      }
-      return;
-    }
-
     if (
       (msg.type === "phaseSpace" || msg.type === "laser" || msg.type === "intro") &&
       isRelayable(msg)
@@ -585,7 +571,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   }, [connections, peerManager, connectionPhase, roleVersion]);
 
   // Host: release PeerJS IDs when tab is hidden for >5s.
-  // This allows the new host (post-migration) to create a beacon at la-{roomName}.
+  // This allows another peer to claim the beacon at la-{roomName}.
   // On tab return, reconnect via Phase 1 (beacon probe). Since Phase 1 uses
   // random IDs for game PM, the host's identity and color are preserved.
   const tabHiddenTimerRef = useRef<ReturnType<typeof setTimeout>>();

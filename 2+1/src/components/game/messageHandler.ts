@@ -68,7 +68,7 @@ const isValidColor = (v: unknown): v is string =>
 
 export const createMessageHandler =
   // biome-ignore lint/suspicious/noExplicitAny: Network messages require runtime validation
-  (deps: MessageHandlerDeps) => (senderId: string, msg: any) => {
+  (deps: MessageHandlerDeps) => (_senderId: string, msg: any) => {
     if (!msg || typeof msg !== "object" || typeof msg.type !== "string") return;
     const {
       myId,
@@ -86,20 +86,6 @@ export const createMessageHandler =
       staleFrozenRef,
       displayNamesRef,
     } = deps;
-
-    // Host: respond to requestPeerList with syncTime (client may have missed
-    // the initial syncTime while still in the lobby before messageHandler was registered)
-    if (msg.type === "requestPeerList" && peerManager.getIsHost()) {
-      const me = playersRef.current.get(myId);
-      if (me) {
-        peerManager.sendTo(senderId, {
-          type: "syncTime" as const,
-          hostTime: me.phaseSpace.pos.t,
-          scores: scoresRef.current,
-        });
-      }
-      return;
-    }
 
     if (msg.type === "phaseSpace") {
       if (
@@ -192,9 +178,8 @@ export const createMessageHandler =
         scoresRef.current = scores;
         setScores(scores);
       }
-      // Correct time coordinate to match host's time origin.
-      // Player may already exist (self-initialized) — syncTime updates
-      // the time coordinate and resets the world line.
+      // Initialize client player at the host's current coordinate time.
+      // This is the client's first player creation (init effect skips for non-hosts).
       const spawnX = Math.random() * SPAWN_RANGE;
       const spawnY = Math.random() * SPAWN_RANGE;
       setPlayers((prev) => {
