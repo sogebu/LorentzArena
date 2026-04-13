@@ -2,6 +2,7 @@ import { useEffect, useRef, type RefObject } from "react";
 import { createPhaseSpace, type Vector4 } from "../physics";
 import {
   ENERGY_MAX,
+  ENERGY_PER_SHOT,
   ENERGY_RECOVERY_RATE,
   GAME_LOOP_INTERVAL,
   LASER_RANGE,
@@ -298,7 +299,7 @@ export function useGameLoop({
         );
       }
       setEnergy(energyRef.current);
-      setIsFiring(wantsFire && energyRef.current >= 0);
+      setIsFiring(wantsFire && energyRef.current >= ENERGY_PER_SHOT);
 
       // S-5: stale 検知は死亡中も走らせる（他プレイヤーの stale を検知するため）
       stale.checkStale(currentTime, playersRef.current, myId);
