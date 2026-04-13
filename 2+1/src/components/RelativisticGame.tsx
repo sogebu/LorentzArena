@@ -501,7 +501,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
           orthographic
           camera={{
             zoom: 30,
-            position: [0, 0, 100],
+            position: [0, 0, 50],
             near: -10000,
             far: 10000,
           }}

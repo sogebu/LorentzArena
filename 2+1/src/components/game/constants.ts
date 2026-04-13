@@ -6,7 +6,7 @@ export const OFFSET = Date.now() / 1000;
 export const SPAWN_EFFECT_DURATION = 1500;
 
 // レーザーの射程
-export const LASER_RANGE = 20;
+export const LASER_RANGE = 10;
 
 // リスポーン遅延（ミリ秒）
 export const RESPAWN_DELAY = 10000;
@@ -24,7 +24,7 @@ export const MAX_LASERS = 1000;
 export const HIT_RADIUS = 0.5;
 
 // スポーン範囲（x, y）
-export const SPAWN_RANGE = 20;
+export const SPAWN_RANGE = 10;
 
 // レーザー連射間隔（ミリ秒）
 export const LASER_COOLDOWN = 100;
@@ -58,8 +58,8 @@ export const CAMERA_YAW_SPEED = 0.8; // rad/s
 export const CAMERA_PITCH_SPEED = 0.5; // rad/s
 export const CAMERA_PITCH_MIN = (-Math.PI * 89.9) / 180;
 export const CAMERA_PITCH_MAX = (Math.PI * 89.9) / 180;
-export const CAMERA_DISTANCE_ORTHOGRAPHIC = 100;
-export const CAMERA_DISTANCE_PERSPECTIVE = 15;
+export const CAMERA_DISTANCE_ORTHOGRAPHIC = 50;
+export const CAMERA_DISTANCE_PERSPECTIVE = 10;
 export const DEFAULT_CAMERA_PITCH = Math.PI / 6;
 
 // --- Causality guard ---
@@ -75,7 +75,7 @@ export const MAX_PENDING_KILL_EVENTS = 100;
 export const MAX_PENDING_SPAWN_EVENTS = 50;
 
 // --- Light cone rendering ---
-export const LIGHT_CONE_HEIGHT = 40;
+export const LIGHT_CONE_HEIGHT = 20;
 
 // --- Player marker sizes ---
 export const PLAYER_MARKER_SIZE_SELF = 0.42;
