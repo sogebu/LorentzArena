@@ -160,7 +160,18 @@ const registerPeerOrderListener = (
       const peers = (msg as { peers?: string[] }).peers;
       if (Array.isArray(peers)) {
         peerOrderRef.current = peers;
-        if (appendToJoinRegistry(joinRegistryRef, peers, pm.getHostId() ?? undefined)) {
+        // If host sent its full joinRegistry, seed ours from it (preserves history of departed peers)
+        const hostRegistry = (msg as { joinRegistry?: string[] }).joinRegistry;
+        if (Array.isArray(hostRegistry) && hostRegistry.length > 0) {
+          if (appendToJoinRegistry(joinRegistryRef, hostRegistry, hostRegistry[0])) {
+            onRegistryChange();
+          }
+        } else if (appendToJoinRegistry(joinRegistryRef, peers, pm.getHostId() ?? undefined)) {
+          onRegistryChange();
+        }
+        // Always ensure our own ID is in the registry
+        const myId = pm.id();
+        if (myId && appendToJoinRegistry(joinRegistryRef, [myId])) {
           onRegistryChange();
         }
       }
@@ -566,7 +577,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       setJoinRegistryVersion((v) => v + 1);
     }
     if (openPeers.length > 0) {
-      peerManager.send({ type: "peerList", peers: openPeers });
+      peerManager.send({ type: "peerList", peers: openPeers, joinRegistry: joinRegistryRef.current });
     }
   }, [connections, peerManager, connectionPhase, roleVersion]);
 

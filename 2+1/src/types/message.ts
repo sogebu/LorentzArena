@@ -31,6 +31,7 @@ export type Message =
        */
       type: "peerList";
       peers: string[];
+      joinRegistry?: string[];
     }
   | {
       /**
