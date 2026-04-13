@@ -148,7 +148,7 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 - 正射影/透視投影カメラ切替
 - 自分の静止系/世界系表示切替
 - 当たり判定（ホスト権威、`findLaserHitPosition`）
-- Kill/Respawn: kill → 世界線を `frozenWorldLines` に移動 + デブリ生成 → ゴースト（DeathEvent ベース等速直線）→ 10秒後リスポーン（新 WorldLine）
+- Kill/Respawn: kill → 世界線を `frozenWorldLines` に移動 + デブリ生成 → ゴースト（DeathEvent ベース等速直線）→ 10秒後リスポーン（新 WorldLine）→ 10秒間無敵（opacity パルスで表示、Lighthouse 除外）
 - 世界オブジェクト分離: 死亡で生まれるオブジェクト（凍結世界線、デブリ、ゴースト）はプレイヤーから独立した state。レーザーも同様
 - 死亡の設計哲学: 凍結世界線・デブリは世界オブジェクトとして独立描画。過去光円錐交差で自然に可視性が決まる
 - 死亡状態管理: `isDead` フラグ + `DeathEvent`（ゴーストカメラの決定論的計算）。`handleKill`/`handleRespawn` コールバックで一元化
@@ -160,7 +160,7 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 - 世界線の過去延長: `WorldLine.origin` で制御。最初のライフのみ origin から半直線延長
 - プレイヤー色は `colorForJoinOrder(index)` が主（接続順 × 黄金角）、peerList 未受信時は `colorForPlayerId(id)` にフォールバック。ネットワーク同期不要の純関数方式。詳細は DESIGN.md「色割り当て」
 - 因果律の守護者: 他プレイヤーの未来光円錐内で操作凍結。死亡プレイヤー・灯台は除外。灯台は別方式: 誰かの過去光円錐に落ちたら最も過去の生存プレイヤーの座標時間にジャンプ
-- 光円錐描画: DoubleSide 半透明サーフェス（opacity 0.1）で未来/過去光円錐を表示
+- 光円錐描画: DoubleSide 半透明サーフェス（opacity 0.08）+ ワイヤーフレーム（opacity 0.12）の 2 層構造で未来/過去光円錐を表示
 
 ### メッセージタイプ (`src/types/message.ts`)
 
