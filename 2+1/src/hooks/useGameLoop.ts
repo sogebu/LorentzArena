@@ -1,6 +1,7 @@
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, type MutableRefObject, type RefObject } from "react";
 import { createPhaseSpace, type Vector4 } from "../physics";
 import {
+  DEFAULT_CAMERA_PITCH,
   ENERGY_MAX,
   ENERGY_PER_SHOT,
   ENERGY_RECOVERY_RATE,
@@ -27,16 +28,10 @@ import {
   firePendingKillEvents,
   firePendingSpawnEvents,
 } from "../components/game/causalEvents";
-import type {
-  DeathEvent,
-  Laser,
-  PendingKillEvent,
-  PendingSpawnEvent,
-  RelativisticPlayer,
-  SpawnEffect,
-} from "../components/game/types";
+import type { Laser } from "../components/game/types";
 import type { useStaleDetection } from "./useStaleDetection";
 import type { useTouchInput } from "../components/game/touchInput";
+import { useGameStore } from "../stores/game-store";
 
 // --- Types ---
 
@@ -50,109 +45,66 @@ type PeerManager = {
 export interface GameLoopDeps {
   peerManager: PeerManager | null;
   myId: string | null;
+  getPlayerColor: (id: string) => string;
 
-  // State setters (React guarantees stable references)
-  setPlayers: (updater: (prev: Map<string, RelativisticPlayer>) => Map<string, RelativisticPlayer>) => void;
-  setLasers: React.Dispatch<React.SetStateAction<Laser[]>>;
-  setSpawns: React.Dispatch<React.SetStateAction<SpawnEffect[]>>;
-  setScores: React.Dispatch<React.SetStateAction<Record<string, number>>>;
+  // Local UI setters (transient, kept local for perf)
   setFps: React.Dispatch<React.SetStateAction<number>>;
   setEnergy: React.Dispatch<React.SetStateAction<number>>;
   setIsFiring: React.Dispatch<React.SetStateAction<boolean>>;
   setDeathFlash: React.Dispatch<React.SetStateAction<boolean>>;
-  setKillNotification: React.Dispatch<React.SetStateAction<{
-    victimName: string;
-    color: string;
-    hitPos: { t: number; x: number; y: number; z: number };
-  } | null>>;
 
-  // Refs (stable references, read via .current)
-  playersRef: RefObject<Map<string, RelativisticPlayer>>;
-  lasersRef: RefObject<Laser[]>;
-  processedLasersRef: RefObject<Set<string>>;
-  deadPlayersRef: RefObject<Set<string>>;
-  invincibleUntilRef: RefObject<Map<string, number>>;
-  deathTimeMapRef: RefObject<Map<string, number>>;
-  pendingKillEventsRef: RefObject<PendingKillEvent[]>;
-  pendingSpawnEventsRef: RefObject<PendingSpawnEvent[]>;
-  causalFrozenRef: RefObject<boolean>;
-  lighthouseLastFireRef: RefObject<Map<string, number>>;
-  lighthouseSpawnTimeRef: RefObject<Map<string, number>>;
-  lastLaserTimeRef: RefObject<number>;
-  myDeathEventRef: RefObject<DeathEvent | null>;
-  ghostTauRef: RefObject<number>;
-  cameraYawRef: RefObject<number>;
-  cameraPitchRef: RefObject<number>;
-  energyRef: RefObject<number>;
-  fpsRef: RefObject<{ frameCount: number; lastTime: number }>;
-  scoresRef: RefObject<Record<string, number>>;
+  // Per-frame local refs (shared with SceneContent)
+  cameraYawRef: MutableRefObject<number>;
+  cameraPitchRef: MutableRefObject<number>;
+
+  // Lifecycle (shared with useHostMigration)
   respawnTimeoutsRef: RefObject<Set<ReturnType<typeof setTimeout>>>;
 
   // Input (refs, stable references)
   keysPressed: RefObject<Set<string>>;
   touchInput: ReturnType<typeof useTouchInput>;
 
-  // Callbacks (change only when myId changes, which is in effect deps)
-  handleKill: (victimId: string, killerId: string, hitPos: { t: number; x: number; y: number; z: number }) => void;
-  handleRespawn: (playerId: string, position: { t: number; x: number; y: number; z: number }) => void;
+  // Stale detection (standalone hook)
   stale: ReturnType<typeof useStaleDetection>;
 }
 
 // --- Hook ---
 
 /**
- * Dependency stability analysis (why only peerManager/myId are in useEffect deps):
- *
- * - Refs (playersRef, etc.): stable object, read via .current — always fresh
- * - React setState (setLasers, etc.): React guarantees stable reference
- * - setPlayers: useCallback([]) — stable
- * - handleKill/handleRespawn: useCallback([myId, setPlayers]) — change only when myId changes
- * - stale: properties are refs — reading via .current is always fresh
- * - touchInput/keysPressed: refs — stable
- * - peerManager: can transition null → value — must be in deps
- * - myId: can transition null → string — must be in deps
- *
- * When myId changes, the effect re-runs, capturing new handleKill/handleRespawn closures.
+ * Dependency stability analysis:
+ * - Store: read via useGameStore.getState() — always fresh, O(1)
+ * - Refs: stable object, read via .current — always fresh
+ * - React setState: React guarantees stable reference
+ * - peerManager/myId: can transition null → value — must be in deps
  */
 export function useGameLoop({
   peerManager,
   myId,
-  setPlayers,
-  setLasers,
-  setSpawns,
-  setScores,
+  getPlayerColor,
   setFps,
   setEnergy,
   setIsFiring,
   setDeathFlash,
-  setKillNotification,
-  playersRef,
-  lasersRef,
-  processedLasersRef,
-  deadPlayersRef,
-  invincibleUntilRef,
-  pendingKillEventsRef,
-  pendingSpawnEventsRef,
-  causalFrozenRef,
-  lighthouseLastFireRef,
-  lighthouseSpawnTimeRef,
-  lastLaserTimeRef,
-  myDeathEventRef,
-  ghostTauRef,
   cameraYawRef,
   cameraPitchRef,
-  energyRef,
-  fpsRef,
-  scoresRef,
   respawnTimeoutsRef,
   keysPressed,
   touchInput,
-  handleKill,
-  handleRespawn,
   stale,
 }: GameLoopDeps): void {
   const lastTimeRef = useRef<number>(Date.now());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Internal refs (previously in RelativisticGame, now local to the game loop)
+  const causalFrozenRef = useRef<boolean>(false);
+  const lighthouseLastFireRef = useRef<Map<string, number>>(new Map());
+  const lastLaserTimeRef = useRef<number>(0);
+  const fpsRef = useRef({ frameCount: 0, lastTime: performance.now() });
+  const energyRef = useRef(ENERGY_MAX);
+  const ghostTauRef = useRef<number>(0);
+
+  // Track myDeathEvent transitions (for ghostTau + camera/energy reset)
+  const prevMyDeathEventRef = useRef<unknown>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: see stability analysis above — all other deps are refs or stable callbacks
   useEffect(() => {
@@ -179,18 +131,34 @@ export function useGameLoop({
       const dTau = Math.min(rawDTau, MAX_DELTA_TAU);
       lastTimeRef.current = currentTime;
 
+      const store = useGameStore.getState();
+
+      // --- Detect myDeathEvent transitions for local ref resets ---
+      const currentMyDeathEvent = store.myDeathEvent;
+      if (prevMyDeathEventRef.current !== null && currentMyDeathEvent === null) {
+        // non-null → null: self-respawn just happened → reset local refs
+        cameraYawRef.current = 0;
+        cameraPitchRef.current = DEFAULT_CAMERA_PITCH;
+        energyRef.current = ENERGY_MAX;
+        ghostTauRef.current = 0;
+      } else if (prevMyDeathEventRef.current === null && currentMyDeathEvent !== null) {
+        // null → non-null: self-death just happened → reset ghost
+        ghostTauRef.current = 0;
+      }
+      prevMyDeathEventRef.current = currentMyDeathEvent;
+
       // --- Cleanup ---
-      setSpawns((prev) => {
+      store.setSpawns((prev) => {
         const alive = prev.filter(
           (e) => currentTime - e.startTime < SPAWN_EFFECT_DURATION,
         );
         return alive.length === prev.length ? prev : alive;
       });
 
-      const myT = playersRef.current.get(myId)?.phaseSpace.pos.t;
-      if (myT !== undefined && lasersRef.current.length > 0) {
+      const myT = store.players.get(myId)?.phaseSpace.pos.t;
+      if (myT !== undefined && store.lasers.length > 0) {
         const cutoff = myT - LASER_RANGE * 2;
-        setLasers((prev) => {
+        store.setLasers((prev) => {
           const alive = prev.filter(
             (l) => l.emissionPos.t + l.range > cutoff,
           );
@@ -210,7 +178,7 @@ export function useGameLoop({
 
       // --- Camera ---
       const touch = touchInput.current;
-      const isDeadForCamera = playersRef.current.get(myId)?.isDead ?? false;
+      const isDeadForCamera = store.players.get(myId)?.isDead ?? false;
       const cam = processCamera(
         keysPressed.current,
         touch,
@@ -224,48 +192,47 @@ export function useGameLoop({
       if (isDeadForCamera) touch.pitchDelta = 0;
 
       // --- Causal events ---
-      const myPos = playersRef.current.get(myId)?.phaseSpace.pos;
-      if (myPos && pendingKillEventsRef.current.length > 0) {
+      const myPos = store.players.get(myId)?.phaseSpace.pos;
+      if (myPos && store.pendingKillEvents.length > 0) {
         const result = firePendingKillEvents(
-          pendingKillEventsRef.current,
+          store.pendingKillEvents,
           myPos,
           myId,
-          scoresRef.current,
+          store.scores,
         );
         if (result.firedIndices.length > 0) {
-          pendingKillEventsRef.current = pendingKillEventsRef.current.filter(
+          store.pendingKillEvents = store.pendingKillEvents.filter(
             (_, i) => !result.firedIndices.includes(i),
           );
-          scoresRef.current = result.newScores;
-          setScores({ ...result.newScores });
+          store.setScores({ ...result.newScores });
 
           if (result.effects.deathFlash) {
             setDeathFlash(true);
             setTimeout(() => setDeathFlash(false), 600);
           }
           if (result.effects.killNotification) {
-            setKillNotification(result.effects.killNotification);
-            setTimeout(() => setKillNotification(null), 1500);
+            store.setKillNotification(result.effects.killNotification);
+            setTimeout(() => useGameStore.getState().setKillNotification(null), 1500);
           }
         }
       }
 
-      if (myPos && pendingSpawnEventsRef.current.length > 0) {
+      if (myPos && store.pendingSpawnEvents.length > 0) {
         const result = firePendingSpawnEvents(
-          pendingSpawnEventsRef.current,
+          store.pendingSpawnEvents,
           myPos,
           Date.now(),
         );
         if (result.firedSpawns.length > 0) {
-          pendingSpawnEventsRef.current = result.remaining;
-          setSpawns((prev) => [...prev, ...result.firedSpawns]);
+          store.pendingSpawnEvents = result.remaining;
+          store.setSpawns((prev) => [...prev, ...result.firedSpawns]);
         }
       }
 
       // --- Laser firing + energy ---
-      const isDead = playersRef.current.get(myId)?.isDead ?? false;
+      const isDead = store.players.get(myId)?.isDead ?? false;
       const wantsFire = !isDead && (keysPressed.current.has(" ") || touch.firing);
-      const myPlayer = playersRef.current.get(myId);
+      const myPlayer = store.players.get(myId);
 
       if (myPlayer && !isDead) {
         const laserResult = processLaserFiring(
@@ -282,7 +249,7 @@ export function useGameLoop({
           lastLaserTimeRef.current = currentTime;
           energyRef.current = laserResult.newEnergy;
 
-          setLasers((prev) => {
+          store.setLasers((prev) => {
             const updated = [...prev, laserResult.laser as Laser];
             return updated.length > MAX_LASERS
               ? updated.slice(updated.length - MAX_LASERS)
@@ -304,15 +271,15 @@ export function useGameLoop({
       setIsFiring(wantsFire && energyRef.current >= ENERGY_PER_SHOT);
 
       // S-5: stale 検知は死亡中も走らせる（他プレイヤーの stale を検知するため）
-      stale.checkStale(currentTime, playersRef.current, myId);
+      stale.checkStale(currentTime, store.players, myId);
 
       // --- Ghost or physics ---
       if (isDead) {
         ghostTauRef.current += dTau;
-        const de = myDeathEventRef.current;
+        const de = store.myDeathEvent;
         if (de) {
           const ghostPos = processGhostPosition(de, ghostTauRef.current);
-          setPlayers((prev) => {
+          store.setPlayers((prev) => {
             const me = prev.get(myId);
             if (!me || !me.isDead) return prev;
             const next = new Map(prev);
@@ -329,7 +296,7 @@ export function useGameLoop({
       } else if (myPlayer) {
 
         const frozen = checkCausalFreeze(
-          playersRef.current,
+          store.players,
           myId,
           myPlayer,
           stale.staleFrozenRef.current,
@@ -339,7 +306,7 @@ export function useGameLoop({
 
         if (!frozen) {
           const otherPositions: Vector4[] = [];
-          for (const [id, p] of playersRef.current) {
+          for (const [id, p] of store.players) {
             if (id !== myId) otherPositions.push(p.phaseSpace.pos);
           }
           const physics = processPlayerPhysics(
@@ -351,7 +318,7 @@ export function useGameLoop({
             otherPositions,
           );
 
-          setPlayers((prev) => {
+          store.setPlayers((prev) => {
             const me = prev.get(myId);
             if (!me) return prev;
             const next = new Map(prev);
@@ -375,21 +342,21 @@ export function useGameLoop({
 
       // --- Host: Lighthouse AI (batched updates) ---
       if (peerManager.getIsHost()) {
-        const lhUpdates: Array<{ id: string; ps: ReturnType<typeof createPhaseSpace>; wl: RelativisticPlayer["worldLine"] }> = [];
+        const lhUpdates: Array<{ id: string; ps: ReturnType<typeof createPhaseSpace>; wl: ReturnType<typeof store.players.get> extends infer P ? P extends { worldLine: infer W } ? W : never : never }> = [];
         const lhLasers: Laser[] = [];
 
-        for (const [lhId, lh] of playersRef.current) {
+        for (const [lhId, lh] of store.players) {
           if (!isLighthouse(lhId)) continue;
           if (lh.isDead) continue;
 
           const result = processLighthouseAI(
-            playersRef.current,
+            store.players,
             lhId,
             lh,
             dTau,
             currentTime,
             lighthouseLastFireRef.current,
-            lighthouseSpawnTimeRef.current,
+            store.lighthouseSpawnTime,
           );
 
           lhUpdates.push({ id: lhId, ps: result.newPs, wl: result.newWl });
@@ -409,7 +376,7 @@ export function useGameLoop({
 
         // Batch apply all lighthouse state updates
         if (lhUpdates.length > 0) {
-          setPlayers((prev) => {
+          store.setPlayers((prev) => {
             const next = new Map(prev);
             for (const { id, ps, wl } of lhUpdates) {
               const existing = next.get(id);
@@ -421,7 +388,7 @@ export function useGameLoop({
           });
         }
         if (lhLasers.length > 0) {
-          setLasers((prev) => {
+          store.setLasers((prev) => {
             const updated = [...prev, ...lhLasers];
             return updated.length > MAX_LASERS
               ? updated.slice(updated.length - MAX_LASERS)
@@ -434,49 +401,48 @@ export function useGameLoop({
       if (peerManager.getIsHost()) {
         // Build invincible set (prune expired entries)
         const invincibleIds = new Set<string>();
-        for (const [id, until] of invincibleUntilRef.current) {
+        for (const [id, until] of store.invincibleUntil) {
           if (currentTime < until) invincibleIds.add(id);
-          else invincibleUntilRef.current.delete(id);
+          else store.invincibleUntil.delete(id);
         }
 
         const hitResult = processHitDetection(
-          playersRef.current,
-          lasersRef.current,
-          processedLasersRef.current,
-          deadPlayersRef.current,
+          store.players,
+          store.lasers,
+          store.processedLasers,
+          store.deadPlayers,
           invincibleIds,
         );
 
         // Cleanup processedLasers
-        const currentLaserIds = new Set(lasersRef.current.map((l) => l.id));
-        for (const id of processedLasersRef.current) {
-          if (!currentLaserIds.has(id)) processedLasersRef.current.delete(id);
+        const currentLaserIds = new Set(store.lasers.map((l) => l.id));
+        for (const id of store.processedLasers) {
+          if (!currentLaserIds.has(id)) store.processedLasers.delete(id);
         }
-        if (processedLasersRef.current.size > PROCESSED_LASERS_CLEANUP_THRESHOLD) {
-          processedLasersRef.current.clear();
+        if (store.processedLasers.size > PROCESSED_LASERS_CLEANUP_THRESHOLD) {
+          store.processedLasers.clear();
         }
 
         if (hitResult.kills.length > 0) {
           for (const id of hitResult.hitLaserIds) {
-            processedLasersRef.current.add(id);
+            store.processedLasers.add(id);
           }
 
           for (const { victimId, killerId, hitPos } of hitResult.kills) {
-            deadPlayersRef.current.add(victimId);
             stale.staleFrozenRef.current.delete(victimId); // S-2: kill で stale クリア（二重 respawn 防止）
             peerManager.send({ type: "kill" as const, victimId, killerId, hitPos });
-            handleKill(victimId, killerId, hitPos);
+            useGameStore.getState().handleKill(victimId, killerId, hitPos, myId);
 
             const timerId = setTimeout(() => {
               respawnTimeoutsRef.current.delete(timerId);
-              const respawnPos = createRespawnPosition(playersRef.current);
-              deadPlayersRef.current.delete(victimId);
+              const currentStore = useGameStore.getState();
+              const respawnPos = createRespawnPosition(currentStore.players);
               peerManager.send({
                 type: "respawn" as const,
                 playerId: victimId,
                 position: respawnPos,
               });
-              handleRespawn(victimId, respawnPos);
+              currentStore.handleRespawn(victimId, respawnPos, myId, getPlayerColor);
             }, RESPAWN_DELAY);
             respawnTimeoutsRef.current.add(timerId);
           }

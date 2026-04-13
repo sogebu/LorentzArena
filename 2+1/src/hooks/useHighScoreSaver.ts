@@ -2,11 +2,12 @@ import { useEffect, useRef } from "react";
 import { saveHighScore } from "../services/highScores";
 import { submitScore } from "../services/leaderboard";
 import { isLighthouse } from "../components/game/lighthouse";
+import { useGameStore } from "../stores/game-store";
+
 export function useHighScoreSaver(
   myId: string | null,
   displayName: string,
   peerManager: { getIsHost: () => boolean } | null,
-  scoresRef: React.RefObject<Record<string, number>>,
 ) {
   const sessionStartTimeRef = useRef<number>(Date.now());
   const savedRef = useRef(false);
@@ -17,11 +18,12 @@ export function useHighScoreSaver(
       if (!myId) return;
       savedRef.current = true;
 
+      const scores = useGameStore.getState().scores;
       const duration = (Date.now() - sessionStartTimeRef.current) / 1000;
       const leaderboardUrl = import.meta.env.VITE_LEADERBOARD_URL;
       const now = new Date().toISOString();
 
-      const myKills = scoresRef.current[myId] ?? 0;
+      const myKills = scores[myId] ?? 0;
       if (myKills > 0) {
         const entry = { name: displayName, kills: myKills, date: now, duration };
         saveHighScore(entry);
@@ -29,7 +31,7 @@ export function useHighScoreSaver(
       }
 
       if (peerManager?.getIsHost()) {
-        for (const [id, kills] of Object.entries(scoresRef.current)) {
+        for (const [id, kills] of Object.entries(scores)) {
           if (isLighthouse(id) && kills > 0) {
             const entry = { name: "Lighthouse", kills, date: now, duration };
             saveHighScore(entry);
@@ -54,5 +56,5 @@ export function useHighScoreSaver(
       window.removeEventListener("pagehide", handlePageHide);
       window.removeEventListener("pageshow", handlePageShow);
     };
-  }, [myId, displayName, peerManager, scoresRef]);
+  }, [myId, displayName, peerManager]);
 }

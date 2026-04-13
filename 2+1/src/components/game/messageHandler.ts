@@ -1,10 +1,10 @@
-import type React from "react";
 import {
   appendWorldLine,
   createPhaseSpace,
   createVector4,
   createWorldLine,
 } from "../../physics";
+import { useGameStore } from "../../stores/game-store";
 import { colorForPlayerId } from "./colors"; // fallback for syncTime init
 import { INVINCIBILITY_DURATION, MAX_LASERS, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
 import { createRespawnPosition } from "./respawnTime";
@@ -17,28 +17,10 @@ export type MessageHandlerDeps = {
     send(msg: unknown): void;
     sendTo(peerId: string, msg: unknown): void;
   };
-  setPlayers: React.Dispatch<
-    React.SetStateAction<Map<string, RelativisticPlayer>>
-  >;
-  setLasers: React.Dispatch<React.SetStateAction<Laser[]>>;
-  setScores: React.Dispatch<React.SetStateAction<Record<string, number>>>;
-  scoresRef: React.RefObject<Record<string, number>>;
-  handleKill: (
-    victimId: string,
-    killerId: string,
-    hitPos: { t: number; x: number; y: number; z: number },
-  ) => void;
-  handleRespawn: (
-    playerId: string,
-    position: { t: number; x: number; y: number; z: number },
-  ) => void;
   getPlayerColor: (peerId: string) => string;
   lastUpdateTimeRef: React.MutableRefObject<Map<string, number>>;
   lastCoordTimeRef: React.MutableRefObject<Map<string, { wallTime: number; posT: number }>>;
-  playersRef: React.RefObject<Map<string, RelativisticPlayer>>;
   staleFrozenRef: React.MutableRefObject<Set<string>>;
-  displayNamesRef: React.MutableRefObject<Map<string, string>>;
-  invincibleUntilRef: React.MutableRefObject<Map<string, number>>;
 };
 
 const isFiniteNumber = (v: unknown): v is number =>
@@ -85,20 +67,12 @@ export const createMessageHandler =
     const {
       myId,
       peerManager,
-      setPlayers,
-      setLasers,
-      setScores,
-      scoresRef,
-      handleKill,
-      handleRespawn,
       getPlayerColor,
       lastUpdateTimeRef,
       lastCoordTimeRef,
-      playersRef,
       staleFrozenRef,
-      displayNamesRef,
-      invincibleUntilRef,
     } = deps;
+    const store = useGameStore.getState();
 
     if (msg.type === "phaseSpace") {
       if (
@@ -112,7 +86,7 @@ export const createMessageHandler =
       // Stale 復帰検知: stale 凍結されたプレイヤーから phaseSpace が来た
       if (staleFrozenRef.current.has(playerId)) {
         if (!peerManager.getIsHost()) return; // クライアントはホストの respawn を待つ
-        const respawnPos = createRespawnPosition(playersRef.current);
+        const respawnPos = createRespawnPosition(store.players);
         staleFrozenRef.current.delete(playerId);
         lastUpdateTimeRef.current.set(playerId, Date.now());
         peerManager.send({
@@ -120,7 +94,7 @@ export const createMessageHandler =
           playerId,
           position: respawnPos,
         });
-        handleRespawn(playerId, respawnPos);
+        store.handleRespawn(playerId, respawnPos, myId, getPlayerColor);
         return;
       }
 
@@ -129,7 +103,7 @@ export const createMessageHandler =
         wallTime: Date.now(),
         posT: msg.position.t,
       });
-      setPlayers((prev) => {
+      useGameStore.getState().setPlayers((prev: Map<string, RelativisticPlayer>) => {
         const phaseSpace = createPhaseSpace(msg.position, msg.velocity);
 
         const existing = prev.get(playerId);
@@ -148,7 +122,7 @@ export const createMessageHandler =
         // 色は ID から決定的に算出（joinRegistryVersion 変化時に再計算される）
         const color = existing?.color ?? getPlayerColor(playerId);
 
-        const displayName = existing?.displayName ?? displayNamesRef.current.get(playerId);
+        const displayName = existing?.displayName ?? useGameStore.getState().displayNames.get(playerId);
 
         const next = new Map(prev);
         next.set(playerId, {
@@ -164,9 +138,9 @@ export const createMessageHandler =
     } else if (msg.type === "intro") {
       if (!isValidString(msg.senderId) || !isValidString(msg.displayName, 20))
         return;
-      displayNamesRef.current.set(msg.senderId, msg.displayName);
+      useGameStore.getState().setDisplayName(msg.senderId, msg.displayName);
       // Update existing player if already in the map
-      setPlayers((prev) => {
+      useGameStore.getState().setPlayers((prev) => {
         const existing = prev.get(msg.senderId);
         if (!existing) return prev;
         if (existing.displayName === msg.displayName) return prev;
@@ -179,14 +153,12 @@ export const createMessageHandler =
       // スコア同期（途中参加時に過去のキルスコアを引き継ぐ）
       const syncScores = parseScores(msg.scores);
       if (syncScores) {
-        scoresRef.current = syncScores;
-        setScores(syncScores);
+        useGameStore.getState().setScores(syncScores);
       }
       // Initialize client player at the host's current coordinate time.
-      // This is the client's first player creation (init effect skips for non-hosts).
       const spawnX = Math.random() * SPAWN_RANGE;
       const spawnY = Math.random() * SPAWN_RANGE;
-      setPlayers((prev) => {
+      useGameStore.getState().setPlayers((prev) => {
         const me = prev.get(myId);
         const synced = createPhaseSpace(
           createVector4(
@@ -209,7 +181,7 @@ export const createMessageHandler =
         });
         return next;
       });
-      invincibleUntilRef.current.set(myId, Date.now() + INVINCIBILITY_DURATION);
+      useGameStore.getState().invincibleUntil.set(myId, Date.now() + INVINCIBILITY_DURATION);
     } else if (msg.type === "laser") {
       if (
         !isValidString(msg.id) ||
@@ -230,7 +202,7 @@ export const createMessageHandler =
         range: msg.range,
         color: msg.color,
       };
-      setLasers((prev) => {
+      useGameStore.getState().setLasers((prev) => {
         if (prev.some((l) => l.id === receivedLaser.id)) return prev;
         const updated = [...prev, receivedLaser];
         return updated.length > MAX_LASERS
@@ -242,13 +214,12 @@ export const createMessageHandler =
       if (!isValidString(msg.playerId) || !isValidVector4(msg.position)) return;
       staleFrozenRef.current.delete(msg.playerId);
       lastUpdateTimeRef.current.set(msg.playerId, Date.now());
-      handleRespawn(msg.playerId, msg.position);
+      useGameStore.getState().handleRespawn(msg.playerId, msg.position, myId, getPlayerColor);
     } else if (msg.type === "score") {
       if (peerManager.getIsHost()) return;
       const scores = parseScores(msg.scores);
       if (!scores) return;
-      scoresRef.current = scores;
-      setScores(scores);
+      useGameStore.getState().setScores(scores);
     } else if (msg.type === "kill") {
       if (peerManager.getIsHost()) return;
       if (
@@ -257,17 +228,14 @@ export const createMessageHandler =
         !isValidVector4(msg.hitPos)
       )
         return;
-      // データ更新 + UI pending: handleKill で一括処理
-      handleKill(msg.victimId, msg.killerId, msg.hitPos);
+      useGameStore.getState().handleKill(msg.victimId, msg.killerId, msg.hitPos, myId);
     } else if (msg.type === "hostMigration") {
-      // Host migration: sync scores from new host.
-      // Skip if we ARE the new host (we already have the state).
       if (peerManager.getIsHost()) return;
       if (!isValidString(msg.newHostId)) return;
       const scores = parseScores(msg.scores);
       if (!scores) return;
-      scoresRef.current = scores;
-      setScores(scores);
+      const s = useGameStore.getState();
+      s.setScores(scores);
       // Sync display names from migrating host
       if (
         msg.displayNames &&
@@ -276,15 +244,16 @@ export const createMessageHandler =
       ) {
         for (const [id, name] of Object.entries(msg.displayNames)) {
           if (isValidString(id) && isValidString(name, 20)) {
-            displayNamesRef.current.set(id, name as string);
+            s.setDisplayName(id, name as string);
           }
         }
         // Propagate display names into existing player entries immediately
-        setPlayers((prev) => {
+        const displayNames = useGameStore.getState().displayNames;
+        s.setPlayers((prev) => {
           let changed = false;
           const next = new Map(prev);
           for (const [id, player] of next) {
-            const dn = displayNamesRef.current.get(id);
+            const dn = displayNames.get(id);
             if (dn && player.displayName !== dn) {
               next.set(id, { ...player, displayName: dn });
               changed = true;

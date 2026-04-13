@@ -22,6 +22,7 @@ import {
 import {
   transformEventForDisplay,
 } from "./displayTransform";
+import { useGameStore } from "../../stores/game-store";
 import { futureLightConeIntersectionLaser, pastLightConeIntersectionLaser } from "./laserPhysics";
 import {
   getThreeColor,
@@ -46,7 +47,6 @@ export const SceneContent = ({
   useOrthographic,
   cameraYawRef,
   cameraPitchRef,
-  invincibleUntilRef,
 }: SceneContentProps) => {
   const playerList = useMemo(() => Array.from(players.values()), [players]);
   const myPlayer = useMemo(
@@ -275,7 +275,7 @@ export const SceneContent = ({
         const isMe = player.id === myId;
         const color = getThreeColor(player.color);
         const size = isMe ? PLAYER_MARKER_SIZE_SELF : PLAYER_MARKER_SIZE_OTHER;
-        const invUntil = invincibleUntilRef.current.get(player.id);
+        const invUntil = useGameStore.getState().invincibleUntil.get(player.id);
         const isInvincible = invUntil !== undefined && Date.now() < invUntil;
         // Pulse: opacity oscillates 0.3–1.0 at 2Hz during invincibility
         const pulse = isInvincible ? 0.65 + 0.35 * Math.sin(Date.now() * 0.012) : 1.0;

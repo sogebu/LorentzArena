@@ -82,8 +82,8 @@ export function processPlayerPhysics(
 
   if (keys.has("w")) forwardAccel += PLAYER_ACCELERATION;
   if (keys.has("s")) forwardAccel -= PLAYER_ACCELERATION;
-  if (keys.has("a")) lateralAccel -= PLAYER_ACCELERATION;
-  if (keys.has("d")) lateralAccel += PLAYER_ACCELERATION;
+  if (keys.has("a")) lateralAccel += PLAYER_ACCELERATION;
+  if (keys.has("d")) lateralAccel -= PLAYER_ACCELERATION;
 
   if (touch.thrust !== 0) {
     forwardAccel += PLAYER_ACCELERATION * touch.thrust;

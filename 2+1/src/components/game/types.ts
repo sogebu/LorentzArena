@@ -99,5 +99,5 @@ export type SceneContentProps = {
   useOrthographic: boolean;
   cameraYawRef: React.RefObject<number>;
   cameraPitchRef: React.RefObject<number>;
-  invincibleUntilRef: React.RefObject<Map<string, number>>;
+  invincibleUntilRef?: null; // deprecated: reads from store directly
 };

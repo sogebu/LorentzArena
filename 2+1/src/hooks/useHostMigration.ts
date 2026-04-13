@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 import { RESPAWN_DELAY } from "../components/game/constants";
 import { createRespawnPosition } from "../components/game/respawnTime";
-import type { RelativisticPlayer } from "../components/game/types";
+import { useGameStore } from "../stores/game-store";
+
 interface UseHostMigrationArgs {
   isMigrating: boolean;
   peerManager: {
@@ -10,15 +11,7 @@ interface UseHostMigrationArgs {
   } | null;
   myId: string | null;
   connections: Array<{ id: string; open: boolean }>;
-  playersRef: React.RefObject<Map<string, RelativisticPlayer>>;
-  scoresRef: React.RefObject<Record<string, number>>;
-  deadPlayersRef: React.RefObject<Set<string>>;
-  deathTimeMapRef: React.RefObject<Map<string, number>>;
-  displayNamesRef: React.RefObject<Map<string, string>>;
-  handleRespawn: (
-    playerId: string,
-    position: { t: number; x: number; y: number; z: number },
-  ) => void;
+  getPlayerColor: (id: string) => string;
   completeMigration: () => void;
 }
 
@@ -27,12 +20,7 @@ export function useHostMigration({
   peerManager,
   myId,
   connections,
-  playersRef,
-  scoresRef,
-  deadPlayersRef,
-  deathTimeMapRef,
-  displayNamesRef,
-  handleRespawn,
+  getPlayerColor,
   completeMigration,
 }: UseHostMigrationArgs) {
   const respawnTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(
@@ -59,18 +47,20 @@ export function useHostMigration({
     }
     respawnTimeoutsRef.current.clear();
 
-    // Reconstruct deadPlayersRef from player state
-    deadPlayersRef.current.clear();
-    for (const [id, player] of playersRef.current) {
+    const store = useGameStore.getState();
+
+    // Reconstruct deadPlayers from player state
+    store.deadPlayers.clear();
+    for (const [id, player] of store.players) {
       if (player.isDead) {
-        deadPlayersRef.current.add(id);
+        store.deadPlayers.add(id);
       }
     }
 
     // Build dead player list with death times
     const deadPlayersList: Array<{ playerId: string; deathTime: number }> = [];
-    for (const playerId of deadPlayersRef.current) {
-      const deathTime = deathTimeMapRef.current.get(playerId) ?? Date.now();
+    for (const playerId of store.deadPlayers) {
+      const deathTime = store.deathTimeMap.get(playerId) ?? Date.now();
       deadPlayersList.push({ playerId, deathTime });
     }
 
@@ -78,9 +68,9 @@ export function useHostMigration({
     peerManager.send({
       type: "hostMigration" as const,
       newHostId: myId,
-      scores: scoresRef.current,
+      scores: store.scores,
       deadPlayers: deadPlayersList,
-      displayNames: Object.fromEntries(displayNamesRef.current),
+      displayNames: Object.fromEntries(store.displayNames),
     });
 
     // Reconstruct respawn timers for dead players
@@ -91,14 +81,15 @@ export function useHostMigration({
 
       const timerId = setTimeout(() => {
         respawnTimeoutsRef.current.delete(timerId);
-        const respawnPos = createRespawnPosition(playersRef.current);
-        deadPlayersRef.current.delete(playerId);
+        const currentStore = useGameStore.getState();
+        const respawnPos = createRespawnPosition(currentStore.players);
+        currentStore.deadPlayers.delete(playerId);
         peerManager.send({
           type: "respawn" as const,
           playerId,
           position: respawnPos,
         });
-        handleRespawn(playerId, respawnPos);
+        currentStore.handleRespawn(playerId, respawnPos, myId, getPlayerColor);
       }, remaining);
       respawnTimeoutsRef.current.add(timerId);
     }
@@ -109,13 +100,8 @@ export function useHostMigration({
     peerManager,
     myId,
     connections,
-    handleRespawn,
+    getPlayerColor,
     completeMigration,
-    playersRef,
-    scoresRef,
-    deadPlayersRef,
-    deathTimeMapRef,
-    displayNamesRef,
   ]);
 
   return respawnTimeoutsRef;
