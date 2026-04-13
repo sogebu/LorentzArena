@@ -415,6 +415,12 @@ index 0 = ホスト、1 = 最初のクライアント、2 = 次、...
 - **What**: PeerProvider 内の 3 箇所（`registerPeerOrderListener` / Phase 1 ホスト成功 / ホスト connection change effect）で重複していた joinRegistry append ロジックを `appendToJoinRegistry(joinRegistryRef, ids, hostFirst?)` ヘルパーに抽出
 - **Why**: append-only の不変条件（`includes` チェック → `push`/`unshift`）が 3 箇所に分散していると、1 箇所だけ変更して不整合を起こすリスクがある。ホスト ID を先頭に入れるロジックの統一も兼ねる
 
+#### joinRegistry 同期: マージ → 置換（2026-04-13）
+
+- **What**: クライアントがホストの `peerList` メッセージから joinRegistry を受け取る際、`appendToJoinRegistry`（マージ）から丸ごと置換（replace）に変更。`peerList` メッセージに `joinRegistry` フィールドを追加
+- **Why**: 各ピアは接続時に自分を joinRegistry に先に追加する。ホストは `[hostId, clientId]`、クライアントは `[clientId, hostId]` になる。`appendToJoinRegistry` の `hostFirst` unshift は「まだ入っていないなら先頭に入れる」だが、クライアントが自分を先に入れた後では clientId が index 0 に居座り、hostId が unshift で index 0 に来ても clientId は index 1 に移るだけ。**結果は正しくなるはずだが**、実際には peerList 受信前に自己登録が走るタイミングで一瞬 `colorForJoinOrder(0)` が適用され、peerList 受信後に replace で修正される前に描画される race があった。根本的に、**append-only マージは順序の整合を保証できない**（タイミング依存）ため、ホストの joinRegistry を単一正本として丸ごと置換する方式に変更
+- **マイグレーション後のシナリオ**: 旧ホスト A が離脱、B が昇格、C が新規参加。B の joinRegistry は `[A, B, C]`（A の歴史を保持）。C は peerList 経由で `[A, B, C]` を丸ごと受け取り、自分は index 2。マージ方式では C が `[C]` → append `[C, B]` で A を知らず index がずれていた
+
 #### 注意: getPlayerColor を useEffect deps に入れない
 
 `getPlayerColor` は `useCallback([peerManager])` で peerManager 変更時に参照が変わる。これを `handleRespawn` → `handleKill` → ゲームループ effect の deps に入れると、接続変更のたびにゲームループが teardown → 再作成され **ゲーム凍結** を引き起こす（`2472464` で修正）。色は作成時に一度だけ読むので deps に不要。biome-ignore で除外。
