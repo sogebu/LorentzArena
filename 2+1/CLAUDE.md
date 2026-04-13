@@ -84,7 +84,7 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 - `WsRelayManager.ts` — WebSocket Relay フォールバック
 - `PeerProvider.tsx` — 自動接続 + ホストマイグレーション
 
-自動接続フロー: ページを開くだけで同じルームに入る。`#room=name` で部屋分離。最初に `la-{roomName}` PeerJS ID を取得したピアがホスト。
+自動接続フロー: ページを開くだけで同じルームに入る。`#room=name` で部屋分離。最初に `la-{roomName}` PeerJS ID（ビーコン）を取得したピアがホスト。ホストもランダム ID でゲーム接続し、`la-{roomName}` はビーコン（発見専用、redirect 送信）のみに使用。
 
 プレイヤー初期化: ホスト・クライアント共に START 直後に自己初期化（`OFFSET = Date.now()/1000` で座標時間 t ≈ 0 から開始）。クライアントがホストに接続すると `syncTime` で時刻座標を補正。ホスト未 START でもクライアントは独立にプレイ開始可能。
 

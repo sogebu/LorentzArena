@@ -5,9 +5,13 @@
 対戦可能。**`e973d5e` デプロイ済み** (build `2026/04/13 09:09:22 JST`)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
-main は `bd40695` まで push 済み（未デプロイ）。ホスト ID 問題の ad-hoc パッチ（`previousId` in intro）は未コミットのまま revert 済み。`bd40695` にはローカル joinRegistry 置換（自分の画面での色保持）のみ含まれるが、根本修正で不要になる。
+ホスト ID 根本修正（`la-{roomName}` ビーコン専用化）がローカルに実装済み、未コミット。テスト後に commit + deploy。
 
 ## 直近の変更（2026-04-13）
+
+### ホスト ID 根本修正（未コミット）
+
+全ピア（ホスト含む）がランダム ID でゲーム接続し、`la-{roomName}` はビーコン専用に。Phase 1 をビーコンプローブ + ゲーム PM 作成の 2 段階に分割。tab-hidden 復帰・マイグレーション・降格すべてで ID が不変に。joinRegistry 色修正 hack も削除。詳細は DESIGN.md「ホスト ID 根本修正」参照。
 
 ### リスポーン座標時間バグ修正 + 重複排除 (`de38efa`, `ccd9a05`)
 
@@ -39,10 +43,6 @@ main は `bd40695` まで push 済み（未デプロイ）。ホスト ID 問題
 
 ## 既知の課題
 
-### ホスト ID 問題（次セッションで根本修正）
-
-ホストが `la-{roomName}` を PeerJS ID として使うため、tab-hidden 復帰時にID・色が変わる。**根本修正方針**: ホストもランダム ID、`la-{roomName}` はビーコン専用。詳細は DESIGN.md「既知の限界」参照。
-
 ### defer 中
 
 - DESIGN.md 残存する設計臭 #2-#4（#1 は解決済み）
@@ -63,7 +63,6 @@ main は `bd40695` まで push 済み（未デプロイ）。ホスト ID 問題
 
 ## 次にやること
 
-- **ホスト ID 根本修正**（上記。最優先）
 - 制約ネットワーク検証（学校ネットで Cloudflare TURN テスト）
 - 各プレイヤーに固有時刻表示
 - スマホ UI 残課題（レスポンシブ HUD、オンボーディング）

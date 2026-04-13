@@ -30,11 +30,11 @@ type NetworkManager = PeerManager<Message> | WsRelayManager<Message>;
 /**
  * Auto-connection phase for PeerJS mode.
  *
- * "trying-host": Attempting to register with the room ID as peer ID.
- *   - If successful → we are the host.
- *   - If "unavailable-id" error → someone else is host → move to "connecting-client".
+ * "trying-host": Attempting to claim the beacon ID (la-{roomName}).
+ *   - If successful → we are the first peer. Create beacon + game PM with random ID → host.
+ *   - If "unavailable-id" → someone else holds the beacon → move to "connecting-client".
  *
- * "connecting-client": Registered with a random ID, connecting to the room ID.
+ * "connecting-client": Registered with a random ID, connecting to the beacon for redirect.
  *
  * "connected": Connected (as host or client).
  *
@@ -358,46 +358,97 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     };
   }, [activeTransport, wsRelayUrl, registerStandardHandlers]);
 
-  // PeerJS: Phase 1 — ルーム ID でホスト試行
+  // Beacon ref: shared between Phase 1 (initial host) and beacon effect (migrated host).
+  const beaconRef = useRef<PeerManager<Message> | null>(null);
+
+  // PeerJS: Phase 1 — ビーコンプローブ + ゲーム PM 作成
+  // la-{roomName} はビーコン（発見専用）としてのみ使用。
+  // ホストもクライアントも全員ランダム ID でゲーム接続する。
   useEffect(() => {
     if (activeTransport !== "peerjs") return;
     if (connectionPhase !== "trying-host") return;
     if (!credentialsFetched) return;
 
-    let owned = true; // このエフェクトが pm の所有権を持っているか
+    let ownedBeacon = true;
+    let ownedGame = true;
+    let gamePm: PeerManager<Message> | null = null;
+    const localId = localIdRef.current;
 
-    const pm = new PeerManager<Message>(
+    // Step 1: ビーコン ID (la-{roomName}) の取得を試みる
+    const beaconPm = new PeerManager<Message>(
       roomPeerId,
       buildPeerOptionsFromEnv(dynamicIceServers),
     );
 
-    pm.onPeerStatusChange((status) => {
-      setPeerStatus(status);
+    beaconPm.onPeerStatusChange((status) => {
       if (status.status === "open") {
-        // ルーム ID の登録に成功 → ホストになる
-        owned = false; // 所有権を setPeerManager に移譲
-        pm.setAsHost();
-        setMyId(roomPeerId);
-        // ホスト自身を joinRegistry の先頭に登録
-        appendToJoinRegistry(joinRegistryRef, [], roomPeerId);
-        registerStandardHandlers(pm);
-        setPeerManager(pm);
-        setConnectionPhase("connected");
+        // ビーコン取得成功 → このルームの最初のピア（ホスト）
+        ownedBeacon = false; // beaconRef に移譲
+        beaconRef.current = beaconPm;
+
+        // Step 2: ランダム ID でゲーム用 PM を作成
+        gamePm = new PeerManager<Message>(
+          localId,
+          buildPeerOptionsFromEnv(dynamicIceServers),
+        );
+
+        const gpm = gamePm; // local binding for closure (gamePm is non-null here)
+        gpm.onPeerStatusChange((gameStatus) => {
+          setPeerStatus(gameStatus);
+          if (gameStatus.status === "open") {
+            ownedGame = false; // setPeerManager に移譲
+            gpm.setAsHost();
+            setMyId(localId);
+            appendToJoinRegistry(joinRegistryRef, [], localId);
+            registerStandardHandlers(gpm);
+            setPeerManager(gpm);
+            setConnectionPhase("connected");
+
+            // ビーコンに redirect ハンドラを登録（ゲーム PM の ID が確定してから）
+            beaconPm.onConnectionChange((conns) => {
+              for (const conn of conns) {
+                if (conn.open) {
+                  beaconPm.sendTo(conn.id, {
+                    type: "redirect",
+                    hostId: localId,
+                  } as Message);
+                }
+              }
+            });
+            // プローブ中に接続してきたクライアントにも redirect を送信
+            for (const peerId of beaconPm.getConnectedPeerIds()) {
+              beaconPm.sendTo(peerId, {
+                type: "redirect",
+                hostId: localId,
+              } as Message);
+            }
+          } else if (gameStatus.status === "error") {
+            // ゲーム PM 失敗 → ビーコンも解放して他ピアがホストになれるようにする
+            if (beaconRef.current) {
+              beaconRef.current.destroy();
+              beaconRef.current = null;
+            }
+          }
+        });
+
+        gamePm.onConnectionChange((conns) => setConnections(conns));
       } else if (
         status.status === "error" &&
         status.type === "unavailable-id"
       ) {
-        // 既にホストがいる → クライアントモードへ
-        owned = false;
-        pm.destroy();
+        // 既にビーコンが存在 → クライアントモードへ
+        ownedBeacon = false;
+        beaconPm.destroy();
         setConnectionPhase("connecting-client");
+      } else if (status.status === "error") {
+        // その他のエラー（ネットワーク障害等）→ UI に表示
+        setPeerStatus(status);
       }
     });
 
-    pm.onConnectionChange((conns) => setConnections(conns));
-
     return () => {
-      if (owned) pm.destroy();
+      if (ownedBeacon) beaconPm.destroy();
+      if (ownedGame && gamePm) gamePm.destroy();
     };
   }, [
     activeTransport,
@@ -425,18 +476,12 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     pm.onPeerStatusChange((status) => {
       setPeerStatus(status);
       if (status.status === "open") {
-        // シグナリング接続OK → ルーム ID のホストに接続
+        // シグナリング接続OK → ビーコン (la-{roomName}) に接続して redirect を待つ
         owned = false;
         pm.setHostId(roomPeerId);
         pm.connect(roomPeerId);
         setMyId(localId);
-        // If reconnecting after host-hidden (ID changed from la-{room} to random),
-        // replace the old roomPeerId entry in joinRegistry to preserve color index.
-        const oldIdx = joinRegistryRef.current.indexOf(roomPeerId);
-        if (oldIdx >= 0 && !joinRegistryRef.current.includes(localId)) {
-          joinRegistryRef.current[oldIdx] = localId;
-          setJoinRegistryVersion((v) => v + 1);
-        } else if (appendToJoinRegistry(joinRegistryRef, [localId])) {
+        if (appendToJoinRegistry(joinRegistryRef, [localId])) {
           setJoinRegistryVersion((v) => v + 1);
         }
         registerStandardHandlers(pm);
@@ -445,9 +490,9 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       }
     });
 
-    // Handle redirect from beacon (post-migration host discovery).
-    // If the room ID is held by a beacon (not the game host), the first
-    // message will be { type: "redirect", hostId: "actual-host-id" }.
+    // Handle redirect from beacon.
+    // la-{roomName} is always a beacon (discovery-only). The first message
+    // will be { type: "redirect", hostId: "actual-host-random-id" }.
     let redirectTimer: ReturnType<typeof setTimeout> | undefined;
     let redirectAttempts = 0;
 
@@ -541,7 +586,8 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
 
   // Host: release PeerJS IDs when tab is hidden for >5s.
   // This allows the new host (post-migration) to create a beacon at la-{roomName}.
-  // On tab return, reconnect from scratch via Phase 1.
+  // On tab return, reconnect via Phase 1 (beacon probe). Since Phase 1 uses
+  // random IDs for game PM, the host's identity and color are preserved.
   const tabHiddenTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const wasDestroyedByHideRef = useRef(false);
   useEffect(() => {
@@ -565,11 +611,10 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
           clearTimeout(tabHiddenTimerRef.current);
           tabHiddenTimerRef.current = undefined;
         } else if (wasDestroyedByHideRef.current) {
-          // PeerManager was destroyed while hidden → reconnect as client.
-          // Use Phase 2 (not Phase 1) to keep the original random ID.
-          // Phase 1 would take la-{roomName}, changing identity and color.
+          // PeerManager was destroyed while hidden → reconnect via Phase 1.
+          // Phase 1 probes the beacon ID; game PM uses the same random localId.
           wasDestroyedByHideRef.current = false;
-          setConnectionPhase("connecting-client");
+          setConnectionPhase("trying-host");
         }
       }
     };
@@ -805,15 +850,15 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     });
   }, [activeTransport, peerManager]);
 
-  // Beacon: after migration, re-acquire la-{roomName} as a discovery-only peer.
+  // Beacon: acquire/re-acquire la-{roomName} as a discovery-only peer.
   // New clients connecting to the beacon are redirected to the actual host.
-  const beaconRef = useRef<PeerManager<Message> | null>(null);
+  // Skipped if Phase 1 already created the beacon (beaconRef.current != null).
   // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on role change
   useEffect(() => {
     if (activeTransport !== "peerjs") return;
     if (!peerManager) return;
     if (!peerManager.getIsHost()) return;
-    if (myId === roomPeerId) return; // Initial host already has room ID
+    if (beaconRef.current) return; // Beacon already held (from Phase 1 or previous run)
     if (connectionPhase !== "connected") return;
 
     let cancelled = false;

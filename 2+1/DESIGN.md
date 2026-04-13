@@ -94,7 +94,20 @@ heartbeat detection effect と beacon effect の全リソースを監査。3 件
 
 - redirect リトライ最大 3 回で打ち切り（4 連続ホストクラッシュは非対応）
 - 降格後のビーコン `roomPeerId` 接続が cleanup で切断されない（PeerJS の idle タイムアウトに委任）
-- **ホスト ID 問題（次セッションで根本修正予定）**: ホストが `la-{roomName}` を PeerJS ID として使うため、tab-hidden からの復帰時に ID が `la-{roomName}` → ランダム ID に変わり、色が変わる（joinRegistry index が変わる）。ad-hoc パッチ（`previousId` in intro）を試みたが複雑すぎたため revert。**根本修正方針: ホストもランダム ID を使い、`la-{roomName}` はビーコン専用にする。** Phase 1 で `la-{roomName}` を取得 → ホスト確定 → 即座にビーコンに転用 → ランダム ID でゲーム用 PM を新規作成。これにより tab-hidden 復帰・マイグレーション・降格すべてで ID が不変になり、色・identity 問題が構造的に解消される
+- ~~ホスト ID 問題~~ → **解決済み** (2026-04-13): ホスト ID 根本修正で `la-{roomName}` をビーコン専用に変更。詳細は「ホスト ID 根本修正」セクション参照
+
+### ホスト ID 根本修正: `la-{roomName}` ビーコン専用化（2026-04-13）
+
+- **What**: ホストが `la-{roomName}` をゲーム PM の PeerJS ID として使う設計を廃止。全ピア（ホスト含む）がランダム ID でゲーム接続し、`la-{roomName}` はビーコン（発見専用）のみに使用
+- **Why**: 旧設計ではホストの tab-hidden 復帰時に ID が `la-{roomName}` → ランダム ID に変わり、joinRegistry index が変化して色が変わっていた。ad-hoc パッチ（`previousId` in intro, joinRegistry 置換 hack）は複雑すぎたため revert していた
+- **実装**: Phase 1 を 2 段階に分割:
+  1. `la-{roomName}` で一時 PM を作成（ビーコンプローブ）。成功 → `beaconRef.current` に格納
+  2. `localIdRef.current`（ランダム ID）でゲーム PM を作成。open → `setAsHost()`, 標準ハンドラ登録
+  - ビーコンの redirect ハンドラはゲーム PM open 後に登録（`hostId` 確定後）
+  - プローブ中に来たクライアントには `getConnectedPeerIds()` で遡って redirect 送信
+- **変更箇所**: `PeerProvider.tsx` のみ。Phase 1 書換え、Phase 2 の joinRegistry hack 削除、tab-hidden 復帰を `"trying-host"` に変更、ビーコン effect ガードを `beaconRef.current` チェックに変更
+- **レースコンディション**: ビーコンプローブ成功 → ゲーム PM open の間に別ピアが来ても、ビーコン PM が `la-{roomName}` を占有中なので競合しない
+- **構造的効果**: 初期ホスト・マイグレーション後ホスト・tab-hidden 復帰ホストがすべて同じパターン（ランダム ID + ビーコン）に統一。Phase 2 の joinRegistry 色修正 hack は不要になり削除
 
 ### デブリの相対論的速度合成（2026-04-12）
 
