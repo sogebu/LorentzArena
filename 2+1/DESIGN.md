@@ -99,6 +99,8 @@ heartbeat detection effect と beacon effect の全リソースを監査。3 件
 - **Why**: (1) ロビーで放置した人がホストになる問題。ページロード順ではなく START 順でホスト決定すべき (2) クライアントが自己初期化でローカル時刻（小さい値）のプレイヤーを作り、syncTime 到着前にホスト視点で「過去側」に出現する問題
 - **実装**: App.tsx で `PeerProvider` を `gameStarted` 内に移動。Lobby は PeerProvider の外（`usePeer()` 除去）。RelativisticGame の init effect に `if (!isHost) return` を追加し、クライアントのプレイヤー作成は messageHandler の syncTime ハンドラが担当
 - **トレードオフ**: START 押下後に ~300-500ms の接続レイテンシ（旧: ロビー裏で接続完了）。体感的には問題にならないレベル
+- **クライアントの安全な空回り**: クライアントは syncTime 到着まで `players.get(myId) === undefined`。ゲームループ内の全参照は `?.` または `if (myPlayer)` でガードされており、phaseSpace のゴミデータは送信されない。ホスト未 START でも安全
+- **ホストマイグレーション時の init effect 再発火**: クライアントがプレイヤー未作成のまま（ホスト未 START）ホストが切断 → `assumeHostRole()` → `isHost` が true に変化 → init effect の deps `[myId, isHost]` が変わり再実行 → `prev.has(myId)` は false → プレイヤー新規作成。新ホストは自分の時刻で始まり、他に誰もいないので相対的なずれもない
 
 ### ホスト ID 根本修正: `la-{roomName}` ビーコン専用化（2026-04-13）
 
