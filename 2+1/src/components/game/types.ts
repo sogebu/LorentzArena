@@ -87,17 +87,4 @@ export type KillNotification3D = {
   hitPos: { t: number; x: number; y: number; z: number };
 };
 
-export type SceneContentProps = {
-  players: Map<string, RelativisticPlayer>;
-  myId: string | null;
-  lasers: Laser[];
-  spawns: SpawnEffect[];
-  frozenWorldLines: FrozenWorldLine[];
-  debrisRecords: DebrisRecord[];
-  killNotification: KillNotification3D | null;
-  showInRestFrame: boolean;
-  useOrthographic: boolean;
-  cameraYawRef: React.RefObject<number>;
-  cameraPitchRef: React.RefObject<number>;
-  invincibleUntilRef?: null; // deprecated: reads from store directly
-};
+// SceneContentProps is defined in SceneContent.tsx (reads most data from store directly)

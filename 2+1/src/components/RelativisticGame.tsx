@@ -44,15 +44,8 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     joinRegistryVersion,
   } = usePeer();
 
-  // --- Store selectors (reactive, trigger re-render) ---
+  // --- Store selectors (only what RelativisticGame itself needs) ---
   const players = useGameStore((s) => s.players);
-  const lasers = useGameStore((s) => s.lasers);
-  const scores = useGameStore((s) => s.scores);
-  const spawns = useGameStore((s) => s.spawns);
-  const frozenWorldLines = useGameStore((s) => s.frozenWorldLines);
-  const debrisRecords = useGameStore((s) => s.debrisRecords);
-  const killNotification = useGameStore((s) => s.killNotification);
-  const myDeathEvent = useGameStore((s) => s.myDeathEvent);
 
   // --- Local UI state (not shared across modules) ---
   const [deathFlash, setDeathFlash] = useState(false);
@@ -262,9 +255,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       }}
     >
       <HUD
-        players={players}
         myId={myId}
-        scores={scores}
         fps={fps}
         showInRestFrame={showInRestFrame}
         setShowInRestFrame={setShowInRestFrame}
@@ -280,9 +271,6 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             : ""
         }
         deathFlash={deathFlash}
-        killGlow={killNotification !== null}
-        killNotification={killNotification}
-        myDeathEvent={myDeathEvent}
         getPlayerColor={getPlayerColor}
       />
 
@@ -298,35 +286,21 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
           }}
         >
           <SceneContent
-            players={players}
             myId={myId}
-            lasers={lasers}
-            spawns={spawns}
-            frozenWorldLines={frozenWorldLines}
-            debrisRecords={debrisRecords}
-            killNotification={killNotification}
             showInRestFrame={showInRestFrame}
             useOrthographic={true}
             cameraYawRef={cameraYawRef}
             cameraPitchRef={cameraPitchRef}
-            invincibleUntilRef={null}
           />
         </Canvas>
       ) : (
         <Canvas key="persp" camera={{ position: [0, 0, 0], fov: 75 }}>
           <SceneContent
-            players={players}
             myId={myId}
-            lasers={lasers}
-            spawns={spawns}
-            frozenWorldLines={frozenWorldLines}
-            debrisRecords={debrisRecords}
-            killNotification={killNotification}
             showInRestFrame={showInRestFrame}
             useOrthographic={false}
             cameraYawRef={cameraYawRef}
             cameraPitchRef={cameraPitchRef}
-            invincibleUntilRef={null}
           />
         </Canvas>
       )}

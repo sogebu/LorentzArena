@@ -60,6 +60,11 @@ const parseScores = (raw: unknown): Record<string, number> | null => {
   return scores;
 };
 
+/**
+ * Each message handler is a synchronous block that calls store.setXxx() at most once per field.
+ * Since no set() call intervenes within a single handler, reading from `store` (= getState()
+ * at handler entry) is always fresh. Do NOT call getState() again mid-handler.
+ */
 export const createMessageHandler =
   // biome-ignore lint/suspicious/noExplicitAny: Network messages require runtime validation
   (deps: MessageHandlerDeps) => (_senderId: string, msg: any) => {
@@ -103,7 +108,7 @@ export const createMessageHandler =
         wallTime: Date.now(),
         posT: msg.position.t,
       });
-      useGameStore.getState().setPlayers((prev: Map<string, RelativisticPlayer>) => {
+      store.setPlayers((prev: Map<string, RelativisticPlayer>) => {
         const phaseSpace = createPhaseSpace(msg.position, msg.velocity);
 
         const existing = prev.get(playerId);
@@ -119,10 +124,8 @@ export const createMessageHandler =
               return wl;
             })();
 
-        // 色は ID から決定的に算出（joinRegistryVersion 変化時に再計算される）
         const color = existing?.color ?? getPlayerColor(playerId);
-
-        const displayName = existing?.displayName ?? useGameStore.getState().displayNames.get(playerId);
+        const displayName = existing?.displayName ?? store.displayNames.get(playerId);
 
         const next = new Map(prev);
         next.set(playerId, {
@@ -138,9 +141,8 @@ export const createMessageHandler =
     } else if (msg.type === "intro") {
       if (!isValidString(msg.senderId) || !isValidString(msg.displayName, 20))
         return;
-      useGameStore.getState().setDisplayName(msg.senderId, msg.displayName);
-      // Update existing player if already in the map
-      useGameStore.getState().setPlayers((prev) => {
+      store.setDisplayName(msg.senderId, msg.displayName);
+      store.setPlayers((prev) => {
         const existing = prev.get(msg.senderId);
         if (!existing) return prev;
         if (existing.displayName === msg.displayName) return prev;
@@ -150,15 +152,13 @@ export const createMessageHandler =
       });
     } else if (msg.type === "syncTime") {
       if (!isFiniteNumber(msg.hostTime)) return;
-      // スコア同期（途中参加時に過去のキルスコアを引き継ぐ）
       const syncScores = parseScores(msg.scores);
       if (syncScores) {
-        useGameStore.getState().setScores(syncScores);
+        store.setScores(syncScores);
       }
-      // Initialize client player at the host's current coordinate time.
       const spawnX = Math.random() * SPAWN_RANGE;
       const spawnY = Math.random() * SPAWN_RANGE;
-      useGameStore.getState().setPlayers((prev) => {
+      store.setPlayers((prev) => {
         const me = prev.get(myId);
         const synced = createPhaseSpace(
           createVector4(
@@ -181,7 +181,7 @@ export const createMessageHandler =
         });
         return next;
       });
-      useGameStore.getState().invincibleUntil.set(myId, Date.now() + INVINCIBILITY_DURATION);
+      store.invincibleUntil.set(myId, Date.now() + INVINCIBILITY_DURATION);
     } else if (msg.type === "laser") {
       if (
         !isValidString(msg.id) ||
@@ -202,7 +202,7 @@ export const createMessageHandler =
         range: msg.range,
         color: msg.color,
       };
-      useGameStore.getState().setLasers((prev) => {
+      store.setLasers((prev) => {
         if (prev.some((l) => l.id === receivedLaser.id)) return prev;
         const updated = [...prev, receivedLaser];
         return updated.length > MAX_LASERS
@@ -214,12 +214,12 @@ export const createMessageHandler =
       if (!isValidString(msg.playerId) || !isValidVector4(msg.position)) return;
       staleFrozenRef.current.delete(msg.playerId);
       lastUpdateTimeRef.current.set(msg.playerId, Date.now());
-      useGameStore.getState().handleRespawn(msg.playerId, msg.position, myId, getPlayerColor);
+      store.handleRespawn(msg.playerId, msg.position, myId, getPlayerColor);
     } else if (msg.type === "score") {
       if (peerManager.getIsHost()) return;
       const scores = parseScores(msg.scores);
       if (!scores) return;
-      useGameStore.getState().setScores(scores);
+      store.setScores(scores);
     } else if (msg.type === "kill") {
       if (peerManager.getIsHost()) return;
       if (
@@ -228,14 +228,13 @@ export const createMessageHandler =
         !isValidVector4(msg.hitPos)
       )
         return;
-      useGameStore.getState().handleKill(msg.victimId, msg.killerId, msg.hitPos, myId);
+      store.handleKill(msg.victimId, msg.killerId, msg.hitPos, myId);
     } else if (msg.type === "hostMigration") {
       if (peerManager.getIsHost()) return;
       if (!isValidString(msg.newHostId)) return;
       const scores = parseScores(msg.scores);
       if (!scores) return;
-      const s = useGameStore.getState();
-      s.setScores(scores);
+      store.setScores(scores);
       // Sync display names from migrating host
       if (
         msg.displayNames &&
@@ -244,16 +243,15 @@ export const createMessageHandler =
       ) {
         for (const [id, name] of Object.entries(msg.displayNames)) {
           if (isValidString(id) && isValidString(name, 20)) {
-            s.setDisplayName(id, name as string);
+            store.displayNames.set(id, name as string);
           }
         }
         // Propagate display names into existing player entries immediately
-        const displayNames = useGameStore.getState().displayNames;
-        s.setPlayers((prev) => {
+        store.setPlayers((prev) => {
           let changed = false;
           const next = new Map(prev);
           for (const [id, player] of next) {
-            const dn = displayNames.get(id);
+            const dn = store.displayNames.get(id);
             if (dn && player.displayName !== dn) {
               next.set(id, { ...player, displayName: dn });
               changed = true;
@@ -262,7 +260,6 @@ export const createMessageHandler =
           return changed ? next : prev;
         });
       }
-      // eslint-disable-next-line no-console
       console.log(
         "[messageHandler] hostMigration received from",
         msg.newHostId,

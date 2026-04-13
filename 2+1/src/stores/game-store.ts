@@ -166,19 +166,16 @@ export const useGameStore = create<GameState>()((set, get) => ({
       victimColor: victim.color,
     };
 
-    // Non-reactive mutations
+    // In-place mutations on shared Set/Map instances (survive state transitions)
     state.deadPlayers.add(victimId);
     state.deathTimeMap.set(victimId, Date.now());
-    state.pendingKillEvents = [
-      ...state.pendingKillEvents,
-      killEvent,
-    ].slice(-MAX_PENDING_KILL_EVENTS);
 
-    // Reactive batch update
+    // Batch update (arrays must go through set() to survive state transitions)
     set({
       players: applyKill(state.players, victimId),
       frozenWorldLines: [...state.frozenWorldLines, frozen].slice(-MAX_FROZEN_WORLDLINES),
       debrisRecords: [...state.debrisRecords, newDebris].slice(-MAX_DEBRIS),
+      pendingKillEvents: [...state.pendingKillEvents, killEvent].slice(-MAX_PENDING_KILL_EVENTS),
       myDeathEvent:
         victimId === myId
           ? { pos: victim.phaseSpace.pos, u: getVelocity4(victim.phaseSpace.u) }
@@ -220,13 +217,12 @@ export const useGameStore = create<GameState>()((set, get) => ({
       });
     } else {
       // Other player: causal delay via pending events
-      state.pendingSpawnEvents = [
-        ...state.pendingSpawnEvents,
-        { id: `spawn-${playerId}-${now}`, pos: position, color },
-      ].slice(-MAX_PENDING_SPAWN_EVENTS);
-
       set({
         players: applyRespawn(state.players, playerId, position),
+        pendingSpawnEvents: [
+          ...state.pendingSpawnEvents,
+          { id: `spawn-${playerId}-${now}`, pos: position, color },
+        ].slice(-MAX_PENDING_SPAWN_EVENTS),
       });
     }
   },

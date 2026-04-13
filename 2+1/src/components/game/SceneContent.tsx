@@ -8,6 +8,7 @@ import {
   pastLightConeIntersectionWorldLine,
   type Vector4,
 } from "../../physics";
+import { useGameStore } from "../../stores/game-store";
 import { DebrisRenderer } from "./DebrisRenderer";
 import { LaserBatchRenderer } from "./LaserBatchRenderer";
 import { SpawnRenderer } from "./SpawnRenderer";
@@ -22,7 +23,6 @@ import {
 import {
   transformEventForDisplay,
 } from "./displayTransform";
-import { useGameStore } from "../../stores/game-store";
 import { futureLightConeIntersectionLaser, pastLightConeIntersectionLaser } from "./laserPhysics";
 import {
   getThreeColor,
@@ -31,23 +31,32 @@ import {
 import type {
   DisplayLaser,
   Laser,
-  SceneContentProps,
 } from "./types";
+
+export type SceneContentProps = {
+  myId: string | null;
+  showInRestFrame: boolean;
+  useOrthographic: boolean;
+  cameraYawRef: React.RefObject<number>;
+  cameraPitchRef: React.RefObject<number>;
+};
 
 // 3Dシーンコンテンツコンポーネント
 export const SceneContent = ({
-  players,
   myId,
-  lasers,
-  spawns,
-  frozenWorldLines,
-  debrisRecords,
-  killNotification,
   showInRestFrame,
   useOrthographic,
   cameraYawRef,
   cameraPitchRef,
 }: SceneContentProps) => {
+  // --- Store selectors ---
+  const players = useGameStore((s) => s.players);
+  const lasers = useGameStore((s) => s.lasers);
+  const spawns = useGameStore((s) => s.spawns);
+  const frozenWorldLines = useGameStore((s) => s.frozenWorldLines);
+  const debrisRecords = useGameStore((s) => s.debrisRecords);
+  const killNotification = useGameStore((s) => s.killNotification);
+
   const playerList = useMemo(() => Array.from(players.values()), [players]);
   const myPlayer = useMemo(
     () => (myId ? (players.get(myId) ?? null) : null),

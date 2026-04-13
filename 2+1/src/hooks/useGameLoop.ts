@@ -192,6 +192,9 @@ export function useGameLoop({
       if (isDeadForCamera) touch.pitchDelta = 0;
 
       // --- Causal events ---
+      // NOTE: pendingKillEvents/pendingSpawnEvents are arrays (non-reactive).
+      // Direct reassignment on the stale `store` object is lost after set() creates a new state.
+      // Must use useGameStore.setState() to persist array replacements.
       const myPos = store.players.get(myId)?.phaseSpace.pos;
       if (myPos && store.pendingKillEvents.length > 0) {
         const result = firePendingKillEvents(
@@ -201,18 +204,21 @@ export function useGameLoop({
           store.scores,
         );
         if (result.firedIndices.length > 0) {
-          store.pendingKillEvents = store.pendingKillEvents.filter(
+          const filteredKillEvents = store.pendingKillEvents.filter(
             (_, i) => !result.firedIndices.includes(i),
           );
-          store.setScores({ ...result.newScores });
+          useGameStore.setState({
+            pendingKillEvents: filteredKillEvents,
+            scores: { ...result.newScores },
+          });
 
           if (result.effects.deathFlash) {
             setDeathFlash(true);
             setTimeout(() => setDeathFlash(false), 600);
           }
           if (result.effects.killNotification) {
-            store.setKillNotification(result.effects.killNotification);
-            setTimeout(() => useGameStore.getState().setKillNotification(null), 1500);
+            useGameStore.setState({ killNotification: result.effects.killNotification });
+            setTimeout(() => useGameStore.setState({ killNotification: null }), 1500);
           }
         }
       }
@@ -224,8 +230,8 @@ export function useGameLoop({
           Date.now(),
         );
         if (result.firedSpawns.length > 0) {
-          store.pendingSpawnEvents = result.remaining;
-          store.setSpawns((prev) => [...prev, ...result.firedSpawns]);
+          useGameStore.setState({ pendingSpawnEvents: result.remaining });
+          useGameStore.getState().setSpawns((prev) => [...prev, ...result.firedSpawns]);
         }
       }
 

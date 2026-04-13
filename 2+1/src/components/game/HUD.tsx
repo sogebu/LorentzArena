@@ -1,13 +1,11 @@
 import { useI18n } from "../../i18n";
-import type { DeathEvent, RelativisticPlayer } from "./types";
+import { useGameStore } from "../../stores/game-store";
 import { ControlPanel } from "./hud/ControlPanel";
 import { Overlays } from "./hud/Overlays";
 import { Speedometer } from "./hud/Speedometer";
 
 type HUDProps = {
-  players: Map<string, RelativisticPlayer>;
   myId: string | null;
-  scores: Record<string, number>;
   fps: number;
   showInRestFrame: boolean;
   setShowInRestFrame: (v: boolean) => void;
@@ -17,16 +15,11 @@ type HUDProps = {
   isFiring: boolean;
   myLaserColor: string;
   deathFlash: boolean;
-  killGlow: boolean;
-  killNotification: { victimName: string; color: string } | null;
-  myDeathEvent?: DeathEvent | null;
   getPlayerColor: (peerId: string) => string;
 };
 
 export const HUD = ({
-  players,
   myId,
-  scores,
   fps,
   showInRestFrame,
   setShowInRestFrame,
@@ -36,13 +29,18 @@ export const HUD = ({
   isFiring,
   myLaserColor,
   deathFlash,
-  killGlow,
-  killNotification,
-  myDeathEvent,
   getPlayerColor,
 }: HUDProps) => {
   const { t } = useI18n();
+
+  // Store selectors
+  const players = useGameStore((s) => s.players);
+  const scores = useGameStore((s) => s.scores);
+  const killNotification = useGameStore((s) => s.killNotification);
+  const myDeathEvent = useGameStore((s) => s.myDeathEvent);
+
   const myPlayer = myId ? players.get(myId) : undefined;
+  const killGlow = killNotification !== null;
 
   return (
     <>

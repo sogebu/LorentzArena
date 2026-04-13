@@ -13,36 +13,37 @@
 
 **再評価トリガー**: Zustand 移行（下記）で RelativisticGame / useGameLoop / SceneContent は大幅に変わる。PeerProvider が 1100 行を超えたら分割を再検討。
 
-### Zustand 移行計画（2026-04-13 策定、次セッションで実施）
+### Zustand 移行（2026-04-13 実施済み）
 
-**動機**: invincibility 実装で「ref 1 本追加 → 7 ファイル変更」の props drilling 税が顕在化。RelativisticGame.tsx が 30 個の state/ref を持ち、useGameLoop (34 props), messageHandler (14 props), SceneContent (12 props) に手渡ししている構造が根本原因。
+**動機**: invincibility 実装で「ref 1 本追加 → 7 ファイル変更」の props drilling 税が顕在化。
+
+**結果**: `src/stores/game-store.ts` に共有ゲーム状態を集約。
+
+| 指標 | Before | After |
+|---|---|---|
+| GameLoopDeps props | 34 | 14 |
+| MessageHandlerDeps props | 15 | 6 |
+| SceneContentProps props | 12 | 5 |
+| HUDProps props | 16 | 11 |
+| RelativisticGame useState | 14 | 6 |
+| RelativisticGame useRef | 22 | 3 |
+| shadow refs (playersRef 等) | 3 | 0 |
 
 **ストア設計**:
 
-| カテゴリ | 項目 | Zustand? | 理由 |
-|---|---|---|---|
-| ゲーム状態（複数モジュールが共有） | players, lasers, scores, spawns, frozenWorldLines, debrisRecords, pendingKillEvents, pendingSpawnEvents, displayNames | ✅ store | useGameLoop + messageHandler + SceneContent が全て参照 |
-| ネットワーク内部状態（複数モジュールが共有） | invincibleUntil, deadPlayers, processedLasers, deathTimeMap | ✅ store | useGameLoop + messageHandler が参照 |
-| UI 状態（RelativisticGame ローカル） | showInRestFrame, useOrthographic, deathFlash, isFiring, killNotification, fps, energy | ❌ local | 描画トリガーのみ、他モジュール不要 |
-| フレームレート ref（ゲームループ内のみ） | cameraYaw, cameraPitch, causalFrozen, lastLaserTime, energyRef, fpsRef | ❌ local ref | 毎フレーム更新、React re-render 不要 |
-| ネットワーク内部（ゲームループ専用） | lighthouseLastFire, lighthouseSpawnTime, respawnTimeouts, ghostTau, myDeathEvent | ❌ local ref | useGameLoop 内で完結 |
+| カテゴリ | 項目 | 購読方式 |
+|---|---|---|
+| Reactive（コンポーネントが selector で購読） | players, lasers, scores, spawns, frozenWorldLines, debrisRecords, killNotification, myDeathEvent | `useGameStore(s => s.X)` |
+| Non-reactive（getState() のみ） | deadPlayers, invincibleUntil, processedLasers, deathTimeMap, pendingKillEvents, pendingSpawnEvents, displayNames, lighthouseSpawnTime | `store.getState().X` |
+| Local UI（RelativisticGame） | showInRestFrame, useOrthographic, deathFlash, isFiring, fps, energy | useState |
+| Local ref（useGameLoop 内部） | causalFrozen, lighthouseLastFire, lastLaserTime, fpsRef, energyRef, ghostTau | useRef |
 
-**shadow ref 解消**: 現在 `playersRef`/`lasersRef`/`scoresRef` は useState の shadow（setPlayers ラッパーで手動同期）。Zustand の `getState()` は同期的に最新値を返すので shadow ref が不要になり、同期忘れバグの温床（DESIGN.md 残存臭 #1 の残り）も消える。
-
-**移行フェーズ**:
-
-1. `pnpm add zustand` + `game-store.ts` 作成 — ゲーム状態 + アクション定義（~150 行）
-2. RelativisticGame.tsx — state/ref 宣言を store に移動、setPlayers ラッパー廃止、UI state は local に残す
-3. useGameLoop.ts — GameLoopDeps インターフェースを大幅縮小（~34 props → ~10）、`store.getState()` で読む
-4. messageHandler.ts — MessageHandlerDeps 縮小（~14 props → ~5）、store アクションを直接呼ぶ
-5. SceneContent.tsx — props を store selector に置換、SceneContentProps 縮小（~12 props → ~4）
-
-**リスク**:
-- `setInterval` 内で `getState()` を毎フレーム呼ぶパフォーマンス → O(1) なので問題なし（Zustand のドキュメントでもこのパターンを推奨）
-- React re-render 範囲 → `useStore(s => s.players)` のように selector で必要な部分だけ購読。shallow equality で不要な re-render を防ぐ
-- 移行中の regression → フェーズごとに動作確認。各フェーズは独立にコミット可能
-
-**期待効果**: 新しいゲーム状態の追加が「store に 1 行 + 使う側に 1 行」で完結。現在の 7 ファイル配線が不要に。
+**設計判断**:
+- `killNotification` と `myDeathEvent` は当初 local 想定だったが、HUD + SceneContent + gameLoop の 3 モジュールが参照 → store (reactive) に昇格
+- `lighthouseSpawnTime` は handleRespawn + messageHandler が書き込む → store (non-reactive) に昇格
+- `handleKill`/`handleRespawn` は store actions に吸収。`handleRespawnRef` 間接参照パターン解消
+- `ghostTauRef` は useGameLoop 内部 ref に移動。myDeathEvent の null⇔非null 遷移を prev-ref で検出して reset
+- `getPlayerColor` は PeerProvider 由来のため store に入れず、必要な場所にパラメータで渡す
 
 ### リスポーン後無敵（2026-04-13）
 
