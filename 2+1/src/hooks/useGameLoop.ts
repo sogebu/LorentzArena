@@ -280,69 +280,78 @@ export function useGameLoop({
       stale.checkStale(currentTime, store.players, myId);
 
       // --- Ghost or physics ---
-      if (isDead) {
-        ghostTauRef.current += dTau;
-        const de = store.myDeathEvent;
-        if (de) {
-          const ghostPos = processGhostPosition(de, ghostTauRef.current);
-          store.setPlayers((prev) => {
-            const me = prev.get(myId);
-            if (!me || !me.isDead) return prev;
-            const next = new Map(prev);
-            next.set(myId, {
-              ...me,
-              phaseSpace: createPhaseSpace(
-                ghostPos,
-                { x: de.u.x, y: de.u.y, z: de.u.z },
-              ),
+      // Re-read fresh state to avoid stale worldLine after respawn
+      {
+        const fresh = useGameStore.getState();
+        const freshMe = fresh.players.get(myId);
+        const freshDead = freshMe?.isDead ?? true;
+
+        if (freshDead) {
+          ghostTauRef.current += dTau;
+          const de = fresh.myDeathEvent;
+          if (de) {
+            const ghostPos = processGhostPosition(de, ghostTauRef.current);
+            fresh.setPlayers((prev) => {
+              const me = prev.get(myId);
+              if (!me || !me.isDead) return prev;
+              const next = new Map(prev);
+              next.set(myId, {
+                ...me,
+                phaseSpace: createPhaseSpace(
+                  ghostPos,
+                  { x: de.u.x, y: de.u.y, z: de.u.z },
+                ),
+              });
+              return next;
             });
-            return next;
-          });
-        }
-      } else if (myPlayer) {
-
-        const frozen = checkCausalFreeze(
-          store.players,
-          myId,
-          myPlayer,
-          stale.staleFrozenRef.current,
-          causalFrozenRef.current,
-        );
-        causalFrozenRef.current = frozen;
-
-        if (!frozen) {
-          const otherPositions: Vector4[] = [];
-          for (const [id, p] of store.players) {
-            if (id !== myId) otherPositions.push(p.phaseSpace.pos);
           }
-          const physics = processPlayerPhysics(
-            myPlayer,
-            keysPressed.current,
-            touch,
-            cameraYawRef.current,
-            dTau,
-            otherPositions,
+        } else if (freshMe) {
+
+          const frozen = checkCausalFreeze(
+            fresh.players,
+            myId,
+            freshMe,
+            stale.staleFrozenRef.current,
+            causalFrozenRef.current,
           );
+          causalFrozenRef.current = frozen;
 
-          store.setPlayers((prev) => {
-            const me = prev.get(myId);
-            if (!me) return prev;
-            const next = new Map(prev);
-            next.set(myId, {
-              ...me,
-              phaseSpace: physics.newPhaseSpace,
-              worldLine: physics.updatedWorldLine,
+          if (!frozen) {
+            const otherPositions: Vector4[] = [];
+            for (const [id, p] of fresh.players) {
+              if (id !== myId) otherPositions.push(p.phaseSpace.pos);
+            }
+            const physics = processPlayerPhysics(
+              freshMe,
+              keysPressed.current,
+              touch,
+              cameraYawRef.current,
+              dTau,
+              otherPositions,
+            );
+
+            fresh.setPlayers((prev) => {
+              const me = prev.get(myId);
+              if (!me) return prev;
+              // Guard: respawn が間に入って worldLine が変わっていたら skip
+              if (me.worldLine !== freshMe.worldLine) return prev;
+              const next = new Map(prev);
+              next.set(myId, {
+                ...me,
+                phaseSpace: physics.newPhaseSpace,
+                worldLine: physics.updatedWorldLine,
+              });
+              return next;
             });
-            return next;
-          });
 
-          // Network send
-          sendToNetwork({
-            type: "phaseSpace" as const,
-            senderId: myId,
-            position: physics.newPhaseSpace.pos,
-            velocity: physics.newPhaseSpace.u,
-          });
+            // Network send
+            sendToNetwork({
+              type: "phaseSpace" as const,
+              senderId: myId,
+              position: physics.newPhaseSpace.pos,
+              velocity: physics.newPhaseSpace.u,
+            });
+          }
         }
       }
 

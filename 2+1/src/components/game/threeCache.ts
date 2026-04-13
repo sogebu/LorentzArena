@@ -25,6 +25,15 @@ export const sharedGeometries = {
   spawnRing: new THREE.TorusGeometry(0.5, 0.03, 8, 24), // スケールで ringRadius 調整
   spawnPillar: new THREE.CylinderGeometry(0.04, 0.04, 1, 6), // スケールで pillarHeight 調整
   // Kill notification
+  // Laser direction arrow (past light cone direction)
+  laserArrow: (() => {
+    const shape = new THREE.Shape();
+    shape.moveTo(0, -0.75);    // 先端（下向き）
+    shape.lineTo(0.45, 0.45);  // 右上
+    shape.lineTo(-0.45, 0.45); // 左上
+    shape.closePath();
+    return new THREE.ShapeGeometry(shape);
+  })(),
   killSphere: new THREE.SphereGeometry(0.55, 16, 16),
   killRing: new THREE.RingGeometry(0.65, 0.8, 24),
 };

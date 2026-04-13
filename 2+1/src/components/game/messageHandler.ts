@@ -88,6 +88,11 @@ export const createMessageHandler =
         return;
       const playerId = msg.senderId;
 
+      // 自分のリレーされた phaseSpace は無視（ゲームループで処理済み。
+      // ホストがリレーした古い phaseSpace がリスポーン後に届くと、
+      // 新しい WorldLine に古い位置が appendWorldLine される）
+      if (playerId === myId) return;
+
       // Stale 復帰検知: stale 凍結されたプレイヤーから phaseSpace が来た
       if (staleFrozenRef.current.has(playerId)) {
         if (!peerManager.getIsHost()) return; // クライアントはホストの respawn を待つ

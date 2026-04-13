@@ -1,5 +1,5 @@
 import { useFrame } from "@react-three/fiber";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import {
   createVector4,
@@ -39,6 +39,7 @@ export type SceneContentProps = {
   useOrthographic: boolean;
   cameraYawRef: React.RefObject<number>;
   cameraPitchRef: React.RefObject<number>;
+  isFiring: boolean;
 };
 
 // 3Dシーンコンテンツコンポーネント
@@ -48,7 +49,13 @@ export const SceneContent = ({
   useOrthographic,
   cameraYawRef,
   cameraPitchRef,
+  isFiring,
 }: SceneContentProps) => {
+  // --- Firing start time (for sequential arrow animation) ---
+  const firingStartRef = useRef<number>(0);
+  if (isFiring && firingStartRef.current === 0) firingStartRef.current = Date.now();
+  if (!isFiring) firingStartRef.current = 0;
+
   // --- Store selectors ---
   const players = useGameStore((s) => s.players);
   const lasers = useGameStore((s) => s.lasers);
@@ -445,6 +452,54 @@ export const SceneContent = ({
 
       {/* レーザー描画（バッチ） */}
       <LaserBatchRenderer displayLasers={displayLasers} />
+
+      {/* レーザー方向マーカー（自機のみ、トリガー中） */}
+      {isFiring && myPlayer && myId && (() => {
+        // 自機の最新レーザーから方向取得
+        let latestLaser: typeof lasers[0] | null = null;
+        for (const l of lasers) {
+          if (l.playerId !== myId) continue;
+          if (!latestLaser || l.emissionPos.t > latestLaser.emissionPos.t) latestLaser = l;
+        }
+        if (!latestLaser) return null;
+        const dir = latestLaser.direction;
+        if (dir.x * dir.x + dir.y * dir.y < 0.000001) return null;
+        const aimYaw = Math.atan2(dir.y, dir.x);
+        const s2 = Math.SQRT1_2;
+        const cy = Math.cos(aimYaw), sy = Math.sin(aimYaw);
+        const pastDir = new THREE.Vector3(cy, sy, -1).normalize();
+        const rotMatrix = new THREE.Matrix4().set(
+          -sy,  -cy * s2,  cy * s2, 0,
+           cy,  -sy * s2,  sy * s2, 0,
+            0,        s2,       s2, 0,
+            0,         0,        0, 1,
+        );
+        const quat = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
+        const pos = transformEventForDisplay(myPlayer.phaseSpace.pos, observerPos, observerBoost);
+        const c = getThreeColor(myPlayer.color);
+        const spacing = 2.5;
+        // 0s→1個, 0.5s→2個, 1s→3個（ループなし、トリガー押し始めから）
+        const elapsed = Date.now() - firingStartRef.current;
+        const visibleCount = Math.min(3, Math.floor(elapsed / 500) + 1);
+        return [1, 2, 3].map((i) => {
+          if (i > visibleCount) return null;
+          const opacity = 0.9 - (i - 1) * 0.15;
+          return (
+            <mesh
+              key={`aim-arrow-${i}`}
+              position={[
+                pos.x + pastDir.x * spacing * i,
+                pos.y + pastDir.y * spacing * i,
+                pos.t + pastDir.z * spacing * i,
+              ]}
+              quaternion={quat}
+              geometry={sharedGeometries.laserArrow}
+            >
+              <meshBasicMaterial color={c} transparent opacity={opacity} side={THREE.DoubleSide} />
+            </mesh>
+          );
+        });
+      })()}
 
       {/* デブリの世界線とマーカー（世界オブジェクト） */}
       {myPlayer && (

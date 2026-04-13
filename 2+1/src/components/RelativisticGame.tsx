@@ -316,6 +316,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             useOrthographic={true}
             cameraYawRef={cameraYawRef}
             cameraPitchRef={cameraPitchRef}
+            isFiring={isFiring}
           />
         </Canvas>
       ) : (
@@ -326,6 +327,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             useOrthographic={false}
             cameraYawRef={cameraYawRef}
             cameraPitchRef={cameraPitchRef}
+            isFiring={isFiring}
           />
         </Canvas>
       )}
