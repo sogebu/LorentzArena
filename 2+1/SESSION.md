@@ -7,6 +7,10 @@
 
 ## 直近の変更（2026-04-13）
 
+### START でホスト決定 + クライアント syncTime 初期化（未デプロイ）
+
+PeerProvider を START 後にマウントし、最初に START を押した人がホストに。クライアントは自己初期化せず syncTime でスポーン。Lobby から usePeer() 削除。
+
 ### ホスト ID 根本修正 (`64a7e15`)
 
 全ピア（ホスト含む）がランダム ID でゲーム接続し、`la-{roomName}` はビーコン専用に。Phase 1 をビーコンプローブ + ゲーム PM 作成の 2 段階に分割。tab-hidden 復帰・マイグレーション・降格すべてで ID が不変に。joinRegistry 色修正 hack も削除。詳細は DESIGN.md「ホスト ID 根本修正」参照。

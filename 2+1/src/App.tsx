@@ -92,20 +92,20 @@ const App = () => {
     return <LangPicker />;
   }
 
+  if (!gameStarted) {
+    return (
+      <Lobby
+        displayName={displayName}
+        setDisplayName={setDisplayName}
+        onStart={handleStart}
+      />
+    );
+  }
+
   return (
     <PeerProvider roomName={roomName}>
-      {gameStarted ? (
-        <>
-          <Connect />
-          <RelativisticGame displayName={displayName} />
-        </>
-      ) : (
-        <Lobby
-          displayName={displayName}
-          setDisplayName={setDisplayName}
-          onStart={handleStart}
-        />
-      )}
+      <Connect />
+      <RelativisticGame displayName={displayName} />
     </PeerProvider>
   );
 };

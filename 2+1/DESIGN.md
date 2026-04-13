@@ -96,6 +96,13 @@ heartbeat detection effect と beacon effect の全リソースを監査。3 件
 - 降格後のビーコン `roomPeerId` 接続が cleanup で切断されない（PeerJS の idle タイムアウトに委任）
 - ~~ホスト ID 問題~~ → **解決済み** (2026-04-13): ホスト ID 根本修正で `la-{roomName}` をビーコン専用に変更。詳細は「ホスト ID 根本修正」セクション参照
 
+### START でホスト決定 + クライアント syncTime 初期化（2026-04-13）
+
+- **What**: PeerProvider を START 後にマウントし、最初に START を押した人がホストになる。クライアントは自己初期化せず、syncTime でホストの座標時間にスポーン
+- **Why**: (1) ロビーで放置した人がホストになる問題。ページロード順ではなく START 順でホスト決定すべき (2) クライアントが自己初期化でローカル時刻（小さい値）のプレイヤーを作り、syncTime 到着前にホスト視点で「過去側」に出現する問題
+- **実装**: App.tsx で `PeerProvider` を `gameStarted` 内に移動。Lobby は PeerProvider の外（`usePeer()` 除去）。RelativisticGame の init effect に `if (!isHost) return` を追加し、クライアントのプレイヤー作成は messageHandler の syncTime ハンドラが担当
+- **トレードオフ**: START 押下後に ~300-500ms の接続レイテンシ（旧: ロビー裏で接続完了）。体感的には問題にならないレベル
+
 ### ホスト ID 根本修正: `la-{roomName}` ビーコン専用化（2026-04-13）
 
 - **What**: ホストが `la-{roomName}` をゲーム PM の PeerJS ID として使う設計を廃止。全ピア（ホスト含む）がランダム ID でゲーム接続し、`la-{roomName}` はビーコン（発見専用）のみに使用

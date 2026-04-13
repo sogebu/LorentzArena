@@ -257,11 +257,13 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   // Keep handleRespawnRef in sync with the latest handleRespawn
   handleRespawnRef.current = handleRespawn;
 
-  // 初期化: ホスト・クライアント共通でプレイヤー作成（固定 OFFSET により syncTime 不要）
+  // 初期化: ホストのみプレイヤー作成。
+  // クライアントは syncTime 受信時に messageHandler がホストの座標時間でプレイヤーを作成。
   const isHost = peerManager?.getIsHost() ?? false;
   // biome-ignore lint/correctness/useExhaustiveDependencies: getPlayerColor is read at init time only
   useEffect(() => {
     if (!myId) return;
+    if (!isHost) return; // クライアントは syncTime でプレイヤー作成
 
     // 非決定的な値を reducer 外で計算（StrictMode 安全）
     const initialPhaseSpace = createPhaseSpace(
@@ -290,32 +292,30 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       return next;
     });
 
-    // Host only: Lighthouse AI + score sync to connected clients
-    if (isHost) {
-      const lighthouseId = `${LIGHTHOUSE_ID_PREFIX}0`;
-      const lighthouse = createLighthouse(
-        lighthouseId,
-        Date.now() / 1000 - OFFSET,
-      );
+    // Lighthouse AI + score sync to connected clients
+    const lighthouseId = `${LIGHTHOUSE_ID_PREFIX}0`;
+    const lighthouse = createLighthouse(
+      lighthouseId,
+      Date.now() / 1000 - OFFSET,
+    );
 
-      lighthouseSpawnTimeRef.current.set(lighthouseId, Date.now());
-      stale.staleFrozenRef.current.delete(lighthouseId);
+    lighthouseSpawnTimeRef.current.set(lighthouseId, Date.now());
+    stale.staleFrozenRef.current.delete(lighthouseId);
 
-      setPlayers((prev) => {
-        const next = new Map(prev);
-        next.set(lighthouseId, lighthouse);
-        return next;
-      });
+    setPlayers((prev) => {
+      const next = new Map(prev);
+      next.set(lighthouseId, lighthouse);
+      return next;
+    });
 
-      if (peerManager) {
-        for (const conn of connections) {
-          if (conn.open) {
-            peerManager.sendTo(conn.id, {
-              type: "syncTime",
-              hostTime: initialPhaseSpace.pos.t,
-              scores: scoresRef.current,
-            });
-          }
+    if (peerManager) {
+      for (const conn of connections) {
+        if (conn.open) {
+          peerManager.sendTo(conn.id, {
+            type: "syncTime",
+            hostTime: initialPhaseSpace.pos.t,
+            scores: scoresRef.current,
+          });
         }
       }
     }

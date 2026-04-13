@@ -1,6 +1,6 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n, type Lang } from "../i18n";
-import { usePeer } from "../hooks/usePeer";
+
 import { getTopScores, type HighScoreEntry } from "../services/highScores";
 import { fetchLeaderboard } from "../services/leaderboard";
 
@@ -12,14 +12,12 @@ type LobbyProps = {
 
 const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
   const { t, lang, setLang } = useI18n();
-  const { connectionPhase } = usePeer();
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  const isConnected = connectionPhase === "connected";
   const highScores = useMemo(() => getTopScores(5), []);
   const [globalScores, setGlobalScores] = useState<HighScoreEntry[]>([]);
 
@@ -159,15 +157,6 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
         >
           {t("lobby.start")}
         </button>
-        <p
-          style={{
-            fontSize: "12px",
-            opacity: 0.4,
-            marginTop: "12px",
-          }}
-        >
-          {isConnected ? "●" : "○"} {isConnected ? "" : t("lobby.connecting")}
-        </p>
       </form>
 
       {/* High scores */}
