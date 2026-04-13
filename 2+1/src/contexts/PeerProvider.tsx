@@ -57,6 +57,7 @@ interface PeerContextValue {
   autoFallbackTriggered: boolean;
   connectionPhase: ConnectionPhase;
   roomName: string;
+  isHost: boolean;
   isMigrating: boolean;
   getPlayerColor: (peerId: string) => string;
   joinRegistryVersion: number;
@@ -935,6 +936,12 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     };
   }, [activeTransport, peerManager, myId, roomPeerId, connectionPhase, dynamicIceServers, roleVersion]);
 
+  // Derived from peerManager.getIsHost(), recomputed when roleVersion changes.
+  // Exposed in context so consumers can react to role changes without accessing
+  // the mutable peerManager method directly.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion tracks role changes
+  const isHost = useMemo(() => peerManager?.getIsHost() ?? false, [peerManager, roleVersion]);
+
   return (
     <PeerContext.Provider
       value={{
@@ -948,6 +955,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         autoFallbackTriggered,
         connectionPhase,
         roomName,
+        isHost,
         isMigrating,
         getPlayerColor,
         joinRegistryVersion,

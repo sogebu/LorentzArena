@@ -4,7 +4,6 @@ import { usePeer } from "../hooks/usePeer";
 
 const Connect = () => {
   const {
-    peerManager,
     connections,
     myId,
     peerStatus,
@@ -14,6 +13,7 @@ const Connect = () => {
     autoFallbackTriggered,
     connectionPhase,
     roomName,
+    isHost,
     setActiveTransport,
   } = usePeer();
   const { t } = useI18n();
@@ -34,7 +34,6 @@ const Connect = () => {
     }
   }, [peerStatus, t]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: connections triggers re-eval when peerManager.getIsHost() changes after migration
   const phaseText = useMemo(() => {
     switch (connectionPhase) {
       case "trying-host":
@@ -42,13 +41,13 @@ const Connect = () => {
       case "connecting-client":
         return `${t("connect.transport")}: "${roomName}"${t("connect.phase.connectingClient")}`;
       case "connected":
-        return peerManager?.getIsHost()
+        return isHost
           ? `ルーム "${roomName}" — ${t("connect.phase.host")}`
           : `ルーム "${roomName}" — ${t("connect.phase.client")}`;
       case "manual":
         return t("connect.phase.manual");
     }
-  }, [connectionPhase, roomName, peerManager, connections, t]);
+  }, [connectionPhase, roomName, isHost, t]);
 
   return (
     <div className="connection-panel">
