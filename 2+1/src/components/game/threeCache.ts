@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { LIGHT_CONE_HEIGHT } from "./constants";
 
 // Color キャッシュ
 const colorCache = new Map<string, THREE.Color>();
@@ -18,7 +19,7 @@ export const sharedGeometries = {
   intersectionCore: new THREE.SphereGeometry(0.15, 12, 12),
   intersectionRing: new THREE.TorusGeometry(0.7, 0.07, 12, 24),
   laserIntersectionDot: new THREE.SphereGeometry(0.25, 12, 12),
-  lightCone: new THREE.ConeGeometry(40, 40, 32, 1, true),
+  lightCone: new THREE.ConeGeometry(LIGHT_CONE_HEIGHT, LIGHT_CONE_HEIGHT, 32, 1, true),
   explosionParticle: new THREE.SphereGeometry(1, 6, 6), // スケールで size 調整
   // Spawn effect
   spawnRing: new THREE.TorusGeometry(1, 0.06, 8, 24), // スケールで ringRadius 調整
