@@ -139,6 +139,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
     const state = get();
     const victim = state.players.get(victimId);
     if (!victim) return;
+    if (state.deadPlayers.has(victimId)) return; // Guard: already dead
 
     // Freeze world line
     const frozen: FrozenWorldLine = {
