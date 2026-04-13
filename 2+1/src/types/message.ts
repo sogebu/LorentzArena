@@ -123,11 +123,11 @@ export type Message =
     }
   | {
       /**
-       * Redirect from beacon peer to actual host after migration.
+       * Redirect from beacon to actual host.
        * The beacon holds the room's discoverable ID (la-{roomName})
        * and tells new clients where the real host is.
        *
-       * JP: マイグレーション後のビーコンからのリダイレクト。
+       * JP: ビーコンからのリダイレクト。
        * ビーコンはルーム発見用 ID を保持し、新クライアントに本当のホスト ID を通知。
        */
       type: "redirect";
