@@ -65,9 +65,13 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 - `translations/en.ts` — 英語辞書
 - `I18nContext.tsx` — Provider + `useI18n` hook
 
-### ハイスコア (`src/services/highScores.ts`)
+### ハイスコア・リーダーボード
 
-localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(entry)`, `getTopScores(n)` の純関数。localStorage key `"la-highscores"`、最大 20 件。
+**ローカルハイスコア** (`src/services/highScores.ts`): localStorage ベース（ブラウザ別）。`loadHighScores()`, `saveHighScore(entry)`, `getTopScores(n)` の純関数。localStorage key `"la-highscores"`、最大 20 件。
+
+**グローバルリーダーボード** (`src/services/leaderboard.ts`): Cloudflare Workers + KV。`VITE_LEADERBOARD_URL` に Worker URL を設定（`.env.production` に設定済み）。`fetchLeaderboard()` で取得、`submitScore()` で送信。Worker ソースは `turn-worker/src/index.ts`（TURN credential proxy と同居）。KV 単一キー `"top"` にトップ 50 を JSON 配列で格納。
+
+**スコア保存タイミング** (`src/hooks/useHighScoreSaver.ts`): `beforeunload` / `pagehide` イベントで発火。ローカル保存 + `navigator.sendBeacon` でグローバル送信。sendBeacon は CORS preflight 不可のため Blob の Content-Type は `text/plain`（CORS セーフリスト）を使用。
 
 ### 物理エンジン (`src/physics/`)
 

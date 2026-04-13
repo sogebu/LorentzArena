@@ -2,10 +2,26 @@
 
 ## 現在のステータス
 
-対戦可能。**`2297841` デプロイ済み** (build `2026/04/14 01:09:55 JST`)。
+対戦可能。**`79d6a29` デプロイ済み** (build `2026/04/14 01:57:06 JST`)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
-## 直近の変更（2026-04-13 夜）
+## 直近の変更（2026-04-14）
+
+### バグ修正・堅牢化
+
+- **handleKill 二重キル防止ガード**: `deadPlayers.has(victimId)` チェックを `handleKill` 冒頭に追加。デバッグ調査の結果、現行コードでは kill rate 0.1/s で正常だったが、念のため防御策として追加
+- **sendBeacon CORS 修正**: グローバルリーダーボードへのスコア送信が動いていなかった。`sendBeacon` + `application/json` Blob は CORS preflight が必要だが `sendBeacon` は preflight をサポートしないためブラウザが黙って捨てていた → `text/plain` に変更
+- **制約ネットワーク検証完了**: 学校ネットで Cloudflare TURN テスト成功
+
+### ハイスコアバグ調査（結論: 再現せず）
+
+- ハイスコアに異常値（6099 キル / 1:48 等）が記録されていた
+- デバッグカウンター追加で調査: ホスト・クライアント両方で kill rate 0.1/s（正常）
+- `handleKill`, `firePendingKillEvents`, `processHitDetection` すべて正常動作を確認
+- 異常スコアは Zustand 移行前後の過渡期に蓄積された可能性が高い
+- 防御策として `handleKill` に `deadPlayers` ガード追加済み
+
+## 過去の変更（2026-04-13 夜）
 
 ### Zustand 移行（完了）
 
@@ -58,8 +74,9 @@
 - `appendWorldLine` O(n) → ring buffer
 - useMemo 毎フレーム再計算 → カリング
 
-### 要テスト（未実施）
+### 要テスト
 
+- グローバルリーダーボード: sendBeacon 修正後、実際にスコアが KV に保存されるか確認
 - モバイルハイスコア: iOS Safari でホーム画面に戻る → スコアが保存される
 
 ### 既知のリスク（低優先）
@@ -70,7 +87,6 @@
 ## 次にやること
 
 - **チュートリアル（必須）** — 初見ユーザーが操作・ゲーム概念を理解できない
-- ~~制約ネットワーク検証（学校ネットで Cloudflare TURN テスト）~~ ✅ 検証済み
 - 各プレイヤーに固有時刻表示
 - スマホ UI 残課題（レスポンシブ HUD、オンボーディング）
 - 用語の再考（`EXPLORING.md` 参照）
