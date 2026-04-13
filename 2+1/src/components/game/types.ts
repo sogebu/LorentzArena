@@ -16,7 +16,6 @@ export type DebrisRecord = {
 export type FrozenWorldLine = {
   readonly worldLine: WorldLine;
   readonly color: string;
-  readonly showHalfLine: boolean; // 最初のライフのみ true
 };
 
 // 死亡イベント（ゴーストカメラの起点）
@@ -76,7 +75,6 @@ export type DisplayLaser = {
 export type WorldLineRendererProps = {
   worldLine: WorldLine;
   color: string;
-  showHalfLine: boolean;
   observerPos: Vector4 | null;
   observerBoost: ReturnType<typeof lorentzBoost> | null;
 };

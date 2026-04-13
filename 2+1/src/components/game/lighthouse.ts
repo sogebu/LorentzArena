@@ -28,7 +28,7 @@ export const createLighthouse = (
     createVector4(time, spawnX, spawnY, 0),
     vector3Zero(),
   );
-  let wl = createWorldLine(MAX_WORLDLINE_HISTORY, ps);
+  let wl = createWorldLine(MAX_WORLDLINE_HISTORY);
   wl = appendWorldLine(wl, ps);
   return {
     id,

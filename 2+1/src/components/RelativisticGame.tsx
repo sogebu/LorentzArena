@@ -94,7 +94,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       ),
       vector3Zero(),
     );
-    let initialWorldLine = createWorldLine(MAX_WORLDLINE_HISTORY, initialPhaseSpace);
+    let initialWorldLine = createWorldLine(MAX_WORLDLINE_HISTORY);
     initialWorldLine = appendWorldLine(initialWorldLine, initialPhaseSpace);
     const initialColor = getPlayerColor(myId);
 
@@ -113,6 +113,18 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     });
     store.invincibleUntil.set(myId, Date.now() + INVINCIBILITY_DURATION);
 
+    // 初回スポーンエフェクト（過去光円錐到達時に発火）
+    useGameStore.setState((state) => ({
+      pendingSpawnEvents: [
+        ...state.pendingSpawnEvents,
+        {
+          id: `spawn-${myId}-${Date.now()}`,
+          pos: { t: initialPhaseSpace.pos.t, x: initialPhaseSpace.pos.x, y: initialPhaseSpace.pos.y, z: 0 },
+          color: initialColor,
+        },
+      ],
+    }));
+
     // Lighthouse AI + score sync to connected clients
     const lighthouseId = `${LIGHTHOUSE_ID_PREFIX}0`;
     const lighthouse = createLighthouse(
@@ -128,6 +140,18 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       next.set(lighthouseId, lighthouse);
       return next;
     });
+
+    // Lighthouse スポーンエフェクト（過去光円錐到達時に発火）
+    useGameStore.setState((state) => ({
+      pendingSpawnEvents: [
+        ...state.pendingSpawnEvents,
+        {
+          id: `spawn-${lighthouseId}-${Date.now()}`,
+          pos: { t: lighthouse.phaseSpace.pos.t, x: lighthouse.phaseSpace.pos.x, y: lighthouse.phaseSpace.pos.y, z: 0 },
+          color: lighthouse.color,
+        },
+      ],
+    }));
 
     if (peerManager) {
       for (const conn of connections) {

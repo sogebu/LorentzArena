@@ -119,7 +119,7 @@ export const createMessageHandler =
         const worldLine = existingWorldLine
           ? appendWorldLine(existingWorldLine, phaseSpace)
           : (() => {
-              let wl = createWorldLine(MAX_WORLDLINE_HISTORY, phaseSpace); // 新規プレイヤー: origin 付き
+              let wl = createWorldLine(MAX_WORLDLINE_HISTORY);
               wl = appendWorldLine(wl, phaseSpace);
               return wl;
             })();
@@ -169,7 +169,7 @@ export const createMessageHandler =
           ),
           me?.phaseSpace.u ?? { x: 0, y: 0, z: 0 },
         );
-        let newWorldLine = createWorldLine(MAX_WORLDLINE_HISTORY, synced);
+        let newWorldLine = createWorldLine(MAX_WORLDLINE_HISTORY);
         newWorldLine = appendWorldLine(newWorldLine, synced);
         const next = new Map(prev);
         next.set(myId, {
@@ -182,6 +182,20 @@ export const createMessageHandler =
         return next;
       });
       store.invincibleUntil.set(myId, Date.now() + INVINCIBILITY_DURATION);
+
+      // 初回スポーンエフェクト（過去光円錐到達時に発火）
+      const posX = store.players.get(myId)?.phaseSpace.pos.x ?? spawnX;
+      const posY = store.players.get(myId)?.phaseSpace.pos.y ?? spawnY;
+      useGameStore.setState((state) => ({
+        pendingSpawnEvents: [
+          ...state.pendingSpawnEvents,
+          {
+            id: `spawn-${myId}-${Date.now()}`,
+            pos: { t: msg.hostTime, x: posX, y: posY, z: 0 },
+            color: store.players.get(myId)?.color ?? colorForPlayerId(myId),
+          },
+        ],
+      }));
     } else if (msg.type === "laser") {
       if (
         !isValidString(msg.id) ||

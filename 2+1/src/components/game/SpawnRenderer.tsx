@@ -41,7 +41,7 @@ export const SpawnRenderer = ({
     <>
       {Array.from({ length: ringCount }, (_, i) => {
         const ringProgress = (progress * 3 + i / ringCount) % 1;
-        const ringRadius = (1 - ringProgress) * 2;
+        const ringRadius = (1 - ringProgress) * 4;
         const ringOpacity = opacity * (1 - ringProgress) * 0.8;
         const ringT = spawn.pos.t + i * 0.25;
 
@@ -52,7 +52,7 @@ export const SpawnRenderer = ({
           observerBoost,
         );
 
-        if (ringRadius < 0.05 || ringOpacity < 0.01) return null;
+        if (ringRadius < 0.1 || ringOpacity < 0.01) return null;
 
         return (
           <mesh

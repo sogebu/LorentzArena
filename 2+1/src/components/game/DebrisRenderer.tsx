@@ -87,7 +87,7 @@ export const DebrisRenderer = ({
         startX: startDisplay.x, startY: startDisplay.y, startT: startDisplay.t,
         endX: endDisplay.x, endY: endDisplay.y, endT: endDisplay.t,
         r: debrisColor.r, g: debrisColor.g, b: debrisColor.b,
-        radius: p.size * 0.1,
+        radius: p.size * 0.2,
       });
 
       const intersection = pastLightConeIntersectionDebris(
@@ -107,7 +107,7 @@ export const DebrisRenderer = ({
           <mesh
             key={`debris-${di}-${pi}`}
             position={[displayPos.x, displayPos.y, displayPos.t]}
-            scale={[p.size * 0.75, p.size * 0.75, p.size * 0.75]}
+            scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
             geometry={sharedGeometries.explosionParticle}
             material={getDebrisMaterial(debrisColor)}
           />,

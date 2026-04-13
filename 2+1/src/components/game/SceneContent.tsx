@@ -254,7 +254,6 @@ export const SceneContent = ({
           key={`frozen-${i}-${fw.worldLine.history[0]?.pos.t ?? 0}`}
           worldLine={fw.worldLine}
           color={fw.color}
-          showHalfLine={fw.showHalfLine}
           observerPos={observerPos}
           observerBoost={observerBoost}
         />
@@ -266,7 +265,6 @@ export const SceneContent = ({
           key={`worldline-${player.id}`}
           worldLine={player.worldLine}
           color={player.color}
-          showHalfLine={player.worldLine.origin !== null}
           observerPos={observerPos}
           observerBoost={observerBoost}
         />
@@ -425,7 +423,7 @@ export const SceneContent = ({
         const c = getThreeColor(laser.color);
         return (
           <group key={`laser-future-${laser.id}`} position={[pos.x, pos.y, pos.t]}>
-            <mesh geometry={sharedGeometries.laserIntersectionDot} scale={[0.8, 0.8, 0.8]}>
+            <mesh geometry={sharedGeometries.laserIntersectionDot} scale={[0.65, 0.65, 0.65]}>
               <meshBasicMaterial color={c} transparent opacity={0.15} depthWrite={false} />
             </mesh>
           </group>
@@ -435,10 +433,10 @@ export const SceneContent = ({
         const c = getThreeColor(colorText);
         return (
           <group key={`future-${playerId}`} position={[pos.x, pos.y, pos.t]}>
-            <mesh geometry={sharedGeometries.intersectionSphere} scale={[0.5, 0.5, 0.5]}>
+            <mesh geometry={sharedGeometries.intersectionSphere} scale={[0.6, 0.6, 0.6]}>
               <meshBasicMaterial color={c} transparent opacity={0.15} depthWrite={false} />
             </mesh>
-            <mesh geometry={sharedGeometries.intersectionRing} scale={[0.7, 0.7, 0.7]}>
+            <mesh geometry={sharedGeometries.intersectionRing} scale={[0.8, 0.8, 0.8]}>
               <meshBasicMaterial color={c} transparent opacity={0.12} depthWrite={false} />
             </mesh>
           </group>

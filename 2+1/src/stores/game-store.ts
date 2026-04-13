@@ -144,7 +144,6 @@ export const useGameStore = create<GameState>()((set, get) => ({
     const frozen: FrozenWorldLine = {
       worldLine: victim.worldLine,
       color: victim.color,
-      showHalfLine: victim.worldLine.origin !== null,
     };
 
     // Generate debris

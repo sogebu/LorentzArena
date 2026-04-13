@@ -83,7 +83,6 @@ export function useHostMigration({
         respawnTimeoutsRef.current.delete(timerId);
         const currentStore = useGameStore.getState();
         const respawnPos = createRespawnPosition(currentStore.players);
-        currentStore.deadPlayers.delete(playerId);
         peerManager.send({
           type: "respawn" as const,
           playerId,
