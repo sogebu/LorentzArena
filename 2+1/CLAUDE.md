@@ -175,7 +175,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `syncTime` | host → client | 世界系時刻同期 |
 | `kill` | host → all | キル通知（hitPos 付き） |
 | `respawn` | host → all | リスポーン位置指示 |
-| `score` | host → all | スコア更新 |
+| `score` | host → all | スコア更新 **（未使用: 送信箇所なし。スコアは各クライアントが `firePendingKillEvents` で独立計算）** |
 | `ping` | host → all | ハートビート（3秒間隔、8秒タイムアウトでホスト切断検知） |
 | `hostMigration` | new host → all | ホストマイグレーション（スコア + dead players + displayNames 引継ぎ） |
 | `intro` | 双方向（host 中継） | プレイヤー表示名通知（接続時に 1 回送信） |

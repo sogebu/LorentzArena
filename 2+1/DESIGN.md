@@ -272,6 +272,23 @@ heartbeat detection effect と beacon effect の全リソースを監査。3 件
 - **Why**: KV は値サイズ 25 MB まで。50 エントリ × ~100 bytes ≈ 5 KB で十分収まる。単一キーなら read 1 回 + write 最大 1 回で完結。トップ 50 に入らないスコアは read only（無料枠 100K reads/日で十分）。write は条件付きなので無料枠 1K writes/日を大幅に節約
 - **トレードオフ**: 同時書き込みの last-write-wins。物理デモゲームでは許容
 
+### sendBeacon CORS: text/plain 選択（2026-04-14）
+
+- **What**: `submitScore` の `sendBeacon` で送る Blob の Content-Type を `application/json` → `text/plain` に変更
+- **Why**: `sendBeacon` は CORS preflight (OPTIONS) をサポートしない。`application/json` は CORS セーフリストに含まれないため preflight が必要 → ブラウザがリクエストを黙って捨てていた。`text/plain` はセーフリストなので preflight 不要。Worker 側の `request.json()` は Content-Type に依存せず body をパースするため Worker 変更不要
+- **教訓**: `sendBeacon` で使える Content-Type は `application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain` のみ。JSON を送りたい場合は `text/plain` で包む
+
+### handleKill 二重キル防止ガード（2026-04-14）
+
+- **What**: `handleKill` 冒頭に `if (state.deadPlayers.has(victimId)) return` を追加
+- **Why**: ハイスコアに異常値（6099 キル / 1:48）が報告された。デバッグ調査で現行コード（Zustand 移行後）は kill rate 0.1/s で正常と確認。異常値は Zustand 移行前後の過渡期のものと推定。防御的ガードとして追加。hit detection (`processHitDetection`) の `deadIds.has()` チェックと二重防御
+- **調査方法**: `handleKill`, `firePendingKillEvents`, `processHitDetection` にデバッグカウンターを仕込み、ホスト・クライアント両方で kill rate を計測。3 秒間隔で `console.warn` 出力
+
+### score メッセージの未使用（2026-04-14 発見）
+
+- **What**: メッセージタイプ `score` は `message.ts` に型定義があり `messageHandler.ts` に受信ハンドラがあるが、**送信箇所が存在しない**（dead code）。スコアはホストから同期されず、各クライアントが `firePendingKillEvents` で独立に計算している
+- **Why not fix now**: 現状はホスト・クライアント両方が同じ `pendingKillEvents` → `firePendingKillEvents` のパイプラインでスコアを算出しており、結果は収束する（各イベントが過去光円錐に入る時刻が異なるだけ）。`hostMigration` メッセージにはスコアが含まれるため、マイグレーション時に同期される。将来的にスコア不整合が問題になったら score 同期を実装する
+
 ### Stale プレイヤー処理の設計整理（2026-04-12 監査）
 
 現状の stale 処理は複数のバグ修正で有機的に成長し、以下の問題を抱えている。次回リファクタリングで統一的に修正する。
