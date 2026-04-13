@@ -276,6 +276,7 @@ heartbeat detection effect と beacon effect の全リソースを監査。3 件
 
 - **What**: `submitScore` の `sendBeacon` で送る Blob の Content-Type を `application/json` → `text/plain` に変更
 - **Why**: `sendBeacon` は CORS preflight (OPTIONS) をサポートしない。`application/json` は CORS セーフリストに含まれないため preflight が必要 → ブラウザがリクエストを黙って捨てていた。`text/plain` はセーフリストなので preflight 不要。Worker 側の `request.json()` は Content-Type に依存せず body をパースするため Worker 変更不要
+- **影響**: 上記 KV 設計(4/12)のデプロイ時から本修正(4/14)まで、グローバルリーダーボードは dead 機能だった（Worker + KV は正常、クライアントからの送信が到達していなかった）
 - **教訓**: `sendBeacon` で使える Content-Type は `application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain` のみ。JSON を送りたい場合は `text/plain` で包む
 
 ### handleKill 二重キル防止ガード（2026-04-14）
