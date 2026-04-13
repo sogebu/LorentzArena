@@ -67,6 +67,7 @@
 ### 既知のリスク（低優先）
 
 - **localId PeerJS ID 衝突**: tab-hidden 復帰時に同じ `localIdRef.current` で新 PM を作成するが、PeerServer が旧 ID を解放するまで（1-2s）に `unavailable-id` エラーになる可能性。Phase 2 にはこのエラーハンドリングがない。旧コードからの既存リスクで本リファクタでは悪化していない
+- **PeerServer ネットワークエラーでスタック**: Phase 1 / Phase 2 で PeerServer への接続自体が失敗（`unavailable-id` 以外のエラー）した場合、`connectionPhase` が遷移せずスタックする。auto-fallback（WS Relay）は `unavailable-id` を除外しているので発動するが、WS Relay 未設定の場合はリロードが必要。既存リスク
 
 ## 次にやること
 
