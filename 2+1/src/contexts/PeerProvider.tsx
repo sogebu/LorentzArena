@@ -160,18 +160,19 @@ const registerPeerOrderListener = (
       const peers = (msg as { peers?: string[] }).peers;
       if (Array.isArray(peers)) {
         peerOrderRef.current = peers;
-        // If host sent its full joinRegistry, seed ours from it (preserves history of departed peers)
+        // Host's joinRegistry is the canonical ordering — adopt it wholesale.
+        // Merging (append) cannot fix ordering when the client already has entries
+        // in a different order, so we REPLACE instead.
         const hostRegistry = (msg as { joinRegistry?: string[] }).joinRegistry;
         if (Array.isArray(hostRegistry) && hostRegistry.length > 0) {
-          if (appendToJoinRegistry(joinRegistryRef, hostRegistry, hostRegistry[0])) {
-            onRegistryChange();
+          joinRegistryRef.current = [...hostRegistry];
+          // Ensure our own ID is included (we may have just connected)
+          const myId = pm.id();
+          if (myId && !joinRegistryRef.current.includes(myId)) {
+            joinRegistryRef.current.push(myId);
           }
-        } else if (appendToJoinRegistry(joinRegistryRef, peers, pm.getHostId() ?? undefined)) {
           onRegistryChange();
-        }
-        // Always ensure our own ID is in the registry
-        const myId = pm.id();
-        if (myId && appendToJoinRegistry(joinRegistryRef, [myId])) {
+        } else if (appendToJoinRegistry(joinRegistryRef, peers, pm.getHostId() ?? undefined)) {
           onRegistryChange();
         }
       }
