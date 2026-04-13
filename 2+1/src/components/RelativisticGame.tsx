@@ -217,7 +217,9 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       setPlayers((prev) => applyRespawn(prev, playerId, position));
 
       deathTimeMapRef.current.delete(playerId);
-      invincibleUntilRef.current.set(playerId, Date.now() + INVINCIBILITY_DURATION);
+      if (!isLighthouse(playerId)) {
+        invincibleUntilRef.current.set(playerId, Date.now() + INVINCIBILITY_DURATION);
+      }
 
       // Lighthouse: reset spawn grace timer on respawn
       if (isLighthouse(playerId)) {
