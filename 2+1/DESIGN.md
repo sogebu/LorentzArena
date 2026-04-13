@@ -108,6 +108,9 @@ heartbeat detection effect と beacon effect の全リソースを監査。3 件
 - **変更箇所**: `PeerProvider.tsx` のみ。Phase 1 書換え、Phase 2 の joinRegistry hack 削除、tab-hidden 復帰を `"trying-host"` に変更、ビーコン effect ガードを `beaconRef.current` チェックに変更
 - **レースコンディション**: ビーコンプローブ成功 → ゲーム PM open の間に別ピアが来ても、ビーコン PM が `la-{roomName}` を占有中なので競合しない
 - **構造的効果**: 初期ホスト・マイグレーション後ホスト・tab-hidden 復帰ホストがすべて同じパターン（ランダム ID + ビーコン）に統一。Phase 2 の joinRegistry 色修正 hack は不要になり削除
+- **ゲーム PM エラー時のビーコン解放**: Phase 1 でビーコン取得後にゲーム PM が PeerServer エラーで失敗した場合、ビーコンだけが生き残って `la-{roomName}` を永続的に占有するバグを防ぐため、ゲーム PM の `onPeerStatusChange` error 分岐で `beaconRef.current.destroy()` を実行。`onPeerStatusChange` が上書き式（PeerManager は 1 コールバックのみ）なので、open と error の処理を同一コールバック内に統合
+- **ビーコン所有権のライフサイクル**: Phase 1 が作ったビーコンはビーコン effect とは独立。ビーコン effect は `beaconRef.current` が既に存在する場合に早期 return し、cleanup function は登録されない（`undefined`）。Phase 1 ビーコンの破壊は tab-hidden ハンドラ（`beaconRef.current.destroy()`）のみが担当
+- **トレードオフ — クライアント接続レイテンシ**: 旧設計では Phase 2 クライアントが `la-{roomName}` = ゲームホストに直接接続。新設計では常にビーコン経由 redirect を経由するため ~100-200ms の追加レイテンシ。ロビーの初回接続時のみの一回きりなので許容
 
 ### デブリの相対論的速度合成（2026-04-12）
 

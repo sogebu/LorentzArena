@@ -80,7 +80,7 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 
 ### ネットワーク (`src/services/`, `src/contexts/`)
 
-- `PeerManager.ts` — PeerJS/WebRTC ラッパー
+- `PeerManager.ts` — PeerJS/WebRTC ラッパー。**注意: `onPeerStatusChange` / `onConnectionChange` は上書き式（最後の 1 コールバックのみ有効）。`onMessage` はキー付き Map で複数登録可能。**
 - `WsRelayManager.ts` — WebSocket Relay フォールバック
 - `PeerProvider.tsx` — 自動接続 + ホストマイグレーション
 
@@ -90,7 +90,7 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 
 ホストマイグレーション: ホストが切断すると最古参クライアントが自動昇格。ハートビート方式（3 秒間隔 `ping`、8 秒タイムアウト）で即時検知。新ホストは `hostMigration` メッセージでスコア・dead players を引き継ぎ、respawn タイマーを残り時間で再構築。
 
-ビーコンパターン: マイグレーション後、新ホスト（ランダム ID）が `la-{roomName}` で発見専用のビーコン PeerManager を作成。新クライアントがビーコンに接続すると `{ type: "redirect", hostId }` で本当のホストにリダイレクト。既存のゲーム接続には影響しない。
+ビーコンパターン: `la-{roomName}` は常にビーコン（発見専用）。初期ホストは Phase 1 でビーコンを取得し `beaconRef` に保持、マイグレーション後のホストはビーコン effect で取得。新クライアントがビーコンに接続すると `{ type: "redirect", hostId }` で本当のホスト（ランダム ID）にリダイレクト。既存のゲーム接続には影響しない。
 
 マイグレーションのフォールバック: 選出ホストが 10 秒応答しない場合、ビーコン経由で発見を試みる。ビーコンも 8 秒応答なければソロホスト化。peerOrderRef が空の場合もビーコン優先。新規クライアントの redirect 先がオフラインなら最大 3 回リトライ。
 
