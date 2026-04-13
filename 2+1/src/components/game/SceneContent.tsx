@@ -414,7 +414,7 @@ export const SceneContent = ({
         return (
           <group key={`laser-intersection-${laser.id}`} position={[pos.x, pos.y, pos.t]}>
             <mesh geometry={sharedGeometries.laserIntersectionDot}>
-              <meshStandardMaterial color={c} emissive={c} emissiveIntensity={1.1} roughness={0.25} metalness={0.1} />
+              <meshStandardMaterial color={c} emissive={c} emissiveIntensity={0.5} roughness={0.6} metalness={0.0} />
             </mesh>
           </group>
         );
@@ -425,7 +425,7 @@ export const SceneContent = ({
         const c = getThreeColor(laser.color);
         return (
           <group key={`laser-future-${laser.id}`} position={[pos.x, pos.y, pos.t]}>
-            <mesh geometry={sharedGeometries.laserIntersectionDot} scale={[0.35, 0.35, 0.35]}>
+            <mesh geometry={sharedGeometries.laserIntersectionDot} scale={[0.8, 0.8, 0.8]}>
               <meshBasicMaterial color={c} transparent opacity={0.15} depthWrite={false} />
             </mesh>
           </group>
@@ -435,10 +435,10 @@ export const SceneContent = ({
         const c = getThreeColor(colorText);
         return (
           <group key={`future-${playerId}`} position={[pos.x, pos.y, pos.t]}>
-            <mesh geometry={sharedGeometries.intersectionSphere} scale={[0.3, 0.3, 0.3]}>
+            <mesh geometry={sharedGeometries.intersectionSphere} scale={[0.5, 0.5, 0.5]}>
               <meshBasicMaterial color={c} transparent opacity={0.15} depthWrite={false} />
             </mesh>
-            <mesh geometry={sharedGeometries.intersectionRing} scale={[0.4, 0.4, 0.4]}>
+            <mesh geometry={sharedGeometries.intersectionRing} scale={[0.7, 0.7, 0.7]}>
               <meshBasicMaterial color={c} transparent opacity={0.12} depthWrite={false} />
             </mesh>
           </group>

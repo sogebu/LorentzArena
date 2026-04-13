@@ -78,5 +78,5 @@ export const MAX_PENDING_SPAWN_EVENTS = 50;
 export const LIGHT_CONE_HEIGHT = 20;
 
 // --- Player marker sizes ---
-export const PLAYER_MARKER_SIZE_SELF = 0.21;
-export const PLAYER_MARKER_SIZE_OTHER = 0.1;
+export const PLAYER_MARKER_SIZE_SELF = 0.42;
+export const PLAYER_MARKER_SIZE_OTHER = 0.18;

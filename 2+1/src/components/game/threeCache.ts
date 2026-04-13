@@ -25,8 +25,8 @@ export const sharedGeometries = {
   spawnRing: new THREE.TorusGeometry(0.5, 0.03, 8, 24), // スケールで ringRadius 調整
   spawnPillar: new THREE.CylinderGeometry(0.04, 0.04, 1, 6), // スケールで pillarHeight 調整
   // Kill notification
-  killSphere: new THREE.SphereGeometry(0.75, 16, 16),
-  killRing: new THREE.RingGeometry(0.9, 1.1, 24),
+  killSphere: new THREE.SphereGeometry(0.55, 16, 16),
+  killRing: new THREE.RingGeometry(0.65, 0.8, 24),
 };
 
 // デブリマーカー用 material キャッシュ（色ごとに1つ）
