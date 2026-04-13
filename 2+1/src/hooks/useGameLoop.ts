@@ -7,7 +7,6 @@ import {
   ENERGY_RECOVERY_RATE,
   GAME_LOOP_INTERVAL,
   LASER_RANGE,
-  MAX_DELTA_TAU,
   MAX_LASERS,
   PROCESSED_LASERS_CLEANUP_THRESHOLD,
   RESPAWN_DELAY,
@@ -127,8 +126,7 @@ export function useGameLoop({
       }
 
       const currentTime = Date.now();
-      const rawDTau = (currentTime - lastTimeRef.current) / 1000;
-      const dTau = Math.min(rawDTau, MAX_DELTA_TAU);
+      const dTau = (currentTime - lastTimeRef.current) / 1000;
       lastTimeRef.current = currentTime;
 
       const store = useGameStore.getState();
@@ -228,6 +226,7 @@ export function useGameLoop({
           store.pendingSpawnEvents,
           myPos,
           Date.now(),
+          store.players,
         );
         if (result.firedSpawns.length > 0) {
           useGameStore.setState({ pendingSpawnEvents: result.remaining });
@@ -357,21 +356,22 @@ export function useGameLoop({
 
       // --- Host: Lighthouse AI (batched updates) ---
       if (peerManager.getIsHost()) {
-        const lhUpdates: Array<{ id: string; ps: ReturnType<typeof createPhaseSpace>; wl: ReturnType<typeof store.players.get> extends infer P ? P extends { worldLine: infer W } ? W : never : never }> = [];
+        const freshForLH = useGameStore.getState();
+        const lhUpdates: Array<{ id: string; ps: ReturnType<typeof createPhaseSpace>; wl: ReturnType<typeof freshForLH.players.get> extends infer P ? P extends { worldLine: infer W } ? W : never : never }> = [];
         const lhLasers: Laser[] = [];
 
-        for (const [lhId, lh] of store.players) {
+        for (const [lhId, lh] of freshForLH.players) {
           if (!isLighthouse(lhId)) continue;
           if (lh.isDead) continue;
 
           const result = processLighthouseAI(
-            store.players,
+            freshForLH.players,
             lhId,
             lh,
             dTau,
             currentTime,
             lighthouseLastFireRef.current,
-            store.lighthouseSpawnTime,
+            freshForLH.lighthouseSpawnTime,
           );
 
           lhUpdates.push({ id: lhId, ps: result.newPs, wl: result.newWl });
@@ -391,7 +391,7 @@ export function useGameLoop({
 
         // Batch apply all lighthouse state updates
         if (lhUpdates.length > 0) {
-          store.setPlayers((prev) => {
+          freshForLH.setPlayers((prev) => {
             const next = new Map(prev);
             for (const { id, ps, wl } of lhUpdates) {
               const existing = next.get(id);
@@ -403,7 +403,7 @@ export function useGameLoop({
           });
         }
         if (lhLasers.length > 0) {
-          store.setLasers((prev) => {
+          freshForLH.setLasers((prev) => {
             const updated = [...prev, ...lhLasers];
             return updated.length > MAX_LASERS
               ? updated.slice(updated.length - MAX_LASERS)
@@ -414,33 +414,34 @@ export function useGameLoop({
 
       // --- Host: Hit detection ---
       if (peerManager.getIsHost()) {
+        const freshForHit = useGameStore.getState();
         // Build invincible set (prune expired entries)
         const invincibleIds = new Set<string>();
-        for (const [id, until] of store.invincibleUntil) {
+        for (const [id, until] of freshForHit.invincibleUntil) {
           if (currentTime < until) invincibleIds.add(id);
-          else store.invincibleUntil.delete(id);
+          else freshForHit.invincibleUntil.delete(id);
         }
 
         const hitResult = processHitDetection(
-          store.players,
-          store.lasers,
-          store.processedLasers,
-          store.deadPlayers,
+          freshForHit.players,
+          freshForHit.lasers,
+          freshForHit.processedLasers,
+          freshForHit.deadPlayers,
           invincibleIds,
         );
 
         // Cleanup processedLasers
-        const currentLaserIds = new Set(store.lasers.map((l) => l.id));
-        for (const id of store.processedLasers) {
-          if (!currentLaserIds.has(id)) store.processedLasers.delete(id);
+        const currentLaserIds = new Set(freshForHit.lasers.map((l) => l.id));
+        for (const id of freshForHit.processedLasers) {
+          if (!currentLaserIds.has(id)) freshForHit.processedLasers.delete(id);
         }
-        if (store.processedLasers.size > PROCESSED_LASERS_CLEANUP_THRESHOLD) {
-          store.processedLasers.clear();
+        if (freshForHit.processedLasers.size > PROCESSED_LASERS_CLEANUP_THRESHOLD) {
+          freshForHit.processedLasers.clear();
         }
 
         if (hitResult.kills.length > 0) {
           for (const id of hitResult.hitLaserIds) {
-            store.processedLasers.add(id);
+            freshForHit.processedLasers.add(id);
           }
 
           for (const { victimId, killerId, hitPos } of hitResult.kills) {

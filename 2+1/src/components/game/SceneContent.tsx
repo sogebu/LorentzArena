@@ -11,6 +11,7 @@ import {
 import { useGameStore } from "../../stores/game-store";
 import { DebrisRenderer } from "./DebrisRenderer";
 import { LaserBatchRenderer } from "./LaserBatchRenderer";
+import { isLighthouse } from "./lighthouse";
 import { SpawnRenderer } from "./SpawnRenderer";
 import { WorldLineRenderer } from "./WorldLineRenderer";
 import {
@@ -274,6 +275,7 @@ export const SceneContent = ({
           color={player.color}
           observerPos={observerPos}
           observerBoost={observerBoost}
+          {...(isLighthouse(player.id) ? { tubeRadius: 0.06, tubeOpacity: 0.4 } : {})}
         />
       ))}
 

@@ -44,7 +44,7 @@ export const EXPLOSION_PARTICLE_COUNT = 30;
 export const LIGHTHOUSE_ID_PREFIX = "lighthouse-";
 export const LIGHTHOUSE_FIRE_INTERVAL = 3000; // ms
 export const LIGHTHOUSE_SPAWN_GRACE = 10000; // ms — don't fire for this long after spawn
-export const LIGHTHOUSE_COLOR = "hsl(200, 60%, 80%)"; // 薄い水色
+export const LIGHTHOUSE_COLOR = "hsl(220, 70%, 75%)"; // 薄い青
 
 // リスポーン後の無敵時間（ミリ秒）
 export const INVINCIBILITY_DURATION = 10000;
@@ -67,7 +67,6 @@ export const CAUSAL_FREEZE_HYSTERESIS = 2.0; // ヒステリシス: 既に凍結
 
 // --- Game loop ---
 export const GAME_LOOP_INTERVAL = 8; // ms
-export const MAX_DELTA_TAU = 0.1; // s — タブ復帰時の巨大ジャンプ防止
 export const PROCESSED_LASERS_CLEANUP_THRESHOLD = 500;
 
 // --- Pending events caps ---

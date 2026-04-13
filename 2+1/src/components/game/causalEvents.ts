@@ -58,6 +58,7 @@ export function firePendingSpawnEvents(
   pending: PendingSpawnEvent[],
   myPos: Vector4,
   fireTime: number,
+  players: Map<string, { color: string }>,
 ): SpawnEventsResult {
   const firedSpawns: SpawnEffect[] = [];
   const remaining: PendingSpawnEvent[] = [];
@@ -65,10 +66,12 @@ export function firePendingSpawnEvents(
   for (const ev of pending) {
     const spawnPosV4 = createVector4(ev.pos.t, ev.pos.x, ev.pos.y, ev.pos.z);
     if (isInPastLightCone(spawnPosV4, myPos)) {
+      // Resolve color from current player state (joinRegistry may have updated since creation)
+      const resolvedColor = players.get(ev.playerId)?.color ?? ev.color;
       firedSpawns.push({
         id: ev.id,
         pos: ev.pos,
-        color: ev.color,
+        color: resolvedColor,
         startTime: fireTime,
       });
     } else {

@@ -220,7 +220,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
         players: applyRespawn(state.players, playerId, position),
         pendingSpawnEvents: [
           ...state.pendingSpawnEvents,
-          { id: `spawn-${playerId}-${now}`, pos: position, color },
+          { id: `spawn-${playerId}-${now}`, playerId, pos: position, color },
         ].slice(-MAX_PENDING_SPAWN_EVENTS),
       });
     }

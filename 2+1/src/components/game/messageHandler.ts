@@ -5,8 +5,8 @@ import {
   createWorldLine,
 } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
-import { colorForPlayerId } from "./colors"; // fallback for syncTime init
-import { INVINCIBILITY_DURATION, MAX_LASERS, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
+import { INVINCIBILITY_DURATION, LIGHTHOUSE_COLOR, MAX_LASERS, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
+import { isLighthouse } from "./lighthouse";
 import { createRespawnPosition } from "./respawnTime";
 import type { Laser, RelativisticPlayer } from "./types";
 
@@ -129,7 +129,7 @@ export const createMessageHandler =
               return wl;
             })();
 
-        const color = existing?.color ?? getPlayerColor(playerId);
+        const color = existing?.color ?? (isLighthouse(playerId) ? LIGHTHOUSE_COLOR : getPlayerColor(playerId));
         const displayName = existing?.displayName ?? store.displayNames.get(playerId);
 
         const next = new Map(prev);
@@ -181,7 +181,7 @@ export const createMessageHandler =
           id: myId,
           phaseSpace: synced,
           worldLine: newWorldLine,
-          color: me?.color ?? colorForPlayerId(myId),
+          color: me?.color ?? getPlayerColor(myId),
           isDead: false,
         });
         return next;
@@ -189,15 +189,22 @@ export const createMessageHandler =
       store.invincibleUntil.set(myId, Date.now() + INVINCIBILITY_DURATION);
 
       // 初回スポーンエフェクト（過去光円錐到達時に発火）
-      const posX = store.players.get(myId)?.phaseSpace.pos.x ?? spawnX;
-      const posY = store.players.get(myId)?.phaseSpace.pos.y ?? spawnY;
+      // setPlayers 後なので fresh state から読む
+      const freshState = useGameStore.getState();
+      const freshMe = freshState.players.get(myId);
       useGameStore.setState((state) => ({
         pendingSpawnEvents: [
           ...state.pendingSpawnEvents,
           {
             id: `spawn-${myId}-${Date.now()}`,
-            pos: { t: msg.hostTime, x: posX, y: posY, z: 0 },
-            color: store.players.get(myId)?.color ?? colorForPlayerId(myId),
+            playerId: myId,
+            pos: {
+              t: msg.hostTime,
+              x: freshMe?.phaseSpace.pos.x ?? spawnX,
+              y: freshMe?.phaseSpace.pos.y ?? spawnY,
+              z: 0,
+            },
+            color: freshMe?.color ?? getPlayerColor(myId),
           },
         ],
       }));

@@ -15,8 +15,9 @@ export const Speedometer = ({
   myLaserColor,
   t,
 }: SpeedometerProps) => {
-  const v = lengthVector3(player.phaseSpace.u);
+  const uMag = lengthVector3(player.phaseSpace.u);
   const g = gamma(player.phaseSpace.u);
+  const speed = uMag / g; // 3-speed: v = |u| / γ = |u| / √(1 + |u|²)
 
   return (
     <div
@@ -56,7 +57,7 @@ export const Speedometer = ({
           }}
         />
       </div>
-      <div>{t("hud.speed")}: {(v * 100).toFixed(1)}% c</div>
+      <div>{t("hud.speed")}: {(speed * 100).toFixed(1)}% c</div>
       <div>{t("hud.gamma")}: {g.toFixed(3)}</div>
       <div>{t("hud.properTime")}: {player.phaseSpace.pos.t.toFixed(2)}s</div>
       <div>

@@ -119,6 +119,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         ...state.pendingSpawnEvents,
         {
           id: `spawn-${myId}-${Date.now()}`,
+          playerId: myId,
           pos: { t: initialPhaseSpace.pos.t, x: initialPhaseSpace.pos.x, y: initialPhaseSpace.pos.y, z: 0 },
           color: initialColor,
         },
@@ -147,6 +148,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         ...state.pendingSpawnEvents,
         {
           id: `spawn-${lighthouseId}-${Date.now()}`,
+          playerId: lighthouseId,
           pos: { t: lighthouse.phaseSpace.pos.t, x: lighthouse.phaseSpace.pos.x, y: lighthouse.phaseSpace.pos.y, z: 0 },
           color: lighthouse.color,
         },

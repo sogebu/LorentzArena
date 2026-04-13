@@ -14,7 +14,7 @@ export const ja = {
   "hud.orthographic": "正射影",
   "hud.perspective": "透視投影",
   // HUD - stats
-  "hud.speed": "速度",
+  "hud.speed": "速さ",
   "hud.gamma": "ガンマ因子",
   "hud.properTime": "固有時間",
   "hud.position": "位置",

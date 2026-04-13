@@ -14,6 +14,8 @@ export const WorldLineRenderer = ({
   color,
   observerPos,
   observerBoost,
+  tubeRadius = 0.03,
+  tubeOpacity = 0.65,
 }: WorldLineRendererProps) => {
   const tubeRef = useRef<THREE.Mesh>(null);
   const prevTubeGeoRef = useRef<THREE.TubeGeometry | null>(null);
@@ -33,7 +35,7 @@ export const WorldLineRenderer = ({
     );
     const curve = new THREE.CatmullRomCurve3(points, false, "centripetal", 0.5);
     const segments = Math.max(1, points.length * 2);
-    const geo = new THREE.TubeGeometry(curve, segments, 0.03, 6, false);
+    const geo = new THREE.TubeGeometry(curve, segments, tubeRadius, 6, false);
     prevTubeGeoRef.current = geo;
     return geo;
   }, [geoVersion, wl]);
@@ -65,7 +67,7 @@ export const WorldLineRenderer = ({
             roughness={0.4}
             metalness={0.1}
             transparent
-            opacity={0.65}
+            opacity={tubeOpacity}
           />
         </mesh>
       )}

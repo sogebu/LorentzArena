@@ -212,7 +212,6 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | `PLAYER_MARKER_SIZE_OTHER` | 0.2 | 他機マーカーサイズ |
 | `LIGHT_CONE_HEIGHT` | 20 | 描画上の円錐サイズ（c=1 で radius=height） |
 | `GAME_LOOP_INTERVAL` | 8 ms | `setInterval`（タブ非アクティブ対応） |
-| `MAX_DELTA_TAU` | 100 ms | タブ復帰時の巨大ジャンプ防止 |
 | `CAUSAL_FREEZE_HYSTERESIS` | 2.0 | 因果律凍結の振動防止閾値 |
 
 | パラメータ（コード内） | 値 | 説明 |

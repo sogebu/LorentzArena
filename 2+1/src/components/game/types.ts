@@ -27,8 +27,9 @@ export type DeathEvent = {
 // スポーンイベント（過去光円錐到達まで UI 遅延）
 export type PendingSpawnEvent = {
   readonly id: string;
+  readonly playerId: string;
   readonly pos: { t: number; x: number; y: number; z: number };
-  readonly color: string;
+  readonly color: string; // fallback color (may be stale at creation time)
 };
 
 // キルイベント（過去光円錐到達まで UI 遅延）
@@ -77,6 +78,8 @@ export type WorldLineRendererProps = {
   color: string;
   observerPos: Vector4 | null;
   observerBoost: ReturnType<typeof lorentzBoost> | null;
+  tubeRadius?: number;
+  tubeOpacity?: number;
 };
 
 export type KillNotification3D = {
