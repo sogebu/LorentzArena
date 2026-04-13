@@ -2,12 +2,12 @@
 
 ## 現在のステータス
 
-対戦可能。**`64a7e15` デプロイ済み** (build `2026/04/13 14:35:19 JST`)。
+対戦可能。**`73e9af1` デプロイ済み** (build `2026/04/13 15:13:16 JST`)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
 ## 直近の変更（2026-04-13）
 
-### START でホスト決定 + クライアント syncTime 初期化（未デプロイ）
+### START でホスト決定 + クライアント syncTime 初期化 (`73e9af1`)
 
 PeerProvider を START 後にマウントし、最初に START を押した人がホストに。クライアントは自己初期化せず syncTime でスポーン。Lobby から usePeer() 削除。
 
