@@ -11,7 +11,38 @@
 | `useGameLoop.ts` | 486 | defer | `sendToNetwork` ヘルパー抽出で 3 箇所のネットワーク送信重複を解消。Lighthouse ループ内の setPlayers/setLasers をバッチ化。行数は微増（バッチ化コードの追加分）だが構造は改善 |
 | `SceneContent.tsx` | 449 | — | マジックナンバー定数化 + マーカー描画のインライン圧縮で 513→449 行に削減 |
 
-**再評価トリガー**: 新機能追加で useGameLoop の props が更に増えたとき、または PeerProvider に新しい接続モードを追加するとき。PeerProvider が 1100 行を超えたら分割を再検討。
+**再評価トリガー**: Zustand 移行（下記）で RelativisticGame / useGameLoop / SceneContent は大幅に変わる。PeerProvider が 1100 行を超えたら分割を再検討。
+
+### Zustand 移行計画（2026-04-13 策定、次セッションで実施）
+
+**動機**: invincibility 実装で「ref 1 本追加 → 7 ファイル変更」の props drilling 税が顕在化。RelativisticGame.tsx が 30 個の state/ref を持ち、useGameLoop (34 props), messageHandler (14 props), SceneContent (12 props) に手渡ししている構造が根本原因。
+
+**ストア設計**:
+
+| カテゴリ | 項目 | Zustand? | 理由 |
+|---|---|---|---|
+| ゲーム状態（複数モジュールが共有） | players, lasers, scores, spawns, frozenWorldLines, debrisRecords, pendingKillEvents, pendingSpawnEvents, displayNames | ✅ store | useGameLoop + messageHandler + SceneContent が全て参照 |
+| ネットワーク内部状態（複数モジュールが共有） | invincibleUntil, deadPlayers, processedLasers, deathTimeMap | ✅ store | useGameLoop + messageHandler が参照 |
+| UI 状態（RelativisticGame ローカル） | showInRestFrame, useOrthographic, deathFlash, isFiring, killNotification, fps, energy | ❌ local | 描画トリガーのみ、他モジュール不要 |
+| フレームレート ref（ゲームループ内のみ） | cameraYaw, cameraPitch, causalFrozen, lastLaserTime, energyRef, fpsRef | ❌ local ref | 毎フレーム更新、React re-render 不要 |
+| ネットワーク内部（ゲームループ専用） | lighthouseLastFire, lighthouseSpawnTime, respawnTimeouts, ghostTau, myDeathEvent | ❌ local ref | useGameLoop 内で完結 |
+
+**shadow ref 解消**: 現在 `playersRef`/`lasersRef`/`scoresRef` は useState の shadow（setPlayers ラッパーで手動同期）。Zustand の `getState()` は同期的に最新値を返すので shadow ref が不要になり、同期忘れバグの温床（DESIGN.md 残存臭 #1 の残り）も消える。
+
+**移行フェーズ**:
+
+1. `pnpm add zustand` + `game-store.ts` 作成 — ゲーム状態 + アクション定義（~150 行）
+2. RelativisticGame.tsx — state/ref 宣言を store に移動、setPlayers ラッパー廃止、UI state は local に残す
+3. useGameLoop.ts — GameLoopDeps インターフェースを大幅縮小（~34 props → ~10）、`store.getState()` で読む
+4. messageHandler.ts — MessageHandlerDeps 縮小（~14 props → ~5）、store アクションを直接呼ぶ
+5. SceneContent.tsx — props を store selector に置換、SceneContentProps 縮小（~12 props → ~4）
+
+**リスク**:
+- `setInterval` 内で `getState()` を毎フレーム呼ぶパフォーマンス → O(1) なので問題なし（Zustand のドキュメントでもこのパターンを推奨）
+- React re-render 範囲 → `useStore(s => s.players)` のように selector で必要な部分だけ購読。shallow equality で不要な re-render を防ぐ
+- 移行中の regression → フェーズごとに動作確認。各フェーズは独立にコミット可能
+
+**期待効果**: 新しいゲーム状態の追加が「store に 1 行 + 使う側に 1 行」で完結。現在の 7 ファイル配線が不要に。
 
 ### コードベース一括整理（2026-04-13）
 
