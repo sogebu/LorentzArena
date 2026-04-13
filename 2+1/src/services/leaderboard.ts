@@ -28,7 +28,7 @@ export const submitScore = (baseUrl: string, entry: HighScoreEntry): void => {
   const body = JSON.stringify(entry);
   const url = `${baseUrl}/leaderboard`;
   if (navigator.sendBeacon) {
-    navigator.sendBeacon(url, new Blob([body], { type: "application/json" }));
+    navigator.sendBeacon(url, new Blob([body], { type: "text/plain" }));
   } else {
     fetch(url, {
       method: "POST",
