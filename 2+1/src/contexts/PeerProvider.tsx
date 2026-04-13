@@ -556,9 +556,11 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
           clearTimeout(tabHiddenTimerRef.current);
           tabHiddenTimerRef.current = undefined;
         } else if (wasDestroyedByHideRef.current) {
-          // PeerManager was destroyed while hidden → reconnect
+          // PeerManager was destroyed while hidden → reconnect as client.
+          // Use Phase 2 (not Phase 1) to keep the original random ID.
+          // Phase 1 would take la-{roomName}, changing identity and color.
           wasDestroyedByHideRef.current = false;
-          setConnectionPhase("trying-host");
+          setConnectionPhase("connecting-client");
         }
       }
     };
