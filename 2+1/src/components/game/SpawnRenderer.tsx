@@ -41,9 +41,9 @@ export const SpawnRenderer = ({
     <>
       {Array.from({ length: ringCount }, (_, i) => {
         const ringProgress = (progress * 3 + i / ringCount) % 1;
-        const ringRadius = (1 - ringProgress) * 4;
+        const ringRadius = (1 - ringProgress) * 2;
         const ringOpacity = opacity * (1 - ringProgress) * 0.8;
-        const ringT = spawn.pos.t + i * 0.5;
+        const ringT = spawn.pos.t + i * 0.25;
 
         const worldPos = createVector4(ringT, spawn.pos.x, spawn.pos.y, 0);
         const displayPos = transformEventForDisplay(
@@ -52,7 +52,7 @@ export const SpawnRenderer = ({
           observerBoost,
         );
 
-        if (ringRadius < 0.1 || ringOpacity < 0.01) return null;
+        if (ringRadius < 0.05 || ringOpacity < 0.01) return null;
 
         return (
           <mesh
@@ -73,7 +73,7 @@ export const SpawnRenderer = ({
       })}
       {/* 中心の光柱（時間軸方向） */}
       {(() => {
-        const pillarHeight = 6 * (1 - progress * 0.5);
+        const pillarHeight = 3 * (1 - progress * 0.5);
         const displayPos = transformEventForDisplay(
           spawnEvent,
           observerPos,

@@ -21,7 +21,7 @@ export const MAX_DEBRIS = 20;
 export const MAX_LASERS = 1000;
 
 // 当たり判定の半径
-export const HIT_RADIUS = 0.5;
+export const HIT_RADIUS = 0.25;
 
 // スポーン範囲（x, y）
 export const SPAWN_RANGE = 10;
@@ -78,5 +78,5 @@ export const MAX_PENDING_SPAWN_EVENTS = 50;
 export const LIGHT_CONE_HEIGHT = 20;
 
 // --- Player marker sizes ---
-export const PLAYER_MARKER_SIZE_SELF = 0.42;
-export const PLAYER_MARKER_SIZE_OTHER = 0.2;
+export const PLAYER_MARKER_SIZE_SELF = 0.21;
+export const PLAYER_MARKER_SIZE_OTHER = 0.1;

@@ -36,7 +36,7 @@ export const generateExplosionParticles = (victimU?: Vector3) => {
       dx,
       dy,
       speed,
-      size: 0.2 + Math.random() * 0.4,
+      size: 0.1 + Math.random() * 0.2,
     });
   }
   return particles;

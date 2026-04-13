@@ -237,7 +237,7 @@ export const SceneContent = ({
   return (
     <>
       <ambientLight intensity={0.5} />
-      <pointLight position={[10, 10, 10]} intensity={1} />
+      <pointLight position={[5, 5, 5]} intensity={1} />
 
       {/* 凍結世界線（世界オブジェクト）を描画 */}
       {frozenWorldLines.map((fw, i) => (
@@ -416,7 +416,7 @@ export const SceneContent = ({
         const c = getThreeColor(laser.color);
         return (
           <group key={`laser-future-${laser.id}`} position={[pos.x, pos.y, pos.t]}>
-            <mesh geometry={sharedGeometries.laserIntersectionDot} scale={[0.7, 0.7, 0.7]}>
+            <mesh geometry={sharedGeometries.laserIntersectionDot} scale={[0.35, 0.35, 0.35]}>
               <meshBasicMaterial color={c} transparent opacity={0.15} depthWrite={false} />
             </mesh>
           </group>
@@ -426,10 +426,10 @@ export const SceneContent = ({
         const c = getThreeColor(colorText);
         return (
           <group key={`future-${playerId}`} position={[pos.x, pos.y, pos.t]}>
-            <mesh geometry={sharedGeometries.intersectionSphere} scale={[0.6, 0.6, 0.6]}>
+            <mesh geometry={sharedGeometries.intersectionSphere} scale={[0.3, 0.3, 0.3]}>
               <meshBasicMaterial color={c} transparent opacity={0.15} depthWrite={false} />
             </mesh>
-            <mesh geometry={sharedGeometries.intersectionRing} scale={[0.8, 0.8, 0.8]}>
+            <mesh geometry={sharedGeometries.intersectionRing} scale={[0.4, 0.4, 0.4]}>
               <meshBasicMaterial color={c} transparent opacity={0.12} depthWrite={false} />
             </mesh>
           </group>

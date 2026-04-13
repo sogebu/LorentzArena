@@ -16,7 +16,7 @@ import {
 import type { SceneContentProps } from "./types";
 
 // デブリ描画用の共有リソース（太いシリンダーで描画）
-const debrisCylinderGeo = new THREE.CylinderGeometry(1, 1, 1, 4, 1);
+const debrisCylinderGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 4, 1);
 const _debrisMatrix = new THREE.Matrix4();
 const _debrisStart = new THREE.Vector3();
 const _debrisEnd = new THREE.Vector3();
@@ -59,7 +59,7 @@ export const DebrisRenderer = ({
       debris.deathPos.y,
       0,
     );
-    const maxLambda = 5;
+    const maxLambda = 2.5;
     const debrisColor = getThreeColor(debris.color);
 
     const startDisplay = transformEventForDisplay(
@@ -87,7 +87,7 @@ export const DebrisRenderer = ({
         startX: startDisplay.x, startY: startDisplay.y, startT: startDisplay.t,
         endX: endDisplay.x, endY: endDisplay.y, endT: endDisplay.t,
         r: debrisColor.r, g: debrisColor.g, b: debrisColor.b,
-        radius: p.size * 0.2,
+        radius: p.size * 0.1,
       });
 
       const intersection = pastLightConeIntersectionDebris(
@@ -107,7 +107,7 @@ export const DebrisRenderer = ({
           <mesh
             key={`debris-${di}-${pi}`}
             position={[displayPos.x, displayPos.y, displayPos.t]}
-            scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
+            scale={[p.size * 0.75, p.size * 0.75, p.size * 0.75]}
             geometry={sharedGeometries.explosionParticle}
             material={getDebrisMaterial(debrisColor)}
           />,

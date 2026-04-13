@@ -41,7 +41,7 @@ export const WorldLineRenderer = ({
     );
     const curve = new THREE.CatmullRomCurve3(points, false, "centripetal", 0.5);
     const segments = Math.max(1, points.length * 2);
-    const geo = new THREE.TubeGeometry(curve, segments, 0.04, 6, false);
+    const geo = new THREE.TubeGeometry(curve, segments, 0.02, 6, false);
     prevTubeGeoRef.current = geo;
     return geo;
   }, [geoVersion, wl]);
@@ -53,12 +53,12 @@ export const WorldLineRenderer = ({
       return null;
     }
     const o = wl.origin;
-    const len = 200;
+    const len = 100;
     const start = positionAlongStraightWorldLine(o, len);
     const end = new THREE.Vector3(o.pos.x, o.pos.y, o.pos.t);
     const startVec = new THREE.Vector3(start.x, start.y, start.t);
     const curve = new THREE.LineCurve3(startVec, end);
-    const geo = new THREE.TubeGeometry(curve, 2, 0.04, 6, false);
+    const geo = new THREE.TubeGeometry(curve, 2, 0.02, 6, false);
     prevHalfLineGeoRef.current = geo;
     return geo;
   }, [showHalfLine, wl.origin]);
