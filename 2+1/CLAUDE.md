@@ -158,9 +158,9 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 - 永続デブリ: 死亡イベントからの等速直線運動パーティクル。lineSegments でバッチ描画。マーカーは過去光円錐交差で表示（maxLambda は固定値、observer 非依存）
 - 世界線管理: `player.worldLine` 1本のみ。過去のライフは `frozenWorldLines[]` に格納
 - 世界線の過去延長: `WorldLine.origin` で制御。最初のライフのみ origin から半直線延長
-- プレイヤー色は `colorForPlayerId(id)` で決定的に算出（純関数、ネットワーク同期不要）。詳細は DESIGN.md「色割り当て: 決定的純関数」
+- プレイヤー色は `colorForJoinOrder(index)` が主（接続順 × 黄金角）、peerList 未受信時は `colorForPlayerId(id)` にフォールバック。ネットワーク同期不要の純関数方式。詳細は DESIGN.md「色割り当て」
 - 因果律の守護者: 他プレイヤーの未来光円錐内で操作凍結。死亡プレイヤー・灯台は除外。灯台は別方式: 誰かの過去光円錐に落ちたら最も過去の生存プレイヤーの座標時間にジャンプ
-- 光円錐描画: FrontSide 半透明サーフェス（opacity 0.2）+ FrontSide ワイヤーフレーム（opacity 0.3）で手前/奥の区別
+- 光円錐描画: DoubleSide 半透明サーフェス（opacity 0.1）で未来/過去光円錐を表示
 
 ### メッセージタイプ (`src/types/message.ts`)
 
@@ -175,17 +175,19 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | `ping` | host → all | ハートビート（3秒間隔、8秒タイムアウトでホスト切断検知） |
 | `hostMigration` | new host → all | ホストマイグレーション（スコア + dead players + displayNames 引継ぎ） |
 | `intro` | 双方向（host 中継） | プレイヤー表示名通知（接続時に 1 回送信） |
-| `peerList` | host → all | 接続ピア一覧（接続変化時に proactive 送信） |
+| `peerList` | host → all | 接続ピア一覧 + joinRegistry 全履歴（接続変化時に proactive 送信） |
 
 | `redirect` | beacon → client | マイグレーション後のホスト ID リダイレクト |
 
-**色は同期しない**: 全ピアが `colorForJoinOrder(index)` で接続順に基づく色を独立に算出（peerList から各自 append-only joinRegistry を構築）。peerList 未受信時は `colorForPlayerId(id)` にフォールバック。ネットワークで色を直接同期するメッセージはない。詳細: DESIGN.md「色割り当て」
+**色は同期しない**: 全ピアが `colorForJoinOrder(index)` で接続順に基づく色を独立に算出。ホストが peerList に `joinRegistry`（全履歴）を含めて送信し、クライアントは丸ごと置換（ホストが唯一の正本）。peerList 未受信時は `colorForPlayerId(id)` にフォールバック。ネットワークで色を直接同期するメッセージはない。詳細: DESIGN.md「色割り当て」
 
 ホスト権威メッセージ（kill, respawn, score）: ホストはゲームループで処理済みのため messageHandler でスキップ（二重処理防止）。
 
 メッセージバリデーション: `messageHandler.ts` で全メッセージに `isFiniteNumber`/`isValidVector4`/`isValidVector3`/`isValidColor`/`isValidString` のランタイム検証を実施。laser range は `0 < range <= 100`、score は全エントリ検証。
 
 ### ゲームパラメータ（`game/constants.ts`）
+
+全パラメータは `constants.ts` に集約（一部描画パラメータはコード内）:
 
 | パラメータ | 値 | 説明 |
 |---|---|---|
@@ -196,25 +198,26 @@ localStorage ベースの永続スコア。`loadHighScores()`, `saveHighScore(en
 | `LASER_COOLDOWN` | 100 ms | レーザー連射間隔 |
 | `HIT_RADIUS` | 0.5 | 当たり判定の半径 |
 | `MAX_LASERS` | 1000 | レーザー保持上限 |
-| `MAX_FROZEN_WORLDLINES` | 20 | 凍結世界線の保持上限（世界オブジェクト） |
-| `MAX_DEBRIS` | 20 | デブリの保持上限（世界オブジェクト） |
+| `MAX_FROZEN_WORLDLINES` | 20 | 凍結世界線の保持上限 |
+| `MAX_DEBRIS` | 20 | デブリの保持上限 |
 | `EXPLOSION_PARTICLE_COUNT` | 30 | デブリパーティクル数 |
+| `MAX_WORLDLINE_HISTORY` | 5000 | 世界線のサンプル数上限 |
+| `PLAYER_ACCELERATION` | 0.8 c/s | プレイヤー加速度 |
+| `FRICTION_COEFFICIENT` | 0.5 | 速度に比例する減速 |
+| `CAMERA_DISTANCE_*` | 正射影: 100, 透視: 15 | カメラ距離 |
+| `CAMERA_YAW/PITCH_SPEED` | yaw: 0.8, pitch: 0.5 rad/s | カメラ回転速度 |
+| `CAMERA_PITCH_MIN/MAX` | ±89.9° | カメラ仰角範囲 |
+| `LIGHT_CONE_HEIGHT` | 40 | 描画上の円錐サイズ |
+| `GAME_LOOP_INTERVAL` | 8 ms | `setInterval`（タブ非アクティブ対応） |
+| `MAX_DELTA_TAU` | 100 ms | タブ復帰時の巨大ジャンプ防止 |
+| `CAUSAL_FREEZE_HYSTERESIS` | 2.0 | 因果律凍結の振動防止閾値 |
 
 | パラメータ（コード内） | 値 | 説明 |
 |---|---|---|
-| `MAX_WORLDLINE_HISTORY` | 5000 | 世界線のサンプル数上限（`constants.ts`、`worldLine.ts` 内部名は `maxHistorySize`） |
-| 加速度 | 0.8 c/s | `8 / 10` |
-| 摩擦係数 | 0.5 | 速度に比例する減速 |
-| カメラ距離 | 正射影: 100, 透視: 15 | |
-| カメラ回転速度 | yaw: 0.8 rad/s, pitch: 0.5 rad/s | |
-| カメラ仰角範囲 | ±89.9° | |
 | ビーム opacity | 0.4 | レーザー世界線の透明度 |
-| デブリ opacity | 0.10 | デブリ世界線の透明度（InstancedMesh シリンダー、レーザーより薄く区別） |
-| 光円錐高さ | 40 | 描画上の円錐サイズ |
+| デブリ opacity | 0.10 | デブリ世界線の透明度（レーザーより薄く区別） |
 | デブリ速度 | 被撃破機の固有速度 + kick 0〜0.8 | 固有速度空間で加算後 3速度に正規化（\|v\|<1 自動保証） |
 | `TUBE_REGEN_INTERVAL` | 8 | TubeGeometry 再生成の間引き（version を 8 で量子化） |
-| ゲームループ | 8 ms interval | `setInterval`（タブ非アクティブ対応） |
-| dτ 上限 | 100 ms | タブ復帰時の巨大ジャンプ防止 |
 
 | タッチパラメータ（`touchInput.ts`） | 値 | 説明 |
 |---|---|---|
