@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**`79d6a29` デプロイ済み** (build `2026/04/14 01:57:06 JST`)。
+対戦可能。**`bc93fe2` デプロイ済み** (Authority 解体 Stage A〜H 全完了、build `2026/04/15 00:10:51 JST`)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
 ### Authority 解体リファクタ: **完了**
