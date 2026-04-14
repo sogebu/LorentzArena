@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { RESPAWN_DELAY } from "../components/game/constants";
+import { isLighthouse } from "../components/game/lighthouse";
 import { createRespawnPosition } from "../components/game/respawnTime";
 import { selectDeadPlayerIds, useGameStore } from "../stores/game-store";
 
@@ -49,8 +50,13 @@ export function useHostMigration({
 
     const store = useGameStore.getState();
 
-    // Stage C: deadPlayers / deathTime は killLog / respawnLog から derive。
-    // 該当 victim の latest kill wallTime を deathTime として採用。
+    // Stage D: 人間プレイヤーの respawn timer は owner (= 本人) が持ち続けて
+    // いる。migration で再構築しない。ここで扱うのは Lighthouse のみ
+    // (owner = beacon holder = 自分に移管)。
+    //
+    // hostMigration payload は Stage F で廃止予定。今は deadPlayers / scores /
+    // displayNames を歴史的互換で送る (クライアントは scores / displayNames
+    // だけ消費)。
     const deadIds = selectDeadPlayerIds(store);
     const latestKillWallTime = new Map<string, number>();
     for (const e of store.killLog) {
@@ -61,8 +67,10 @@ export function useHostMigration({
     }
     const deadPlayersList: Array<{ playerId: string; deathTime: number }> = [];
     for (const playerId of deadIds) {
-      const deathTime = latestKillWallTime.get(playerId) ?? Date.now();
-      deadPlayersList.push({ playerId, deathTime });
+      deadPlayersList.push({
+        playerId,
+        deathTime: latestKillWallTime.get(playerId) ?? Date.now(),
+      });
     }
 
     // Broadcast hostMigration to all connected peers
@@ -74,9 +82,24 @@ export function useHostMigration({
       displayNames: Object.fromEntries(store.displayNames),
     });
 
-    // Reconstruct respawn timers for dead players
+    // Lighthouse owner を新 host (自分) に書き換え
+    store.setPlayers((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      for (const [id, player] of next) {
+        if (isLighthouse(id) && player.ownerId !== myId) {
+          next.set(id, { ...player, ownerId: myId });
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+
+    // LH の respawn timer を張り直し (killLog から残り時間を計算)
     const now = Date.now();
-    for (const { playerId, deathTime } of deadPlayersList) {
+    for (const playerId of deadIds) {
+      if (!isLighthouse(playerId)) continue;
+      const deathTime = latestKillWallTime.get(playerId) ?? now;
       const elapsed = now - deathTime;
       const remaining = Math.max(0, RESPAWN_DELAY - elapsed);
 
