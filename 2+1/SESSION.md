@@ -51,7 +51,12 @@
 
   4. **描画層の合成**: WorldLineRenderer / LaserBatchRenderer がどのように frozen と current を合成描画しているか。TubeGeometry のセグメント結合で境界が見えていないだけの視覚的問題の可能性
 
-- **未調査**: 何 peer 構成で・誰が死んだ時・どの peer (本人 / killer / 第三者 / snapshot を受けた新 joiner) から見て発生するか
+  5. **host migration との連動** (ユーザー報告の観察): migration を跨いだタイミングでのみ / 特に強く発生する可能性。候補経路:
+     - migration 時に RelativisticGame init effect が `isBeaconHolder` 変化で再実行される。Stage D-3 で LH は idempotent ガード済みだが、self player 側にも似た競合が残っているか要確認
+     - useBeaconMigration の LH owner 書き換え時、`setPlayers` が LH entry を差し替える瞬間に in-flight の phaseSpace / respawn と race
+     - migration 前後で死亡中だった player の respawn が旧 beacon holder 側で scheduled → 切断で失われる → 新 beacon holder 側での自動スケジュールがないため、世界線が宙ぶらりんになって合成境界がズレる
+
+- **未調査**: 何 peer 構成で・誰が死んだ時・どの peer (本人 / killer / 第三者 / snapshot を受けた新 joiner) から見て発生するか。特に **host migration 直前直後** に集中して起きるかどうか (ユーザー観察の示唆)
 - **対処**: Stage F-2/G/H では自動解消しない見込みのため、Stage F-2 以降の途中で独立タスクとして調査予定
 
 ### ホストマイグレーション時の位置飛び（Stage F で解消見込み）

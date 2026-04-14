@@ -137,6 +137,50 @@ Stage E 以降、`isLighthouse` は 3 つの metadata 役割のみを持つ:
 
 authority や所有構造の判定には使わず、owner 判定は `player.ownerId === myId` に統一。
 
+**F-1: snapshot は既存 peer へ送らない (event log で自己維持可能だから)**
+
+元々 `hostMigration` メッセージは新 host が scores / deadPlayers / displayNames を broadcast する設計だったが、Stage C で state が event-sourced になった時点で **既存 peer は自分で state を維持できる** ようになっていた。実際 `hostMigration.deadPlayers` payload は受信側で一度も参照されていなかった dead code。F-1 は「既存 peer 宛ての broadcast はゼロ、新規 join 宛てに snapshot 1 本」という非対称な設計に到達。
+
+副作用で「migration 時に新 host の init effect が既存 peer に syncTime を誤送信して自機を reset する」という潜在バグも同時解消した (init effect から全 connection 送信を撤去、新 connection 検出は `prevConnectionIdsRef` で差分だけに絞る)。
+
+**F-1: snapshot は相対的に重いが新規 join 時限定なので許容**
+
+各プレイヤーの `worldLine.history` を丸ごと serialize するため、最大で 5000 サンプル × プレイヤー数 = 数 MB。WebRTC DataChannel は通せるが実用上は重い。これを許容した理由: (a) 送信頻度は「新規 join 時の 1 回だけ」、(b) 過去世界線がないと観測者の過去光円錐交差計算が機能せず「誰も見えない」状態で参加することになり UX 破綻、(c) 圧縮や差分配信は scope が Authority 解体と直交する。将来必要になれば delta encoding / tail-only snapshot を検討。
+
+**F-2: naming refactor の scope は「API と内部フィールド」に限定、wire protocol と UI は保持**
+
+rename する:
+- PeerManager / WsRelayManager の method 名 (`getIsHost` → `getIsBeaconHolder` 等) と private field (`isHost` → `isBeaconHolder`)
+- hook 名 (`useHostMigration` → `useBeaconMigration`)、ファイル名も git mv
+- RelativisticGame 内の computed `isHost` 変数
+
+保持する:
+- **relay-server との wire protocol**: WsRelayManager が外部 relay サーバーに送る `{type:"join_host", hostId}` / `{type:"set_host"}` / `{type:"promote_host"}` / `{type:"host_closed"}` など。既デプロイされた relay サーバーと互換を壊すと運用障害になるため、内部名 (beaconHolderId) と wire 名 (hostId) の翻訳点を WsRelayManager 内で吸収
+- **UI 文字列 / connection phase**: `"trying-host"` 等は user-facing な接続フェーズ概念で、認識上 "host" という言葉が定着している。置換のメリットは美的のみで semantic 改善はゼロ、むしろ UX 用語と実装用語の同期コストを生む
+- **コメント / 定数名**: `HEARTBEAT_INTERVAL` の "Host sends" 等の説明コメントは意味的に同値なので触らない (レビュー時のノイズを増やさない)
+
+**G: heartbeat 積極化の前提は「false positive のコストがほぼゼロ」**
+
+旧設計 (Stage A 前) では host 切断で state を丸ごと引き継ぐ必要があり、誤検知による無駄な migration が state inconsistency / ghost deaths を招いた。そのため `HEARTBEAT_INTERVAL = 3s`, `HEARTBEAT_TIMEOUT = 8s` と保守寄りだった。
+
+Stage A〜F 後は migration で失うのは beacon ownership だけで、各 peer の state は自己維持される。誤検知で無駄に migration しても単に新 beacon holder が選び直されるだけで、state は一切動かない。この前提で `1s / 2.5s` まで踏み込める。
+
+**G: `HOST_HIDDEN_GRACE` は `HEARTBEAT_TIMEOUT` より短くなければならない**
+
+beacon holder のタブが hidden になると client 側 heartbeat は `HEARTBEAT_TIMEOUT` で migration を triggerするが、host 側は `HOST_HIDDEN_GRACE` で自分の PeerManager を destroy する。この 2 つの順序が逆転すると、host が自分を壊す前に client が migrate → host が復帰しても別世界になる。grace を必ず短く保つ (`1500ms < 2500ms`)。タイミング変更時の invariant。
+
+**G: visibility 復帰時の `lastPingRef` reset**
+
+背景タブでは `setInterval` が 1Hz 上限にスロットルされるため、2.5s timeout は容易に超過する。タブ復帰時に `lastPingRef.current = Date.now()` で reset することで「次の 1 ping が実際に来るか」を新たに計測し直し、false positive migration を回避。grace 期間の明示的フラグではなく timestamp reset で実現しているのは、heartbeat ロジック自体を触らずに済むため。
+
+**H: `beaconChange` メッセージは新設せず**
+
+当初 plan では `beaconChange` で「俺が新 beacon holder になった」を通知する想定だったが、実装段階で不要と判明。各 peer は `peerOrderRef` ベースの local election で新 beacon holder を独立に決定でき、broadcast を待つ必要がない。「beacon holder が誰か」の UI 表示は各 peer の `getBeaconHolderId()` で足りる。plan は beaconChange の使途を「state 引き継ぎの軽量化」としていたが、そもそも state 引き継ぎ自体を廃止したので broadcast の必要性も消えた。
+
+**H: 型削除は 2 段階 (送信撤去 → 受信ハンドラと型削除)**
+
+`syncTime` / `hostMigration` は F-1 で送信を止めてから、H で型とハンドラを削除する 2 段階。間の期間は「旧版 peer が送ってきても受信できる」backward compat ウィンドウで、段階移行時の安全装置。最終 deploy 時には新版で揃うので不要になり、H で片付ける。
+
 ### リファクタリング現状評価（2026-04-13 更新）
 
 | ファイル | 行数 | 判断 | 理由 |

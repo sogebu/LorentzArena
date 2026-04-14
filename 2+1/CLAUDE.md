@@ -35,6 +35,8 @@ deploy 後は、以下をユーザーに報告すること:
 - **preview_start 使用時**: launch.json の `lorentz-arena` を使う。起動後は必ず localhost URL をリンクで出力する（`~/Claude/CLAUDE.md` 規約）。ポートが変わる場合があるのでサーバーログで確認
 - **preview ブラウザが PeerJS ID を奪う**: preview_start でページが開くと PeerJS ルーム ID (`la-{roomName}`) を取得してしまい、ユーザーのブラウザが接続できなくなる。マルチタブテストは `pnpm dev` をバックグラウンドで起動し、preview ブラウザでページを開かないこと
 - **HMR と module-level 定数**: `OFFSET = Date.now()/1000` のような module-level 定数を変更した場合、HMR で既存タブに反映されても、変更前に評価された値がキャッシュされることがある。定数変更後は**全タブを手動リロード**すること
+- **preview_eval で store 覗きたい時の quirk**: `await import('/LorentzArena/src/stores/game-store.ts')` で zustand store を取得すると、走っている app のインスタンスとは **別の fresh インスタンス** が返ってくる (state が空)。Vite ESM の module registry がリクエスト経路で分かれるため。store 経由の debug は諦めて `document.body.innerText` や HUD の screenshot で状態確認するか、開発時だけ `window.__store = useGameStore` 等を追加して HMR させる
+- **single-tab preview でカバーできる範囲**: beacon holder 自己 death/respawn、LH kill/respawn、scoring UI、handleKill / selector の動作。**できない範囲**: snapshot の新規 join path、relay 経由の kill/respawn、client ↔ client、beacon migration。これらは multi-tab を開いてユーザーに検証依頼
 
 ### ネットワーク設定
 
