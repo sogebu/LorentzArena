@@ -41,6 +41,32 @@ export type PendingKillEvent = {
   readonly victimColor: string;
 };
 
+/**
+ * Authority 解体 Stage C の event log エントリ。
+ * 全 kill は不変記録として killLog に append される。
+ * `firedForUi`: 過去光円錐到達で UI score に反映済みかどうか (Stage C-3 で
+ * firePendingKillEvents が書き換える)。
+ * `wallTime`: invincibility / respawn timer / leaderboard の判定用。
+ * coord time は `hitPos.t` で保持されるので冗長保存しない。
+ */
+export type KillEventRecord = {
+  readonly victimId: string;
+  readonly killerId: string;
+  readonly hitPos: { t: number; x: number; y: number; z: number };
+  readonly wallTime: number;
+  firedForUi: boolean;
+};
+
+/**
+ * Authority 解体 Stage C の event log エントリ (respawn 側)。
+ * coord time は `position.t` で保持。
+ */
+export type RespawnEventRecord = {
+  readonly playerId: string;
+  readonly position: { t: number; x: number; y: number; z: number };
+  readonly wallTime: number;
+};
+
 export type RelativisticPlayer = {
   id: string;
   /**

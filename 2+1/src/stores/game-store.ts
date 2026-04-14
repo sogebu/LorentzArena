@@ -14,11 +14,13 @@ import type {
   DeathEvent,
   DebrisRecord,
   FrozenWorldLine,
+  KillEventRecord,
   KillNotification3D,
   Laser,
   PendingKillEvent,
   PendingSpawnEvent,
   RelativisticPlayer,
+  RespawnEventRecord,
   SpawnEffect,
 } from "../components/game/types";
 
@@ -50,6 +52,14 @@ export interface GameState {
   pendingSpawnEvents: PendingSpawnEvent[];
   displayNames: Map<string, string>;
   lighthouseSpawnTime: Map<string, number>;
+  /**
+   * Authority 解体 Stage C: kill/respawn の authoritative event log。
+   * 各 peer が kill/respawn を受けた時点で append。Stage C-3 で
+   * deadPlayers / invincibleUntil / scores の source of truth になる予定
+   * （Stage C-2 時点では並行記録のみ、既存 cache と併存）。
+   */
+  killLog: KillEventRecord[];
+  respawnLog: RespawnEventRecord[];
 
   // --- Actions: state setters ---
   setPlayers: (updater: PlayersUpdater) => void;
@@ -106,6 +116,8 @@ export const useGameStore = create<GameState>()((set, get) => ({
   pendingSpawnEvents: [],
   displayNames: new Map(),
   lighthouseSpawnTime: new Map(),
+  killLog: [],
+  respawnLog: [],
 
   // -----------------------------------------------------------------------
   // State setters
@@ -170,12 +182,22 @@ export const useGameStore = create<GameState>()((set, get) => ({
     state.deadPlayers.add(victimId);
     state.deathTimeMap.set(victimId, Date.now());
 
+    // Stage C-2: authoritative event log (並行記録、既存 cache と併存)
+    const killLogEntry: KillEventRecord = {
+      victimId,
+      killerId,
+      hitPos,
+      wallTime: Date.now(),
+      firedForUi: false,
+    };
+
     // Batch update (arrays must go through set() to survive state transitions)
     set({
       players: applyKill(state.players, victimId),
       frozenWorldLines: [...state.frozenWorldLines, frozen].slice(-MAX_FROZEN_WORLDLINES),
       debrisRecords: [...state.debrisRecords, newDebris].slice(-MAX_DEBRIS),
       pendingKillEvents: [...state.pendingKillEvents, killEvent].slice(-MAX_PENDING_KILL_EVENTS),
+      killLog: [...state.killLog, killLogEntry],
       myDeathEvent:
         victimId === myId
           ? { pos: victim.phaseSpace.pos, u: getVelocity4(victim.phaseSpace.u) }
@@ -205,6 +227,13 @@ export const useGameStore = create<GameState>()((set, get) => ({
     const color = spawningPlayer?.color ?? getPlayerColor(playerId);
     const now = Date.now();
 
+    // Stage C-2: authoritative event log (並行記録)
+    const respawnLogEntry: RespawnEventRecord = {
+      playerId,
+      position,
+      wallTime: now,
+    };
+
     if (playerId === myId) {
       // Self spawn: immediate spawn effect
       set({
@@ -214,6 +243,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
           ...state.spawns,
           { id: `spawn-${playerId}-${now}`, pos: position, color, startTime: now },
         ],
+        respawnLog: [...state.respawnLog, respawnLogEntry],
       });
     } else {
       // Other player: causal delay via pending events
@@ -223,6 +253,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
           ...state.pendingSpawnEvents,
           { id: `spawn-${playerId}-${now}`, playerId, pos: position, color },
         ].slice(-MAX_PENDING_SPAWN_EVENTS),
+        respawnLog: [...state.respawnLog, respawnLogEntry],
       });
     }
   },
