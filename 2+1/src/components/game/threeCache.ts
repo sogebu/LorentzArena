@@ -22,8 +22,9 @@ export const sharedGeometries = {
   // レーザー × 光円錐 交差: 同時刻面 (local xy) 上の細長い三角形、tip が +x（回転で進行方向へ向ける）
   laserIntersectionTriangle: (() => {
     const shape = new THREE.Shape();
-    // tip_x = back_x の大きさ × φ (黄金比)
-    shape.moveTo(0.2427, 0);
+    // Acute golden gnomon: 頂角 36°、脚:底辺 = φ:1。
+    // 底辺 = 0.12, 脚 = 0.12·φ ≈ 0.194, 高さ = √(脚² − (底辺/2)²) ≈ 0.1844。
+    shape.moveTo(0.0344, 0);
     shape.lineTo(-0.15, 0.06);
     shape.lineTo(-0.15, -0.06);
     shape.closePath();
