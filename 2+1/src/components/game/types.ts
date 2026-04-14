@@ -43,6 +43,16 @@ export type PendingKillEvent = {
 
 export type RelativisticPlayer = {
   id: string;
+  /**
+   * このプレイヤーを駆動する peer の ID。
+   * - 人間プレイヤー: owner = 本人 (ownerId === id)
+   * - Lighthouse: owner = 現 beacon holder（= 旧 host）
+   *
+   * Authority 解体アーキテクチャ（plans/2026-04-14-authority-dissolution.md）
+   * Stage A で導入された識別フィールド。Stage B 以降で hit detection の
+   * 絞り込みに使われる。Stage A 時点では振る舞い変更なし。
+   */
+  ownerId: string;
   phaseSpace: PhaseSpace;
   worldLine: WorldLine; // 現在の命の世界線（1本のみ）
   color: string;

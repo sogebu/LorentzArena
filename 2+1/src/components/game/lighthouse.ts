@@ -16,11 +16,22 @@ export const isLighthouse = (id: string): boolean =>
   id.startsWith(LIGHTHOUSE_ID_PREFIX);
 
 /**
+ * このプレイヤーを駆動するのが自分（`myId`）かどうか。
+ * Authority 解体で hit detection 等を「owner のみ」に絞る際に使う。
+ */
+export const isOwnedByMe = (player: RelativisticPlayer, myId: string): boolean =>
+  player.ownerId === myId;
+
+/**
  * Create a Lighthouse player at a random position.
+ *
+ * @param ownerId - peer ID of the current beacon holder (drives Lighthouse AI).
+ *                  Authority 解体では Lighthouse も他のプレイヤーと同様 owner 概念で扱う。
  */
 export const createLighthouse = (
   id: string,
   time: number,
+  ownerId: string,
 ): RelativisticPlayer => {
   const spawnX = Math.random() * SPAWN_RANGE;
   const spawnY = Math.random() * SPAWN_RANGE;
@@ -32,6 +43,7 @@ export const createLighthouse = (
   wl = appendWorldLine(wl, ps);
   return {
     id,
+    ownerId,
     phaseSpace: ps,
     worldLine: wl,
     color: LIGHTHOUSE_COLOR,

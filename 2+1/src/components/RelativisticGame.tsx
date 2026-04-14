@@ -103,6 +103,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       const next = new Map(prev);
       next.set(myId, {
         id: myId,
+        ownerId: myId,
         phaseSpace: initialPhaseSpace,
         worldLine: initialWorldLine,
         color: initialColor,
@@ -131,6 +132,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     const lighthouse = createLighthouse(
       lighthouseId,
       Date.now() / 1000 - OFFSET,
+      myId, // host が Lighthouse の owner（beacon holder 兼任）
     );
 
     store.lighthouseSpawnTime.set(lighthouseId, Date.now());

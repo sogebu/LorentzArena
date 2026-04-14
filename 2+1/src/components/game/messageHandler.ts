@@ -133,8 +133,12 @@ export const createMessageHandler =
         const displayName = existing?.displayName ?? store.displayNames.get(playerId);
 
         const next = new Map(prev);
+        // ownerId: 人間プレイヤーは自己所有 (= playerId)。Lighthouse は host が owner だが、
+        // 受信側からは即座に特定できないため、既存値を保持 (Stage E で正式化)。
+        const ownerId = existing?.ownerId ?? (isLighthouse(playerId) ? "" : playerId);
         next.set(playerId, {
           id: playerId,
+          ownerId,
           phaseSpace,
           worldLine,
           color,
@@ -179,6 +183,7 @@ export const createMessageHandler =
         const next = new Map(prev);
         next.set(myId, {
           id: myId,
+          ownerId: myId,
           phaseSpace: synced,
           worldLine: newWorldLine,
           color: me?.color ?? getPlayerColor(myId),
