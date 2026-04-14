@@ -480,9 +480,9 @@ export const SceneContent = ({
         const pos = transformEventForDisplay(myPlayer.phaseSpace.pos, observerPos, observerBoost);
         const c = getThreeColor(myPlayer.color);
         const spacing = 2.5;
-        // 0s→1個, 0.5s→2個, 1s→3個（ループなし、トリガー押し始めから）
+        // 0s→1個, 0.1s→2個, 0.2s→3個（ループなし、トリガー押し始めから）
         const elapsed = Date.now() - firingStartRef.current;
-        const visibleCount = Math.min(3, Math.floor(elapsed / 500) + 1);
+        const visibleCount = Math.min(3, Math.floor(elapsed / 100) + 1);
         return [1, 2, 3].map((i) => {
           if (i > visibleCount) return null;
           const opacity = 0.9 - (i - 1) * 0.15;
