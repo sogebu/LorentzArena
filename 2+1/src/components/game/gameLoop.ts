@@ -22,11 +22,12 @@ import {
   HIT_RADIUS,
   LASER_COOLDOWN,
   LASER_RANGE,
+  LIGHTHOUSE_AIM_JITTER_SIGMA,
   LIGHTHOUSE_FIRE_INTERVAL,
   LIGHTHOUSE_SPAWN_GRACE,
   PLAYER_ACCELERATION,
 } from "./constants";
-import { computeInterceptDirection, isLighthouse } from "./lighthouse";
+import { computeInterceptDirection, isLighthouse, perturbDirection } from "./lighthouse";
 import { findLaserHitPosition } from "./laserPhysics";
 import type { Laser, RelativisticPlayer } from "./types";
 
@@ -190,6 +191,8 @@ export function processLighthouseAI(
     return { newPs: lhNewPs, newWl: lhNewWl, laser: null };
   }
 
+  const aimDir = perturbDirection(bestDir, LIGHTHOUSE_AIM_JITTER_SIGMA);
+
   const laser: Laser = {
     id: `${lhId}-${currentTime}`,
     playerId: lhId,
@@ -199,7 +202,7 @@ export function processLighthouseAI(
       y: lhNewPs.pos.y,
       z: 0,
     },
-    direction: bestDir,
+    direction: aimDir,
     range: LASER_RANGE,
     color: getLaserColor(lh.color),
   };

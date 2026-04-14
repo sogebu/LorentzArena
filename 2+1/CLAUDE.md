@@ -234,6 +234,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `INVINCIBILITY_DURATION` | 5000 ms | スポーン/リスポーン後の無敵時間 |
 | `LIGHTHOUSE_FIRE_INTERVAL` | 1000 ms | 灯台の射撃間隔 |
 | `LIGHTHOUSE_SPAWN_GRACE` | 5000 ms | 灯台がスポーン後に沈黙する時間 |
+| `LIGHTHOUSE_AIM_JITTER_SIGMA` | 0.1 rad | 灯台の照準ジッタ (一様、距離比で横ズレ RMS ≈ σ·D) |
 | `SPAWN_EFFECT_DURATION` | 1500 ms | スポーンエフェクト表示時間 |
 | `LASER_RANGE` | 10 | レーザー射程（アフィンパラメータ λ の上限、c=1 で座標時間=空間距離） |
 | `LASER_COOLDOWN` | 100 ms | レーザー連射間隔 |

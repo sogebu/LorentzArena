@@ -129,3 +129,14 @@ export const computeInterceptDirection = (
 
   return { x: ix / dist, y: iy / dist, z: 0 };
 };
+
+/**
+ * 方向ベクトルに xy 平面内の角度誤差を加える (単位長は厳密保持)。
+ * 一様分布 U(-√3 σ, √3 σ) で分散 σ² を実現。距離 D での横ズレ RMS ≈ σ·D。
+ */
+export const perturbDirection = (dir: Vector3, sigma: number): Vector3 => {
+  const theta = (Math.random() - 0.5) * 2 * Math.sqrt(3) * sigma;
+  const c = Math.cos(theta);
+  const s = Math.sin(theta);
+  return { x: dir.x * c - dir.y * s, y: dir.x * s + dir.y * c, z: 0 };
+};

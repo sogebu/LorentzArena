@@ -45,6 +45,9 @@ export const LIGHTHOUSE_ID_PREFIX = "lighthouse-";
 export const LIGHTHOUSE_FIRE_INTERVAL = 1000; // ms
 export const LIGHTHOUSE_SPAWN_GRACE = 5000; // ms — don't fire for this long after spawn
 export const LIGHTHOUSE_COLOR = "hsl(220, 70%, 75%)"; // 薄い青
+// 照準ジッタ (rad)。一様分布 U(-√3 σ, √3 σ) で分散 σ² を実現。
+// 距離 D での横ズレの RMS ≈ σ · D。σ=0.1 で射程 10 では最大 tan(0.173)·10 ≈ 1.75 マス外す。
+export const LIGHTHOUSE_AIM_JITTER_SIGMA = 0.1;
 
 // リスポーン後の無敵時間（ミリ秒）
 export const INVINCIBILITY_DURATION = 5000;
