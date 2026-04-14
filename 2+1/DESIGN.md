@@ -57,9 +57,20 @@ Plan Stage B は「`targetId === senderId` を messageHandler で強制」と書
 - body の `senderId` は送信者が自己申告する値。ピア X が `{senderId: Y, victimId: Y}` と書けば通る → **自分で書く値を自分で検証しても spoofing 防御にならない**
 - 既存の `phaseSpace` / `laser` / `intro` も `_senderId (PeerJS-level) === msg.senderId` を検証しておらず、このリポはもともと「相互信頼の peer 群」を前提にしている。kill だけ body 検証を追加するのは中途半端
 - 二重処理防止は handleKill の `deadPlayers.has(victimId) → return`（Stage C では `selectIsDead`）で既に担保済み
-- 本気で spoofing 対策するなら host の relay 層で `_senderId === msg.senderId` を検証する必要があるが、これは本リファクタの範囲外
+- body senderId 検証の実効は **bug catching のみ**（将来の改修で victimId / killerId の取り違えを runtime で検出）だが、wire bytes を増やす & 他メッセージと非対称になる costs に見合わない
 
 結論: kill message は `{victimId, killerId, hitPos}` の 3 フィールドで、body senderId 自体を持たない。
+
+**真の spoofing 防御は relay 層で `_senderId === msg.senderId` を一律**
+
+悪意のある peer が他人を騙った発信 (`{senderId: Y, ...}` を自分 X が送る) を本当に防ぐには、**host (= relay hub) が DataConnection の直結 peer ID (`_senderId`) と body の `senderId` を照合**する必要がある。WebRTC DataConnection の peer ID は PeerJS が保証する identity なので、この層での検証は意味がある。
+
+ただしこれを導入するなら:
+- kill だけではなく **全 owner 発信メッセージ** (`phaseSpace` / `laser` / `intro` / `kill` / `respawn`) に一律適用すべき
+- body senderId を持たないメッセージ (現 `kill` / `respawn`) には追加フィールドが必要になる
+- relay fail 時の挙動 (ログ？ drop？) を決める必要
+
+本リファクタ (Authority 解体) の目的は「host を authority から外す」ことで、信頼モデルの強化は直交タスク。仮に導入するなら別プランで全メッセージ一律 (kill だけ先行導入は中途半端になるので避ける)。
 
 **C: derived state の 3 択検討と β 採択**
 
