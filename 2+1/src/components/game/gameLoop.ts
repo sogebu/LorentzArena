@@ -218,9 +218,19 @@ export interface HitDetectionResult {
   hitLaserIds: string[];
 }
 
+/**
+ * Target-authoritative hit detection (Stage B).
+ *
+ * 各 peer は「自分が owner の player 達」についてのみ hit を判定する。
+ * - 人間ピア: 自分自身（ownerId === myId === id）
+ * - beacon holder (= 現 host): 自分 + Lighthouse（LH.ownerId = host myId）
+ *
+ * プラン `plans/2026-04-14-authority-dissolution.md` Stage B 手順 1,4。
+ */
 export function processHitDetection(
   players: Map<string, RelativisticPlayer>,
   lasers: Laser[],
+  myId: string,
   processedIds: Set<string>,
   deadIds: Set<string>,
   invincibleIds: Set<string>,
@@ -228,24 +238,29 @@ export function processHitDetection(
   const kills: HitDetectionResult["kills"] = [];
   const hitLaserIds: string[] = [];
 
-  let minPlayerT = Number.POSITIVE_INFINITY;
-  for (const [, player] of players) {
-    if (player.phaseSpace.pos.t < minPlayerT) {
-      minPlayerT = player.phaseSpace.pos.t;
+  // Owner が自分のプレイヤーだけを候補に。
+  const ownedPlayers: Array<[string, RelativisticPlayer]> = [];
+  let minOwnedT = Number.POSITIVE_INFINITY;
+  for (const [id, player] of players) {
+    if (player.ownerId !== myId) continue;
+    ownedPlayers.push([id, player]);
+    if (player.phaseSpace.pos.t < minOwnedT) {
+      minOwnedT = player.phaseSpace.pos.t;
     }
   }
+  if (ownedPlayers.length === 0) return { kills, hitLaserIds };
 
   const killedThisFrame = new Set<string>();
   for (const laser of lasers) {
     if (processedIds.has(laser.id)) continue;
 
     const laserEndT = laser.emissionPos.t + laser.range;
-    if (minPlayerT > laserEndT) {
+    if (minOwnedT > laserEndT) {
       processedIds.add(laser.id);
       continue;
     }
 
-    for (const [playerId, player] of players) {
+    for (const [playerId, player] of ownedPlayers) {
       if (playerId === laser.playerId) continue;
       if (killedThisFrame.has(playerId)) continue;
       if (deadIds.has(playerId)) continue;

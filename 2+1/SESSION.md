@@ -9,7 +9,8 @@
 
 - **プラン**: `plans/2026-04-14-authority-dissolution.md`（8 Stage、A→H）
 - **設計原理**: DESIGN.md「Authority 解体アーキテクチャ」節
-- **次アクション**: Stage A（`ownerId` フィールド追加、振る舞い変更なし）から着手
+- **進捗**: Stage A 完了（`4f4bddd`、`ownerId` 型導入のみ）/ Stage B 完了（target-authoritative hit detection、localhost multi-tab で 5 項目全て検証済み）
+- **次アクション**: Stage C（score / deadPlayers / invincibility を derived に、kill/respawn event log 化）
 - **動機**: host 切断時の state 引き継ぎが怪物化。target-authoritative 化で host 概念を解体、マイグレを beacon handoff だけに縮退させる
 - **デプロイ方針**: 全 Stage 完了後にまとめて deploy。段階中は localhost multi-tab で検証
 

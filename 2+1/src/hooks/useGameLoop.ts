@@ -412,8 +412,11 @@ export function useGameLoop({
         }
       }
 
-      // --- Host: Hit detection ---
-      if (peerManager.getIsHost()) {
+      // --- Target-authoritative hit detection (Stage B) ---
+      // 全 peer が自分の owner player の kill を判定する。
+      // - 人間: 自分だけ
+      // - host (= beacon holder): 自分 + Lighthouse (LH.ownerId = host myId)
+      {
         const freshForHit = useGameStore.getState();
         // Build invincible set (prune expired entries)
         const invincibleIds = new Set<string>();
@@ -425,6 +428,7 @@ export function useGameLoop({
         const hitResult = processHitDetection(
           freshForHit.players,
           freshForHit.lasers,
+          myId,
           freshForHit.processedLasers,
           freshForHit.deadPlayers,
           invincibleIds,
@@ -440,27 +444,34 @@ export function useGameLoop({
         }
 
         if (hitResult.kills.length > 0) {
+          const isHost = peerManager.getIsHost();
           for (const id of hitResult.hitLaserIds) {
             freshForHit.processedLasers.add(id);
           }
 
           for (const { victimId, killerId, hitPos } of hitResult.kills) {
             stale.staleFrozenRef.current.delete(victimId); // S-2: kill で stale クリア（二重 respawn 防止）
-            peerManager.send({ type: "kill" as const, victimId, killerId, hitPos });
+            // target 自身が kill を broadcast（host: 全員へ、client: host 経由で relay）
+            sendToNetwork({ type: "kill" as const, victimId, killerId, hitPos });
             useGameStore.getState().handleKill(victimId, killerId, hitPos, myId);
 
-            const timerId = setTimeout(() => {
-              respawnTimeoutsRef.current.delete(timerId);
-              const currentStore = useGameStore.getState();
-              const respawnPos = createRespawnPosition(currentStore.players);
-              peerManager.send({
-                type: "respawn" as const,
-                playerId: victimId,
-                position: respawnPos,
-              });
-              currentStore.handleRespawn(victimId, respawnPos, myId, getPlayerColor);
-            }, RESPAWN_DELAY);
-            respawnTimeoutsRef.current.add(timerId);
+            // respawn timer は Stage D まで host 集中。ここは自分が owner で
+            // かつ host でもあるケース（host 自身 or LH）をハンドル。
+            // 非 owner 側の kill は messageHandler 経由で host がスケジュール。
+            if (isHost) {
+              const timerId = setTimeout(() => {
+                respawnTimeoutsRef.current.delete(timerId);
+                const currentStore = useGameStore.getState();
+                const respawnPos = createRespawnPosition(currentStore.players);
+                peerManager.send({
+                  type: "respawn" as const,
+                  playerId: victimId,
+                  position: respawnPos,
+                });
+                currentStore.handleRespawn(victimId, respawnPos, myId, getPlayerColor);
+              }, RESPAWN_DELAY);
+              respawnTimeoutsRef.current.add(timerId);
+            }
           }
         }
       }

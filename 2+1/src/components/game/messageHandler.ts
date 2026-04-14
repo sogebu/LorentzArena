@@ -5,7 +5,7 @@ import {
   createWorldLine,
 } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
-import { INVINCIBILITY_DURATION, LIGHTHOUSE_COLOR, MAX_LASERS, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
+import { INVINCIBILITY_DURATION, LIGHTHOUSE_COLOR, MAX_LASERS, MAX_WORLDLINE_HISTORY, RESPAWN_DELAY, SPAWN_RANGE } from "./constants";
 import { isLighthouse } from "./lighthouse";
 import { createRespawnPosition } from "./respawnTime";
 import type { Laser, RelativisticPlayer } from "./types";
@@ -21,6 +21,8 @@ export type MessageHandlerDeps = {
   lastUpdateTimeRef: React.MutableRefObject<Map<string, number>>;
   lastCoordTimeRef: React.MutableRefObject<Map<string, { wallTime: number; posT: number }>>;
   staleFrozenRef: React.MutableRefObject<Set<string>>;
+  // Stage B: host が受信した kill に対して respawn を schedule するため。
+  respawnTimeoutsRef: React.MutableRefObject<Set<ReturnType<typeof setTimeout>>>;
 };
 
 const isFiniteNumber = (v: unknown): v is number =>
@@ -76,6 +78,7 @@ export const createMessageHandler =
       lastUpdateTimeRef,
       lastCoordTimeRef,
       staleFrozenRef,
+      respawnTimeoutsRef,
     } = deps;
     const store = useGameStore.getState();
 
@@ -252,14 +255,34 @@ export const createMessageHandler =
       if (!scores) return;
       store.setScores(scores);
     } else if (msg.type === "kill") {
-      if (peerManager.getIsHost()) return;
+      // Stage B: kill は誰からでも受理（host skip を撤去）。
+      // host も自身が owner でない player の kill は messageHandler 経由で受信する。
       if (
         !isValidString(msg.victimId) ||
         !isValidString(msg.killerId) ||
         !isValidVector4(msg.hitPos)
       )
         return;
-      store.handleKill(msg.victimId, msg.killerId, msg.hitPos, myId);
+      const { victimId, killerId, hitPos } = msg;
+      // S-2: kill で stale クリア（二重 respawn 防止）
+      staleFrozenRef.current.delete(victimId);
+      store.handleKill(victimId, killerId, hitPos, myId);
+      // Stage D まで host 集中。host が受信した kill について respawn を schedule。
+      // ローカルで自ら検出した kill は useGameLoop 側でスケジュール済み。
+      if (peerManager.getIsHost()) {
+        const timerId = setTimeout(() => {
+          respawnTimeoutsRef.current.delete(timerId);
+          const currentStore = useGameStore.getState();
+          const respawnPos = createRespawnPosition(currentStore.players);
+          peerManager.send({
+            type: "respawn" as const,
+            playerId: victimId,
+            position: respawnPos,
+          });
+          currentStore.handleRespawn(victimId, respawnPos, myId, getPlayerColor);
+        }, RESPAWN_DELAY);
+        respawnTimeoutsRef.current.add(timerId);
+      }
     } else if (msg.type === "hostMigration") {
       if (peerManager.getIsHost()) return;
       if (!isValidString(msg.newHostId)) return;

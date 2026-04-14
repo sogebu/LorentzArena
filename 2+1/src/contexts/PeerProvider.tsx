@@ -138,6 +138,13 @@ const isRelayable = (msg: Message): boolean => {
       msg.displayName.length <= 20
     );
   }
+  if (msg.type === "kill") {
+    return (
+      typeof msg.victimId === "string" &&
+      typeof msg.killerId === "string" &&
+      msg.hitPos != null
+    );
+  }
   return false;
 };
 
@@ -186,7 +193,10 @@ const registerHostRelay = (pm: NetworkManager) => {
     if (!pm.getIsHost()) return;
 
     if (
-      (msg.type === "phaseSpace" || msg.type === "laser" || msg.type === "intro") &&
+      (msg.type === "phaseSpace" ||
+        msg.type === "laser" ||
+        msg.type === "intro" ||
+        msg.type === "kill") &&
       isRelayable(msg)
     ) {
       pm.broadcast(msg, senderId);
