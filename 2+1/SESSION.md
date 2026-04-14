@@ -25,7 +25,19 @@
 
 ## 直近の作業
 
-### 2026-04-15: DESIGN.md 再編（完了）
+### 2026-04-15 (午前): Lighthouse 調整 + 交差マーカー刷新 + opacity 定数化 (完了)
+
+build `2026/04/15 08:44:09` (commit `0dad175`) でデプロイ済み。主な変更:
+
+- **Lighthouse**: 射撃間隔 1→2s、spawn grace 10→5s、無敵 10→5s、照準ジッタ (ガウス σ=0.3 rad, 3σ clamp)
+- **レーザー × 光円錐 交点マーカー**: 球 → 光円錐の接平面に貼り付く golden gnomon 三角形。tip=laser.direction の接平面射影、重心=交点。過去/未来共通で `n=(x,y,-t)/(ρ√2)` で扱う。数学 + 代替案は DESIGN.md § 描画「レーザー × 光円錐 交点マーカー」
+- **照準矢印 (トリガー中)**: 0s/0.05s/0.1s に短縮、spacing=1.2 で tip↔base 接合
+- **Opacity 定数化**: `LIGHT_CONE_SURFACE_OPACITY` / `LIGHT_CONE_WIRE_OPACITY` (0.04 に減光) / `PLAYER_WORLDLINE_OPACITY` / `LIGHTHOUSE_WORLDLINE_OPACITY` / `LASER_WORLDLINE_OPACITY` を `constants.ts` に集約
+- **ドキュメント整合性**: CLAUDE.md / DESIGN.md / README.md の古い値 (10秒無敵、必中 LH、0s/0.5s/1s 矢印、ハードコード opacity) を修正
+
+**EXPLORING.md に追加**: 「進行方向・向きの認知支援」13 案。ユーザーが heading/velocity/thrust 方向の認知支援が欲しいと発言、option space を収集。SESSION.md TODO の「自機/敵機 heading 矢印」はこの枠組みの最小 1 案。
+
+### 2026-04-15 (過去): DESIGN.md 再編（完了）
 
 `plans/2026-04-15-design-reorg.md` に従い、1186 → 925 行（内 Defer 205 行は現状維持）に再編。構造を時系列から topic 別に変更、§ メタ原則・教訓セクション新設、Authority 解体を 1 主セクションに集約、SUPERSEDED-pure 8 件を削除、SP 6 件を吸収、LESSON 12 件をメタ原則に集約。
 
