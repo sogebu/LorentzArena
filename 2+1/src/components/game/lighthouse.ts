@@ -130,12 +130,20 @@ export const computeInterceptDirection = (
   return { x: ix / dist, y: iy / dist, z: 0 };
 };
 
+/** Box–Muller で N(0, σ²) を 1 サンプル。 */
+const sampleGaussian = (sigma: number): number => {
+  const u1 = Math.max(Math.random(), 1e-12);
+  const u2 = Math.random();
+  return sigma * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+};
+
 /**
  * 方向ベクトルに xy 平面内の角度誤差を加える (単位長は厳密保持)。
- * 一様分布 U(-√3 σ, √3 σ) で分散 σ² を実現。距離 D での横ズレ RMS ≈ σ·D。
+ * θ ~ N(0, σ²) を 3σ で clamp。距離 D での横ズレ RMS ≈ σ·D。
  */
 export const perturbDirection = (dir: Vector3, sigma: number): Vector3 => {
-  const theta = (Math.random() - 0.5) * 2 * Math.sqrt(3) * sigma;
+  const raw = sampleGaussian(sigma);
+  const theta = Math.max(-3 * sigma, Math.min(3 * sigma, raw));
   const c = Math.cos(theta);
   const s = Math.sin(theta);
   return { x: dir.x * c - dir.y * s, y: dir.x * s + dir.y * c, z: 0 };
