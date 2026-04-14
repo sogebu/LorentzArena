@@ -209,14 +209,17 @@ const registerHostRelay = (pm: NetworkManager) => {
 };
 
 // --- Network timing constants ---
-const HEARTBEAT_INTERVAL = 3000; // Host sends ping every 3s
-const HEARTBEAT_TIMEOUT = 8000; // Client triggers migration after 8s without ping
+// Stage G: heartbeat 積極化 (旧 3s/8s → 1s/2.5s)。Authority 解体後は
+// false positive のコストがほぼゼロ (state 引き継ぎなし、再選出だけ) のため
+// 誤検知寄りに振って切断検知を高速化。
+const HEARTBEAT_INTERVAL = 1000; // Host sends ping every 1s
+const HEARTBEAT_TIMEOUT = 2500; // Client triggers migration after 2.5s without ping
 const BEACON_TIMEOUT = 8000; // Beacon fallback: give up and become solo host
 const ELECTED_HOST_TIMEOUT = 10000; // Wait for elected host before beacon fallback
 const REDIRECT_TIMEOUT = 10000; // Wait for redirected host before retrying beacon
 const MAX_REDIRECT_ATTEMPTS = 3; // Max beacon redirect retries for new clients
 const MAX_BEACON_RETRIES = 3; // Beacon acquisition failures before demotion
-const HOST_HIDDEN_GRACE = 5000; // Destroy host PeerManager after this long hidden (must be < HEARTBEAT_TIMEOUT)
+const HOST_HIDDEN_GRACE = 1500; // Destroy beacon holder's PeerManager after this long hidden (must be < HEARTBEAT_TIMEOUT)
 
 export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   const [peerManager, setPeerManager] = useState<NetworkManager | null>(null);
@@ -628,6 +631,11 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
           wasDestroyedByHideRef.current = false;
           setConnectionPhase("trying-host");
         }
+        // Stage G: client-side heartbeat grace on tab return.
+        // 背景タブでは setInterval が 1Hz にスロットルされ、HEARTBEAT_TIMEOUT
+        // (2.5s) を簡単に超えるため lastPingRef を reset して false positive
+        // migration を避ける。次の ping が本当に来るか確かめてから判定。
+        lastPingRef.current = Date.now();
       }
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);

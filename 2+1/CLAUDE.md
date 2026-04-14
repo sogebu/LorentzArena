@@ -281,7 +281,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `HEARTBEAT_INTERVAL_MS` | 30s | WebSocket ping 送信間隔（サーバー→クライアント） |
 | `HEARTBEAT_TIMEOUT_MS` | 10s | WebSocket pong 応答タイムアウト |
 
-注: 上記は **relay server の WebSocket レベル heartbeat**。ゲームクライアントのホスト切断検知は別の仕組み（`PeerProvider` の `ping` メッセージ: 3 秒間隔、8 秒タイムアウト）。
+注: 上記は **relay server の WebSocket レベル heartbeat**。ゲームクライアントの beacon holder 切断検知は別の仕組み（`PeerProvider` の `ping` メッセージ: Stage G 以降 1 秒間隔 / 2.5 秒タイムアウト、visibility 復帰時に lastPingRef reset で false positive 回避）。
 
 ### ビルド設定
 
