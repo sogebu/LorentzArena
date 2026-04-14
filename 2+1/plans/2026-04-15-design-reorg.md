@@ -244,6 +244,79 @@ Stage 1-4 完了後、実践で得た知見を `convention-design-principles.md`
 
 ---
 
-## 次の Action
+## 実施結果 (2026-04-15)
 
-Stage 2-3 (実編集) に進むか、その前に Stage 2 骨子への詳細コメントを貰うか。
+### Stage 実施サマリ
+
+| Stage | 結果 | commit |
+|---|---|---|
+| 1. 分類監査 | 70 entries を 5 分類にタグ付け | 本ファイル |
+| 2-3. DESIGN.md 再編 | 1186 → 925 行 (内 Defer 205 行現状維持) | `47dc101` |
+| 4. EXPLORING.md cross-check | 重大な (a)/(c) 混入なし、軽微な promote 済み記録のみ | — |
+| 5. claude-config §7 v1 追加 | 5 分類 + サイズ閾値で規約化 | `e28ad48` |
+| (追加) 深化議論 → §7 v2 化 | 3 分類 + Description/Judgment + 粒度 + 当面 default | `2c338af` |
+| (追加) 内部参照規則 | 行番号禁止、semantic reference を CONVENTIONS.md §2 に | 本 commit |
+
+### 処理された entries (内訳)
+
+- **削除 (SUPERSEDED-pure) 8 件**: A/D 横移動修正、FIRING 表示 bug、コードベース一括整理、syncTime stub、setPlayers ラッパー stub、score メッセージ未使用、lives[] 廃止、pastLightConeIntersectionPhaseSpace 削除
+- **Authority 解体セクションに吸収 (SP) 6 件**: ホストマイグレーション堅牢化、START でホスト決定、ホストマイグレーション(2026-04-11)、当たり判定ホスト権威、ホスト権威メッセージ二重処理防止、クライアント自己初期化
+- **§ メタ原則に lift (LESSON) 12 件 → M1-M12**: setState reducer 純関数 / 対症療法 vs 根治 / 「純関数で書けないか」/ Zustand getState stale / gameLoop tick 3 フェーズ / useEffect deps 安定性 / 座標時間は壁時計忠実 / 二重半減の罠 / CORS セーフリスト / Float32 の罠 / TypeScript 構造型付けの穴 / 因果律チェックはゲーム参加者のみ
+
+---
+
+## 知見 retrospective (漏れなき記録)
+
+### A. プロセス知見
+
+1. **Stage 1 (分類監査) を編集前に完了する**が鍵。70 entry を先に 5 分類タグ付けしてから編集に入ると、全体像を把握した上で判断できる。直接編集に入ると個別で迷って中途半端
+2. **大規模再構成は Write 全置換が Edit 連打より安全**。50 Edit は file state 依存度が高く fragile。再編という非局所変更は Write 1 回が適切
+3. **作業メモ (`plans/YYYY-MM-DD-X.md`) の書き方**: Stage ごとに planning/実施/結果を sectionable に。後日 retrospective で「なぜこの判断をしたか」が読める
+4. **4 軸チェックのタイミング**: 実編集前 (設計 review として) + commit 前 (最終確認として) + retrospective 時 (漏れ検出) の 3 回。各回で異なる盲点が出る
+5. **User question が盲点を露出させる**: 「DESIGN をなくすってこと？」は archive vs snapshot の暗黙の shift を explicit にした。「lifecycle 抽象化はどう？」は §7 が §2 に establish すべき原理の application に過ぎないことを顕在化した。**初案を疑うきっかけは自分からより外から来る**
+
+### B. 規約知見 (convention-design-principles.md §7 v2 に集約済み)
+
+cross-reference のみ。詳細は `~/Claude/claude-config/docs/convention-design-principles.md` §7 参照:
+
+- snapshot 原理 (DESIGN は現状、履歴は git log)
+- 3 entry 種別 (ACTIVE / DEFER / LESSON) + transient events
+- 超越時の処理 (pedagogy 抽出 → 吸収 / lift / 削除)
+- Description と Judgment の境界 (DESIGN は code に追随しない、CLAUDE は追随する)
+- 粒度ルール (代替検討あり tradeoff 議論ありのみ entry 化)
+- 集約 pattern (3+ 超越で完了リファクタ、3+ LESSON で § メタ原則)
+- When-in-doubt デフォルト (pro-snapshot)
+- Software project 前提 (研究系文書は archive 解釈妥当)
+- Self-consistency (§7 自身が LESSON)
+
+CONVENTIONS.md §2 に追加:
+- snapshot 原理の establishment
+- CLAUDE.md / DESIGN.md 行の descriptive/judgmental 境界
+- 内部参照の semantic reference 規則
+
+### C. メタ知見 (思考 pattern として再利用可能)
+
+1. **「X をなくすのか?」という問い**は暗黙の role shift を検出する good question。snapshot framing で DESIGN の role が archive → snapshot に shift した事実は、user 質問で初めて顕在化
+2. **階層化されたルールを平板に書くと混乱する**: 初版 §7 は day-1 rule と retroactive 救済を平板に並べた結果「これ肥大化時の規約？常時ルール？」が曖昧になった。v2 で明示的に分離
+3. **抽象化の誘惑を警戒する**: lifecycle を §6/§7/... の共通抽象として §8 新設は魅力的だが、各 doc の具体ルールは抽象化では縮まない。抽象層が増えるだけ。正しい方向は §2 に establish して具体規則は各 application
+4. **reflexivity を確認する**: §7 自身が LESSON であることを明示すると、convention 体系の self-consistency が保証される。逆に reflexivity が崩れる規約は怪しい
+5. **「3 回パッチで根を疑う」は DESIGN 編集にも効く**: 5 分類で書いたが 2 軸で混乱 → 平板化 → 分離 → 3 分類化。初案修正が 3 回超えた時点で根本構造を疑うべきだった
+
+### D. LorentzArena DESIGN に残った課題 (次回棚卸し対象)
+
+1. **Description/Judgment 混在**: Zustand 構造表が `CLAUDE.md` と `DESIGN.md § State 管理` に重複。§7.3 違反。`DESIGN.md` 側は judgmental な判断節 (「なぜ Zustand / reactive vs non-reactive の切り分け理由」) のみ残し、構造表は CLAUDE.md に集約
+2. **SESSION.md 96 行** (目安 80 行を微超過): 次回棚卸しで完了項目削除、§ 直近の作業 を縮約
+3. **粒度違反 entry の棚卸し**: `DESIGN.md § 描画` 等に `TUBE_REGEN_INTERVAL=8` のような tuning parameter が entry になっている可能性。代替検討痕跡の有無で再判定し、不要なものは constants.ts に集約
+4. **Cross-ref の追加**: `§ メタ原則 M12 (因果律チェックは参加者のみ)` と `§ 物理 因果律の守護者` の双方向 link が未設定。将来ドリフト防止のため `→ M12` の形で参照を張る
+5. **§ Defer 判断の圧縮余地**: 現 205 行は 2026-04-06 当時の監査記録を原文保持しているが、再評価後の判断サマリは後日談のみで読める。「監査時点の原文」は git log に委任して本文を 100 行以下に圧縮する案も検討可 (ただし un-defer トリガーを再確認するには当時の文脈が必要なので、defer 派)
+
+### E. claude-config 側の将来課題
+
+1. **他リポの DESIGN.md 監査**: `~/Claude/odakin-prefs/repos.md` でリポ一覧を把握。`~/Claude/` 下の DESIGN.md 保有リポについて行数と style (archive/snapshot) を把握。1000 行超があれば §7.7 coexistence policy に従い実害観測時に reorg (予防的 retroactive は avoid)
+2. **SESSION.md の snapshot 原理適用確認**: §2 preamble では SESSION.md も snapshot 対象。各リポの SESSION.md が graduation event (タスク完了で除去) を守っているか定期監査
+
+### F. Unanswered / deferred
+
+1. **EXPLORING.md の L152-208** (「2026-04-10 の設計議論と方針決定」): snapshot 原理なら promote 済みで削除対象だが、設計経緯として価値あり。§7.7 coexistence policy に従い現状維持 (user 判断で defer)
+2. **convention-design-principles.md §6 の微調整**: §6「DESIGN.md とタグ付きで」の fallback 記述は snapshot 下では awkward だが動いているので defer。§2 establish された snapshot 原理が §6 に浸透しているかの cross-check は別途必要
+3. **メタ言語の一貫性**: "snapshot", "archive", "graduation event", "pedagogy", "LESSON" 等の loanword 多用。日本語 native との兼ね合いは次回用語監査で (defer)
