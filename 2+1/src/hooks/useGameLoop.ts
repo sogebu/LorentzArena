@@ -31,6 +31,7 @@ import type { Laser } from "../components/game/types";
 import type { useStaleDetection } from "./useStaleDetection";
 import type { useTouchInput } from "../components/game/touchInput";
 import {
+  gcLogs,
   selectDeadPlayerIds,
   selectInvincibleIds,
   useGameStore,
@@ -475,6 +476,15 @@ export function useGameLoop({
               respawnTimeoutsRef.current.add(timerId);
             }
           }
+        }
+      }
+
+      // --- Stage C-4: GC (pair 成立 kill 除去、respawn は latest のみ残す) ---
+      {
+        const gcState = useGameStore.getState();
+        const gc = gcLogs(gcState.killLog, gcState.respawnLog);
+        if (gc.killLog !== gcState.killLog || gc.respawnLog !== gcState.respawnLog) {
+          useGameStore.setState({ killLog: gc.killLog, respawnLog: gc.respawnLog });
         }
       }
     };

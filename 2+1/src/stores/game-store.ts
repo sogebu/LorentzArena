@@ -4,7 +4,9 @@ import {
   INVINCIBILITY_DURATION,
   MAX_DEBRIS,
   MAX_FROZEN_WORLDLINES,
+  MAX_KILL_LOG,
   MAX_PENDING_SPAWN_EVENTS,
+  MAX_RESPAWN_LOG,
 } from "../components/game/constants";
 import { generateExplosionParticles } from "../components/game/debris";
 import { applyKill, applyRespawn } from "../components/game/killRespawn";
@@ -332,3 +334,58 @@ export const selectInvincibleIds = (state: LogState, now: number): Set<string> =
 /** UI 反映待ちの kill events (firedForUi === false)。過去光円錐到達判定で消化される。 */
 export const selectPendingKillEvents = (state: LogState): KillEventRecord[] =>
   state.killLog.filter((e) => !e.firedForUi);
+
+// ---------------------------------------------------------------------------
+// GC (Stage C-4)
+// ---------------------------------------------------------------------------
+
+/**
+ * Event log の garbage collection。
+ * - killLog: firedForUi 済み + 対応 respawn が存在する (= 既に復活した) kill を削除。
+ *   UI 未反映 (firedForUi=false) のものは過去光円錐到達で消化するまで残す。
+ * - respawnLog: 各プレイヤーの latest 1 件のみ残す (invincibility 計算に必要)。
+ *   古い respawn は kill とペアで消費済み。
+ * - 両者とも safety cap (MAX_KILL_LOG / MAX_RESPAWN_LOG) を超えたら古いものから切る。
+ *
+ * 変更が無い場合は **同じ参照** を返し、zustand の set をトリガーしない。
+ */
+export const gcLogs = (
+  killLog: KillEventRecord[],
+  respawnLog: RespawnEventRecord[],
+): { killLog: KillEventRecord[]; respawnLog: RespawnEventRecord[] } => {
+  // 各プレイヤーの latest respawn wallTime
+  const latestResp = new Map<string, number>();
+  for (const e of respawnLog) {
+    const prev = latestResp.get(e.playerId);
+    if (prev === undefined || e.wallTime > prev) latestResp.set(e.playerId, e.wallTime);
+  }
+
+  const nextKill = killLog.filter((e) => {
+    if (!e.firedForUi) return true; // UI 消化待ち
+    const r = latestResp.get(e.victimId);
+    if (r === undefined) return true; // respawn 未発生 (= 死亡継続)
+    return r <= e.wallTime; // respawn 発生前の kill は削除済み、これはまだ未解決
+  });
+
+  // 各プレイヤーの最新 respawn 1 件のみ残す
+  const seen = new Set<string>();
+  const reversed: RespawnEventRecord[] = [];
+  for (let i = respawnLog.length - 1; i >= 0; i--) {
+    const e = respawnLog[i];
+    if (seen.has(e.playerId)) continue;
+    seen.add(e.playerId);
+    reversed.push(e);
+  }
+  const nextResp = reversed.reverse();
+
+  // Safety cap
+  const capKill = nextKill.length > MAX_KILL_LOG ? nextKill.slice(-MAX_KILL_LOG) : nextKill;
+  const capResp = nextResp.length > MAX_RESPAWN_LOG ? nextResp.slice(-MAX_RESPAWN_LOG) : nextResp;
+
+  // 長さ不変なら同じ参照を返す (kill / respawn の transform は削除のみなので
+  // 長さ不変 ⇔ 内容不変)
+  return {
+    killLog: capKill.length === killLog.length ? killLog : capKill,
+    respawnLog: capResp.length === respawnLog.length ? respawnLog : capResp,
+  };
+};

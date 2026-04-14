@@ -70,8 +70,13 @@ export const GAME_LOOP_INTERVAL = 8; // ms
 export const PROCESSED_LASERS_CLEANUP_THRESHOLD = 500;
 
 // --- Pending events caps ---
-export const MAX_PENDING_KILL_EVENTS = 100;
 export const MAX_PENDING_SPAWN_EVENTS = 50;
+
+// --- Authority 解体 Stage C: event log safety caps ---
+// GC (pair 成立 kill 削除 + latest respawn 残し) が通常働くので通常はこれに
+// 届かない。届いたら protection として古いものから切り詰め。
+export const MAX_KILL_LOG = 1000;
+export const MAX_RESPAWN_LOG = 500;
 
 // --- Light cone rendering ---
 export const LIGHT_CONE_HEIGHT = 20;
