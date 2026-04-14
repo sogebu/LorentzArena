@@ -233,6 +233,8 @@ authority や所有構造の判定には使わず、owner 判定は `player.owne
 
 ### リスポーン後無敵（2026-04-13）
 
+**※ Authority 解体 Stage C-3 で `respawnLog` 派生に再構成済み** (`6ba5174`): `invincibleUntil: Map` は store から撤去、`selectInvincibleIds(state, now)` が `respawnLog` の latest wallTime + `INVINCIBILITY_DURATION > now` で derive。各 peer が独立に latest respawn を観測するため host 権威は不要に。下記は 2026-04-13 当時の設計記録。
+
 - **What**: リスポーン後 10 秒間（`INVINCIBILITY_DURATION`）レーザー被弾しない。初回スポーンも同様。視覚表現は opacity パルス（0.3–1.0、~2Hz）
 - **Why**: リスポーン直後に即死するフラストレーション防止
 - **設計判断**:
@@ -315,7 +317,7 @@ Zustand の `getState()` が同期的に最新値を返すため、shadow ref + 
 
 ### ホストマイグレーション堅牢化（2026-04-13）
 
-**※ Authority 解体で大半が不要になる予定**: beacon ownership の付け替えだけに縮退。game state の引き継ぎは event から自己再構築。`plans/2026-04-14-authority-dissolution.md` Stage F
+**※ Authority 解体 Stage D で大半が縮退済み** (`1cc05f9`): 人間の respawn timer は各 owner がローカル保持、useHostMigration の仕事は Lighthouse owner 書き換え + LH 死亡中の respawn 再 schedule のみ。hostMigration メッセージ自体の廃止と beacon ownership 化は Stage F で完了予定。`plans/2026-04-14-authority-dissolution.md` Stage F
 
 エッジケース監査で発見した 6 件の問題を修正。ビーコン PeerJS ID の一意性を single source of truth として活用する設計。
 
@@ -426,7 +428,7 @@ heartbeat detection effect と beacon effect の全リソースを監査。3 件
 
 ### score メッセージの未使用（2026-04-14 発見）
 
-**※ Authority 解体で型ごと削除予定**: score は全 peer が kill event から独立に count する derived 値に正式化。`plans/2026-04-14-authority-dissolution.md` Stage C
+**※ Authority 解体 Stage C-1 で型ごと削除済み** (`01fed9d`): score は全 peer が `killLog` から独立に count する derived 値に正式化。scores フィールド自体は store に残り、`firePendingKillEvents` が過去光円錐到達時に加算する経路は維持。
 
 - **What**: メッセージタイプ `score` は `message.ts` に型定義があり `messageHandler.ts` に受信ハンドラがあるが、**送信箇所が存在しない**（dead code）。スコアはホストから同期されず、各クライアントが `firePendingKillEvents` で独立に計算している
 - **Why not fix now**: 現状はホスト・クライアント両方が同じ `pendingKillEvents` → `firePendingKillEvents` のパイプラインでスコアを算出しており、結果は収束する（各イベントが過去光円錐に入る時刻が異なるだけ）。`hostMigration` メッセージにはスコアが含まれるため、マイグレーション時に同期される。将来的にスコア不整合が問題になったら score 同期を実装する
@@ -643,7 +645,7 @@ stale 除外
 - **What**: ホストが毎フレーム全レーザー x 全プレイヤーの当たり判定を実行。レーザーの null geodesic とワールドラインの各セグメントで同時刻の空間距離を解析的に計算
 - **Why**: ホスト権威でネットワーク遅延による不整合を防止。解析解（二次方程式）で離散化誤差を回避
 - **Tradeoff**: ホストに計算負荷が集中。O(L x P x H) だが期限切れレーザーの早期除外で実用上問題なし
-- **※ Authority 解体で変わる予定**: target-authoritative に移行（各プレイヤーが自分の被弾のみ判定）。`plans/2026-04-14-authority-dissolution.md` Stage B
+- **※ Authority 解体 Stage B で target-authoritative に移行済み** (`8b4932f`): 各 peer が自分 owner のプレイヤー (人間=自分、beacon holder=LH) に対してのみ判定。hit 検出した target 本人が `kill` を broadcast、host は relay hub。ホストへの計算集中は解消。
 
 ### 永続デブリ: アニメーション爆発から静的世界線データへ
 
@@ -876,6 +878,14 @@ index 0 = ホスト、1 = 最初のクライアント、2 = 次、...
 
 ### ホスト権威メッセージの二重処理防止
 
+**※ Authority 解体 Stage B/C/D で全経路が刷新され、この節は historical な記録** (`8b4932f` / `01fed9d` / `d0d05f0`):
+
+- `kill`: Stage B で target 発信に。host skip 撤去。誰でも受理、二重処理防止は `selectIsDead` ガード
+- `respawn`: Stage D で owner 発信に。host skip 撤去。誰でも受理
+- `score`: Stage C-1 で型ごと削除 (各 peer が `killLog` から独立に count)
+
+下記は 2026-04-13 当時の実装:
+
 - **What**: messageHandler で kill/respawn/score メッセージ受信時、`peerManager.getIsHost()` なら return（スキップ）
 - **Why**: ホストはゲームループで kill 検出 → applyKill → ブロードキャスト。PeerManager.send は自分に送信しないが、安全策としてスキップ。従来は UI 副作用（setDeathFlash, setKillNotification の setTimeout）が二重発火していた
 - **Tradeoff**: なし
@@ -960,6 +970,8 @@ index 0 = ホスト、1 = 最初のクライアント、2 = 次、...
   - **un-defer トリガー**: (a) 接続ライフサイクルに絡む実バグ観測、(b) syncTime / sync ハンドシェイクを別設計に差し替える機会、(c) PeerProvider に `reconnecting` 等の phase 概念が必要な機能を足すとき（#4 と合流する）
 
 #### 残存臭 #3: kill 処理の dual entry point（ホスト権威メッセージ）
+
+**※ Authority 解体 Stage B/C/D で解消済み** (`8b4932f` / `01fed9d` / `d0d05f0`): target-authoritative 化で「host だけ game loop で直接呼び、他は messageHandler」という dual entry は消え、全 peer が `sendToNetwork(kill)` + `handleKill` を自分の game loop で呼ぶ単一経路に。host skip guard も撤去。self-loopback pattern を導入する代わりに、発信責任を owner 本人に一元化することで自然解消。respawn も同様 (Stage D)、score は型ごと削除 (Stage C-1)。下記は 2026-04-06 当時の分析記録。
 
 - **場所**: `RelativisticGame.tsx:678` 付近（ホストのゲームループが直接 `handleKill`）+ `messageHandler.ts:184-193`（クライアントが kill メッセージを受けて `handleKill`）+ `messageHandler.ts:185`「ホスト skip」guard
 - **現状**:
