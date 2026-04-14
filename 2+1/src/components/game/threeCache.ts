@@ -19,6 +19,16 @@ export const sharedGeometries = {
   intersectionCore: new THREE.SphereGeometry(0.075, 12, 12),
   intersectionRing: new THREE.TorusGeometry(0.35, 0.035, 12, 24),
   laserIntersectionDot: new THREE.SphereGeometry(0.125, 12, 12),
+  // レーザー × 光円錐 交差: 同時刻面 (local xy) 上の細長い三角形、tip が +x（回転で進行方向へ向ける）
+  laserIntersectionTriangle: (() => {
+    const shape = new THREE.Shape();
+    // tip_x = back_x の大きさ × φ (黄金比)
+    shape.moveTo(0.2427, 0);
+    shape.lineTo(-0.15, 0.06);
+    shape.lineTo(-0.15, -0.06);
+    shape.closePath();
+    return new THREE.ShapeGeometry(shape);
+  })(),
   lightCone: new THREE.ConeGeometry(LIGHT_CONE_HEIGHT, LIGHT_CONE_HEIGHT, 32, 1, true),
   explosionParticle: new THREE.SphereGeometry(0.5, 6, 6), // スケールで size 調整
   // Spawn effect

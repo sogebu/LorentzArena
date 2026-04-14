@@ -34,6 +34,47 @@ import type {
   Laser,
 } from "./types";
 
+/**
+ * 交点 `pos` (観測者 = 原点) における光円錐接平面に、レーザー方向を tip とする三角形を
+ * 寝かせるための回転 quaternion を返す。三角形ジオメトリは local xy 平面、tip=+x、法線=+z。
+ * 過去/未来どちらの光円錐も 外向き法線 n = (x, y, -t)/(ρ√2) の 1 本で扱える。
+ */
+const computeConeTangentQuaternion = (
+  pos: { x: number; y: number; t: number },
+  laserDir: { x: number; y: number; z: number },
+  out: THREE.Quaternion,
+  scratch: THREE.Matrix4,
+): boolean => {
+  const rho2 = pos.x * pos.x + pos.y * pos.y;
+  if (rho2 < 1e-12) return false;
+  const denom = Math.sqrt(rho2 + pos.t * pos.t); // ρ√2 on the cone
+  if (denom < 1e-12) return false;
+  const nx = pos.x / denom;
+  const ny = pos.y / denom;
+  const nt = -pos.t / denom;
+  // Project laser direction onto the tangent plane (laser has no t-component)
+  const ldotN = laserDir.x * nx + laserDir.y * ny;
+  let ux = laserDir.x - ldotN * nx;
+  let uy = laserDir.y - ldotN * ny;
+  let ut = -ldotN * nt;
+  const ulen = Math.sqrt(ux * ux + uy * uy + ut * ut);
+  if (ulen < 1e-9) return false;
+  ux /= ulen; uy /= ulen; ut /= ulen;
+  // v = n × u
+  const vx = ny * ut - nt * uy;
+  const vy = nt * ux - nx * ut;
+  const vt = nx * uy - ny * ux;
+  // Local (x, y, z) → world (u, v, n). Three.js maps local z ↔ world t.
+  scratch.set(
+    ux, vx, nx, 0,
+    uy, vy, ny, 0,
+    ut, vt, nt, 0,
+    0, 0, 0, 1,
+  );
+  out.setFromRotationMatrix(scratch);
+  return true;
+};
+
 export type SceneContentProps = {
   myId: string | null;
   showInRestFrame: boolean;
@@ -415,25 +456,41 @@ export const SceneContent = ({
         );
       })}
 
-      {/* レーザー過去光円錐交差マーカー（ドット） */}
+      {/* レーザー過去光円錐交差マーカー（円錐接平面に貼り付いた三角形、tip=laser.direction の接平面射影） */}
       {laserIntersections.map(({ laser, pos }) => {
         const c = getThreeColor(laser.color);
+        const quat = new THREE.Quaternion();
+        const m = new THREE.Matrix4();
+        const ok = computeConeTangentQuaternion(pos, laser.direction, quat, m);
+        if (!ok) return null;
         return (
-          <group key={`laser-intersection-${laser.id}`} position={[pos.x, pos.y, pos.t]}>
-            <mesh geometry={sharedGeometries.laserIntersectionDot}>
-              <meshStandardMaterial color={c} emissive={c} emissiveIntensity={0.5} roughness={0.6} metalness={0.0} />
+          <group
+            key={`laser-intersection-${laser.id}`}
+            position={[pos.x, pos.y, pos.t]}
+            quaternion={quat}
+          >
+            <mesh geometry={sharedGeometries.laserIntersectionTriangle}>
+              <meshBasicMaterial color={c} side={THREE.DoubleSide} />
             </mesh>
           </group>
         );
       })}
 
-      {/* 未来光円錐交差マーカー（うっすら表示: レーザー + 世界線） */}
+      {/* 未来光円錐交差マーカー（接平面に貼り付いた三角形、うっすら表示） */}
       {laserFutureIntersections.map(({ laser, pos }) => {
         const c = getThreeColor(laser.color);
+        const quat = new THREE.Quaternion();
+        const m = new THREE.Matrix4();
+        const ok = computeConeTangentQuaternion(pos, laser.direction, quat, m);
+        if (!ok) return null;
         return (
-          <group key={`laser-future-${laser.id}`} position={[pos.x, pos.y, pos.t]}>
-            <mesh geometry={sharedGeometries.laserIntersectionDot} scale={[0.65, 0.65, 0.65]}>
-              <meshBasicMaterial color={c} transparent opacity={0.15} depthWrite={false} />
+          <group
+            key={`laser-future-${laser.id}`}
+            position={[pos.x, pos.y, pos.t]}
+            quaternion={quat}
+          >
+            <mesh geometry={sharedGeometries.laserIntersectionTriangle} scale={[0.65, 0.65, 0.65]}>
+              <meshBasicMaterial color={c} transparent opacity={0.15} side={THREE.DoubleSide} depthWrite={false} />
             </mesh>
           </group>
         );
@@ -479,10 +536,10 @@ export const SceneContent = ({
         const quat = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
         const pos = transformEventForDisplay(myPlayer.phaseSpace.pos, observerPos, observerBoost);
         const c = getThreeColor(myPlayer.color);
-        const spacing = 2.5;
-        // 0s→1個, 0.1s→2個, 0.2s→3個（ループなし、トリガー押し始めから）
+        const spacing = 1.2; // 矢印の全長 (tip 0.75 + base 0.45) と一致させ tip↔base を接合
+        // 0s→1個, 0.05s→2個, 0.1s→3個（ループなし、トリガー押し始めから）
         const elapsed = Date.now() - firingStartRef.current;
-        const visibleCount = Math.min(3, Math.floor(elapsed / 100) + 1);
+        const visibleCount = Math.min(3, Math.floor(elapsed / 50) + 1);
         return [1, 2, 3].map((i) => {
           if (i > visibleCount) return null;
           const opacity = 0.9 - (i - 1) * 0.15;
