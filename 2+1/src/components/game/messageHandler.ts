@@ -244,6 +244,10 @@ export const createMessageHandler =
           ? updated.slice(updated.length - MAX_LASERS)
           : updated;
       });
+      // Stage E: LH laser の観測記録 (beacon migration 時の fire continuity 用)
+      if (isLighthouse(msg.playerId)) {
+        store.lighthouseLastFireTime.set(msg.playerId, Date.now());
+      }
     } else if (msg.type === "respawn") {
       // Stage D: respawn は owner 発信。host は他 peer の respawn を受信したら
       // handleRespawn を実行 + registerHostRelay が relay を担当。

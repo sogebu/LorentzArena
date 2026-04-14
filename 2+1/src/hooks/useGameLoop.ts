@@ -101,7 +101,6 @@ export function useGameLoop({
 
   // Internal refs (previously in RelativisticGame, now local to the game loop)
   const causalFrozenRef = useRef<boolean>(false);
-  const lighthouseLastFireRef = useRef<Map<string, number>>(new Map());
   const lastLaserTimeRef = useRef<number>(0);
   const fpsRef = useRef({ frameCount: 0, lastTime: performance.now() });
   const energyRef = useRef(ENERGY_MAX);
@@ -359,14 +358,16 @@ export function useGameLoop({
         }
       }
 
-      // --- Host: Lighthouse AI (batched updates) ---
-      if (peerManager.getIsHost()) {
+      // --- Stage E: Lighthouse AI (owner-based, authority 構造から切り離し) ---
+      // host-ness ではなく owner-ness で分岐。LH.ownerId === myId な peer が AI を回す。
+      {
         const freshForLH = useGameStore.getState();
         const lhUpdates: Array<{ id: string; ps: ReturnType<typeof createPhaseSpace>; wl: ReturnType<typeof freshForLH.players.get> extends infer P ? P extends { worldLine: infer W } ? W : never : never }> = [];
         const lhLasers: Laser[] = [];
 
         for (const [lhId, lh] of freshForLH.players) {
-          if (!isLighthouse(lhId)) continue;
+          if (lh.ownerId !== myId) continue;
+          if (!isLighthouse(lhId)) continue; // metadata: この owner filter 下で AI を回すのは LH のみ
           if (lh.isDead) continue;
 
           const result = processLighthouseAI(
@@ -375,12 +376,12 @@ export function useGameLoop({
             lh,
             dTau,
             currentTime,
-            lighthouseLastFireRef.current,
+            freshForLH.lighthouseLastFireTime,
             freshForLH.lighthouseSpawnTime,
           );
 
           lhUpdates.push({ id: lhId, ps: result.newPs, wl: result.newWl });
-          peerManager.send({
+          sendToNetwork({
             type: "phaseSpace" as const,
             senderId: lhId,
             position: result.newPs.pos,
@@ -388,9 +389,9 @@ export function useGameLoop({
           });
 
           if (result.laser) {
-            lighthouseLastFireRef.current.set(lhId, currentTime);
+            freshForLH.lighthouseLastFireTime.set(lhId, currentTime);
             lhLasers.push(result.laser);
-            peerManager.send({ type: "laser" as const, ...result.laser });
+            sendToNetwork({ type: "laser" as const, ...result.laser });
           }
         }
 

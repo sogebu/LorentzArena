@@ -49,6 +49,12 @@ export interface GameState {
   displayNames: Map<string, string>;
   lighthouseSpawnTime: Map<string, number>;
   /**
+   * Authority 解体 Stage E: 各 peer が観測した LH の最後の laser 発射 wallTime。
+   * LH owner はこの Map を読んで fire interval を守る。非 owner peer も laser
+   * 受信時に更新するため、beacon migration で owner が交代しても自動的に連続性が保たれる。
+   */
+  lighthouseLastFireTime: Map<string, number>;
+  /**
    * Authority 解体 Stage C: kill/respawn の authoritative event log。
    * deadPlayers / invincibleUntil / scores / pendingKillEvents はすべて
    * これらの log から派生 (selectIsDead / selectInvincibleIds /
@@ -108,6 +114,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   pendingSpawnEvents: [],
   displayNames: new Map(),
   lighthouseSpawnTime: new Map(),
+  lighthouseLastFireTime: new Map(),
   killLog: [],
   respawnLog: [],
 
