@@ -32,6 +32,14 @@
 - `appendWorldLine` O(n) → ring buffer
 - useMemo 毎フレーム再計算 → カリング
 
+### リスポーン時に世界線が繋がる（再発、2026-04-14 Stage F-1 後に報告）
+
+- **現象**: プレイヤーがリスポーンすると、死亡前の世界線と死亡後の世界線が一本の連続した線として描画される（過去のライフの凍結世界線と新ライフの世界線が分離して描画されるべき）
+- **過去に一度修正された類似問題**: `WorldLine.origin` の半直線延長の無効化（DESIGN.md「過去半直線延長を廃止」参照）でリスポーン側は固定されたはずだが再発
+- **F-1 の関与仮説**: `snapshot` / `applySnapshot` 経路で worldLine を serialize & rehydrate している。snapshot には `frozenWorldLines` を含めず現 `player.worldLine` のみ送るため、死亡中に snapshot が送信されると新 peer は死ぬ直前までの history を「生きた現 worldLine」として持ち、その後の respawn で appendWorldLine が繋がった世界線を作る可能性
+- **未調査**: 何 peer 構成で、誰が死んだ時、どの peer から見て発生するか。applySnapshot 経路が原因か、別経路 (Stage C-E のどこか) か
+- **対処**: Stage F-2/G/H では自動解消しない見込みのため、Stage F-2 以降の途中で独立タスクとして調査予定
+
 ### ホストマイグレーション時の位置飛び（Stage F で解消見込み）
 
 - 灯台の位置が飛び、世界線が折れ線になる。旧ホストの位置も飛んでいた可能性
