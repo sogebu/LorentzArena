@@ -79,14 +79,6 @@ export type Message =
     }
   | {
       /**
-       * Score update from host.
-       * JP: ホストからのスコア更新。
-       */
-      type: "score";
-      scores: Record<string, number>;
-    }
-  | {
-      /**
        * Heartbeat from host to clients.
        * Sent periodically so clients can detect host disconnection quickly,
        * without waiting for the slow WebRTC ICE timeout.

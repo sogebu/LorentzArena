@@ -249,11 +249,6 @@ export const createMessageHandler =
       staleFrozenRef.current.delete(msg.playerId);
       lastUpdateTimeRef.current.set(msg.playerId, Date.now());
       store.handleRespawn(msg.playerId, msg.position, myId, getPlayerColor);
-    } else if (msg.type === "score") {
-      if (peerManager.getIsHost()) return;
-      const scores = parseScores(msg.scores);
-      if (!scores) return;
-      store.setScores(scores);
     } else if (msg.type === "kill") {
       // Stage B: kill は誰からでも受理（host skip を撤去）。
       // host も自身が owner でない player の kill は messageHandler 経由で受信する。
