@@ -92,9 +92,9 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 
 自動接続フロー: START を押すと PeerProvider がマウントされ接続開始。`#room=name` で部屋分離。最初に START を押した人（= 最初に `la-{roomName}` ビーコンを取得した人）がホスト。全員ランダム ID でゲーム接続し、`la-{roomName}` はビーコン（発見専用、redirect 送信）のみに使用。
 
-プレイヤー初期化: ホストは START 直後に自己初期化（`OFFSET = Date.now()/1000` で座標時間 t ≈ 0 から開始）。クライアントは自己初期化せず、ホストから `syncTime` を受信した時点でホストの座標時間にスポーン（Stage F で snapshot に統合予定）。
+プレイヤー初期化: ホストは START 直後に自己初期化（`OFFSET = Date.now()/1000` で座標時間 t ≈ 0 から開始）。新規 join client は beacon holder から `snapshot` メッセージで `hostTime` を受け取り、その coord-time にスポーン（Authority 解体 Stage F-1 で `syncTime` 廃止、snapshot に統合済み）。
 
-ホストマイグレーション: ホストが切断すると最古参クライアントが自動昇格。ハートビート方式（3 秒間隔 `ping`、8 秒タイムアウト）で即時検知。Stage D 以降、人間の respawn timer は各 owner がローカルに持ち続けるので migration で再構築不要。`useHostMigration` の仕事は Lighthouse owner 書き換え + LH 死亡中なら残り時間で respawn 再 schedule のみ。`hostMigration` メッセージは scores / displayNames の互換同期を残すが payload は Stage F で snapshot に統合予定。
+ホストマイグレーション: beacon holder が切断すると最古参クライアントが自動昇格。ハートビート方式（1 秒間隔 `ping`、2.5 秒タイムアウト、Stage G 以降）で即時検知。Authority 解体 Stage D 以降、人間の respawn timer は各 owner がローカルに持ち続けるので migration で再構築不要。`useBeaconMigration`（旧 `useHostMigration`）の仕事は Lighthouse owner 書き換え + LH 死亡中なら残り時間で respawn 再 schedule のみ。`hostMigration` メッセージは Stage H で完全削除済み。
 
 ビーコンパターン: `la-{roomName}` は常にビーコン（発見専用）。初期ホストは Phase 1 でビーコンを取得し `beaconRef` に保持、マイグレーション後のホストはビーコン effect で取得。新クライアントがビーコンに接続すると `{ type: "redirect", hostId }` で本当のホスト（ランダム ID）にリダイレクト。既存のゲーム接続には影響しない。
 
@@ -102,7 +102,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 
 ビーコンベースのホスト降格: peerOrderRef のずれで 2 ノードが同時にホスト化した場合（dual-host）、ビーコン PeerJS ID の一意性で解決。ビーコン取得に 3 回失敗したホストは、ビーコン経由で本物のホストを発見 → 自分のクライアントに redirect を broadcast → 自分はクライアントに降格。`roleVersion` state で全 role 依存 effect を再評価。
 
-設計判断は DESIGN.md「ホストマイグレーション堅牢化」参照。
+設計判断は DESIGN.md § Authority 解体 / § ネットワーク参照。
 
 ### ゲーム (`src/components/`)
 
@@ -153,7 +153,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 - モバイル: 横スワイプ heading、縦変位 thrust（連続値）、ダブルタップ 射撃（全操作同時実行可）
 - 正射影/透視投影カメラ切替
 - 自分の静止系/世界系表示切替
-- 当たり判定（target-authoritative、`findLaserHitPosition`）: 各 peer が自分 owner のプレイヤー (人間=自分、beacon holder=LH) に対してのみ判定。hit 検出した target 本人が `kill` を broadcast、host が relay。詳細: DESIGN.md「Authority 解体 B」
+- 当たり判定（target-authoritative、`findLaserHitPosition`）: 各 peer が自分 owner のプレイヤー (人間=自分、beacon holder=LH) に対してのみ判定。hit 検出した target 本人が `kill` を broadcast、host が relay。詳細: DESIGN.md § Authority 解体 Stage B
 - Kill/Respawn: kill → 世界線を `frozenWorldLines` に移動 + デブリ生成 → ゴースト（DeathEvent ベース等速直線）→ 10秒後リスポーン（新 WorldLine）→ 10秒間無敵（opacity パルスで表示、Lighthouse 除外）
 - 世界オブジェクト分離: 死亡で生まれるオブジェクト（凍結世界線、デブリ、ゴースト）はプレイヤーから独立した state。レーザーも同様
 - 死亡の設計哲学: 凍結世界線・デブリは世界オブジェクトとして独立描画。過去光円錐交差で自然に可視性が決まる
@@ -163,8 +163,8 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 - スポーンエフェクト（因果律遅延: 他プレイヤーのリスポーンは `pendingSpawnEventsRef` に積み、過去光円錐到達時に発火。自分のリスポーンは即時）
 - 永続デブリ: 死亡イベントからの等速直線運動パーティクル。lineSegments でバッチ描画。マーカーは過去光円錐交差で表示（maxLambda は固定値、observer 非依存）
 - 世界線管理: `player.worldLine` 1本のみ。過去のライフは `frozenWorldLines[]` に格納
-- 世界線の過去延長: `WorldLine.origin` で制御。最初のライフのみ origin から半直線延長
-- プレイヤー色は `colorForJoinOrder(index)` が主（接続順 × 黄金角）、peerList 未受信時は `colorForPlayerId(id)` にフォールバック。ネットワーク同期不要の純関数方式。詳細は DESIGN.md「色割り当て」
+- 世界線の過去延長: 廃止済み。`WorldLine.origin` は常に null、半直線延長コードは削除済み (詳細: DESIGN.md § 物理「初回スポーン = リスポーン統一」)
+- プレイヤー色は `colorForJoinOrder(index)` が主（接続順 × 黄金角）、peerList 未受信時は `colorForPlayerId(id)` にフォールバック。ネットワーク同期不要の純関数方式。詳細は DESIGN.md § 描画「色割り当て」
 - 因果律の守護者: 他プレイヤーの未来光円錐内で操作凍結。死亡プレイヤー・灯台は除外。灯台は別方式: 誰かの過去光円錐に落ちたら最も過去の生存プレイヤーの座標時間にジャンプ
 - 光円錐描画: DoubleSide 半透明サーフェス（opacity 0.08）+ ワイヤーフレーム（opacity 0.12）の 2 層構造で未来/過去光円錐を表示
 
@@ -192,7 +192,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 
 **撤去済み**: `deadPlayers: Set`, `invincibleUntil: Map`, `pendingKillEvents[]`, `deathTimeMap: Map` — Stage C で全て event log 由来の selector に置換。
 
-設計判断の詳細は DESIGN.md「Authority 解体 C」節。
+設計判断の詳細は DESIGN.md § Authority 解体 Stage C。
 
 ### メッセージタイプ (`src/types/message.ts`)
 
@@ -214,14 +214,14 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 
 **relay 対象 (`PeerProvider.isRelayable`)**: `phaseSpace` / `laser` / `intro` / `kill` / `respawn`。beacon holder が非 owner の発信を他 peer へ転送。
 
-**色は同期しない**: 全ピアが `colorForJoinOrder(index)` で接続順に基づく色を独立に算出。ホストが peerList に `joinRegistry`（全履歴）を含めて送信し、クライアントは丸ごと置換（ホストが唯一の正本）。peerList 未受信時は `colorForPlayerId(id)` にフォールバック。詳細: DESIGN.md「色割り当て」
+**色は同期しない**: 全ピアが `colorForJoinOrder(index)` で接続順に基づく色を独立に算出。ホストが peerList に `joinRegistry`（全履歴）を含めて送信し、クライアントは丸ごと置換（ホストが唯一の正本）。peerList 未受信時は `colorForPlayerId(id)` にフォールバック。詳細: DESIGN.md § 描画「色割り当て」
 
 **Authority の所在** (Authority 解体 Stage A〜H 完了後):
 - `phaseSpace` / `laser` / `kill` / `respawn` はすべて owner 発信 (target-authoritative)。beacon holder は relay hub
 - 受信側は二重処理防止を log / selectors に委ねる (例: `handleKill` は `selectIsDead` でガード)
 - beacon holder 特有の仕事は: (a) relay、(b) Lighthouse の AI 駆動（LH owner 兼任）、(c) beacon 所有、(d) ping 送信、(e) 新規 join 対応 (snapshot 送信) のみ
 
-メッセージバリデーション: `messageHandler.ts` で全メッセージに `isFiniteNumber`/`isValidVector4`/`isValidVector3`/`isValidColor`/`isValidString` のランタイム検証を実施。laser range は `0 < range <= 100`。body の sender 検証は意図的にしない（spoofing 防御にならないため、詳細は DESIGN.md「B: body senderId 検証はしない判断」）。
+メッセージバリデーション: `messageHandler.ts` で全メッセージに `isFiniteNumber`/`isValidVector4`/`isValidVector3`/`isValidColor`/`isValidString` のランタイム検証を実施。laser range は `0 < range <= 100`。body の sender 検証は意図的にしない（spoofing 防御にならないため、詳細は DESIGN.md § Authority 解体 Stage B）。
 
 ### ゲームパラメータ（`game/constants.ts`）
 
@@ -296,8 +296,9 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 ## 参照ドキュメント
 
 - `DESIGN.md` — 設計判断の記録（このディレクトリ内）
-- `plans/` — 複数 Stage にまたがる進行中リファクタの計画書
-  - `plans/2026-04-14-authority-dissolution.md` — host 権威解体、target-authoritative 化（着手中）
+- `plans/` — 複数 Stage にまたがるリファクタの計画書
+  - `plans/2026-04-14-authority-dissolution.md` — host 権威解体、target-authoritative 化（**完了**、2026-04-15）
+  - `plans/2026-04-15-design-reorg.md` — DESIGN.md 再編の作業メモ（完了）
 - `../CONVENTIONS.md` → `~/Claude/claude-config/CONVENTIONS.md`（symlink）
 - `../docs/NETWORKING.md` — ネットワーク設定の詳細
 - `relay-deploy/README.md` — WS Relay 本番デプロイ手順

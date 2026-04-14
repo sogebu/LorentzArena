@@ -23,11 +23,19 @@
 - **動機（達成済み）**: host 切断時の state 引き継ぎが怪物化していたのを target-authoritative 化 + event-sourced で解消。beacon migration は beacon ownership の付け替えのみに縮退
 - **デプロイ方針**: 全 Stage 完了後にまとめて deploy。世界線 regression の決着後を予定
 
+## 直近の作業
+
+### 2026-04-15: DESIGN.md 再編（完了）
+
+`plans/2026-04-15-design-reorg.md` に従い、1186 → 925 行（内 Defer 205 行は現状維持）に再編。構造を時系列から topic 別に変更、§ メタ原則・教訓セクション新設、Authority 解体を 1 主セクションに集約、SUPERSEDED-pure 8 件を削除、SP 6 件を吸収、LESSON 12 件をメタ原則に集約。
+
+同じ知見を `claude-config/docs/convention-design-principles.md` §7「決定後の content lifecycle と DESIGN.md の肥大化対策」として feedback 済み。
+
 ## 既知の課題
 
 ### defer 中
 
-- DESIGN.md 残存する設計臭 #2-#4
+- DESIGN.md 残存する設計臭 #2（#1 は実質解決、#3/#4 は Authority 解体で自然消滅）
 - PeerProvider Phase 1 effect のコールバックネスト
 - 色調をポップで明るく（方向性未定）
 
@@ -39,7 +47,7 @@
 ### リスポーン時に世界線が繋がる（再発、2026-04-14 Stage F-1 後に報告）
 
 - **現象**: プレイヤーがリスポーンすると、死亡前の世界線と死亡後の世界線が一本の連続した線として描画される（過去のライフの凍結世界線と新ライフの世界線が分離して描画されるべき）
-- **過去に一度修正された類似問題**: `WorldLine.origin` の半直線延長の無効化（DESIGN.md「過去半直線延長を廃止」参照）でリスポーン側は固定されたはずだが再発
+- **過去に一度修正された類似問題**: `WorldLine.origin` の半直線延長の無効化（DESIGN.md § 物理「初回スポーン = リスポーン統一」参照）でリスポーン側は固定されたはずだが再発
 
 - **検討した仮説と検証状況 (いずれも未確認)**:
 
@@ -59,10 +67,11 @@
 - **未調査**: 何 peer 構成で・誰が死んだ時・どの peer (本人 / killer / 第三者 / snapshot を受けた新 joiner) から見て発生するか。特に **host migration 直前直後** に集中して起きるかどうか (ユーザー観察の示唆)
 - **対処**: Stage F-2/G/H では自動解消しない見込みのため、Stage F-2 以降の途中で独立タスクとして調査予定
 
-### ホストマイグレーション時の位置飛び（Stage F で解消見込み）
+### ホストマイグレーション時の位置飛び（Stage F-H 完了後に要確認）
 
 - 灯台の位置が飛び、世界線が折れ線になる。旧ホストの位置も飛んでいた可能性
-- 推定原因: 旧ホスト切断→新ホスト昇格の間にタイムギャップが生じ、新ホストが最後の phaseSpace から再開すると座標時間の不連続で世界線にジャンプ。Stage D-3 で LH の上書き問題は修正済みだが、migration 中の phaseSpace 発信途絶による不連続は残る
+- 推定原因: 旧 beacon holder 切断→新昇格の間にタイムギャップが生じ、新 owner が最後の phaseSpace から再開すると座標時間の不連続で世界線にジャンプ。Stage D-3 で LH の上書き問題は修正済みだが、migration 中の phaseSpace 発信途絶による不連続は残る
+- 現状: Stage F-H 完了後に再現テスト未実施。実機で要確認
 
 ### 要テスト
 
