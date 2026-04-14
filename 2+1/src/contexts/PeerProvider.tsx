@@ -145,6 +145,9 @@ const isRelayable = (msg: Message): boolean => {
       msg.hitPos != null
     );
   }
+  if (msg.type === "respawn") {
+    return typeof msg.playerId === "string" && msg.position != null;
+  }
   return false;
 };
 
@@ -196,7 +199,8 @@ const registerHostRelay = (pm: NetworkManager) => {
       (msg.type === "phaseSpace" ||
         msg.type === "laser" ||
         msg.type === "intro" ||
-        msg.type === "kill") &&
+        msg.type === "kill" ||
+        msg.type === "respawn") &&
       isRelayable(msg)
     ) {
       pm.broadcast(msg, senderId);

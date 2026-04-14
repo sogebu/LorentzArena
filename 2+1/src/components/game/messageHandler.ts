@@ -5,7 +5,7 @@ import {
   createWorldLine,
 } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
-import { LIGHTHOUSE_COLOR, MAX_LASERS, MAX_WORLDLINE_HISTORY, RESPAWN_DELAY, SPAWN_RANGE } from "./constants";
+import { LIGHTHOUSE_COLOR, MAX_LASERS, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
 import { isLighthouse } from "./lighthouse";
 import { createRespawnPosition } from "./respawnTime";
 import type { Laser, RelativisticPlayer } from "./types";
@@ -21,8 +21,6 @@ export type MessageHandlerDeps = {
   lastUpdateTimeRef: React.MutableRefObject<Map<string, number>>;
   lastCoordTimeRef: React.MutableRefObject<Map<string, { wallTime: number; posT: number }>>;
   staleFrozenRef: React.MutableRefObject<Set<string>>;
-  // Stage B: host が受信した kill に対して respawn を schedule するため。
-  respawnTimeoutsRef: React.MutableRefObject<Set<ReturnType<typeof setTimeout>>>;
 };
 
 const isFiniteNumber = (v: unknown): v is number =>
@@ -78,7 +76,6 @@ export const createMessageHandler =
       lastUpdateTimeRef,
       lastCoordTimeRef,
       staleFrozenRef,
-      respawnTimeoutsRef,
     } = deps;
     const store = useGameStore.getState();
 
@@ -248,7 +245,8 @@ export const createMessageHandler =
           : updated;
       });
     } else if (msg.type === "respawn") {
-      if (peerManager.getIsHost()) return;
+      // Stage D: respawn は owner 発信。host は他 peer の respawn を受信したら
+      // handleRespawn を実行 + registerHostRelay が relay を担当。
       if (!isValidString(msg.playerId) || !isValidVector4(msg.position)) return;
       staleFrozenRef.current.delete(msg.playerId);
       lastUpdateTimeRef.current.set(msg.playerId, Date.now());
@@ -266,22 +264,8 @@ export const createMessageHandler =
       // S-2: kill で stale クリア（二重 respawn 防止）
       staleFrozenRef.current.delete(victimId);
       store.handleKill(victimId, killerId, hitPos, myId);
-      // Stage D まで host 集中。host が受信した kill について respawn を schedule。
-      // ローカルで自ら検出した kill は useGameLoop 側でスケジュール済み。
-      if (peerManager.getIsHost()) {
-        const timerId = setTimeout(() => {
-          respawnTimeoutsRef.current.delete(timerId);
-          const currentStore = useGameStore.getState();
-          const respawnPos = createRespawnPosition(currentStore.players);
-          peerManager.send({
-            type: "respawn" as const,
-            playerId: victimId,
-            position: respawnPos,
-          });
-          currentStore.handleRespawn(victimId, respawnPos, myId, getPlayerColor);
-        }, RESPAWN_DELAY);
-        respawnTimeoutsRef.current.add(timerId);
-      }
+      // Stage D: respawn schedule は owner local (= target 本人 or LH owner) が
+      // useGameLoop 側で担当。ここでは何もしない。
     } else if (msg.type === "hostMigration") {
       if (peerManager.getIsHost()) return;
       if (!isValidString(msg.newHostId)) return;

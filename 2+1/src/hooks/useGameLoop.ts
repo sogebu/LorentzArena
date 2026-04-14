@@ -447,7 +447,6 @@ export function useGameLoop({
         }
 
         if (hitResult.kills.length > 0) {
-          const isHost = peerManager.getIsHost();
           for (const id of hitResult.hitLaserIds) {
             freshForHit.processedLasers.add(id);
           }
@@ -458,23 +457,21 @@ export function useGameLoop({
             sendToNetwork({ type: "kill" as const, victimId, killerId, hitPos });
             useGameStore.getState().handleKill(victimId, killerId, hitPos, myId);
 
-            // respawn timer は Stage D まで host 集中。ここは自分が owner で
-            // かつ host でもあるケース（host 自身 or LH）をハンドル。
-            // 非 owner 側の kill は messageHandler 経由で host がスケジュール。
-            if (isHost) {
-              const timerId = setTimeout(() => {
-                respawnTimeoutsRef.current.delete(timerId);
-                const currentStore = useGameStore.getState();
-                const respawnPos = createRespawnPosition(currentStore.players);
-                peerManager.send({
-                  type: "respawn" as const,
-                  playerId: victimId,
-                  position: respawnPos,
-                });
-                currentStore.handleRespawn(victimId, respawnPos, myId, getPlayerColor);
-              }, RESPAWN_DELAY);
-              respawnTimeoutsRef.current.add(timerId);
-            }
+            // Stage D: respawn schedule は owner local。hit detection が
+            // owner 絞り込み済みなので、ここに到達した kill は全て自分 owner
+            // の target。target 本人 (または LH owner = host) が timer を持つ。
+            const timerId = setTimeout(() => {
+              respawnTimeoutsRef.current.delete(timerId);
+              const currentStore = useGameStore.getState();
+              const respawnPos = createRespawnPosition(currentStore.players);
+              sendToNetwork({
+                type: "respawn" as const,
+                playerId: victimId,
+                position: respawnPos,
+              });
+              currentStore.handleRespawn(victimId, respawnPos, myId, getPlayerColor);
+            }, RESPAWN_DELAY);
+            respawnTimeoutsRef.current.add(timerId);
           }
         }
       }

@@ -264,7 +264,6 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         lastUpdateTimeRef: stale.lastUpdateTimeRef,
         lastCoordTimeRef: stale.lastCoordTimeRef,
         staleFrozenRef: stale.staleFrozenRef,
-        respawnTimeoutsRef,
       }),
     );
 
