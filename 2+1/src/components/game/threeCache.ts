@@ -23,10 +23,11 @@ export const sharedGeometries = {
   laserIntersectionTriangle: (() => {
     const shape = new THREE.Shape();
     // Acute golden gnomon: 頂角 36°、脚:底辺 = φ:1。
-    // 底辺 = 0.12, 脚 = 0.12·φ ≈ 0.194, 高さ = √(脚² − (底辺/2)²) ≈ 0.1844。
-    shape.moveTo(0.0344, 0);
-    shape.lineTo(-0.15, 0.06);
-    shape.lineTo(-0.15, -0.06);
+    // 底辺 = 0.12, 脚 = 0.12·φ ≈ 0.194, 高さ ≈ 0.1844。
+    // 重心 (x) = 0 になるよう tip=2h/3, back=-h/3 で配置。
+    shape.moveTo(0.1229, 0);
+    shape.lineTo(-0.0615, 0.06);
+    shape.lineTo(-0.0615, -0.06);
     shape.closePath();
     return new THREE.ShapeGeometry(shape);
   })(),

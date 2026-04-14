@@ -18,6 +18,9 @@ import {
   CAMERA_DISTANCE_ORTHOGRAPHIC,
   CAMERA_DISTANCE_PERSPECTIVE,
   LIGHT_CONE_HEIGHT,
+  LIGHT_CONE_SURFACE_OPACITY,
+  LIGHT_CONE_WIRE_OPACITY,
+  LIGHTHOUSE_WORLDLINE_OPACITY,
   PLAYER_MARKER_SIZE_OTHER,
   PLAYER_MARKER_SIZE_SELF,
 } from "./constants";
@@ -316,7 +319,7 @@ export const SceneContent = ({
           color={player.color}
           observerPos={observerPos}
           observerBoost={observerBoost}
-          {...(isLighthouse(player.id) ? { tubeRadius: 0.06, tubeOpacity: 0.4 } : {})}
+          {...(isLighthouse(player.id) ? { tubeRadius: 0.06, tubeOpacity: LIGHTHOUSE_WORLDLINE_OPACITY } : {})}
         />
       ))}
 
@@ -389,7 +392,7 @@ export const SceneContent = ({
                 <meshBasicMaterial
                   color={color}
                   transparent
-                  opacity={0.08}
+                  opacity={LIGHT_CONE_SURFACE_OPACITY}
                   side={THREE.DoubleSide}
                   depthWrite={false}
                 />
@@ -402,7 +405,7 @@ export const SceneContent = ({
                 <meshBasicMaterial
                   color={color}
                   transparent
-                  opacity={0.12}
+                  opacity={LIGHT_CONE_WIRE_OPACITY}
                   wireframe
                   depthWrite={false}
                 />
@@ -416,7 +419,7 @@ export const SceneContent = ({
                 <meshBasicMaterial
                   color={color}
                   transparent
-                  opacity={0.08}
+                  opacity={LIGHT_CONE_SURFACE_OPACITY}
                   side={THREE.DoubleSide}
                   depthWrite={false}
                 />
@@ -429,7 +432,7 @@ export const SceneContent = ({
                 <meshBasicMaterial
                   color={color}
                   transparent
-                  opacity={0.12}
+                  opacity={LIGHT_CONE_WIRE_OPACITY}
                   wireframe
                   depthWrite={false}
                 />

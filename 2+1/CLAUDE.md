@@ -154,7 +154,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 - 正射影/透視投影カメラ切替
 - 自分の静止系/世界系表示切替
 - 当たり判定（target-authoritative、`findLaserHitPosition`）: 各 peer が自分 owner のプレイヤー (人間=自分、beacon holder=LH) に対してのみ判定。hit 検出した target 本人が `kill` を broadcast、host が relay。詳細: DESIGN.md § Authority 解体 Stage B
-- Kill/Respawn: kill → 世界線を `frozenWorldLines` に移動 + デブリ生成 → ゴースト（DeathEvent ベース等速直線）→ 10秒後リスポーン（新 WorldLine）→ 10秒間無敵（opacity パルスで表示、Lighthouse 除外）
+- Kill/Respawn: kill → 世界線を `frozenWorldLines` に移動 + デブリ生成 → ゴースト（DeathEvent ベース等速直線）→ `RESPAWN_DELAY` 後リスポーン（新 WorldLine）→ `INVINCIBILITY_DURATION` の無敵時間（opacity パルスで表示、Lighthouse 除外）
 - 世界オブジェクト分離: 死亡で生まれるオブジェクト（凍結世界線、デブリ、ゴースト）はプレイヤーから独立した state。レーザーも同様
 - 死亡の設計哲学: 凍結世界線・デブリは世界オブジェクトとして独立描画。過去光円錐交差で自然に可視性が決まる
 - 死亡状態管理: `isDead` フラグ + `DeathEvent`（ゴーストカメラの決定論的計算）。`handleKill`/`handleRespawn` コールバックで一元化
@@ -166,7 +166,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 - 世界線の過去延長: 廃止済み。`WorldLine.origin` は常に null、半直線延長コードは削除済み (詳細: DESIGN.md § 物理「初回スポーン = リスポーン統一」)
 - プレイヤー色は `colorForJoinOrder(index)` が主（接続順 × 黄金角）、peerList 未受信時は `colorForPlayerId(id)` にフォールバック。ネットワーク同期不要の純関数方式。詳細は DESIGN.md § 描画「色割り当て」
 - 因果律の守護者: 他プレイヤーの未来光円錐内で操作凍結。死亡プレイヤー・灯台は除外。灯台は別方式: 誰かの過去光円錐に落ちたら最も過去の生存プレイヤーの座標時間にジャンプ
-- 光円錐描画: DoubleSide 半透明サーフェス（opacity 0.08）+ ワイヤーフレーム（opacity 0.12）の 2 層構造で未来/過去光円錐を表示
+- 光円錐描画: DoubleSide 半透明サーフェス（`LIGHT_CONE_SURFACE_OPACITY`）+ ワイヤーフレーム（`LIGHT_CONE_WIRE_OPACITY`）の 2 層構造で未来/過去光円錐を表示
 
 ### Store 構造 (`src/stores/game-store.ts`、Stage C 以降)
 
@@ -254,12 +254,16 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `PLAYER_MARKER_SIZE_SELF` | 0.42 | 自機マーカーサイズ（playerSphere geo 0.5 × scale） |
 | `PLAYER_MARKER_SIZE_OTHER` | 0.2 | 他機マーカーサイズ |
 | `LIGHT_CONE_HEIGHT` | 20 | 描画上の円錐サイズ（c=1 で radius=height） |
+| `LIGHT_CONE_SURFACE_OPACITY` | 0.08 | 光円錐サーフェスの透明度 |
+| `LIGHT_CONE_WIRE_OPACITY` | 0.04 | 光円錐ワイヤーフレームの透明度 |
+| `PLAYER_WORLDLINE_OPACITY` | 0.65 | 人間プレイヤーの世界線チューブ透明度 |
+| `LIGHTHOUSE_WORLDLINE_OPACITY` | 0.4 | 灯台の世界線チューブ透明度 |
+| `LASER_WORLDLINE_OPACITY` | 0.3 | レーザー世界線の透明度 |
 | `GAME_LOOP_INTERVAL` | 8 ms | `setInterval`（タブ非アクティブ対応） |
 | `CAUSAL_FREEZE_HYSTERESIS` | 2.0 | 因果律凍結の振動防止閾値 |
 
 | パラメータ（コード内） | 値 | 説明 |
 |---|---|---|
-| ビーム opacity | 0.4 | レーザー世界線の透明度 |
 | デブリ opacity | 0.10 | デブリ世界線の透明度（レーザーより薄く区別） |
 | デブリ速度 | 被撃破機の固有速度 + kick 0〜0.8 | 固有速度空間で加算後 3速度に正規化（\|v\|<1 自動保証） |
 | `TUBE_REGEN_INTERVAL` | 8 | TubeGeometry 再生成の間引き（version を 8 で量子化） |

@@ -1,6 +1,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { PLAYER_WORLDLINE_OPACITY } from "./constants";
 import { buildDisplayMatrix } from "./displayTransform";
 import { getThreeColor } from "./threeCache";
 import type { WorldLineRendererProps } from "./types";
@@ -15,7 +16,7 @@ export const WorldLineRenderer = ({
   observerPos,
   observerBoost,
   tubeRadius = 0.03,
-  tubeOpacity = 0.65,
+  tubeOpacity = PLAYER_WORLDLINE_OPACITY,
 }: WorldLineRendererProps) => {
   const tubeRef = useRef<THREE.Mesh>(null);
   const prevTubeGeoRef = useRef<THREE.TubeGeometry | null>(null);

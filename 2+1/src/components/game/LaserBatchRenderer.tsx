@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { LASER_WORLDLINE_OPACITY } from "./constants";
 import { getThreeColor } from "./threeCache";
 import type { DisplayLaser } from "./types";
 
@@ -51,7 +52,7 @@ export const LaserBatchRenderer = ({
   if (!geometry) return null;
   return (
     <lineSegments geometry={geometry}>
-      <lineBasicMaterial vertexColors transparent opacity={0.4} />
+      <lineBasicMaterial vertexColors transparent opacity={LASER_WORLDLINE_OPACITY} />
     </lineSegments>
   );
 };

@@ -83,6 +83,13 @@ export const MAX_RESPAWN_LOG = 500;
 
 // --- Light cone rendering ---
 export const LIGHT_CONE_HEIGHT = 20;
+export const LIGHT_CONE_SURFACE_OPACITY = 0.08;
+export const LIGHT_CONE_WIRE_OPACITY = 0.04;
+
+// --- Worldline / laser opacity ---
+export const PLAYER_WORLDLINE_OPACITY = 0.65;
+export const LIGHTHOUSE_WORLDLINE_OPACITY = 0.4;
+export const LASER_WORLDLINE_OPACITY = 0.3;
 
 // --- Player marker sizes ---
 export const PLAYER_MARKER_SIZE_SELF = 0.42;
