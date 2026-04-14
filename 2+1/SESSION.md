@@ -15,7 +15,8 @@
   - C-1〜C-4: event log (`killLog` / `respawnLog`) を source of truth に、cache 撤去、GC 追加（`01fed9d` / `c076192` / `6ba5174` / `49c65bc`）
   - D-1〜D-3: respawn schedule を owner-local に移管、useHostMigration を LH handoff 専用に縮退、LH init の idempotent ガード（`d0d05f0` / `1cc05f9` / `b5579fe`）
   - E: LH AI を owner-based filter に、`lighthouseLastFireTime` を全 peer 観測で自動連続化（`0491d52`）
-- **次アクション**: Stage F（`snapshot` メッセージ新設、`syncTime` / `hostMigration` 廃止、`host`/`client` → `beaconHolder`/`peer` 改名、`useHostMigration` → `useBeaconMigration` 改名）
+  - F-1: `snapshot` メッセージ新設、syncTime/hostMigration 送信撤去、hostMigration の代わりに既存 peer は event log で自己維持（`3153585`）
+- **次アクション**: Stage F-2（naming refactor: `getIsHost`/`hostId` など PeerManager/WsRelayManager の API 名を `getIsBeaconHolder`/`beaconHolderId` に改名、`useHostMigration` → `useBeaconMigration`）着手中。続いて Stage G (heartbeat 積極化) / H (dead code 削除)
 - **動機**: host 切断時の state 引き継ぎが怪物化。target-authoritative 化で host 概念を解体、マイグレを beacon handoff だけに縮退させる
 - **デプロイ方針**: 全 Stage 完了後にまとめて deploy。段階中は localhost multi-tab で検証
 

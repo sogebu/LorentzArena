@@ -143,7 +143,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `useKeyboardInput.ts` | キーボード入力管理（WASD + 矢印 + Space の preventDefault + keysPressed ref） |
 | `useStaleDetection.ts` | stale プレイヤー検知（壁時計/座標時間進行率ベース）、add/delete/cleanup を一箇所に集約 |
 | `useHighScoreSaver.ts` | beforeunload でハイスコア/リーダーボード保存 |
-| `useHostMigration.ts` | ホストマイグレーション（hostMigration 互換 broadcast + LH owner 書き換え + LH respawn 再 schedule）。Stage F で `useBeaconMigration` に改名予定 |
+| `useBeaconMigration.ts` | beacon ownership handoff。Stage F-1 で hostMigration 送信撤去、仕事は LH owner 書き換え + LH respawn 再 schedule のみ。Stage F-2 で `useHostMigration` から改名 (`b5579fe` 相当) |
 | `useGameLoop.ts` | ゲームループ本体（setInterval ライフサイクル + 全フェーズの dispatch） |
 
 主要機能:

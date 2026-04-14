@@ -43,8 +43,11 @@ export class WsRelayManager<T> {
   private peerStatusCallback?: (status: WsRelayStatus) => void;
   private hostClosedCallback?: (survivingPeers: string[]) => void;
 
-  private isHost = false;
-  private hostId?: string;
+  // Beacon holder / peer role flags (Stage F naming; 旧 isHost / hostId)。
+  // Relay-server 側の wire protocol (`peers.hostId` / `host_closed.hostId` /
+  // `join_host` / `set_host` / `promote_host`) は後方互換のため残す。
+  private isBeaconHolder = false;
+  private beaconHolderId?: string;
 
   constructor(id: string, options: RelayOptions) {
     this.localId = id;
@@ -104,7 +107,7 @@ export class WsRelayManager<T> {
           if (peerId === this.localId) continue;
           next.set(peerId, { id: peerId, open: true });
         }
-        this.hostId = data.hostId || this.hostId;
+        this.beaconHolderId = data.hostId || this.beaconHolderId;
         this.conns = next;
         this.notifyConnectionChange();
         return;
@@ -121,8 +124,8 @@ export class WsRelayManager<T> {
         this.hostClosedCallback?.(survivingPeers);
         // Clear connections — triggers migration detection in PeerProvider.
         this.conns.clear();
-        if (!this.isHost) {
-          this.hostId = undefined;
+        if (!this.isBeaconHolder) {
+          this.beaconHolderId = undefined;
         }
         this.notifyConnectionChange();
         return;
@@ -172,7 +175,7 @@ export class WsRelayManager<T> {
   }
 
   connect(remoteId: string) {
-    this.hostId = remoteId;
+    this.beaconHolderId = remoteId;
     this.sendRaw({ type: "join_host", hostId: remoteId });
   }
 
@@ -239,38 +242,38 @@ export class WsRelayManager<T> {
     return Array.from(this.conns.values());
   }
 
-  setAsHost() {
-    this.isHost = true;
-    this.hostId = this.localId;
-    this.sendRaw({ type: "set_host" });
+  setAsBeaconHolder() {
+    this.isBeaconHolder = true;
+    this.beaconHolderId = this.localId;
+    this.sendRaw({ type: "set_host" }); // relay server protocol: 旧名のまま
   }
 
   /**
-   * Promote self to host during migration (after previous host disconnected).
-   * Uses a dedicated server message that preserves the room membership.
+   * Promote self to beacon holder during migration (after previous holder disconnected).
+   * Uses a dedicated relay-server message that preserves the room membership.
    */
-  promoteToHost() {
-    this.isHost = true;
-    this.hostId = this.localId;
-    this.sendRaw({ type: "promote_host" });
+  promoteToBeaconHolder() {
+    this.isBeaconHolder = true;
+    this.beaconHolderId = this.localId;
+    this.sendRaw({ type: "promote_host" }); // relay server protocol: 旧名のまま
   }
 
-  getIsHost(): boolean {
-    return this.isHost;
+  getIsBeaconHolder(): boolean {
+    return this.isBeaconHolder;
   }
 
-  /** Reset host/client role flags for migration. */
-  clearHost() {
-    this.isHost = false;
-    this.hostId = undefined;
+  /** Reset beacon holder role flags for migration. */
+  clearBeaconHolder() {
+    this.isBeaconHolder = false;
+    this.beaconHolderId = undefined;
   }
 
-  setHostId(hostId: string) {
-    this.hostId = hostId;
+  setBeaconHolderId(id: string) {
+    this.beaconHolderId = id;
   }
 
-  getHostId(): string | undefined {
-    return this.hostId;
+  getBeaconHolderId(): string | undefined {
+    return this.beaconHolderId;
   }
 
   getConnectedPeerIds(): string[] {

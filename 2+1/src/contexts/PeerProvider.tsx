@@ -182,7 +182,7 @@ const registerPeerOrderListener = (
             joinRegistryRef.current.push(myId);
           }
           onRegistryChange();
-        } else if (appendToJoinRegistry(joinRegistryRef, peers, pm.getHostId() ?? undefined)) {
+        } else if (appendToJoinRegistry(joinRegistryRef, peers, pm.getBeaconHolderId() ?? undefined)) {
           onRegistryChange();
         }
       }
@@ -193,7 +193,7 @@ const registerPeerOrderListener = (
 /** Register standard host relay handlers on a PeerManager. */
 const registerHostRelay = (pm: NetworkManager) => {
   pm.onMessage("host", (senderId, msg) => {
-    if (!pm.getIsHost()) return;
+    if (!pm.getIsBeaconHolder()) return;
 
     if (
       (msg.type === "phaseSpace" ||
@@ -409,7 +409,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
           setPeerStatus(gameStatus);
           if (gameStatus.status === "open") {
             ownedGame = false; // setPeerManager に移譲
-            gpm.setAsHost();
+            gpm.setAsBeaconHolder();
             setMyId(localId);
             appendToJoinRegistry(joinRegistryRef, [], localId);
             registerStandardHandlers(gpm);
@@ -490,7 +490,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       if (status.status === "open") {
         // シグナリング接続OK → ビーコン (la-{roomName}) に接続して redirect を待つ
         owned = false;
-        pm.setHostId(roomPeerId);
+        pm.setBeaconHolderId(roomPeerId);
         pm.connect(roomPeerId);
         setMyId(localId);
         if (appendToJoinRegistry(joinRegistryRef, [localId])) {
@@ -510,7 +510,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
 
     const followRedirect = (hostId: string) => {
       pm.disconnectPeer(roomPeerId);
-      pm.setHostId(hostId);
+      pm.setBeaconHolderId(hostId);
       pm.connect(hostId);
       pm.offMessage("redirect_handler");
 
@@ -526,7 +526,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         // eslint-disable-next-line no-console
         console.log("[PeerProvider] Redirect target", hostId, "unreachable — retrying beacon (attempt", redirectAttempts, ")");
         pm.disconnectPeer(hostId);
-        pm.setHostId(roomPeerId);
+        pm.setBeaconHolderId(roomPeerId);
         pm.connect(roomPeerId);
         pm.onMessage("redirect_handler", (_s, m) => {
           if (isRedirectMessage(m)) {
@@ -583,7 +583,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on role change
   useEffect(() => {
     if (!peerManager) return;
-    if (!peerManager.getIsHost()) return;
+    if (!peerManager.getIsBeaconHolder()) return;
     if (connectionPhase !== "connected") return;
     const openPeers = connections.filter((c) => c.open).map((c) => c.id);
     peerOrderRef.current = openPeers;
@@ -605,7 +605,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        if (peerManager?.getIsHost()) {
+        if (peerManager?.getIsBeaconHolder()) {
           tabHiddenTimerRef.current = setTimeout(() => {
             tabHiddenTimerRef.current = undefined;
             wasDestroyedByHideRef.current = true;
@@ -643,7 +643,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   useEffect(() => {
     if (!peerManager) return;
     if (connectionPhase !== "connected") return;
-    if (!peerManager.getIsHost()) return;
+    if (!peerManager.getIsBeaconHolder()) return;
 
     const timer = setInterval(() => {
       // Don't send pings when tab is hidden. Clients will detect heartbeat
@@ -666,7 +666,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   useEffect(() => {
     if (!peerManager) return;
     if (connectionPhase !== "connected") return;
-    if (peerManager.getIsHost()) return;
+    if (peerManager.getIsBeaconHolder()) return;
 
     // Listen for ping messages to update lastPingRef
     lastPingRef.current = Date.now();
@@ -685,11 +685,11 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         console.log("[PeerProvider] Host redirected us to:", newHostId);
         migrationTriggeredRef.current = true;
 
-        const oldHostId = peerManager.getHostId();
+        const oldHostId = peerManager.getBeaconHolderId();
         if (oldHostId) peerManager.disconnectPeer(oldHostId);
 
-        peerManager.clearHost();
-        peerManager.setHostId(newHostId);
+        peerManager.clearBeaconHolder();
+        peerManager.setBeaconHolderId(newHostId);
         peerManager.connect(newHostId);
         lastPingRef.current = Date.now(); // reset heartbeat for new host
         migrationTriggeredRef.current = false;
@@ -700,8 +700,8 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     // and notify React via roleVersion so role-dependent effects re-evaluate.
     // This bundles the invariant: setAsHost() must always be paired with setRoleVersion().
     const assumeHostRole = () => {
-      peerManager.clearHost();
-      peerManager.setAsHost();
+      peerManager.clearBeaconHolder();
+      peerManager.setAsBeaconHolder();
       registerStandardHandlers(peerManager);
       setRoleVersion((v) => v + 1);
     };
@@ -721,8 +721,8 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       }
       // eslint-disable-next-line no-console
       console.log("[PeerProvider] Attempting beacon fallback via", roomPeerId);
-      peerManager.clearHost();
-      peerManager.setHostId(roomPeerId);
+      peerManager.clearBeaconHolder();
+      peerManager.setBeaconHolderId(roomPeerId);
       peerManager.connect(roomPeerId);
 
       // Listen for redirect from beacon
@@ -733,7 +733,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
           console.log("[PeerProvider] Beacon fallback → real host:", realHostId);
           clearTimeout(beaconTimer);
           peerManager.disconnectPeer(roomPeerId);
-          peerManager.setHostId(realHostId);
+          peerManager.setBeaconHolderId(realHostId);
           peerManager.connect(realHostId);
           peerManager.offMessage("beacon_fallback");
         }
@@ -766,7 +766,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       clearInterval(timer);
 
       // Clean up stale connection to old host
-      const oldHostId = peerManager.getHostId();
+      const oldHostId = peerManager.getBeaconHolderId();
       if (oldHostId && "disconnectPeer" in peerManager) {
         (peerManager as PeerManager<Message>).disconnectPeer(oldHostId);
       }
@@ -807,7 +807,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
             }
           }
         } else if (activeTransport === "wsrelay") {
-          (peerManager as WsRelayManager<Message>).promoteToHost();
+          (peerManager as WsRelayManager<Message>).promoteToBeaconHolder();
         }
 
         setIsMigrating(true);
@@ -815,8 +815,8 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         // I am NOT the new host — wait for new host to connect
         // eslint-disable-next-line no-console
         console.log("[PeerProvider] Waiting for new host:", newHostId);
-        peerManager.clearHost();
-        peerManager.setHostId(newHostId);
+        peerManager.clearBeaconHolder();
+        peerManager.setBeaconHolderId(newHostId);
 
         if (activeTransport === "wsrelay") {
           setTimeout(() => {
@@ -869,7 +869,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   useEffect(() => {
     if (activeTransport !== "peerjs") return;
     if (!peerManager) return;
-    if (!peerManager.getIsHost()) return;
+    if (!peerManager.getIsBeaconHolder()) return;
     if (beaconRef.current) return; // Beacon already held (from Phase 1 or previous run)
     if (connectionPhase !== "connected") return;
 
@@ -936,8 +936,8 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
           } as Message);
 
           // Demote self and reconnect as client
-          peerManager.clearHost();
-          peerManager.setHostId(realHostId);
+          peerManager.clearBeaconHolder();
+          peerManager.setBeaconHolderId(realHostId);
           peerManager.connect(realHostId);
           // Trigger effect re-evaluation (heartbeat, beacon, peerList)
           setRoleVersion((v) => v + 1);
@@ -1004,11 +1004,11 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     };
   }, [activeTransport, peerManager, myId, roomPeerId, connectionPhase, dynamicIceServers, roleVersion]);
 
-  // Derived from peerManager.getIsHost(), recomputed when roleVersion changes.
+  // Derived from peerManager.getIsBeaconHolder(), recomputed when roleVersion changes.
   // Exposed in context so consumers can react to role changes without accessing
   // the mutable peerManager method directly.
   // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion tracks role changes
-  const isHost = useMemo(() => peerManager?.getIsHost() ?? false, [peerManager, roleVersion]);
+  const isHost = useMemo(() => peerManager?.getIsBeaconHolder() ?? false, [peerManager, roleVersion]);
 
   return (
     <PeerContext.Provider

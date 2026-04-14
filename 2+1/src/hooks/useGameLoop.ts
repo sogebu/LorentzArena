@@ -115,10 +115,10 @@ export function useGameLoop({
 
     /** Send a message to the network: host broadcasts, client sends to host. */
     const sendToNetwork = (msg: unknown) => {
-      if (peerManager.getIsHost()) {
+      if (peerManager.getIsBeaconHolder()) {
         peerManager.send(msg);
       } else {
-        const hostId = peerManager.getHostId();
+        const hostId = peerManager.getBeaconHolderId();
         if (hostId) peerManager.sendTo(hostId, msg);
       }
     };

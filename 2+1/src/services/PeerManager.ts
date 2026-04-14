@@ -32,9 +32,12 @@ export class PeerManager<T> {
   private peerStatus: PeerServerStatus = { status: "connecting" };
   private peerStatusCallback?: (status: PeerServerStatus) => void;
 
-  // Host/client role flags (used by the game logic)
-  private isHost = false;
-  private hostId?: string;
+  // Beacon holder / peer role flags (Stage F naming).
+  // "beacon holder" = 旧 "host"。PeerJS ビーコン ID (la-{roomName}) の
+  // 所有者で、relay hub として機能する。authority は既に分散済み
+  // (Stage A〜E 完了)、ここでの role は「誰が relay を担当するか」のみ。
+  private isBeaconHolder = false;
+  private beaconHolderId?: string;
 
   constructor(id: string, options?: PeerOptions) {
     this.localId = id;
@@ -215,22 +218,22 @@ export class PeerManager<T> {
     }));
   }
 
-  setAsHost() {
-    this.isHost = true;
-    this.hostId = this.localId;
+  setAsBeaconHolder() {
+    this.isBeaconHolder = true;
+    this.beaconHolderId = this.localId;
   }
 
-  getIsHost(): boolean {
-    return this.isHost;
+  getIsBeaconHolder(): boolean {
+    return this.isBeaconHolder;
   }
 
-  /** Reset host/client role flags for migration. */
-  clearHost() {
-    this.isHost = false;
-    this.hostId = undefined;
+  /** Reset beacon-holder role flags for migration. */
+  clearBeaconHolder() {
+    this.isBeaconHolder = false;
+    this.beaconHolderId = undefined;
   }
 
-  /** Close and remove a specific peer's connection (e.g., stale host after migration). */
+  /** Close and remove a specific peer's connection (e.g., stale beacon holder after migration). */
   disconnectPeer(peerId: string) {
     const conn = this.conns.get(peerId);
     if (conn) {
@@ -244,12 +247,12 @@ export class PeerManager<T> {
     }
   }
 
-  setHostId(hostId: string) {
-    this.hostId = hostId;
+  setBeaconHolderId(id: string) {
+    this.beaconHolderId = id;
   }
 
-  getHostId(): string | undefined {
-    return this.hostId;
+  getBeaconHolderId(): string | undefined {
+    return this.beaconHolderId;
   }
 
   /**

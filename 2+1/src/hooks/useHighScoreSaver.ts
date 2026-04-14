@@ -30,7 +30,7 @@ export function useHighScoreSaver(
         if (leaderboardUrl) submitScore(leaderboardUrl, entry);
       }
 
-      if (peerManager?.getIsHost()) {
+      if (peerManager?.getIsBeaconHolder()) {
         for (const [id, kills] of Object.entries(scores)) {
           if (isLighthouse(id) && kills > 0) {
             const entry = { name: "Lighthouse", kills, date: now, duration };

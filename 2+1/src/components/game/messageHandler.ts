@@ -96,7 +96,7 @@ export const createMessageHandler =
 
       // Stale 復帰検知: stale 凍結されたプレイヤーから phaseSpace が来た
       if (staleFrozenRef.current.has(playerId)) {
-        if (!peerManager.getIsHost()) return; // クライアントはホストの respawn を待つ
+        if (!peerManager.getIsBeaconHolder()) return; // クライアントはホストの respawn を待つ
         const respawnPos = createRespawnPosition(store.players);
         staleFrozenRef.current.delete(playerId);
         lastUpdateTimeRef.current.set(playerId, Date.now());
@@ -288,7 +288,7 @@ export const createMessageHandler =
       // Stage D: respawn schedule は owner local (= target 本人 or LH owner) が
       // useGameLoop 側で担当。ここでは何もしない。
     } else if (msg.type === "hostMigration") {
-      if (peerManager.getIsHost()) return;
+      if (peerManager.getIsBeaconHolder()) return;
       if (!isValidString(msg.newHostId)) return;
       const scores = parseScores(msg.scores);
       if (!scores) return;

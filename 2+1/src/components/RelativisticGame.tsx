@@ -30,7 +30,7 @@ import { useTouchInput } from "./game/touchInput";
 import { useStaleDetection } from "../hooks/useStaleDetection";
 import { useKeyboardInput } from "../hooks/useKeyboardInput";
 import { useHighScoreSaver } from "../hooks/useHighScoreSaver";
-import { useHostMigration } from "../hooks/useHostMigration";
+import { useBeaconMigration } from "../hooks/useBeaconMigration";
 import { useGameLoop } from "../hooks/useGameLoop";
 
 const RelativisticGame = ({ displayName }: { displayName: string }) => {
@@ -65,7 +65,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const stale = useStaleDetection();
   useHighScoreSaver(myId, displayName, peerManager);
 
-  const respawnTimeoutsRef = useHostMigration({
+  const respawnTimeoutsRef = useBeaconMigration({
     isMigrating,
     peerManager,
     myId,
@@ -76,11 +76,11 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
 
   // 初期化: ホストのみプレイヤー作成。
   // クライアントは syncTime 受信時に messageHandler がホストの座標時間でプレイヤーを作成。
-  const isHost = peerManager?.getIsHost() ?? false;
+  const isBeaconHolder = peerManager?.getIsBeaconHolder() ?? false;
   // biome-ignore lint/correctness/useExhaustiveDependencies: getPlayerColor is read at init time only
   useEffect(() => {
     if (!myId) return;
-    if (!isHost) return; // クライアントは syncTime でプレイヤー作成
+    if (!isBeaconHolder) return; // クライアントは syncTime でプレイヤー作成
 
     const store = useGameStore.getState();
 
@@ -201,7 +201,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     // 新規 join への snapshot 送信は下の useEffect (prevConnectionIdsRef) で
     // 差分検出して行う。host migration で init effect が再実行されても既存
     // 接続は prevConnectionIdsRef に残っているので差分ゼロ → 送信されない。
-  }, [myId, isHost]);
+  }, [myId, isBeaconHolder]);
 
   // 切断したプレイヤーを削除 & 新規接続に snapshot 送信
   const prevConnectionIdsRef = useRef<Set<string>>(new Set());
@@ -213,7 +213,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
 
     const store = useGameStore.getState();
 
-    if (peerManager?.getIsHost() && !isMigrating) {
+    if (peerManager?.getIsBeaconHolder() && !isMigrating) {
       const myPlayer = store.players.get(myId);
       if (myPlayer) {
         for (const conn of connections) {

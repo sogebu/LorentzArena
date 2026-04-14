@@ -4,10 +4,10 @@ import { isLighthouse } from "../components/game/lighthouse";
 import { createRespawnPosition } from "../components/game/respawnTime";
 import { selectDeadPlayerIds, useGameStore } from "../stores/game-store";
 
-interface UseHostMigrationArgs {
+interface UseBeaconMigrationArgs {
   isMigrating: boolean;
   peerManager: {
-    getIsHost: () => boolean;
+    getIsBeaconHolder: () => boolean;
     send: (msg: unknown) => void;
   } | null;
   myId: string | null;
@@ -16,14 +16,20 @@ interface UseHostMigrationArgs {
   completeMigration: () => void;
 }
 
-export function useHostMigration({
+/**
+ * Authority 解体 Stage F: 旧 useHostMigration。Stage D-1 で respawn timer
+ * 再構築を削除、Stage F-1 で hostMigration メッセージ送信を廃止した結果、
+ * このフックの仕事は Lighthouse handoff (owner 書き換え + 死亡中の残り時間で
+ * respawn 再 schedule) のみに縮退している。
+ */
+export function useBeaconMigration({
   isMigrating,
   peerManager,
   myId,
   connections,
   getPlayerColor,
   completeMigration,
-}: UseHostMigrationArgs) {
+}: UseBeaconMigrationArgs) {
   const respawnTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(
     new Set(),
   );
@@ -31,13 +37,13 @@ export function useHostMigration({
   useEffect(() => {
     if (!isMigrating) return;
     if (!peerManager) return;
-    if (!peerManager.getIsHost()) return;
+    if (!peerManager.getIsBeaconHolder()) return;
     if (!myId) return;
 
     const openConns = connections.filter((c) => c.open);
 
     console.log(
-      "[RelativisticGame] Host migration: broadcasting state to",
+      "[useBeaconMigration] Beacon migration: handoff to",
       openConns.length,
       "peers",
     );
