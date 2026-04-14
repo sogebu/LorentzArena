@@ -5,6 +5,14 @@
 対戦可能。**`79d6a29` デプロイ済み** (build `2026/04/14 01:57:06 JST`)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
+### 着手中: Authority 解体リファクタ
+
+- **プラン**: `plans/2026-04-14-authority-dissolution.md`（8 Stage、A→H）
+- **設計原理**: DESIGN.md「Authority 解体アーキテクチャ」節
+- **次アクション**: Stage A（`ownerId` フィールド追加、振る舞い変更なし）から着手
+- **動機**: host 切断時の state 引き継ぎが怪物化。target-authoritative 化で host 概念を解体、マイグレを beacon handoff だけに縮退させる
+- **デプロイ方針**: 全 Stage 完了後にまとめて deploy。段階中は localhost multi-tab で検証
+
 ## 直近の変更（2026-04-14）
 
 ### バグ修正・堅牢化

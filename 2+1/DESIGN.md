@@ -2,6 +2,51 @@
 
 ## 設計判断の記録
 
+### Authority 解体アーキテクチャ（2026-04-14 設計、段階的実装中）
+
+**状態**: 原理確定、Stage A 着手予定。詳細プランは `plans/2026-04-14-authority-dissolution.md`
+
+**診断**: 現構造では `host` が (a) beacon 所有者、(b) relay hub、(c) hit detection 権威、(d) Lighthouse 駆動、(e) respawn スケジューラ、(f) peerList 発行者 を兼ねており、**host 切断時に全部を新 host に引き継ぐ必要がある**。マイグレーションが怪物化し、`useHostMigration.ts` で respawn timer 再構築、`hostMigration` メッセージで scores/deadPlayers/deathTimes を丸ごと転送、`lighthouseLastFireRef` の glitch、invincibility の欠落など、漏れやすい。また false positive（通信瞬断の誤検知）のコストが異常に高いため、heartbeat を保守的な 3s/8s に設定せざるを得ない。
+
+**原理（確定済み）**:
+
+1. **各プレイヤー（人間 / Lighthouse）は 1 人の peer が owner**。Lighthouse の owner は beacon holder（兼任）
+2. **Owner だけが自分のエンティティの event を発信する**: `phaseSpace` / `laser` / `kill`（= 自分が撃たれた自己宣言）/ `respawn`
+3. **他 peer について宣言しない**。完全対称
+4. **Hit detection は target のローカルだけ**（target-authoritative）。決定論要件なし。Math.sin/cos も自由
+5. **Derived state**: score / deadPlayers / invincibility は kill/respawn event から導出。store に authoritative 値を持たない
+6. **RNG 不要**: respawn 位置等は owner が local `Math.random` で決めて phaseSpace として broadcast
+7. **Coord-time 同期は join 時 1 回だけ**（`syncTime` 廃止、snapshot に埋め込み）
+8. **Beacon ≡ relay hub ≡ Lighthouse owner ≡ 新規入口**。star topology 維持、authority は持たない
+
+**「相対論で物理的に美しい」根拠**: あなたの世界線を完全に観測できるのはあなただけ。死亡も同じく自己宣言。物理原理と一致。
+
+**帰結としてマイグレーションで消えるもの**:
+
+- `hostMigration` メッセージの重い payload（scores / deadPlayers / deathTimes / displayNames）
+- `respawnTimeoutsRef` の再構築
+- `lighthouseLastFireRef` の引き継ぎ課題
+- `processedLasers` の重複防止
+- 決定論性（固定ステップ格子 / seeded RNG）への全要求
+- host/client 二重実装の hit detection
+
+**消えるメッセージ**: `score`, `syncTime`, `hostMigration`（→ 新規 join 用 `snapshot` と beacon handoff 用 `beaconChange` に縮小）
+
+**残る singular 役割**: beacon 所有（PeerJS ID 制約による物理的 singular）のみ
+
+**Heartbeat の積極化が可能に**: Stage F 以降は false positive のコストが ≈ 0（state 引き継ぎなし、再選出だけ）。3s/8s → 1s/2.5s へ短縮予定
+
+**この節で影響を受ける既存判断**（段階実装後に supersede、現時点では旧設計が生きている）:
+
+- 「当たり判定: ホスト権威 + 世界系での交差計算」→ target-authoritative に
+- 「ホストマイグレーション堅牢化」→ beacon-only の軽量化に縮退
+- 「START でホスト決定 + クライアント syncTime 初期化」→ syncTime 廃止、OFFSET は snapshot に
+- 「score メッセージの未使用」→ メッセージ型ごと削除
+
+**並走 vs cut-over**: 各 Stage は独立 commit。Stage B（hit detection）のみ接触範囲が広いため着手直前に plan mode で具体 diff を提示。他 Stage は localhost multi-tab 検証 + commit で進行。
+
+**mesh 化は直交タスク**。このリファクタの範囲外だが、完了後に独立に検討可能になる。
+
 ### リファクタリング現状評価（2026-04-13 更新）
 
 | ファイル | 行数 | 判断 | 理由 |
@@ -180,6 +225,8 @@ Zustand の `getState()` が同期的に最新値を返すため、shadow ref + 
 
 ### ホストマイグレーション堅牢化（2026-04-13）
 
+**※ Authority 解体で大半が不要になる予定**: beacon ownership の付け替えだけに縮退。game state の引き継ぎは event から自己再構築。`plans/2026-04-14-authority-dissolution.md` Stage F
+
 エッジケース監査で発見した 6 件の問題を修正。ビーコン PeerJS ID の一意性を single source of truth として活用する設計。
 
 #### 修正した問題
@@ -223,6 +270,8 @@ heartbeat detection effect と beacon effect の全リソースを監査。3 件
 - ~~ホスト ID 問題~~ → **解決済み** (2026-04-13): ホスト ID 根本修正で `la-{roomName}` をビーコン専用に変更。詳細は「ホスト ID 根本修正」セクション参照
 
 ### START でホスト決定 + クライアント syncTime 初期化（2026-04-13）
+
+**※ Authority 解体で syncTime は廃止予定**: OFFSET は join 時の snapshot に 1 回だけ埋め込む方式に。`plans/2026-04-14-authority-dissolution.md` Stage F
 
 - **What**: PeerProvider を START 後にマウントし、最初に START を押した人がホストになる。クライアントは自己初期化せず、syncTime でホストの座標時間にスポーン
 - **Why**: (1) ロビーで放置した人がホストになる問題。ページロード順ではなく START 順でホスト決定すべき (2) クライアントが自己初期化でローカル時刻（小さい値）のプレイヤーを作り、syncTime 到着前にホスト視点で「過去側」に出現する問題
@@ -286,6 +335,8 @@ heartbeat detection effect と beacon effect の全リソースを監査。3 件
 - **調査方法**: `handleKill`, `firePendingKillEvents`, `processHitDetection` にデバッグカウンターを仕込み、ホスト・クライアント両方で kill rate を計測。3 秒間隔で `console.warn` 出力
 
 ### score メッセージの未使用（2026-04-14 発見）
+
+**※ Authority 解体で型ごと削除予定**: score は全 peer が kill event から独立に count する derived 値に正式化。`plans/2026-04-14-authority-dissolution.md` Stage C
 
 - **What**: メッセージタイプ `score` は `message.ts` に型定義があり `messageHandler.ts` に受信ハンドラがあるが、**送信箇所が存在しない**（dead code）。スコアはホストから同期されず、各クライアントが `firePendingKillEvents` で独立に計算している
 - **Why not fix now**: 現状はホスト・クライアント両方が同じ `pendingKillEvents` → `firePendingKillEvents` のパイプラインでスコアを算出しており、結果は収束する（各イベントが過去光円錐に入る時刻が異なるだけ）。`hostMigration` メッセージにはスコアが含まれるため、マイグレーション時に同期される。将来的にスコア不整合が問題になったら score 同期を実装する
@@ -502,6 +553,7 @@ stale 除外
 - **What**: ホストが毎フレーム全レーザー x 全プレイヤーの当たり判定を実行。レーザーの null geodesic とワールドラインの各セグメントで同時刻の空間距離を解析的に計算
 - **Why**: ホスト権威でネットワーク遅延による不整合を防止。解析解（二次方程式）で離散化誤差を回避
 - **Tradeoff**: ホストに計算負荷が集中。O(L x P x H) だが期限切れレーザーの早期除外で実用上問題なし
+- **※ Authority 解体で変わる予定**: target-authoritative に移行（各プレイヤーが自分の被弾のみ判定）。`plans/2026-04-14-authority-dissolution.md` Stage B
 
 ### 永続デブリ: アニメーション爆発から静的世界線データへ
 

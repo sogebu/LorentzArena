@@ -260,6 +260,8 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 ## 参照ドキュメント
 
 - `DESIGN.md` — 設計判断の記録（このディレクトリ内）
+- `plans/` — 複数 Stage にまたがる進行中リファクタの計画書
+  - `plans/2026-04-14-authority-dissolution.md` — host 権威解体、target-authoritative 化（着手中）
 - `../CONVENTIONS.md` → `~/Claude/claude-config/CONVENTIONS.md`（symlink）
 - `../docs/NETWORKING.md` — ネットワーク設定の詳細
 - `relay-deploy/README.md` — WS Relay 本番デプロイ手順
