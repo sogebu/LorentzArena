@@ -30,7 +30,11 @@ import {
 import type { Laser } from "../components/game/types";
 import type { useStaleDetection } from "./useStaleDetection";
 import type { useTouchInput } from "../components/game/touchInput";
-import { useGameStore } from "../stores/game-store";
+import {
+  selectDeadPlayerIds,
+  selectInvincibleIds,
+  useGameStore,
+} from "../stores/game-store";
 
 // --- Types ---
 
@@ -190,23 +194,23 @@ export function useGameLoop({
       if (isDeadForCamera) touch.pitchDelta = 0;
 
       // --- Causal events ---
-      // NOTE: pendingKillEvents/pendingSpawnEvents are arrays (non-reactive).
-      // Direct reassignment on the stale `store` object is lost after set() creates a new state.
-      // Must use useGameStore.setState() to persist array replacements.
+      // Stage C: pending kill events は killLog.filter(!firedForUi) で derive。
+      // 過去光円錐到達で firedForUi を立て、scores を加算する。
       const myPos = store.players.get(myId)?.phaseSpace.pos;
-      if (myPos && store.pendingKillEvents.length > 0) {
+      if (myPos && store.killLog.some((e) => !e.firedForUi)) {
         const result = firePendingKillEvents(
-          store.pendingKillEvents,
+          store.killLog,
           myPos,
           myId,
           store.scores,
         );
         if (result.firedIndices.length > 0) {
-          const filteredKillEvents = store.pendingKillEvents.filter(
-            (_, i) => !result.firedIndices.includes(i),
+          const firedSet = new Set(result.firedIndices);
+          const nextLog = store.killLog.map((e, i) =>
+            firedSet.has(i) ? { ...e, firedForUi: true } : e,
           );
           useGameStore.setState({
-            pendingKillEvents: filteredKillEvents,
+            killLog: nextLog,
             scores: { ...result.newScores },
           });
 
@@ -418,19 +422,17 @@ export function useGameLoop({
       // - host (= beacon holder): 自分 + Lighthouse (LH.ownerId = host myId)
       {
         const freshForHit = useGameStore.getState();
-        // Build invincible set (prune expired entries)
-        const invincibleIds = new Set<string>();
-        for (const [id, until] of freshForHit.invincibleUntil) {
-          if (currentTime < until) invincibleIds.add(id);
-          else freshForHit.invincibleUntil.delete(id);
-        }
+        // Stage C: dead / invincible は log から derive (O(log) だが log は
+        // GC で小さく保たれる)。per-frame のコストは無視できる。
+        const invincibleIds = selectInvincibleIds(freshForHit, currentTime);
+        const deadIds = selectDeadPlayerIds(freshForHit);
 
         const hitResult = processHitDetection(
           freshForHit.players,
           freshForHit.lasers,
           myId,
           freshForHit.processedLasers,
-          freshForHit.deadPlayers,
+          deadIds,
           invincibleIds,
         );
 

@@ -13,7 +13,6 @@ import { getLaserColor } from "./game/colors";
 import {
   DEFAULT_CAMERA_PITCH,
   ENERGY_MAX,
-  INVINCIBILITY_DURATION,
   LIGHTHOUSE_ID_PREFIX,
   MAX_WORLDLINE_HISTORY,
   OFFSET,
@@ -112,7 +111,23 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       });
       return next;
     });
-    store.invincibleUntil.set(myId, Date.now() + INVINCIBILITY_DURATION);
+    // Stage C: 初期 invincibility は respawnLog 経由で derive。
+    // 「初回スポーン = 初回 respawn」として扱う (selectInvincibleUntil が拾う)。
+    useGameStore.setState((state) => ({
+      respawnLog: [
+        ...state.respawnLog,
+        {
+          playerId: myId,
+          position: {
+            t: initialPhaseSpace.pos.t,
+            x: initialPhaseSpace.pos.x,
+            y: initialPhaseSpace.pos.y,
+            z: 0,
+          },
+          wallTime: Date.now(),
+        },
+      ],
+    }));
 
     // 初回スポーンエフェクト（過去光円錐到達時に発火）
     useGameStore.setState((state) => ({
@@ -209,9 +224,9 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       const next = new Map(prev);
       for (const id of idsToRemove) {
         next.delete(id);
-        store.deadPlayers.delete(id);
-        store.deathTimeMap.delete(id);
       }
+      // Stage C: log エントリは残す (未 respawn kill が残っていても GC は
+      // Stage C-4 の pair 成立ベース。切断時の個別削除は不要)。
       stale.cleanupDisconnected(connectedIds);
       return next;
     });

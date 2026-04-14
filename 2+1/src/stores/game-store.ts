@@ -4,7 +4,6 @@ import {
   INVINCIBILITY_DURATION,
   MAX_DEBRIS,
   MAX_FROZEN_WORLDLINES,
-  MAX_PENDING_KILL_EVENTS,
   MAX_PENDING_SPAWN_EVENTS,
 } from "../components/game/constants";
 import { generateExplosionParticles } from "../components/game/debris";
@@ -17,7 +16,6 @@ import type {
   KillEventRecord,
   KillNotification3D,
   Laser,
-  PendingKillEvent,
   PendingSpawnEvent,
   RelativisticPlayer,
   RespawnEventRecord,
@@ -44,19 +42,15 @@ export interface GameState {
   myDeathEvent: DeathEvent | null;
 
   // --- Non-reactive state (read via getState() only, no re-render) ---
-  deadPlayers: Set<string>;
-  invincibleUntil: Map<string, number>;
   processedLasers: Set<string>;
-  deathTimeMap: Map<string, number>;
-  pendingKillEvents: PendingKillEvent[];
   pendingSpawnEvents: PendingSpawnEvent[];
   displayNames: Map<string, string>;
   lighthouseSpawnTime: Map<string, number>;
   /**
    * Authority 解体 Stage C: kill/respawn の authoritative event log。
-   * 各 peer が kill/respawn を受けた時点で append。Stage C-3 で
-   * deadPlayers / invincibleUntil / scores の source of truth になる予定
-   * （Stage C-2 時点では並行記録のみ、既存 cache と併存）。
+   * deadPlayers / invincibleUntil / scores / pendingKillEvents はすべて
+   * これらの log から派生 (selectIsDead / selectInvincibleIds /
+   * selectPendingKillEvents)。
    */
   killLog: KillEventRecord[];
   respawnLog: RespawnEventRecord[];
@@ -108,11 +102,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   myDeathEvent: null,
 
   // Non-reactive
-  deadPlayers: new Set(),
-  invincibleUntil: new Map(),
   processedLasers: new Set(),
-  deathTimeMap: new Map(),
-  pendingKillEvents: [],
   pendingSpawnEvents: [],
   displayNames: new Map(),
   lighthouseSpawnTime: new Map(),
@@ -151,7 +141,8 @@ export const useGameStore = create<GameState>()((set, get) => ({
     const state = get();
     const victim = state.players.get(victimId);
     if (!victim) return;
-    if (state.deadPlayers.has(victimId)) return; // Guard: already dead
+    // Guard: already dead (derive from killLog vs respawnLog)
+    if (selectIsDead(state, victimId)) return;
 
     // Freeze world line
     const frozen: FrozenWorldLine = {
@@ -167,27 +158,19 @@ export const useGameStore = create<GameState>()((set, get) => ({
       color: victim.color,
     };
 
-    // Pending kill event (for causal delay)
-    const killEvent: PendingKillEvent = {
-      victimId,
-      killerId,
-      hitPos,
-      victimName: isLighthouse(victimId)
-        ? "Lighthouse"
-        : (state.players.get(victimId)?.displayName ?? victimId.slice(0, 6)),
-      victimColor: victim.color,
-    };
+    const victimName = isLighthouse(victimId)
+      ? "Lighthouse"
+      : (victim.displayName ?? victimId.slice(0, 6));
 
-    // In-place mutations on shared Set/Map instances (survive state transitions)
-    state.deadPlayers.add(victimId);
-    state.deathTimeMap.set(victimId, Date.now());
-
-    // Stage C-2: authoritative event log (並行記録、既存 cache と併存)
+    // Stage C: authoritative event log entry (now source of truth for
+    // UI-pending kill rendering and score derivation)
     const killLogEntry: KillEventRecord = {
       victimId,
       killerId,
       hitPos,
       wallTime: Date.now(),
+      victimName,
+      victimColor: victim.color,
       firedForUi: false,
     };
 
@@ -196,7 +179,6 @@ export const useGameStore = create<GameState>()((set, get) => ({
       players: applyKill(state.players, victimId),
       frozenWorldLines: [...state.frozenWorldLines, frozen].slice(-MAX_FROZEN_WORLDLINES),
       debrisRecords: [...state.debrisRecords, newDebris].slice(-MAX_DEBRIS),
-      pendingKillEvents: [...state.pendingKillEvents, killEvent].slice(-MAX_PENDING_KILL_EVENTS),
       killLog: [...state.killLog, killLogEntry],
       myDeathEvent:
         victimId === myId
@@ -212,12 +194,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   handleRespawn: (playerId, position, myId, getPlayerColor) => {
     const state = get();
 
-    // Non-reactive mutations
-    state.deathTimeMap.delete(playerId);
-    state.deadPlayers.delete(playerId);
-    if (!isLighthouse(playerId)) {
-      state.invincibleUntil.set(playerId, Date.now() + INVINCIBILITY_DURATION);
-    }
+    // LH spawn time はゲームルール上 respawn とは別管理 (LH fire cooldown の起点)
     if (isLighthouse(playerId)) {
       state.lighthouseSpawnTime.set(playerId, Date.now());
     }
@@ -227,7 +204,8 @@ export const useGameStore = create<GameState>()((set, get) => ({
     const color = spawningPlayer?.color ?? getPlayerColor(playerId);
     const now = Date.now();
 
-    // Stage C-2: authoritative event log (並行記録)
+    // Stage C: authoritative event log entry (source of truth for
+    // deadPlayers derivation + invincibility timing)
     const respawnLogEntry: RespawnEventRecord = {
       playerId,
       position,
@@ -266,8 +244,6 @@ export const useGameStore = create<GameState>()((set, get) => ({
     set((state) => {
       const next = new Map(state.players);
       next.delete(playerId);
-      state.deadPlayers.delete(playerId);
-      state.deathTimeMap.delete(playerId);
       return { players: next };
     }),
 
@@ -286,3 +262,73 @@ export const useGameStore = create<GameState>()((set, get) => ({
     }
   },
 }));
+
+// ---------------------------------------------------------------------------
+// Selectors (Stage C: event log を source of truth に)
+// ---------------------------------------------------------------------------
+
+type LogState = Pick<GameState, "killLog" | "respawnLog">;
+
+/** 各プレイヤーの latest kill wallTime。victimId ごとに最大値。 */
+const latestKillTime = (state: LogState): Map<string, number> => {
+  const m = new Map<string, number>();
+  for (const e of state.killLog) {
+    const prev = m.get(e.victimId);
+    if (prev === undefined || e.wallTime > prev) m.set(e.victimId, e.wallTime);
+  }
+  return m;
+};
+
+/** 各プレイヤーの latest respawn wallTime。playerId ごとに最大値。 */
+const latestRespawnTime = (state: LogState): Map<string, number> => {
+  const m = new Map<string, number>();
+  for (const e of state.respawnLog) {
+    const prev = m.get(e.playerId);
+    if (prev === undefined || e.wallTime > prev) m.set(e.playerId, e.wallTime);
+  }
+  return m;
+};
+
+/** プレイヤーが現在死んでいるか (latest kill > latest respawn)。 */
+export const selectIsDead = (state: LogState, playerId: string): boolean => {
+  const kills = latestKillTime(state).get(playerId);
+  if (kills === undefined) return false;
+  const resp = latestRespawnTime(state).get(playerId) ?? -Infinity;
+  return kills > resp;
+};
+
+/** 現在死んでいる全プレイヤー ID。hit detection の dead フィルタ用。 */
+export const selectDeadPlayerIds = (state: LogState): Set<string> => {
+  const lastKill = latestKillTime(state);
+  const lastResp = latestRespawnTime(state);
+  const dead = new Set<string>();
+  for (const [id, kTime] of lastKill) {
+    const rTime = lastResp.get(id) ?? -Infinity;
+    if (kTime > rTime) dead.add(id);
+  }
+  return dead;
+};
+
+/**
+ * プレイヤーの invincibility 終了 wallTime。respawn が無ければ 0 (= never)。
+ * LH は invincibility 対象外なので -Infinity。
+ */
+export const selectInvincibleUntil = (state: LogState, playerId: string): number => {
+  if (isLighthouse(playerId)) return -Infinity;
+  const rTime = latestRespawnTime(state).get(playerId);
+  return rTime === undefined ? 0 : rTime + INVINCIBILITY_DURATION;
+};
+
+/** 現在無敵中の全プレイヤー ID。hit detection の invincible フィルタ用。 */
+export const selectInvincibleIds = (state: LogState, now: number): Set<string> => {
+  const ids = new Set<string>();
+  for (const [id, rTime] of latestRespawnTime(state)) {
+    if (isLighthouse(id)) continue;
+    if (rTime + INVINCIBILITY_DURATION > now) ids.add(id);
+  }
+  return ids;
+};
+
+/** UI 反映待ちの kill events (firedForUi === false)。過去光円錐到達判定で消化される。 */
+export const selectPendingKillEvents = (state: LogState): KillEventRecord[] =>
+  state.killLog.filter((e) => !e.firedForUi);

@@ -32,28 +32,23 @@ export type PendingSpawnEvent = {
   readonly color: string; // fallback color (may be stale at creation time)
 };
 
-// キルイベント（過去光円錐到達まで UI 遅延）
-export type PendingKillEvent = {
-  readonly victimId: string;
-  readonly killerId: string;
-  readonly hitPos: { t: number; x: number; y: number; z: number };
-  readonly victimName: string;
-  readonly victimColor: string;
-};
-
 /**
  * Authority 解体 Stage C の event log エントリ。
  * 全 kill は不変記録として killLog に append される。
- * `firedForUi`: 過去光円錐到達で UI score に反映済みかどうか (Stage C-3 で
- * firePendingKillEvents が書き換える)。
+ * `firedForUi`: 過去光円錐到達で UI score に反映済みかどうか
+ * (firePendingKillEvents が書き換える)。
  * `wallTime`: invincibility / respawn timer / leaderboard の判定用。
  * coord time は `hitPos.t` で保持されるので冗長保存しない。
+ * `victimName` / `victimColor`: kill 発生時点のスナップショット (後から
+ * victim が disconnect しても UI 通知が成立するように)。
  */
 export type KillEventRecord = {
   readonly victimId: string;
   readonly killerId: string;
   readonly hitPos: { t: number; x: number; y: number; z: number };
   readonly wallTime: number;
+  readonly victimName: string;
+  readonly victimColor: string;
   firedForUi: boolean;
 };
 

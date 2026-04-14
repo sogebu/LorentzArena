@@ -8,7 +8,7 @@ import {
   pastLightConeIntersectionWorldLine,
   type Vector4,
 } from "../../physics";
-import { useGameStore } from "../../stores/game-store";
+import { selectInvincibleUntil, useGameStore } from "../../stores/game-store";
 import { DebrisRenderer } from "./DebrisRenderer";
 import { LaserBatchRenderer } from "./LaserBatchRenderer";
 import { isLighthouse } from "./lighthouse";
@@ -291,8 +291,8 @@ export const SceneContent = ({
         const isMe = player.id === myId;
         const color = getThreeColor(player.color);
         const size = isMe ? PLAYER_MARKER_SIZE_SELF : PLAYER_MARKER_SIZE_OTHER;
-        const invUntil = useGameStore.getState().invincibleUntil.get(player.id);
-        const isInvincible = invUntil !== undefined && Date.now() < invUntil;
+        const invUntil = selectInvincibleUntil(useGameStore.getState(), player.id);
+        const isInvincible = Date.now() < invUntil;
         // Pulse: opacity oscillates 0.3–1.0 at 2Hz during invincibility
         const pulse = isInvincible ? 0.65 + 0.35 * Math.sin(Date.now() * 0.012) : 1.0;
 

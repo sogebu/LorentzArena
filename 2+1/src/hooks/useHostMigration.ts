@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { RESPAWN_DELAY } from "../components/game/constants";
 import { createRespawnPosition } from "../components/game/respawnTime";
-import { useGameStore } from "../stores/game-store";
+import { selectDeadPlayerIds, useGameStore } from "../stores/game-store";
 
 interface UseHostMigrationArgs {
   isMigrating: boolean;
@@ -49,18 +49,19 @@ export function useHostMigration({
 
     const store = useGameStore.getState();
 
-    // Reconstruct deadPlayers from player state
-    store.deadPlayers.clear();
-    for (const [id, player] of store.players) {
-      if (player.isDead) {
-        store.deadPlayers.add(id);
+    // Stage C: deadPlayers / deathTime は killLog / respawnLog から derive。
+    // 該当 victim の latest kill wallTime を deathTime として採用。
+    const deadIds = selectDeadPlayerIds(store);
+    const latestKillWallTime = new Map<string, number>();
+    for (const e of store.killLog) {
+      const prev = latestKillWallTime.get(e.victimId);
+      if (prev === undefined || e.wallTime > prev) {
+        latestKillWallTime.set(e.victimId, e.wallTime);
       }
     }
-
-    // Build dead player list with death times
     const deadPlayersList: Array<{ playerId: string; deathTime: number }> = [];
-    for (const playerId of store.deadPlayers) {
-      const deathTime = store.deathTimeMap.get(playerId) ?? Date.now();
+    for (const playerId of deadIds) {
+      const deathTime = latestKillWallTime.get(playerId) ?? Date.now();
       deadPlayersList.push({ playerId, deathTime });
     }
 

@@ -1,5 +1,5 @@
 import { createVector4, isInPastLightCone, type Vector4 } from "../../physics";
-import type { PendingKillEvent, PendingSpawnEvent, SpawnEffect } from "./types";
+import type { KillEventRecord, PendingSpawnEvent, SpawnEffect } from "./types";
 
 export interface KillEventEffects {
   deathFlash: boolean;
@@ -11,13 +11,19 @@ export interface KillEventEffects {
 }
 
 export interface KillEventsResult {
+  /** Indices into the input killLog whose firedForUi should be set true. */
   firedIndices: number[];
   newScores: Record<string, number>;
   effects: KillEventEffects;
 }
 
+/**
+ * Fire UI effects for kill events that have just entered the observer's past
+ * light cone. Consumes un-fired entries from `killLog` (those with
+ * `firedForUi === false`); returns log indices to flag.
+ */
 export function firePendingKillEvents(
-  pending: PendingKillEvent[],
+  killLog: KillEventRecord[],
   myPos: Vector4,
   myId: string,
   scores: Record<string, number>,
@@ -27,8 +33,9 @@ export function firePendingKillEvents(
   let deathFlash = false;
   let killNotification: KillEventEffects["killNotification"] = null;
 
-  for (let i = 0; i < pending.length; i++) {
-    const ev = pending[i];
+  for (let i = 0; i < killLog.length; i++) {
+    const ev = killLog[i];
+    if (ev.firedForUi) continue;
     const hitPosV4 = createVector4(ev.hitPos.t, ev.hitPos.x, ev.hitPos.y, ev.hitPos.z);
     if (isInPastLightCone(hitPosV4, myPos)) {
       firedIndices.push(i);

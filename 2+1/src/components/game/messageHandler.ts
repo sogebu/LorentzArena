@@ -5,7 +5,7 @@ import {
   createWorldLine,
 } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
-import { INVINCIBILITY_DURATION, LIGHTHOUSE_COLOR, MAX_LASERS, MAX_WORLDLINE_HISTORY, RESPAWN_DELAY, SPAWN_RANGE } from "./constants";
+import { LIGHTHOUSE_COLOR, MAX_LASERS, MAX_WORLDLINE_HISTORY, RESPAWN_DELAY, SPAWN_RANGE } from "./constants";
 import { isLighthouse } from "./lighthouse";
 import { createRespawnPosition } from "./respawnTime";
 import type { Laser, RelativisticPlayer } from "./types";
@@ -194,24 +194,28 @@ export const createMessageHandler =
         });
         return next;
       });
-      store.invincibleUntil.set(myId, Date.now() + INVINCIBILITY_DURATION);
-
-      // 初回スポーンエフェクト（過去光円錐到達時に発火）
+      // Stage C: 初期 invincibility は respawnLog 経由で derive。
+      // 「client 初回スポーン = 初回 respawn」として扱う。
       // setPlayers 後なので fresh state から読む
       const freshState = useGameStore.getState();
       const freshMe = freshState.players.get(myId);
+      const spawnPos = {
+        t: msg.hostTime,
+        x: freshMe?.phaseSpace.pos.x ?? spawnX,
+        y: freshMe?.phaseSpace.pos.y ?? spawnY,
+        z: 0,
+      };
       useGameStore.setState((state) => ({
+        respawnLog: [
+          ...state.respawnLog,
+          { playerId: myId, position: spawnPos, wallTime: Date.now() },
+        ],
         pendingSpawnEvents: [
           ...state.pendingSpawnEvents,
           {
             id: `spawn-${myId}-${Date.now()}`,
             playerId: myId,
-            pos: {
-              t: msg.hostTime,
-              x: freshMe?.phaseSpace.pos.x ?? spawnX,
-              y: freshMe?.phaseSpace.pos.y ?? spawnY,
-              z: 0,
-            },
+            pos: spawnPos,
             color: freshMe?.color ?? getPlayerColor(myId),
           },
         ],
