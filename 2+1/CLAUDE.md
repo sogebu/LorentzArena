@@ -90,9 +90,9 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 
 自動接続フロー: START を押すと PeerProvider がマウントされ接続開始。`#room=name` で部屋分離。最初に START を押した人（= 最初に `la-{roomName}` ビーコンを取得した人）がホスト。全員ランダム ID でゲーム接続し、`la-{roomName}` はビーコン（発見専用、redirect 送信）のみに使用。
 
-プレイヤー初期化: ホストは START 直後に自己初期化（`OFFSET = Date.now()/1000` で座標時間 t ≈ 0 から開始）。クライアントは自己初期化せず、ホストから `syncTime` を受信した時点でホストの座標時間にスポーン。
+プレイヤー初期化: ホストは START 直後に自己初期化（`OFFSET = Date.now()/1000` で座標時間 t ≈ 0 から開始）。クライアントは自己初期化せず、ホストから `syncTime` を受信した時点でホストの座標時間にスポーン（Stage F で snapshot に統合予定）。
 
-ホストマイグレーション: ホストが切断すると最古参クライアントが自動昇格。ハートビート方式（3 秒間隔 `ping`、8 秒タイムアウト）で即時検知。新ホストは `hostMigration` メッセージでスコア・dead players を引き継ぎ、respawn タイマーを残り時間で再構築。
+ホストマイグレーション: ホストが切断すると最古参クライアントが自動昇格。ハートビート方式（3 秒間隔 `ping`、8 秒タイムアウト）で即時検知。Stage D 以降、人間の respawn timer は各 owner がローカルに持ち続けるので migration で再構築不要。`useHostMigration` の仕事は Lighthouse owner 書き換え + LH 死亡中なら残り時間で respawn 再 schedule のみ。`hostMigration` メッセージは scores / displayNames の互換同期を残すが payload は Stage F で snapshot に統合予定。
 
 ビーコンパターン: `la-{roomName}` は常にビーコン（発見専用）。初期ホストは Phase 1 でビーコンを取得し `beaconRef` に保持、マイグレーション後のホストはビーコン effect で取得。新クライアントがビーコンに接続すると `{ type: "redirect", hostId }` で本当のホスト（ランダム ID）にリダイレクト。既存のゲーム接続には影響しない。
 
@@ -117,7 +117,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `game/displayTransform.ts` | ローレンツ変換 → 表示座標変換 |
 | `game/laserPhysics.ts` | レーザー当たり判定 + 光円錐交差 |
 | `game/debris.ts` | デブリ生成 + 光円錐交差 |
-| `game/killRespawn.ts` | `applyKill`/`applyRespawn` 純粋関数（ホスト/クライアント共通） |
+| `game/killRespawn.ts` | `applyKill`/`applyRespawn` 純粋関数（全 peer 共通、players Map を返す） |
 | `game/respawnTime.ts` | `getRespawnCoordTime`（生存者最大 t、全員死亡時は壁時計）、`createRespawnPosition`（座標時間 + ランダム空間位置） |
 | `game/lighthouse.ts` | Lighthouse AI（`createLighthouse` ファクトリ、`isLighthouse` 判定、`computeInterceptDirection` 相対論的偏差射撃） |
 | `game/gameLoop.ts` | ゲームループ内の純関数群（カメラ制御、プレイヤー物理、Lighthouse AI、当たり判定、ゴースト移動、因果律ガード、レーザー発射） |
@@ -143,7 +143,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `useKeyboardInput.ts` | キーボード入力管理（WASD + 矢印 + Space の preventDefault + keysPressed ref） |
 | `useStaleDetection.ts` | stale プレイヤー検知（壁時計/座標時間進行率ベース）、add/delete/cleanup を一箇所に集約 |
 | `useHighScoreSaver.ts` | beforeunload でハイスコア/リーダーボード保存 |
-| `useHostMigration.ts` | ホストマイグレーション（state ブロードキャスト + respawn タイマー再構築） |
+| `useHostMigration.ts` | ホストマイグレーション（hostMigration 互換 broadcast + LH owner 書き換え + LH respawn 再 schedule）。Stage F で `useBeaconMigration` に改名予定 |
 | `useGameLoop.ts` | ゲームループ本体（setInterval ライフサイクル + 全フェーズの dispatch） |
 
 主要機能:
@@ -151,7 +151,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 - モバイル: 横スワイプ heading、縦変位 thrust（連続値）、ダブルタップ 射撃（全操作同時実行可）
 - 正射影/透視投影カメラ切替
 - 自分の静止系/世界系表示切替
-- 当たり判定（ホスト権威、`findLaserHitPosition`）
+- 当たり判定（target-authoritative、`findLaserHitPosition`）: 各 peer が自分 owner のプレイヤー (人間=自分、beacon holder=LH) に対してのみ判定。hit 検出した target 本人が `kill` を broadcast、host が relay。詳細: DESIGN.md「Authority 解体 B」
 - Kill/Respawn: kill → 世界線を `frozenWorldLines` に移動 + デブリ生成 → ゴースト（DeathEvent ベース等速直線）→ 10秒後リスポーン（新 WorldLine）→ 10秒間無敵（opacity パルスで表示、Lighthouse 除外）
 - 世界オブジェクト分離: 死亡で生まれるオブジェクト（凍結世界線、デブリ、ゴースト）はプレイヤーから独立した state。レーザーも同様
 - 死亡の設計哲学: 凍結世界線・デブリは世界オブジェクトとして独立描画。過去光円錐交差で自然に可視性が決まる
@@ -166,28 +166,59 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 - 因果律の守護者: 他プレイヤーの未来光円錐内で操作凍結。死亡プレイヤー・灯台は除外。灯台は別方式: 誰かの過去光円錐に落ちたら最も過去の生存プレイヤーの座標時間にジャンプ
 - 光円錐描画: DoubleSide 半透明サーフェス（opacity 0.08）+ ワイヤーフレーム（opacity 0.12）の 2 層構造で未来/過去光円錐を表示
 
+### Store 構造 (`src/stores/game-store.ts`、Stage C 以降)
+
+**Reactive state** (selector で購読):
+- `players: Map<id, RelativisticPlayer>`, `lasers: Laser[]`, `scores: Record<id, number>`, `spawns: SpawnEffect[]`, `frozenWorldLines`, `debrisRecords`, `killNotification`, `myDeathEvent`
+
+**Authoritative event log** (Stage C 導入、source of truth):
+- `killLog: KillEventRecord[]` — 全 kill の不変記録。`firedForUi` フラグで UI 反映待ちを表現
+- `respawnLog: RespawnEventRecord[]` — 全 respawn の不変記録 (初回 spawn も含む)
+- GC は useGameLoop tick 末尾で `gcLogs` を毎フレーム実行 (pair 成立 kill を除去、respawn は latest 1 件/player のみ残す)
+
+**Non-reactive helpers** (getState で読む、購読不要):
+- `processedLasers: Set<string>` — 自分の hit detection で既に処理済みのレーザー ID
+- `pendingSpawnEvents: PendingSpawnEvent[]` — 他プレイヤー respawn の UI 反映待ち (因果律遅延)
+- `displayNames: Map<id, string>`
+- `lighthouseSpawnTime: Map<id, number>` — LH spawn grace 起点
+- `lighthouseLastFireTime: Map<id, number>` — 全 peer が LH laser 観測時に更新。beacon migration 時の fire 連続性を自動確保
+
+**Selectors** (log から derive):
+- `selectIsDead(state, id)` / `selectDeadPlayerIds(state)` — 現在死亡中か
+- `selectInvincibleUntil(state, id)` / `selectInvincibleIds(state, now)` — 無敵終了時刻
+- `selectPendingKillEvents(state)` — UI 反映待ちの kill events (`firedForUi === false`)
+
+**撤去済み**: `deadPlayers: Set`, `invincibleUntil: Map`, `pendingKillEvents[]`, `deathTimeMap: Map` — Stage C で全て event log 由来の selector に置換。
+
+設計判断の詳細は DESIGN.md「Authority 解体 C」節。
+
 ### メッセージタイプ (`src/types/message.ts`)
 
-| type | 方向 | 用途 |
-|---|---|---|
-| `phaseSpace` | 双方向（host 中継） | 4元位置+速度の同期 |
-| `laser` | 双方向（host 中継） | レーザー発射イベント |
-| `syncTime` | host → client | 世界系時刻同期 |
-| `kill` | host → all | キル通知（hitPos 付き） |
-| `respawn` | host → all | リスポーン位置指示 |
-| `score` | host → all | スコア更新 **（未使用: 送信箇所なし。スコアは各クライアントが `firePendingKillEvents` で独立計算）** |
-| `ping` | host → all | ハートビート（3秒間隔、8秒タイムアウトでホスト切断検知） |
-| `hostMigration` | new host → all | ホストマイグレーション（スコア + dead players + displayNames 引継ぎ） |
-| `intro` | 双方向（host 中継） | プレイヤー表示名通知（接続時に 1 回送信） |
-| `peerList` | host → all | 接続ピア一覧 + joinRegistry 全履歴（接続変化時に proactive 送信） |
+| type | 発信者 | 経路 | 用途 |
+|---|---|---|---|
+| `phaseSpace` | owner | host relay | 4元位置+速度の同期 (LH も同じ経路) |
+| `laser` | owner | host relay | レーザー発射イベント |
+| `kill` | target (= owner) | host relay | 自己死亡申告（hitPos 付き）。Stage B で host 発信 → target 発信へ |
+| `respawn` | owner | host relay | 自分の復活（位置含む）。Stage D で host 発信 → owner 発信へ |
+| `syncTime` | host → client | 直接 | 新規 join に座標時間同期（Stage F で snapshot に統合予定） |
+| `hostMigration` | new host → all | 直接 | scores / displayNames 引き継ぎ（payload の deadPlayers は非消費、Stage F で snapshot に統合予定） |
+| `intro` | 本人 | host relay | プレイヤー表示名通知（接続時に 1 回送信） |
+| `peerList` | host → all | 直接 | 接続ピア一覧 + joinRegistry 全履歴（接続変化時に proactive 送信） |
+| `ping` | host → all | 直接 | ハートビート（3秒間隔、8秒タイムアウト） |
+| `redirect` | beacon → client | 直接 | マイグレーション後のホスト ID リダイレクト |
 
-| `redirect` | beacon → client | マイグレーション後のホスト ID リダイレクト |
+**削除済み**: `score`（Stage C-1、全 peer が `killLog` から独立集計するため不要）
 
-**色は同期しない**: 全ピアが `colorForJoinOrder(index)` で接続順に基づく色を独立に算出。ホストが peerList に `joinRegistry`（全履歴）を含めて送信し、クライアントは丸ごと置換（ホストが唯一の正本）。peerList 未受信時は `colorForPlayerId(id)` にフォールバック。ネットワークで色を直接同期するメッセージはない。詳細: DESIGN.md「色割り当て」
+**relay 対象 (`PeerProvider.isRelayable`)**: `phaseSpace` / `laser` / `intro` / `kill` / `respawn`。host が非 owner の発信を他 peer へ転送。
 
-ホスト権威メッセージ（kill, respawn, score）: ホストはゲームループで処理済みのため messageHandler でスキップ（二重処理防止）。
+**色は同期しない**: 全ピアが `colorForJoinOrder(index)` で接続順に基づく色を独立に算出。ホストが peerList に `joinRegistry`（全履歴）を含めて送信し、クライアントは丸ごと置換（ホストが唯一の正本）。peerList 未受信時は `colorForPlayerId(id)` にフォールバック。詳細: DESIGN.md「色割り当て」
 
-メッセージバリデーション: `messageHandler.ts` で全メッセージに `isFiniteNumber`/`isValidVector4`/`isValidVector3`/`isValidColor`/`isValidString` のランタイム検証を実施。laser range は `0 < range <= 100`、score は全エントリ検証。
+**Authority の所在**:
+- `phaseSpace` / `laser` / `kill` / `respawn` はすべて owner 発信 (target-authoritative)。host は relay hub
+- 受信側は二重処理防止を log / selectors に委ねる (例: `handleKill` は `selectIsDead` でガード)
+- host 特有の仕事は: (a) relay、(b) Lighthouse の AI 駆動（LH owner 兼任）、(c) beacon 所有、(d) ping 送信のみ
+
+メッセージバリデーション: `messageHandler.ts` で全メッセージに `isFiniteNumber`/`isValidVector4`/`isValidVector3`/`isValidColor`/`isValidString` のランタイム検証を実施。laser range は `0 < range <= 100`。body の sender 検証は意図的にしない（spoofing 防御にならないため、詳細は DESIGN.md「B: body senderId 検証はしない判断」）。
 
 ### ゲームパラメータ（`game/constants.ts`）
 
@@ -207,6 +238,8 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `MAX_DEBRIS` | 20 | デブリの保持上限 |
 | `EXPLOSION_PARTICLE_COUNT` | 30 | デブリパーティクル数 |
 | `MAX_WORLDLINE_HISTORY` | 5000 | 世界線のサンプル数上限 |
+| `MAX_KILL_LOG` | 1000 | kill event log の安全 cap (通常は GC で届かない) |
+| `MAX_RESPAWN_LOG` | 500 | respawn event log の安全 cap |
 | `PLAYER_ACCELERATION` | 0.8 c/s | プレイヤー加速度 |
 | `FRICTION_COEFFICIENT` | 0.5 | 速度に比例する減速 |
 | `CAMERA_DISTANCE_*` | 正射影: 50, 透視: 10 | カメラ距離 |

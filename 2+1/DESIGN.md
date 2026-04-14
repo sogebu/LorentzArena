@@ -4,7 +4,7 @@
 
 ### Authority 解体アーキテクチャ（2026-04-14 設計、段階的実装中）
 
-**状態**: 原理確定、Stage A 着手予定。詳細プランは `plans/2026-04-14-authority-dissolution.md`
+**状態**: Stage A〜E 完了 (`4f4bddd` / `8b4932f` / `01fed9d` / `c076192` / `6ba5174` / `49c65bc` / `d0d05f0` / `1cc05f9` / `b5579fe` / `0491d52`)、Stage F 着手予定。詳細プランは `plans/2026-04-14-authority-dissolution.md`
 
 **診断**: 現構造では `host` が (a) beacon 所有者、(b) relay hub、(c) hit detection 権威、(d) Lighthouse 駆動、(e) respawn スケジューラ、(f) peerList 発行者 を兼ねており、**host 切断時に全部を新 host に引き継ぐ必要がある**。マイグレーションが怪物化し、`useHostMigration.ts` で respawn timer 再構築、`hostMigration` メッセージで scores/deadPlayers/deathTimes を丸ごと転送、`lighthouseLastFireRef` の glitch、invincibility の欠落など、漏れやすい。また false positive（通信瞬断の誤検知）のコストが異常に高いため、heartbeat を保守的な 3s/8s に設定せざるを得ない。
 
@@ -47,6 +47,84 @@
 **並走 vs cut-over**: 各 Stage は独立 commit。Stage B（hit detection）のみ接触範囲が広いため着手直前に plan mode で具体 diff を提示。他 Stage は localhost multi-tab 検証 + commit で進行。
 
 **mesh 化は直交タスク**。このリファクタの範囲外だが、完了後に独立に検討可能になる。
+
+#### 実装段階で得た判断（Stage B–E）
+
+**B: `kill` の body senderId 検証はしない判断**
+
+Plan Stage B は「`targetId === senderId` を messageHandler で強制」と書いたが、**採用しなかった**。理由:
+
+- body の `senderId` は送信者が自己申告する値。ピア X が `{senderId: Y, victimId: Y}` と書けば通る → **自分で書く値を自分で検証しても spoofing 防御にならない**
+- 既存の `phaseSpace` / `laser` / `intro` も `_senderId (PeerJS-level) === msg.senderId` を検証しておらず、このリポはもともと「相互信頼の peer 群」を前提にしている。kill だけ body 検証を追加するのは中途半端
+- 二重処理防止は handleKill の `deadPlayers.has(victimId) → return`（Stage C では `selectIsDead`）で既に担保済み
+- 本気で spoofing 対策するなら host の relay 層で `_senderId === msg.senderId` を検証する必要があるが、これは本リファクタの範囲外
+
+結論: kill message は `{victimId, killerId, hitPos}` の 3 フィールドで、body senderId 自体を持たない。
+
+**C: derived state の 3 択検討と β 採択**
+
+Stage C「deadPlayers / invincibility を event から導出」には設計の幅があり、3 案を検討:
+
+- **α**: `lastKillTime: Map` / `lastRespawnTime: Map` で per-player latest を保持。event log は持たない
+- **β**: `killLog[]` / `respawnLog[]` を source of truth、deadPlayers 等は selector 経由で毎回 derive、cache は store に持たない
+- **γ**: log + cache 併存。log が authoritative だが deadPlayers 等も store に同時更新（API 互換）
+
+**β を採択**。理由:
+- plan 原理 5「authoritative 値を**持たない**」に構造的に忠実（γ は実質 cache が authoritative）
+- Stage F の snapshot 配信が log dump で実現できる先行投資になる
+- cache 撤去の変更面は ~10 箇所で実際には広くない
+- log サイズが GC で小さく保たれるので per-frame O(log) derive のコストは無視可能
+
+**C: `firedForUi` による pending events の log 統合**
+
+`pendingKillEvents` は元々別配列だったが、`KillEventRecord.firedForUi: boolean` を持たせることで `killLog.filter(!firedForUi)` として derive に統合。冗長な二重保持を排除し、原理 0「データ層と表現層を分離」とも整合（データ層 = killLog、表現層 = `!firedForUi` のエントリが UI 反映待ち）。
+
+**C: 「初回 spawn = 初回 respawn」として invincibility 起点を統一**
+
+初期プレイヤー生成時、従来は `invincibleUntil.set(myId, now + INVINCIBILITY_DURATION)` で無敵開始時刻を直接書いていた。Stage C では respawnLog への entry 追加に統一。`selectInvincibleUntil` が latest respawn wallTime + INVINCIBILITY_DURATION を返すため、初回と 2 回目以降の spawn が同じ経路で扱われる。副作用として RelativisticGame / messageHandler の両方から invincibility の直接操作が消え、log への append に単純化。
+
+**C: `gcLogs` の参照同一性トリック**
+
+`gcLogs` は log の transform 結果を返すが、**長さが不変なら入力と同じ array 参照を返す**。useGameLoop は毎フレーム呼ぶため、変化なしの場合に `setState({killLog, respawnLog})` をトリガーしないことで Zustand の購読者再評価を抑制できる。削除のみの transform (filter / latest 抽出) なので「長さ不変 ⇔ 内容不変」が成立し、要素比較不要でこの判定が効く。
+
+**C: GC ルール**
+
+- killLog: `firedForUi === true` かつ対応 respawn が存在する kill → 削除
+- killLog: 未 UI 反映 (firedForUi=false) または respawn 未発生は保持
+- respawnLog: 各プレイヤーの latest 1 件のみ残す（invincibility 計算に必要十分、古いものは対応 kill とペアで消費済み）
+- safety cap (`MAX_KILL_LOG=1000` / `MAX_RESPAWN_LOG=500`): 通常は GC が先に働くので届かないが、GC が何らかのバグで止まっても bounded に保つ保険
+
+**D: respawn schedule が owner-unconditional になる原理**
+
+`processHitDetection` が Stage B で owner 絞り込み済みなので、useGameLoop で hit が検出された時点で「その kill の target は必ず自分が owner」が成立する。したがって respawn schedule を `if (isHost)` で wrap する必要がなく、無条件で target 本人が timer を持つ。
+
+**D: respawn メッセージの発信者変更**
+
+従来 host 一元発信だった respawn を sendToNetwork 経由に切り替え、isRelayable / registerHostRelay に `respawn` を追加。client が自身の respawn を発信 → host 経由で他 client にリレーされる構造。messageHandler の respawn 受信ハンドラから host skip を撤去（host も他 peer の respawn を受信して handleRespawn を呼ぶ必要がある）。
+
+**D-3: migration 時の LH init effect idempotent ガード**
+
+RelativisticGame の初期化 `useEffect([myId, isHost])` は isHost 変化で再実行される。Stage D で client が新 host に昇格すると、この effect が走り `createLighthouse()` で LH を **新規作成して store に上書き**し、LH の位置・世界線・spawn grace が全てリセットされていた（ユーザーからの「LH 継続されない」報告で発見）。
+
+修正: `store.players.get(lighthouseId)` で既存エントリを確認し、存在すれば owner だけ差し替え、位置・世界線は保持。spawn エフェクトや `lighthouseSpawnTime` reset も初回 boot のみ実行。
+
+**E: `lighthouseLastFireTime` の event-sourced 設計**
+
+Plan は「beacon migration 時、新 owner が直近 laser event の coord-time を lastFireTime に採用して continuity を保つ」と記述。これを明示的な migration ロジックではなく、**全 peer が LH laser を観測するたび Map を更新する** 方式で実現した。
+
+- `store.lighthouseLastFireTime: Map<string, number>` を non-reactive state として追加
+- messageHandler の `laser` 受信で `isLighthouse(msg.playerId)` なら wallTime を更新
+- useGameLoop の LH AI は fire 時にも同 Map を更新
+- 結果: どの peer が owner になっても常に最新の observed-fire-wallTime を Map から読むだけで continuity 保持。useHostMigration 側の特別処理不要
+
+**E: `isLighthouse(id)` を authority 構造から切り離す**
+
+Stage E 以降、`isLighthouse` は 3 つの metadata 役割のみを持つ:
+1. 色決定 (LIGHTHOUSE_COLOR)
+2. AI 分岐 (owner own player が LH なら processLighthouseAI を走らせる; 人間なら processPlayerPhysics)
+3. invincibility 除外 (`selectInvincibleIds` で LH はスキップ)
+
+authority や所有構造の判定には使わず、owner 判定は `player.ownerId === myId` に統一。
 
 ### リファクタリング現状評価（2026-04-13 更新）
 
