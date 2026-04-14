@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# wrangler (Cloudflare Workers) local state — miniflare cache / KV emulation
+.wrangler/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

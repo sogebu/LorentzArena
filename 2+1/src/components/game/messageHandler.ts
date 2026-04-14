@@ -8,6 +8,7 @@ import { useGameStore } from "../../stores/game-store";
 import { LIGHTHOUSE_COLOR, MAX_LASERS, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
 import { isLighthouse } from "./lighthouse";
 import { createRespawnPosition } from "./respawnTime";
+import { applySnapshot } from "./snapshot";
 import type { Laser, RelativisticPlayer } from "./types";
 
 export type MessageHandlerDeps = {
@@ -159,6 +160,22 @@ export const createMessageHandler =
         next.set(msg.senderId, { ...existing, displayName: msg.displayName });
         return next;
       });
+    } else if (msg.type === "snapshot") {
+      // Stage F: syncTime + hostMigration を統合した新規 join 用 state 一式。
+      // バリデーションは applySnapshot 内でも行うが、外周で基本形だけ確認。
+      if (
+        !isFiniteNumber(msg.hostTime) ||
+        !msg.scores ||
+        typeof msg.scores !== "object" ||
+        !msg.displayNames ||
+        typeof msg.displayNames !== "object" ||
+        !Array.isArray(msg.killLog) ||
+        !Array.isArray(msg.respawnLog) ||
+        !Array.isArray(msg.players)
+      ) {
+        return;
+      }
+      applySnapshot(myId, msg, getPlayerColor, lastUpdateTimeRef);
     } else if (msg.type === "syncTime") {
       if (!isFiniteNumber(msg.hostTime)) return;
       const syncScores = parseScores(msg.scores);

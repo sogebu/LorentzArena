@@ -125,4 +125,58 @@ export type Message =
        */
       type: "redirect";
       hostId: string;
+    }
+  | {
+      /**
+       * Full-state snapshot sent by the beacon holder (= host) to a newly
+       * joined peer. Supersedes `syncTime` + `hostMigration` for new-joiner
+       * initialization (Authority 解体 Stage F).
+       *
+       * Existing peers do NOT receive snapshot — their state is already
+       * self-maintained from the event log (killLog / respawnLog).
+       *
+       * JP: beacon holder が新規 join peer 1 人に送る state 一式。
+       * 既存 peer は受け取らない（event log から自己維持）。
+       */
+      type: "snapshot";
+      /** Host の座標時間 (新 peer の OFFSET 計算に使用、元 syncTime.hostTime) */
+      hostTime: number;
+      scores: Record<string, number>;
+      displayNames: Record<string, string>;
+      /** killLog 全件 (GC 済みなので通常は短い) */
+      killLog: Array<{
+        victimId: string;
+        killerId: string;
+        hitPos: { t: number; x: number; y: number; z: number };
+        wallTime: number;
+        victimName: string;
+        victimColor: string;
+        firedForUi: boolean;
+      }>;
+      /** respawnLog 全件 (latest 1/player のみ) */
+      respawnLog: Array<{
+        playerId: string;
+        position: { t: number; x: number; y: number; z: number };
+        wallTime: number;
+      }>;
+      /** 各プレイヤー (自機以外) の完全 state */
+      players: Array<{
+        id: string;
+        ownerId: string;
+        color: string;
+        displayName?: string;
+        isDead: boolean;
+        phaseSpace: {
+          pos: { t: number; x: number; y: number; z: number };
+          u: { x: number; y: number; z: number };
+        };
+        worldLineHistory: Array<{
+          pos: { t: number; x: number; y: number; z: number };
+          u: { x: number; y: number; z: number };
+        }>;
+        worldLineOrigin: {
+          pos: { t: number; x: number; y: number; z: number };
+          u: { x: number; y: number; z: number };
+        } | null;
+      }>;
     };

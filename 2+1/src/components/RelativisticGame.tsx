@@ -25,6 +25,7 @@ import {
 } from "./game/lighthouse";
 import { createMessageHandler } from "./game/messageHandler";
 import { SceneContent } from "./game/SceneContent";
+import { buildSnapshot } from "./game/snapshot";
 import { useTouchInput } from "./game/touchInput";
 import { useStaleDetection } from "../hooks/useStaleDetection";
 import { useKeyboardInput } from "../hooks/useKeyboardInput";
@@ -196,20 +197,13 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       }));
     }
 
-    if (peerManager) {
-      for (const conn of connections) {
-        if (conn.open) {
-          peerManager.sendTo(conn.id, {
-            type: "syncTime",
-            hostTime: initialPhaseSpace.pos.t,
-            scores: store.scores,
-          });
-        }
-      }
-    }
+    // Stage F: 初期 host の init effect では既存 connection へ何も送らない。
+    // 新規 join への snapshot 送信は下の useEffect (prevConnectionIdsRef) で
+    // 差分検出して行う。host migration で init effect が再実行されても既存
+    // 接続は prevConnectionIdsRef に残っているので差分ゼロ → 送信されない。
   }, [myId, isHost]);
 
-  // 切断したプレイヤーを削除 & 新規接続にsyncTime送信
+  // 切断したプレイヤーを削除 & 新規接続に snapshot 送信
   const prevConnectionIdsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!myId) return;
@@ -224,11 +218,8 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       if (myPlayer) {
         for (const conn of connections) {
           if (conn.open && !prevConnectionIdsRef.current.has(conn.id)) {
-            peerManager.sendTo(conn.id, {
-              type: "syncTime",
-              hostTime: myPlayer.phaseSpace.pos.t,
-              scores: store.scores,
-            });
+            // Stage F: syncTime 単独ではなく snapshot 一式を送る
+            peerManager.sendTo(conn.id, buildSnapshot(myId));
           }
         }
       }

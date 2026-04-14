@@ -50,13 +50,14 @@ export function useHostMigration({
 
     const store = useGameStore.getState();
 
-    // Stage D: 人間プレイヤーの respawn timer は owner (= 本人) が持ち続けて
-    // いる。migration で再構築しない。ここで扱うのは Lighthouse のみ
-    // (owner = beacon holder = 自分に移管)。
+    // Stage F: 既存 peer には何も broadcast しない。各 peer の state は
+    // event log (killLog / respawnLog) から自己維持されており、migration の
+    // state 転送は不要。host 識別 ID は peerProvider の peerOrderRef ベース
+    // 選出で各 peer が独立に決める (hostMigration メッセージに依存しない)。
     //
-    // hostMigration payload は Stage F で廃止予定。今は deadPlayers / scores /
-    // displayNames を歴史的互換で送る (クライアントは scores / displayNames
-    // だけ消費)。
+    // Stage D-1 での人間 respawn timer 再構築撤去 + Stage F での hostMigration
+    // 廃止で、useHostMigration の仕事は Lighthouse handoff のみに縮退済み。
+
     const deadIds = selectDeadPlayerIds(store);
     const latestKillWallTime = new Map<string, number>();
     for (const e of store.killLog) {
@@ -65,22 +66,6 @@ export function useHostMigration({
         latestKillWallTime.set(e.victimId, e.wallTime);
       }
     }
-    const deadPlayersList: Array<{ playerId: string; deathTime: number }> = [];
-    for (const playerId of deadIds) {
-      deadPlayersList.push({
-        playerId,
-        deathTime: latestKillWallTime.get(playerId) ?? Date.now(),
-      });
-    }
-
-    // Broadcast hostMigration to all connected peers
-    peerManager.send({
-      type: "hostMigration" as const,
-      newHostId: myId,
-      scores: store.scores,
-      deadPlayers: deadPlayersList,
-      displayNames: Object.fromEntries(store.displayNames),
-    });
 
     // Lighthouse owner を新 host (自分) に書き換え
     store.setPlayers((prev) => {
