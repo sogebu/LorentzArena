@@ -196,27 +196,28 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 
 | type | 発信者 | 経路 | 用途 |
 |---|---|---|---|
-| `phaseSpace` | owner | host relay | 4元位置+速度の同期 (LH も同じ経路) |
-| `laser` | owner | host relay | レーザー発射イベント |
-| `kill` | target (= owner) | host relay | 自己死亡申告（hitPos 付き）。Stage B で host 発信 → target 発信へ |
-| `respawn` | owner | host relay | 自分の復活（位置含む）。Stage D で host 発信 → owner 発信へ |
-| `syncTime` | host → client | 直接 | 新規 join に座標時間同期（Stage F で snapshot に統合予定） |
-| `hostMigration` | new host → all | 直接 | scores / displayNames 引き継ぎ（payload の deadPlayers は非消費、Stage F で snapshot に統合予定） |
-| `intro` | 本人 | host relay | プレイヤー表示名通知（接続時に 1 回送信） |
-| `peerList` | host → all | 直接 | 接続ピア一覧 + joinRegistry 全履歴（接続変化時に proactive 送信） |
-| `ping` | host → all | 直接 | ハートビート（3秒間隔、8秒タイムアウト） |
-| `redirect` | beacon → client | 直接 | マイグレーション後のホスト ID リダイレクト |
+| `phaseSpace` | owner | beacon holder relay | 4元位置+速度の同期 (LH も同じ経路) |
+| `laser` | owner | beacon holder relay | レーザー発射イベント |
+| `kill` | target (= owner) | beacon holder relay | 自己死亡申告（hitPos 付き） |
+| `respawn` | owner | beacon holder relay | 自分の復活（位置含む） |
+| `snapshot` | beacon holder → new joiner | 直接 | 新規 join 用 state 一式（players / killLog / respawnLog / scores / displayNames / hostTime for OFFSET） |
+| `intro` | 本人 | beacon holder relay | プレイヤー表示名通知（接続時に 1 回送信） |
+| `peerList` | beacon holder → all | 直接 | 接続ピア一覧 + joinRegistry 全履歴（接続変化時に proactive 送信） |
+| `ping` | beacon holder → all | 直接 | ハートビート（Stage G: 1秒間隔、2.5秒タイムアウト） |
+| `redirect` | beacon → client | 直接 | beacon migration 後の beacon holder ID リダイレクト |
 
-**削除済み**: `score`（Stage C-1、全 peer が `killLog` から独立集計するため不要）
+**削除済み**:
+- `score` (Stage C-1、全 peer が `killLog` から独立集計するため不要)
+- `syncTime` / `hostMigration` (Stage H、`snapshot` 1 本に統合)
 
-**relay 対象 (`PeerProvider.isRelayable`)**: `phaseSpace` / `laser` / `intro` / `kill` / `respawn`。host が非 owner の発信を他 peer へ転送。
+**relay 対象 (`PeerProvider.isRelayable`)**: `phaseSpace` / `laser` / `intro` / `kill` / `respawn`。beacon holder が非 owner の発信を他 peer へ転送。
 
 **色は同期しない**: 全ピアが `colorForJoinOrder(index)` で接続順に基づく色を独立に算出。ホストが peerList に `joinRegistry`（全履歴）を含めて送信し、クライアントは丸ごと置換（ホストが唯一の正本）。peerList 未受信時は `colorForPlayerId(id)` にフォールバック。詳細: DESIGN.md「色割り当て」
 
-**Authority の所在**:
-- `phaseSpace` / `laser` / `kill` / `respawn` はすべて owner 発信 (target-authoritative)。host は relay hub
+**Authority の所在** (Authority 解体 Stage A〜H 完了後):
+- `phaseSpace` / `laser` / `kill` / `respawn` はすべて owner 発信 (target-authoritative)。beacon holder は relay hub
 - 受信側は二重処理防止を log / selectors に委ねる (例: `handleKill` は `selectIsDead` でガード)
-- host 特有の仕事は: (a) relay、(b) Lighthouse の AI 駆動（LH owner 兼任）、(c) beacon 所有、(d) ping 送信のみ
+- beacon holder 特有の仕事は: (a) relay、(b) Lighthouse の AI 駆動（LH owner 兼任）、(c) beacon 所有、(d) ping 送信、(e) 新規 join 対応 (snapshot 送信) のみ
 
 メッセージバリデーション: `messageHandler.ts` で全メッセージに `isFiniteNumber`/`isValidVector4`/`isValidVector3`/`isValidColor`/`isValidString` のランタイム検証を実施。laser range は `0 < range <= 100`。body の sender 検証は意図的にしない（spoofing 防御にならないため、詳細は DESIGN.md「B: body senderId 検証はしない判断」）。
 

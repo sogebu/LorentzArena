@@ -35,16 +35,6 @@ export type Message =
     }
   | {
       /**
-       * Time synchronization from host to newly connected client.
-       * JP: ホストから新規クライアントへの世界系時刻同期。
-       */
-      type: "syncTime";
-      hostTime: number;
-      scores?: Record<string, number>;
-      displayName?: string;
-    }
-  | {
-      /**
        * Laser shot event.
        *
        * English: emitted by a player and forwarded by the host.
@@ -87,20 +77,6 @@ export type Message =
        * WebRTC の ICE タイムアウト（30秒以上）を待たずにホスト切断を検知するために使用。
        */
       type: "ping";
-    }
-  | {
-      /**
-       * Host migration: new host announces itself and transfers game state.
-       * Sent by the newly elected host to all clients after the previous host disconnects.
-       *
-       * JP: ホストマイグレーション: 新ホストがゲーム状態を引き継いで全クライアントに通知。
-       * 前ホスト切断後、選出された新ホストが送信。
-       */
-      type: "hostMigration";
-      newHostId: string;
-      scores: Record<string, number>;
-      deadPlayers: Array<{ playerId: string; deathTime: number }>;
-      displayNames?: Record<string, string>;
     }
   | {
       /**

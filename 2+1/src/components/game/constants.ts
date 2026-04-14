@@ -1,5 +1,5 @@
-// Time origin: each client uses its own page-load time.
-// syncTime from host corrects the offset on first connection.
+// Time origin: each peer uses its own page-load time.
+// For non-beacon-holder peers, snapshot.hostTime corrects the offset at join.
 export const OFFSET = Date.now() / 1000;
 
 // スポーンエフェクトの持続時間（ミリ秒）

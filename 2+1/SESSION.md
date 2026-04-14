@@ -5,22 +5,23 @@
 対戦可能。**`79d6a29` デプロイ済み** (build `2026/04/14 01:57:06 JST`)。
 本番 URL: https://sogebu.github.io/LorentzArena/
 
-### 着手中: Authority 解体リファクタ
+### Authority 解体リファクタ: **完了**
 
-- **プラン**: `plans/2026-04-14-authority-dissolution.md`（8 Stage、A→H）
+- **プラン**: `plans/2026-04-14-authority-dissolution.md`（8 Stage、A→H 全完了）
 - **設計原理 + 実装判断**: DESIGN.md「Authority 解体アーキテクチャ」節
-- **進捗**: Stage A〜E 完了
+- **進捗**: 全 Stage 完了
   - A: `ownerId` 型導入（`4f4bddd`）
   - B: target-authoritative hit detection（`8b4932f`）
   - C-1〜C-4: event log (`killLog` / `respawnLog`) を source of truth に、cache 撤去、GC 追加（`01fed9d` / `c076192` / `6ba5174` / `49c65bc`）
   - D-1〜D-3: respawn schedule を owner-local に移管、useHostMigration を LH handoff 専用に縮退、LH init の idempotent ガード（`d0d05f0` / `1cc05f9` / `b5579fe`）
   - E: LH AI を owner-based filter に、`lighthouseLastFireTime` を全 peer 観測で自動連続化（`0491d52`）
   - F-1: `snapshot` メッセージ新設、syncTime/hostMigration 送信撤去（`3153585`）
-  - F-2: naming refactor (host→beaconHolder の API・フィールド・hook 名、`useHostMigration`→`useBeaconMigration`)（`70f9ac7`）
-  - G: heartbeat 積極化 (ping 1s 間隔 / 2.5s timeout、visibility 復帰時に lastPingRef reset で false positive 回避)
-- **次アクション**: Stage H (dead code / メッセージ型 `syncTime` `hostMigration` 削除 + docs 最終化)
-- **動機**: host 切断時の state 引き継ぎが怪物化。target-authoritative 化で host 概念を解体、マイグレを beacon handoff だけに縮退させる
-- **デプロイ方針**: 全 Stage 完了後にまとめて deploy。段階中は localhost multi-tab で検証
+  - F-2: naming refactor (host→beaconHolder、`useHostMigration`→`useBeaconMigration`)（`70f9ac7`）
+  - G: heartbeat 積極化 (ping 1s 間隔 / 2.5s timeout、visibility 復帰 grace)（`5de2aed`）
+  - H: `syncTime` / `hostMigration` 型とハンドラ削除、docs 最終化
+- **次アクション**: Stage F-1 後にユーザーから報告された「リスポーン時に世界線が繋がる」regression の調査 (下記「既知の課題」参照)。その後は対戦 deploy 準備 (ユーザー判断)
+- **動機（達成済み）**: host 切断時の state 引き継ぎが怪物化していたのを target-authoritative 化 + event-sourced で解消。beacon migration は beacon ownership の付け替えのみに縮退
+- **デプロイ方針**: 全 Stage 完了後にまとめて deploy。世界線 regression の決着後を予定
 
 ## 既知の課題
 

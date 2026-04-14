@@ -1,11 +1,6 @@
-import {
-  appendWorldLine,
-  createPhaseSpace,
-  createVector4,
-  createWorldLine,
-} from "../../physics";
+import { appendWorldLine, createPhaseSpace, createWorldLine } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
-import { LIGHTHOUSE_COLOR, MAX_LASERS, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
+import { LIGHTHOUSE_COLOR, MAX_LASERS, MAX_WORLDLINE_HISTORY } from "./constants";
 import { isLighthouse } from "./lighthouse";
 import { createRespawnPosition } from "./respawnTime";
 import { applySnapshot } from "./snapshot";
@@ -14,7 +9,7 @@ import type { Laser, RelativisticPlayer } from "./types";
 export type MessageHandlerDeps = {
   myId: string;
   peerManager: {
-    getIsHost(): boolean;
+    getIsBeaconHolder(): boolean;
     send(msg: unknown): void;
     sendTo(peerId: string, msg: unknown): void;
   };
@@ -49,17 +44,6 @@ const isValidString = (v: unknown, maxLen = 200): v is string =>
 
 const isValidColor = (v: unknown): v is string =>
   typeof v === "string" && v.length < 100 && /^(hsl|rgb|#)/i.test(v);
-
-/** Validate and extract a scores object. Returns null if invalid. */
-const parseScores = (raw: unknown): Record<string, number> | null => {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
-  const scores: Record<string, number> = {};
-  for (const [key, val] of Object.entries(raw)) {
-    if (!isValidString(key) || !isFiniteNumber(val)) return null;
-    scores[key] = val as number;
-  }
-  return scores;
-};
 
 /**
  * Each message handler is a synchronous block that calls store.setXxx() at most once per field.
@@ -176,64 +160,6 @@ export const createMessageHandler =
         return;
       }
       applySnapshot(myId, msg, getPlayerColor, lastUpdateTimeRef);
-    } else if (msg.type === "syncTime") {
-      if (!isFiniteNumber(msg.hostTime)) return;
-      const syncScores = parseScores(msg.scores);
-      if (syncScores) {
-        store.setScores(syncScores);
-      }
-      const spawnX = Math.random() * SPAWN_RANGE;
-      const spawnY = Math.random() * SPAWN_RANGE;
-      store.setPlayers((prev) => {
-        const me = prev.get(myId);
-        const synced = createPhaseSpace(
-          createVector4(
-            msg.hostTime,
-            me?.phaseSpace.pos.x ?? spawnX,
-            me?.phaseSpace.pos.y ?? spawnY,
-            0,
-          ),
-          me?.phaseSpace.u ?? { x: 0, y: 0, z: 0 },
-        );
-        let newWorldLine = createWorldLine(MAX_WORLDLINE_HISTORY);
-        newWorldLine = appendWorldLine(newWorldLine, synced);
-        const next = new Map(prev);
-        next.set(myId, {
-          id: myId,
-          ownerId: myId,
-          phaseSpace: synced,
-          worldLine: newWorldLine,
-          color: me?.color ?? getPlayerColor(myId),
-          isDead: false,
-        });
-        return next;
-      });
-      // Stage C: 初期 invincibility は respawnLog 経由で derive。
-      // 「client 初回スポーン = 初回 respawn」として扱う。
-      // setPlayers 後なので fresh state から読む
-      const freshState = useGameStore.getState();
-      const freshMe = freshState.players.get(myId);
-      const spawnPos = {
-        t: msg.hostTime,
-        x: freshMe?.phaseSpace.pos.x ?? spawnX,
-        y: freshMe?.phaseSpace.pos.y ?? spawnY,
-        z: 0,
-      };
-      useGameStore.setState((state) => ({
-        respawnLog: [
-          ...state.respawnLog,
-          { playerId: myId, position: spawnPos, wallTime: Date.now() },
-        ],
-        pendingSpawnEvents: [
-          ...state.pendingSpawnEvents,
-          {
-            id: `spawn-${myId}-${Date.now()}`,
-            playerId: myId,
-            pos: spawnPos,
-            color: freshMe?.color ?? getPlayerColor(myId),
-          },
-        ],
-      }));
     } else if (msg.type === "laser") {
       if (
         !isValidString(msg.id) ||
@@ -287,42 +213,5 @@ export const createMessageHandler =
       store.handleKill(victimId, killerId, hitPos, myId);
       // Stage D: respawn schedule は owner local (= target 本人 or LH owner) が
       // useGameLoop 側で担当。ここでは何もしない。
-    } else if (msg.type === "hostMigration") {
-      if (peerManager.getIsBeaconHolder()) return;
-      if (!isValidString(msg.newHostId)) return;
-      const scores = parseScores(msg.scores);
-      if (!scores) return;
-      store.setScores(scores);
-      // Sync display names from migrating host
-      if (
-        msg.displayNames &&
-        typeof msg.displayNames === "object" &&
-        !Array.isArray(msg.displayNames)
-      ) {
-        for (const [id, name] of Object.entries(msg.displayNames)) {
-          if (isValidString(id) && isValidString(name, 20)) {
-            store.displayNames.set(id, name as string);
-          }
-        }
-        // Propagate display names into existing player entries immediately
-        store.setPlayers((prev) => {
-          let changed = false;
-          const next = new Map(prev);
-          for (const [id, player] of next) {
-            const dn = store.displayNames.get(id);
-            if (dn && player.displayName !== dn) {
-              next.set(id, { ...player, displayName: dn });
-              changed = true;
-            }
-          }
-          return changed ? next : prev;
-        });
-      }
-      console.log(
-        "[messageHandler] hostMigration received from",
-        msg.newHostId,
-        "scores:",
-        scores,
-      );
     }
   };

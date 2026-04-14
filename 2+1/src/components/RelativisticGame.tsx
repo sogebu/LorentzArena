@@ -74,13 +74,13 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     completeMigration,
   });
 
-  // 初期化: ホストのみプレイヤー作成。
-  // クライアントは syncTime 受信時に messageHandler がホストの座標時間でプレイヤーを作成。
+  // 初期化: beacon holder のみプレイヤー作成。
+  // それ以外の peer は snapshot 受信時に applySnapshot が host の座標時間でプレイヤーを作成。
   const isBeaconHolder = peerManager?.getIsBeaconHolder() ?? false;
   // biome-ignore lint/correctness/useExhaustiveDependencies: getPlayerColor is read at init time only
   useEffect(() => {
     if (!myId) return;
-    if (!isBeaconHolder) return; // クライアントは syncTime でプレイヤー作成
+    if (!isBeaconHolder) return; // 非 beacon holder は snapshot でプレイヤー作成
 
     const store = useGameStore.getState();
 

@@ -4,7 +4,7 @@
 
 ### Authority 解体アーキテクチャ（2026-04-14 設計、段階的実装中）
 
-**状態**: Stage A〜E 完了 (`4f4bddd` / `8b4932f` / `01fed9d` / `c076192` / `6ba5174` / `49c65bc` / `d0d05f0` / `1cc05f9` / `b5579fe` / `0491d52`)、Stage F 着手予定。詳細プランは `plans/2026-04-14-authority-dissolution.md`
+**状態**: Stage A〜H **全完了**。commits: A (`4f4bddd`) / B (`8b4932f`) / C (`01fed9d` `c076192` `6ba5174` `49c65bc`) / D (`d0d05f0` `1cc05f9` `b5579fe`) / E (`0491d52`) / F (`3153585` `70f9ac7`) / G (`5de2aed`) / H (本 commit)。詳細プランは `plans/2026-04-14-authority-dissolution.md`
 
 **診断**: 現構造では `host` が (a) beacon 所有者、(b) relay hub、(c) hit detection 権威、(d) Lighthouse 駆動、(e) respawn スケジューラ、(f) peerList 発行者 を兼ねており、**host 切断時に全部を新 host に引き継ぐ必要がある**。マイグレーションが怪物化し、`useHostMigration.ts` で respawn timer 再構築、`hostMigration` メッセージで scores/deadPlayers/deathTimes を丸ごと転送、`lighthouseLastFireRef` の glitch、invincibility の欠落など、漏れやすい。また false positive（通信瞬断の誤検知）のコストが異常に高いため、heartbeat を保守的な 3s/8s に設定せざるを得ない。
 
@@ -31,7 +31,7 @@
 - 決定論性（固定ステップ格子 / seeded RNG）への全要求
 - host/client 二重実装の hit detection
 
-**消えるメッセージ**: `score`, `syncTime`, `hostMigration`（→ 新規 join 用 `snapshot` と beacon handoff 用 `beaconChange` に縮小）
+**消えるメッセージ** (実績): `score` (C-1 削除)、`syncTime` / `hostMigration` (H 削除)、`snapshot` 新設 (F-1)。plan で検討した `beaconChange` 通知は各 peer の local election で新 beacon holder を決められるため不要となり新設せず
 
 **残る singular 役割**: beacon 所有（PeerJS ID 制約による物理的 singular）のみ
 
@@ -363,7 +363,7 @@ heartbeat detection effect と beacon effect の全リソースを監査。3 件
 
 ### START でホスト決定 + クライアント syncTime 初期化（2026-04-13）
 
-**※ Authority 解体で syncTime は廃止予定**: OFFSET は join 時の snapshot に 1 回だけ埋め込む方式に。`plans/2026-04-14-authority-dissolution.md` Stage F
+**※ Authority 解体 Stage F-1 / H で `syncTime` は廃止済み** (`3153585` / 本 commit): OFFSET は新規 join 時の `snapshot` メッセージに埋め込まれる。Stage H で型定義とハンドラも削除済み。
 
 - **What**: PeerProvider を START 後にマウントし、最初に START を押した人がホストになる。クライアントは自己初期化せず、syncTime でホストの座標時間にスポーン
 - **Why**: (1) ロビーで放置した人がホストになる問題。ページロード順ではなく START 順でホスト決定すべき (2) クライアントが自己初期化でローカル時刻（小さい値）のプレイヤーを作り、syncTime 到着前にホスト視点で「過去側」に出現する問題
