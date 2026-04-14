@@ -36,8 +36,18 @@
 
 - **現象**: プレイヤーがリスポーンすると、死亡前の世界線と死亡後の世界線が一本の連続した線として描画される（過去のライフの凍結世界線と新ライフの世界線が分離して描画されるべき）
 - **過去に一度修正された類似問題**: `WorldLine.origin` の半直線延長の無効化（DESIGN.md「過去半直線延長を廃止」参照）でリスポーン側は固定されたはずだが再発
-- **F-1 の関与仮説**: `snapshot` / `applySnapshot` 経路で worldLine を serialize & rehydrate している。snapshot には `frozenWorldLines` を含めず現 `player.worldLine` のみ送るため、死亡中に snapshot が送信されると新 peer は死ぬ直前までの history を「生きた現 worldLine」として持ち、その後の respawn で appendWorldLine が繋がった世界線を作る可能性
-- **未調査**: 何 peer 構成で、誰が死んだ時、どの peer から見て発生するか。applySnapshot 経路が原因か、別経路 (Stage C-E のどこか) か
+
+- **検討した仮説と検証状況 (いずれも未確認)**:
+
+  1. **F-1 snapshot 経路の欠落**（最有力）: `snapshot` / `applySnapshot` は worldLine を serialize/rehydrate するが `frozenWorldLines` は含めない。死亡中に snapshot が送信されると新 peer は「死ぬ直前までの history」を生きた現 `player.worldLine` として持ち、その後 respawn 側の appendWorldLine で繋がった世界線ができる可能性。観客 peer 限定で出るなら濃厚
+
+  2. **メッセージ順序逆転**: respawn メッセージより先に post-respawn の phaseSpace が到着し、`if (existing?.isDead) return prev` で 1 発スキップ → その後 respawn で worldLine 置換、となるはずなので順序問題だけで繋がりは作らない…と思うが、WebRTC DataConnection の `reliable: true` でも handler 呼び出し順とステート更新のインタリーブで何か起きうるか要検証
+
+  3. **applyKill が player.worldLine をクリアしない**: 現実装は `{...victim, isDead: true}` だけ。frozenWorldLines には別参照で copy 済み。applyRespawn で `createWorldLine(MAX_WORLDLINE_HISTORY)` (origin なし) を作って置換するので、理屈では繋がらないはず。参照共有の漏れ (history 配列を誰かが append で mutate している等) がないか要確認
+
+  4. **描画層の合成**: WorldLineRenderer / LaserBatchRenderer がどのように frozen と current を合成描画しているか。TubeGeometry のセグメント結合で境界が見えていないだけの視覚的問題の可能性
+
+- **未調査**: 何 peer 構成で・誰が死んだ時・どの peer (本人 / killer / 第三者 / snapshot を受けた新 joiner) から見て発生するか
 - **対処**: Stage F-2/G/H では自動解消しない見込みのため、Stage F-2 以降の途中で独立タスクとして調査予定
 
 ### ホストマイグレーション時の位置飛び（Stage F で解消見込み）
