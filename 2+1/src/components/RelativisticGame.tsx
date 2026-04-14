@@ -144,33 +144,57 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
 
     // Lighthouse AI + score sync to connected clients
     const lighthouseId = `${LIGHTHOUSE_ID_PREFIX}0`;
-    const lighthouse = createLighthouse(
-      lighthouseId,
-      Date.now() / 1000 - OFFSET,
-      myId, // host が Lighthouse の owner（beacon holder 兼任）
-    );
+    const existingLh = store.players.get(lighthouseId);
 
-    store.lighthouseSpawnTime.set(lighthouseId, Date.now());
-    stale.staleFrozenRef.current.delete(lighthouseId);
+    if (existingLh) {
+      // Migration path: LH は既に存在する (旧 host の phaseSpace 履歴を全 peer が
+      // 共有している)。位置・世界線をリセットせず owner だけ自分に差し替える。
+      // spawn エフェクトや grace reset は不要。
+      if (existingLh.ownerId !== myId) {
+        store.setPlayers((prev) => {
+          const lh = prev.get(lighthouseId);
+          if (!lh) return prev;
+          const next = new Map(prev);
+          next.set(lighthouseId, { ...lh, ownerId: myId });
+          return next;
+        });
+      }
+      stale.staleFrozenRef.current.delete(lighthouseId);
+    } else {
+      // Fresh boot: create LH from scratch
+      const lighthouse = createLighthouse(
+        lighthouseId,
+        Date.now() / 1000 - OFFSET,
+        myId,
+      );
 
-    store.setPlayers((prev) => {
-      const next = new Map(prev);
-      next.set(lighthouseId, lighthouse);
-      return next;
-    });
+      store.lighthouseSpawnTime.set(lighthouseId, Date.now());
+      stale.staleFrozenRef.current.delete(lighthouseId);
 
-    // Lighthouse スポーンエフェクト（過去光円錐到達時に発火）
-    useGameStore.setState((state) => ({
-      pendingSpawnEvents: [
-        ...state.pendingSpawnEvents,
-        {
-          id: `spawn-${lighthouseId}-${Date.now()}`,
-          playerId: lighthouseId,
-          pos: { t: lighthouse.phaseSpace.pos.t, x: lighthouse.phaseSpace.pos.x, y: lighthouse.phaseSpace.pos.y, z: 0 },
-          color: lighthouse.color,
-        },
-      ],
-    }));
+      store.setPlayers((prev) => {
+        const next = new Map(prev);
+        next.set(lighthouseId, lighthouse);
+        return next;
+      });
+
+      // Lighthouse スポーンエフェクト (初回のみ、migration 時は発火しない)
+      useGameStore.setState((state) => ({
+        pendingSpawnEvents: [
+          ...state.pendingSpawnEvents,
+          {
+            id: `spawn-${lighthouseId}-${Date.now()}`,
+            playerId: lighthouseId,
+            pos: {
+              t: lighthouse.phaseSpace.pos.t,
+              x: lighthouse.phaseSpace.pos.x,
+              y: lighthouse.phaseSpace.pos.y,
+              z: 0,
+            },
+            color: lighthouse.color,
+          },
+        ],
+      }));
+    }
 
     if (peerManager) {
       for (const conn of connections) {
