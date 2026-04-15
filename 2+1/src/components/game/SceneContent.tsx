@@ -441,6 +441,7 @@ export const SceneContent = ({
             geometry={sharedGeometries.laserIntersectionTriangle}
             matrix={m}
             matrixAutoUpdate={false}
+            scale={[1.2, 1.2, 1.2]}
           >
             <meshBasicMaterial color={c} side={THREE.DoubleSide} />
           </mesh>
@@ -460,8 +461,8 @@ export const SceneContent = ({
             matrix={m}
             matrixAutoUpdate={false}
           >
-            <mesh geometry={sharedGeometries.laserIntersectionTriangle} scale={[0.65, 0.65, 0.65]}>
-              <meshBasicMaterial color={c} transparent opacity={0.15} side={THREE.DoubleSide} depthWrite={false} />
+            <mesh geometry={sharedGeometries.laserIntersectionTriangle} scale={[1.2, 1.2, 1.2]}>
+              <meshBasicMaterial color={c} transparent opacity={0.1} side={THREE.DoubleSide} depthWrite={false} />
             </mesh>
           </group>
         );

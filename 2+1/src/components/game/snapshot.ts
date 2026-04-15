@@ -7,7 +7,8 @@ import {
   type PhaseSpace,
 } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
-import { MAX_WORLDLINE_HISTORY } from "./constants";
+import { MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
+import { computeSpawnCoordTime } from "./respawnTime";
 import type { RelativisticPlayer } from "./types";
 
 /**
@@ -18,8 +19,11 @@ import type { RelativisticPlayer } from "./types";
  */
 export const buildSnapshot = (myId: string) => {
   const s = useGameStore.getState();
-  const me = s.players.get(myId);
-  const hostTime = me?.phaseSpace.pos.t ?? 0;
+  // 新 joiner のスポーン時刻は「宇宙の最新時刻」= 全プレイヤーの .pos.t の max。
+  // beacon holder が高 γ で座標時間が遅れている / ghosting 等でも正しい時刻が取れる。
+  // `myId` は将来の用途のため引数に残すが、現状は players Map 全体から導出する。
+  void myId;
+  const hostTime = computeSpawnCoordTime(s.players);
 
   const players: Array<{
     id: string;
@@ -134,10 +138,11 @@ export const applySnapshot = (
   }
 
   // 自機が snapshot に含まれていない場合 (新規 join の一般ケース) は、
-  // host の coord-time で自前の spawn を作る
+  // 「宇宙の最新時刻」(= snapshot 送信時点で host が算出した最大 .pos.t) で
+  // 自前の spawn を作る。
   if (!nextPlayers.has(myId)) {
-    const spawnX = Math.random() * 10;
-    const spawnY = Math.random() * 10;
+    const spawnX = Math.random() * SPAWN_RANGE;
+    const spawnY = Math.random() * SPAWN_RANGE;
     const phaseSpace = createPhaseSpace(
       createVector4(msg.hostTime, spawnX, spawnY, 0),
       createVector3(0, 0, 0),

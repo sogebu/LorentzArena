@@ -536,17 +536,21 @@ Lighthouse (静止 AI) が誰かの過去光円錐内に落ちたら、最も過
 
 安全弁: `maxHistorySize * 2` を超えたら因果的判定を無視して強制削除 (メモリ保護)。コストは O(P) per frame、P = 2-4。無視できる。
 
-### リスポーン座標時刻: 生存者最大値 (maxT)
+### スポーン座標時刻: 全プレイヤー最大値 (maxT)
 
-`getRespawnCoordTime()` (`game/respawnTime.ts`): 生存プレイヤー (`isDead === false`) の `phaseSpace.pos.t` 最大値。全員死亡なら `Date.now()/1000 - OFFSET` (壁時計対応座標時間) にフォールバック。
+`computeSpawnCoordTime()` (`game/respawnTime.ts`): **全プレイヤー** (生存/死亡/LH 問わず) の `phaseSpace.pos.t` 最大値。初回スポーン・リスポーン・新 joiner スポーンの **3 経路すべてで共通**。
 
-**なぜ最大値**: 最先端の生存プレイヤーと同時刻にリスポーンすることで即座に相互作用可能。因果律の守護者に引っかかることもない。
+**なぜ「全」プレイヤーか**:
+- 生存者がいれば彼らの最先端に追随 (因果律の守護者に引っかからず即座に相互作用可能)
+- 人間が全員死んでいても **LH は常に alive** なので LH.t が拾われ、ゲームの「現在」が保たれる
+- 死亡中ゴーストの `.pos.t` も単調増加するが、LH.t に劣るので実質選ばれない。LH のない異常系でのみ選ばれ、そこは「最後に死んだイベント直後に復活」という自然な動作になる
+- peer ごとの `OFFSET` (= page-load 時刻) に依存しないため、**非 beacon holder の新 joiner でも正しい時刻**が取れる (旧 `Date.now()/1000 - OFFSET` フォールバックは新 joiner では OFFSET が join 時刻なのでほぼ 0 になり、ホストの現時刻より過去にスポーンする latent バグがあった)
 
-**ゴースト除外の根拠**: 死亡中のゴーストは慣性運動で座標時刻が進み続けるため生存プレイヤーより未来にいる可能性。ゴーストを maxT に含めると「生きている相手より未来にリスポーン」してしまう。
+**buildSnapshot との統一**: `snapshot.hostTime` も `computeSpawnCoordTime(players)` で算出。旧実装は `me?.phaseSpace.pos.t` (= beacon holder 本人の t) を使っていたため、beacon holder が γ で遅れている・ghosting 中等で他プレイヤーより過去の t を持っていると新 joiner が過去にスポーンしていた。
 
-**History**: ホスト時刻 → maxT (全) → (minT+maxT)/2 (`36abf67`) → maxT (生存のみ) に再変更。midpoint は 1v1 で約 5 秒過去にリスポーンするため体感ラグ。
+**History**: ホスト時刻 → maxT (全) → (minT+maxT)/2 (`36abf67`) → maxT (生存のみ、`getRespawnCoordTime`) → **maxT (全、`computeSpawnCoordTime`)**。生存限定は一見安全だが、snapshot が別ルート (`me.t`) で過去時刻を入れていた不整合と、OFFSET フォールバックが非 host で壊れる問題があり、全プレイヤー対象に統一。
 
-`createRespawnPosition(coordTime, range)`: 座標時間 + ランダム空間位置の生成もここに抽出。
+`createRespawnPosition(players)`: 座標時間 (`computeSpawnCoordTime`) + ランダム空間位置 (`[0, SPAWN_RANGE]²`) の生成もここに抽出。
 
 ### 初回スポーン = リスポーン統一
 

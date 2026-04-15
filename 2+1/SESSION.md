@@ -10,6 +10,23 @@
 
 ## 直近の作業
 
+### 2026-04-16: Spawn 座標時刻の統一 (実装中、未デプロイ)
+
+初回/リスポーン/新 joiner スポーンで別ロジックだった座標時刻算出を単一ルール `computeSpawnCoordTime(players) = max(p.phaseSpace.pos.t)` (全プレイヤー対象) に統一。
+
+**修正前の不具合**:
+- `snapshot.hostTime` が `me.phaseSpace.pos.t` (beacon holder 本人の t) を使用 → beacon holder が γ で座標時間遅れ / ghosting 中等のとき新 joiner が過去にスポーン
+- `getRespawnCoordTime` の全員死亡時フォールバックが `Date.now()/1000 - OFFSET` で peer ごとに OFFSET が違うため非 host で壊れる (latent)
+
+**修正内容**:
+- `respawnTime.ts`: 関数名 `getRespawnCoordTime` → `computeSpawnCoordTime`。isDead フィルタ撤去、OFFSET フォールバック撤去。LH が常に alive なので「全員死亡」時も LH.t を自然に拾える
+- `snapshot.ts`: `buildSnapshot.hostTime` を `computeSpawnCoordTime(s.players)` に変更
+- `constants.ts` / `CLAUDE.md` / `DESIGN.md`: stale コメントと表記を更新
+
+**未実装 (別 commit 切り出し)**:
+- snapshot に `frozenWorldLines` / `debrisRecords` 未同梱 → 新 joiner で死亡世界線が見えない (既知の課題「リスポーン時世界線連続」と同じ surface)
+- host migration の LH 時刻 anchor (位置飛び問題) も同じ「spawn 時刻 anchor」族だが、今回の修正では触れず
+
 ### 2026-04-15 (昼): D pattern 化 + 球の例外 + pillar 過去光円錐 anchor (完了)
 
 build `2026/04/15 10:27:08` (commit `302f7da`) でデプロイ済み。

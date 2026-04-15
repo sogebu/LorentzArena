@@ -33,29 +33,61 @@ export const Speedometer = ({
       }}
     >
       {/* エネルギーゲージ */}
+      {/* 枯渇時 (energy < ε): "FUEL" ラベル表示。低燃料 (< 0.2): バー赤化。
+          枯渇時はバー + ラベル共に点滅 (pulse) して強調。 */}
       <div
         style={{
+          position: "relative",
           width: "120px",
-          height: "8px",
-          backgroundColor: "rgba(255, 255, 255, 0.15)",
-          borderRadius: "4px",
+          height: "12px",
           marginBottom: "8px",
           marginLeft: "auto",
-          overflow: "hidden",
         }}
       >
         <div
           style={{
-            width: `${energy * 100}%`,
-            height: "100%",
-            backgroundColor:
-              energy < 0.2
-                ? "rgba(255, 80, 80, 0.8)"
-                : myLaserColor,
+            width: "100%",
+            height: "8px",
+            backgroundColor: "rgba(255, 255, 255, 0.15)",
             borderRadius: "4px",
-            transition: "width 0.05s linear",
+            overflow: "hidden",
+            position: "absolute",
+            top: "2px",
+            left: 0,
+            outline:
+              energy < 0.001 ? "1px solid rgba(255, 80, 80, 0.9)" : "none",
+            animation:
+              energy < 0.001 ? "fuel-empty-pulse 0.7s ease-in-out infinite" : "none",
           }}
-        />
+        >
+          <div
+            style={{
+              width: `${energy * 100}%`,
+              height: "100%",
+              backgroundColor:
+                energy < 0.2 ? "rgba(255, 80, 80, 0.8)" : myLaserColor,
+              borderRadius: "4px",
+              transition: "width 0.05s linear",
+            }}
+          />
+        </div>
+        {energy < 0.001 && (
+          <div
+            style={{
+              position: "absolute",
+              top: "-2px",
+              right: 0,
+              fontSize: "10px",
+              fontWeight: "bold",
+              color: "rgba(255, 80, 80, 1)",
+              letterSpacing: "1px",
+              animation: "fuel-empty-pulse 0.7s ease-in-out infinite",
+              pointerEvents: "none",
+            }}
+          >
+            FUEL
+          </div>
+        )}
       </div>
       <div>{t("hud.speed")}: {(speed * 100).toFixed(1)}% c</div>
       <div>{t("hud.gamma")}: {g.toFixed(3)}</div>

@@ -269,14 +269,7 @@ export function useGameLoop({
         }
       }
 
-      // Energy recovery
-      if (!wantsFire && !isDead) {
-        energyRef.current = Math.min(
-          ENERGY_MAX,
-          energyRef.current + ENERGY_RECOVERY_RATE * dTau,
-        );
-      }
-      setEnergy(energyRef.current);
+      // Energy recovery は physics (thrust 消費) 後に回す。ここでは setIsFiring だけ先に反映。
       setIsFiring(wantsFire && energyRef.current >= ENERGY_PER_SHOT);
 
       // S-5: stale 検知は死亡中も走らせる（他プレイヤーの stale を検知するため）
@@ -284,6 +277,7 @@ export function useGameLoop({
 
       // --- Ghost or physics ---
       // Re-read fresh state to avoid stale worldLine after respawn
+      let thrustRequestedThisTick = false;
       {
         const fresh = useGameStore.getState();
         const freshMe = fresh.players.get(myId);
@@ -331,7 +325,13 @@ export function useGameLoop({
               cameraYawRef.current,
               dTau,
               otherPositions,
+              energyRef.current,
             );
+            energyRef.current = Math.max(
+              0,
+              energyRef.current - physics.thrustEnergyConsumed,
+            );
+            thrustRequestedThisTick = physics.thrustRequested;
 
             fresh.setPlayers((prev) => {
               const me = prev.get(myId);
@@ -357,6 +357,18 @@ export function useGameLoop({
           }
         }
       }
+
+      // --- Energy recovery ---
+      // fire も thrust もしていないときのみ回復。死亡中は respawn 時に満タンに
+      // リセットされるので、ここでの回復は不要 (加算する意味がない)。
+      const freshIsDead = useGameStore.getState().players.get(myId)?.isDead ?? true;
+      if (!wantsFire && !thrustRequestedThisTick && !freshIsDead) {
+        energyRef.current = Math.min(
+          ENERGY_MAX,
+          energyRef.current + ENERGY_RECOVERY_RATE * dTau,
+        );
+      }
+      setEnergy(energyRef.current);
 
       // --- Stage E: Lighthouse AI (owner-based, authority 構造から切り離し) ---
       // host-ness ではなく owner-ness で分岐。LH.ownerId === myId な peer が AI を回す。

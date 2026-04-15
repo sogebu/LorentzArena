@@ -1,5 +1,8 @@
 // Time origin: each peer uses its own page-load time.
-// For non-beacon-holder peers, snapshot.hostTime corrects the offset at join.
+// 最初の beacon holder の自己スポーンと LH 初期化 (RelativisticGame.tsx) でのみ使用。
+// 非 beacon holder の新 joiner は snapshot に同梱される `hostTime`
+// (= computeSpawnCoordTime 算出の全プレイヤー最大 .pos.t) からスポーン時刻を取るので、
+// この OFFSET には依存しない (peer ごとに OFFSET が違っても問題ない)。
 export const OFFSET = Date.now() / 1000;
 
 // スポーンエフェクトの持続時間（ミリ秒）
@@ -29,10 +32,13 @@ export const SPAWN_RANGE = 10;
 // レーザー連射間隔（ミリ秒）
 export const LASER_COOLDOWN = 100;
 
-// レーザーエネルギー
+// レーザー + スラスト共用エネルギー
 export const ENERGY_MAX = 1.0;
 export const ENERGY_PER_SHOT = 1.0 / 30; // 30 発で枯渇（≈3 秒連射）
-export const ENERGY_RECOVERY_RATE = 1.0 / 6; // 6 秒で 0→満タン（撃っていないときのみ回復）
+// フル thrust 連続で満タン→0 に 9 秒。fire の 3 倍長持ち。
+// 部分 thrust (|a|/PLAYER_ACCELERATION < 1) の場合は使用率に比例。
+export const THRUST_ENERGY_RATE = 1.0 / 9;
+export const ENERGY_RECOVERY_RATE = 1.0 / 6; // 6 秒で 0→満タン（撃/推どちらもしていないときのみ回復）
 
 // 世界線の最大サンプル数
 export const MAX_WORLDLINE_HISTORY = 5000;

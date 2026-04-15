@@ -26,6 +26,7 @@ import {
   LIGHTHOUSE_FIRE_INTERVAL,
   LIGHTHOUSE_SPAWN_GRACE,
   PLAYER_ACCELERATION,
+  THRUST_ENERGY_RATE,
 } from "./constants";
 import { computeInterceptDirection, isLighthouse, perturbDirection } from "./lighthouse";
 import { findLaserHitPosition } from "./laserPhysics";
@@ -68,6 +69,11 @@ export function processCamera(
 export interface PhysicsResult {
   newPhaseSpace: ReturnType<typeof createPhaseSpace>;
   updatedWorldLine: ReturnType<typeof appendWorldLine>;
+  /** この tick で thrust が消費したエネルギー量（0 以上） */
+  thrustEnergyConsumed: number;
+  /** この tick で thrust が要求された (キー/タッチが入っていた) か。
+   *  エネルギー不足で実効加速が 0 だった場合も true。recovery 判定に使う。 */
+  thrustRequested: boolean;
 }
 
 export function processPlayerPhysics(
@@ -77,6 +83,7 @@ export function processPlayerPhysics(
   yaw: number,
   dTau: number,
   otherPositions: Vector4[],
+  availableEnergy: number,
 ): PhysicsResult {
   let forwardAccel = 0;
   let lateralAccel = 0;
@@ -96,6 +103,26 @@ export function processPlayerPhysics(
     lateralAccel *= PLAYER_ACCELERATION / rawLen;
   }
 
+  // Thrust energy: 使用率 (|a| / PLAYER_ACCELERATION) に比例して消費。
+  // エネルギー不足時は賄える分だけスケールして適用、残りはカット。
+  const thrustRequested = rawLen > 0;
+  const thrustFrac = Math.min(1, rawLen / PLAYER_ACCELERATION);
+  const requiredEnergy = THRUST_ENERGY_RATE * thrustFrac * dTau;
+  let scale = 1;
+  let thrustEnergyConsumed = 0;
+  if (thrustRequested) {
+    if (availableEnergy <= 0) {
+      scale = 0;
+    } else if (requiredEnergy > availableEnergy) {
+      scale = availableEnergy / requiredEnergy;
+      thrustEnergyConsumed = availableEnergy;
+    } else {
+      thrustEnergyConsumed = requiredEnergy;
+    }
+    forwardAccel *= scale;
+    lateralAccel *= scale;
+  }
+
   const ax = Math.cos(yaw) * forwardAccel + Math.cos(yaw + Math.PI / 2) * lateralAccel;
   const ay = Math.sin(yaw) * forwardAccel + Math.sin(yaw + Math.PI / 2) * lateralAccel;
 
@@ -106,7 +133,7 @@ export function processPlayerPhysics(
   const newPhaseSpace = evolvePhaseSpace(me.phaseSpace, acceleration, dTau);
   const updatedWorldLine = appendWorldLine(me.worldLine, newPhaseSpace, otherPositions);
 
-  return { newPhaseSpace, updatedWorldLine };
+  return { newPhaseSpace, updatedWorldLine, thrustEnergyConsumed, thrustRequested };
 }
 
 // --- Lighthouse AI ---

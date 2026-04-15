@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { usePeer } from "../hooks/usePeer";
+
+const AUTO_MINIMIZE_MS = 5000;
 
 const Connect = () => {
   const {
@@ -18,6 +20,14 @@ const Connect = () => {
   } = usePeer();
   const { t } = useI18n();
   const [isMinimized, setIsMinimized] = useState(false);
+  // マウント後 AUTO_MINIMIZE_MS で自動最小化。ユーザーが 1 回でも手動操作したら以降発動しない。
+  const userInteractedRef = useRef(false);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!userInteractedRef.current) setIsMinimized(true);
+    }, AUTO_MINIMIZE_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   const peerStatusText = useMemo(() => {
     switch (peerStatus.status) {
@@ -62,7 +72,10 @@ const Connect = () => {
         <h3 style={{ margin: 0, fontSize: "1.1em" }}>{t("connect.title")}</h3>
         <button
           type="button"
-          onClick={() => setIsMinimized(!isMinimized)}
+          onClick={() => {
+            userInteractedRef.current = true;
+            setIsMinimized((v) => !v);
+          }}
           style={{
             padding: "2px 8px",
             fontSize: "0.8em",
