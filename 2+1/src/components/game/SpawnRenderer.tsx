@@ -11,7 +11,7 @@ export const SpawnRenderer = ({
 }: {
   spawn: SpawnEffect;
 }) => {
-  const { displayMatrix } = useDisplayFrame();
+  const { displayMatrix, observerPos } = useDisplayFrame();
   const elapsed = Date.now() - spawn.startTime;
   const progress = Math.min(elapsed / SPAWN_EFFECT_DURATION, 1);
   const opacity = 1 - progress;
@@ -55,12 +55,22 @@ export const SpawnRenderer = ({
       })}
       {/* 中心の光柱（時間軸方向） */}
       {(() => {
-        const pillarHeight = 3 * (1 - progress * 0.5);
-        // pillar の世界中心は spawn 位置から時間方向に pillarHeight/2 オフセット
+        // pillar は観測者の過去光円錐上 (= 観測者が「今まさに見ている」時点) に
+        // 配置。観測者の simultaneity 面ではなく null cone に anchor することで、
+        // 物理的に正しく「観測者が時間前進しても display 上で静止」に見える。
+        // anchorT = observer.t - |Δxy| (spawn xy 上の過去光円錐交差)。
+        const pillarHeight = 3;
+        let anchorT = spawn.pos.t;
+        if (observerPos) {
+          const dx = spawn.pos.x - observerPos.x;
+          const dy = spawn.pos.y - observerPos.y;
+          const rho = Math.sqrt(dx * dx + dy * dy);
+          anchorT = observerPos.t - rho;
+        }
         const worldPos = {
           x: spawn.pos.x,
           y: spawn.pos.y,
-          t: spawn.pos.t + pillarHeight / 2,
+          t: anchorT, // center = 過去光円錐交差 → spawn 瞬間 (ρ=0) で display 中央
         };
         return (
           <group

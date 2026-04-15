@@ -3,7 +3,8 @@ import { useRef } from "react";
 import * as THREE from "three";
 import { createVector4, type Vector4 } from "../../physics";
 import { pastLightConeIntersectionDebris } from "./debris";
-import { buildMeshMatrix, useDisplayFrame } from "./DisplayFrameContext";
+import { transformEventForDisplay } from "./displayTransform";
+import { useDisplayFrame } from "./DisplayFrameContext";
 import {
   getDebrisMaterial,
   getThreeColor,
@@ -32,7 +33,7 @@ export const DebrisRenderer = ({
   debrisRecords: SceneContentProps["debrisRecords"];
   myPlayer: { phaseSpace: { pos: Vector4 }; color: string };
 }) => {
-  const { displayMatrix } = useDisplayFrame();
+  const { displayMatrix, observerPos, observerBoost } = useDisplayFrame();
   const instancedRef = useRef<THREE.InstancedMesh>(null);
   const materialRef = useRef<THREE.MeshBasicMaterial>(null);
 
@@ -81,19 +82,16 @@ export const DebrisRenderer = ({
         myPlayer.phaseSpace.pos,
       );
       if (intersection) {
-        const wp = { x: intersection.x, y: intersection.y, t: intersection.t };
+        // marker は球なので Lorentz 変形を避け、display 並進のみ
+        const dp = transformEventForDisplay(intersection, observerPos, observerBoost);
         markerElements.push(
-          <group
+          <mesh
             key={`debris-${di}-${pi}`}
-            matrix={buildMeshMatrix(wp, displayMatrix)}
-            matrixAutoUpdate={false}
-          >
-            <mesh
-              scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
-              geometry={sharedGeometries.explosionParticle}
-              material={getDebrisMaterial(debrisColor)}
-            />
-          </group>,
+            position={[dp.x, dp.y, dp.t]}
+            scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
+            geometry={sharedGeometries.explosionParticle}
+            material={getDebrisMaterial(debrisColor)}
+          />,
         );
       }
     }

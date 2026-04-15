@@ -2,6 +2,7 @@ import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import {
+  createVector4,
   futureLightConeIntersectionWorldLine,
   lorentzBoost,
   pastLightConeIntersectionWorldLine,
@@ -298,13 +299,11 @@ export const SceneContent = ({
         // Pulse: opacity oscillates 0.3–1.0 at 2Hz during invincibility
         const pulse = isInvincible ? 0.65 + 0.35 * Math.sin(Date.now() * 0.012) : 1.0;
 
-        // 自機は観測者 rest frame で常に原点・静止・変形なし (per-vertex Lorentz
-        // を掛けると sphere が γ 楕円化する — 自機を楕円化する思想は無い)
-        const groupMatrixProps = isMe
-          ? { matrix: new THREE.Matrix4(), matrixAutoUpdate: false as const }
-          : { matrix: buildMeshMatrix(wp, displayMatrix), matrixAutoUpdate: false as const };
+        // 球は volumetric なので per-vertex Lorentz を掛けない (γ 楕円化を避ける)。
+        // display 座標へ並進だけ。isMe は display origin に来る。
+        const dp = transformEventForDisplay(wp, observerPos, observerBoost);
         return (
-          <group key={`player-${player.id}`} {...groupMatrixProps}>
+          <group key={`player-${player.id}`} position={[dp.x, dp.y, dp.t]}>
             <mesh
               scale={[size, size, size]}
               geometry={sharedGeometries.playerSphere}
@@ -404,22 +403,25 @@ export const SceneContent = ({
           );
         })}
 
-      {/* 世界線の過去光円錐交差マーカー（実体: 球+コア+リング） */}
+      {/* 世界線の過去光円錐交差マーカー（球+コア=位置のみ / リング=D pattern） */}
       {worldLineIntersections.map(({ playerId, color: colorText, pos }) => {
         const c = getThreeColor(colorText);
+        const dp = transformEventForDisplay(pos, observerPos, observerBoost);
         return (
-          <group
-            key={`intersection-${playerId}`}
-            matrix={buildMeshMatrix(pos, displayMatrix)}
-            matrixAutoUpdate={false}
-          >
-            <mesh geometry={sharedGeometries.intersectionSphere}>
-              <meshStandardMaterial color={c} emissive={c} emissiveIntensity={1.15} />
-            </mesh>
-            <mesh geometry={sharedGeometries.intersectionCore}>
-              <meshBasicMaterial color="#ffffff" />
-            </mesh>
-            <mesh geometry={sharedGeometries.intersectionRing}>
+          <group key={`intersection-${playerId}`}>
+            <group position={[dp.x, dp.y, dp.t]}>
+              <mesh geometry={sharedGeometries.intersectionSphere}>
+                <meshStandardMaterial color={c} emissive={c} emissiveIntensity={1.15} />
+              </mesh>
+              <mesh geometry={sharedGeometries.intersectionCore}>
+                <meshBasicMaterial color="#ffffff" />
+              </mesh>
+            </group>
+            <mesh
+              geometry={sharedGeometries.intersectionRing}
+              matrix={buildMeshMatrix(pos, displayMatrix)}
+              matrixAutoUpdate={false}
+            >
               <meshBasicMaterial color={c} transparent opacity={0.9} side={THREE.DoubleSide} />
             </mesh>
           </group>
@@ -466,16 +468,23 @@ export const SceneContent = ({
       })}
       {futureLightConeIntersections.map(({ playerId, color: colorText, pos }) => {
         const c = getThreeColor(colorText);
+        const dp = transformEventForDisplay(pos, observerPos, observerBoost);
+        const ringMatrix = buildMeshMatrix(pos, displayMatrix);
+        ringMatrix.multiply(new THREE.Matrix4().makeScale(0.8, 0.8, 0.8));
         return (
-          <group
-            key={`future-${playerId}`}
-            matrix={buildMeshMatrix(pos, displayMatrix)}
-            matrixAutoUpdate={false}
-          >
-            <mesh geometry={sharedGeometries.intersectionSphere} scale={[0.6, 0.6, 0.6]}>
+          <group key={`future-${playerId}`}>
+            <mesh
+              geometry={sharedGeometries.intersectionSphere}
+              position={[dp.x, dp.y, dp.t]}
+              scale={[0.6, 0.6, 0.6]}
+            >
               <meshBasicMaterial color={c} transparent opacity={0.15} depthWrite={false} />
             </mesh>
-            <mesh geometry={sharedGeometries.intersectionRing} scale={[0.8, 0.8, 0.8]}>
+            <mesh
+              geometry={sharedGeometries.intersectionRing}
+              matrix={ringMatrix}
+              matrixAutoUpdate={false}
+            >
               <meshBasicMaterial color={c} transparent opacity={0.12} depthWrite={false} />
             </mesh>
           </group>
@@ -538,23 +547,31 @@ export const SceneContent = ({
         <DebrisRenderer debrisRecords={debrisRecords} myPlayer={myPlayer} />
       )}
 
-      {/* キル通知（キル時空点に 3D 表示） */}
+      {/* キル通知（キル時空点に 3D 表示、球=位置のみ / リング=D pattern） */}
       {killNotification && (() => {
+        const wpKill = createVector4(
+          killNotification.hitPos.t,
+          killNotification.hitPos.x,
+          killNotification.hitPos.y,
+          killNotification.hitPos.z,
+        );
         const wp = {
           x: killNotification.hitPos.x,
           y: killNotification.hitPos.y,
           t: killNotification.hitPos.t,
         };
+        const dp = transformEventForDisplay(wpKill, observerPos, observerBoost);
         const kc = getThreeColor(killNotification.color);
         return (
-          <group
-            matrix={buildMeshMatrix(wp, displayMatrix)}
-            matrixAutoUpdate={false}
-          >
-            <mesh geometry={sharedGeometries.killSphere}>
+          <group>
+            <mesh geometry={sharedGeometries.killSphere} position={[dp.x, dp.y, dp.t]}>
               <meshBasicMaterial color={kc} transparent opacity={0.6} />
             </mesh>
-            <mesh geometry={sharedGeometries.killRing}>
+            <mesh
+              geometry={sharedGeometries.killRing}
+              matrix={buildMeshMatrix(wp, displayMatrix)}
+              matrixAutoUpdate={false}
+            >
               <meshBasicMaterial color={kc} transparent opacity={0.8} side={THREE.DoubleSide} />
             </mesh>
           </group>
