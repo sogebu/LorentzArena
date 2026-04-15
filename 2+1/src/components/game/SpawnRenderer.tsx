@@ -67,7 +67,9 @@ export const SpawnRenderer = ({
             matrix={buildMeshMatrix(worldPos, displayMatrix)}
             matrixAutoUpdate={false}
           >
+            {/* CylinderGeometry default 軸は +Y。π/2 rotation で +Z (= world t) に起こす */}
             <mesh
+              rotation={[Math.PI / 2, 0, 0]}
               scale={[1, pillarHeight, 1]}
               geometry={sharedGeometries.spawnPillar}
             >
