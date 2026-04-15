@@ -116,7 +116,8 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `game/constants.ts` | ゲーム定数（射程、リスポーン遅延、スポーン範囲等） |
 | `game/colors.ts` | プレイヤー色生成。`colorForJoinOrder(index)` が主（接続順 × 黄金角で保証分離）、`colorForPlayerId(id)` はフォールバック |
 | `game/threeCache.ts` | THREE.js ジオメトリ/マテリアル singleton + デブリマテリアルキャッシュ |
-| `game/displayTransform.ts` | ローレンツ変換 → 表示座標変換 |
+| `game/displayTransform.ts` | ローレンツ変換 → 表示座標変換 (`transformEventForDisplay`, `buildDisplayMatrix`) |
+| `game/DisplayFrameContext.tsx` | D pattern インフラ: `displayMatrix` と observer 情報を配信。`buildMeshMatrix(worldPos, displayMatrix)` helper |
 | `game/laserPhysics.ts` | レーザー当たり判定 + 光円錐交差 |
 | `game/debris.ts` | デブリ生成 + 光円錐交差 |
 | `game/killRespawn.ts` | `applyKill`/`applyRespawn` 純粋関数（全 peer 共通、players Map を返す） |
@@ -147,6 +148,8 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `useHighScoreSaver.ts` | beforeunload でハイスコア/リーダーボード保存 |
 | `useBeaconMigration.ts` | beacon ownership handoff。Stage F-1 で hostMigration 送信撤去、仕事は LH owner 書き換え + LH respawn 再 schedule のみ。Stage F-2 で `useHostMigration` から改名 (`b5579fe` 相当) |
 | `useGameLoop.ts` | ゲームループ本体（setInterval ライフサイクル + 全フェーズの dispatch） |
+
+**D pattern の描画**: scene の物理オブジェクト (world line、light cone、ring 系マーカー、cone 接平面三角形、debris、laser batch) は「world 座標で geometry + `mesh.matrix = displayMatrix × T(worldEventPos) × [rotation]`」で per-vertex Lorentz 変換。`DisplayFrameContext` が `displayMatrix` を配信、`buildMeshMatrix` helper で mesh 合成。観測者静止系/世界系どちらでも同一経路、3+1 化時は boost matrix を差し替えるだけ。詳細は DESIGN.md § 描画「D pattern」。**例外** (C pattern / position-based): 球ジオメトリ (player marker, intersection sphere + core, kill sphere, debris particle) は per-vertex Lorentz で γ 楕円化を避けるため display 並進のみ。照準矢印は 2+1 固有のため D pattern 化スコープ外。
 
 主要機能:
 - PC: W/S: 前進/後退、A/D: 横移動、矢印: カメラ回転、Space: レーザー発射
