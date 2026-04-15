@@ -35,7 +35,7 @@ export const sharedGeometries = {
   explosionParticle: new THREE.SphereGeometry(0.5, 6, 6), // スケールで size 調整
   // Spawn effect
   spawnRing: new THREE.TorusGeometry(0.5, 0.03, 8, 24), // スケールで ringRadius 調整
-  spawnPillar: new THREE.CylinderGeometry(0.15, 0.15, 1, 8), // スケールで pillarHeight 調整
+  spawnPillar: new THREE.CylinderGeometry(0.5, 0.5, 1, 12), // スケールで pillarHeight 調整
   // Kill notification
   // Laser direction arrow (past light cone direction)
   laserArrow: (() => {

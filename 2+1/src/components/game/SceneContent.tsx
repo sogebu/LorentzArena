@@ -298,12 +298,13 @@ export const SceneContent = ({
         // Pulse: opacity oscillates 0.3–1.0 at 2Hz during invincibility
         const pulse = isInvincible ? 0.65 + 0.35 * Math.sin(Date.now() * 0.012) : 1.0;
 
+        // 自機は観測者 rest frame で常に原点・静止・変形なし (per-vertex Lorentz
+        // を掛けると sphere が γ 楕円化する — 自機を楕円化する思想は無い)
+        const groupMatrixProps = isMe
+          ? { matrix: new THREE.Matrix4(), matrixAutoUpdate: false as const }
+          : { matrix: buildMeshMatrix(wp, displayMatrix), matrixAutoUpdate: false as const };
         return (
-          <group
-            key={`player-${player.id}`}
-            matrix={buildMeshMatrix(wp, displayMatrix)}
-            matrixAutoUpdate={false}
-          >
+          <group key={`player-${player.id}`} {...groupMatrixProps}>
             <mesh
               scale={[size, size, size]}
               geometry={sharedGeometries.playerSphere}
