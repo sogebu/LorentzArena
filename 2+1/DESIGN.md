@@ -552,6 +552,26 @@ Lighthouse (静止 AI) が誰かの過去光円錐内に落ちたら、最も過
 
 `createRespawnPosition(players)`: 座標時間 (`computeSpawnCoordTime`) + ランダム空間位置 (`[0, SPAWN_RANGE]²`) の生成もここに抽出。
 
+### Thrust energy: laser と同一プール
+
+プレイヤーの推進 (W/S/A/D + touch thrust) は laser と**同一の energy pool** (`ENERGY_MAX = 1.0`) を消費する。`THRUST_ENERGY_RATE = 1/9` (フル thrust 連続で 9 秒で空)、推力使用率 (`|a| / PLAYER_ACCELERATION`) に比例した消費。energy 不足時は賄える分だけ scale して適用し、残りはカット。recovery は「fire も thrust もしていないとき」のみ (`ENERGY_RECOVERY_RATE = 1/6`)。
+
+**なぜ同一プール**:
+- drifter 対策（Issue 2）の最小侵襲解として、連続推力を燃料で natural に制限する。物理 metaphor: ロケット燃料
+- 「撃ちながら動き続けられない」という**戦術的意思決定**を発生させる (fire + thrust 同時で ~2.25s 枯渇)
+
+**なぜ 9 秒 (選択肢: 6/9/12/∞)**:
+- 6 秒: fire 3 秒との 2× 比。厳しすぎて戦闘が常に燃料残量戦になる → 却下
+- **9 秒** (採用): fire 3 秒の 3× 比。記憶しやすい比率。通常戦闘で消費 72% → 意思決定を迫る強さ
+- 12 秒: 4× 比、余裕あり。制度の圧が弱く drifter 抑制として形式的
+- 無制限: R1 (推力垂れ流し) drifter 抑止できず、Issue 2 再発
+
+**ブレーキ優遇は不採用**: 「減速方向の推力は無料」案は gameplay 救済として検討したが、物理的嘘 (減速も proper acceleration) + 実装複雑化 + 9 秒基本タンクで実害なし、で却下。
+
+**Thrust 不足時の挙動**: energy == 0 で thrust 停止、friction (FRICTION_COEFFICIENT=0.5) で自然減速。τ ≈ 2s。終端速度近く (≈c) から停止まで coast 距離 ~2 マス。`R_HORIZON` 仮置 30 に対して到達不能 → B (燃料) だけで drifter を封じられる。A (地平) は一旦不要と判断、当面 defer。
+
+**UI 強調**: `energy < 0.001` で "FUEL" 赤ラベル + バー点滅 (`fuel-empty-pulse` 0.7s cycle)。`energy < 0.2` で赤色化 (従来継続)。枯渇瞬間のフラッシュは過剰と判断し採用せず。
+
 ### 初回スポーン = リスポーン統一
 
 初期スポーンの過去半直線延長を廃止。全 `createWorldLine()` 呼び出しから origin パラメータを削除。初回スポーンにもリスポーンと同じエフェクトを `pendingSpawnEvents` 経由で追加 (自機 + Lighthouse)。

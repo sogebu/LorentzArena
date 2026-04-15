@@ -2,30 +2,15 @@
 
 ## 現在のステータス
 
-対戦可能。**`302f7da` デプロイ済み** (build `2026/04/15 10:27:08 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`0b029e1` デプロイ済み** (build `2026/04/16 07:39:22 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
-完了済みリファクタ (詳細は DESIGN.md):
+完了済みリファクタ (判断根拠は DESIGN.md):
 - **Authority 解体 Stage A〜H** (2026-04-14〜15): target-authoritative 化 + event-sourced。plan: `plans/2026-04-14-authority-dissolution.md`
 - **D pattern 化** (2026-04-15): scene の物理オブジェクトを world 座標 + 頂点単位 Lorentz に統一、3+1 拡張に親和。球は例外で C pattern 維持
+- **Spawn 座標時刻の統一** (2026-04-16): `computeSpawnCoordTime(players) = max(p.phaseSpace.pos.t)` で初回/リスポーン/新 joiner 共通化。beacon holder の t 依存を廃止し、新 joiner 過去スポーンバグを解消。詳細は DESIGN.md § スポーン座標時刻
+- **Thrust energy mechanic** (2026-04-16): thrust も fire と同じ energy pool を消費 (フル tank 9 秒)。両方同時で ~2.25 秒で枯渇。枯渇時は FUEL ラベル点滅で明示。詳細は DESIGN.md § thrust energy
 
 ## 直近の作業
-
-### 2026-04-16: Spawn 座標時刻の統一 (実装中、未デプロイ)
-
-初回/リスポーン/新 joiner スポーンで別ロジックだった座標時刻算出を単一ルール `computeSpawnCoordTime(players) = max(p.phaseSpace.pos.t)` (全プレイヤー対象) に統一。
-
-**修正前の不具合**:
-- `snapshot.hostTime` が `me.phaseSpace.pos.t` (beacon holder 本人の t) を使用 → beacon holder が γ で座標時間遅れ / ghosting 中等のとき新 joiner が過去にスポーン
-- `getRespawnCoordTime` の全員死亡時フォールバックが `Date.now()/1000 - OFFSET` で peer ごとに OFFSET が違うため非 host で壊れる (latent)
-
-**修正内容**:
-- `respawnTime.ts`: 関数名 `getRespawnCoordTime` → `computeSpawnCoordTime`。isDead フィルタ撤去、OFFSET フォールバック撤去。LH が常に alive なので「全員死亡」時も LH.t を自然に拾える
-- `snapshot.ts`: `buildSnapshot.hostTime` を `computeSpawnCoordTime(s.players)` に変更
-- `constants.ts` / `CLAUDE.md` / `DESIGN.md`: stale コメントと表記を更新
-
-**未実装 (別 commit 切り出し)**:
-- snapshot に `frozenWorldLines` / `debrisRecords` 未同梱 → 新 joiner で死亡世界線が見えない (既知の課題「リスポーン時世界線連続」と同じ surface)
-- host migration の LH 時刻 anchor (位置飛び問題) も同じ「spawn 時刻 anchor」族だが、今回の修正では触れず
 
 ### 2026-04-15 (昼): D pattern 化 + 球の例外 + pillar 過去光円錐 anchor (完了)
 
@@ -62,6 +47,9 @@ build `2026/04/15 08:44:09` (commit `0dad175`) でデプロイ済み。主な変
 - DESIGN.md 残存する設計臭 #2（#1 は実質解決、#3/#4 は Authority 解体で自然消滅）
 - PeerProvider Phase 1 effect のコールバックネスト
 - 色調をポップで明るく（方向性未定）
+- **Arena 地平 (Issue 2 A 案)**: thrust energy (B 案) で drifter 封じ込めが効いたら不要と判断。un-defer トリガー: 燃料制限を回避する drift プレイが観測された場合 / 視覚的境界が欲しいとの要望が出た場合
+- **snapshot に frozenWorldLines / debrisRecords 同梱**: 「リスポーン時世界線連続」既知課題と同じ surface。spawn 時刻統一とは別 commit として切り出し。un-defer トリガー: リスポーン世界線連続が実際に観測されたら優先度上げ
+- **host migration の LH 時刻 anchor 見直し**: 「ホストマイグレーション時の位置飛び」既知課題。spawn 座標時刻統一と同じ「時刻 anchor」族だが、今回は触れず
 
 ### パフォーマンス検討課題
 
