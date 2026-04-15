@@ -46,17 +46,13 @@ Then it uses a past light cone intersection to decide “what you can see” of 
 - `WsRelayManager<T>` is a WebSocket relay fallback for restrictive networks.
 - `PeerProvider` exposes the active network manager (PeerJS or WS Relay) to React components. The host validates messages with `isRelayable()` before relaying to other peers.
 
-The game uses a **host-relay model** (star topology). One peer is the host; all others send messages to the host, which relays them. The host also runs hit detection, manages kill/respawn, and keeps authoritative scores.
+The game uses a **beacon-relay model** (star topology for relay, target-authoritative for events). One peer holds the well-known "beacon" PeerJS ID and acts as the relay hub; all peers send owner-authored events (`phaseSpace`, `laser`, `kill`, `respawn`) which the beacon holder relays to others. Each peer runs hit detection only for the players *it* owns (self + lighthouse for the beacon holder), so authority is per-player rather than centralized.
 
-### Host migration
+### Beacon migration
 
-When the host disconnects, the **oldest client automatically promotes to host**. Detection uses a heartbeat mechanism (3s `ping` interval, 8s timeout) rather than relying on the slow WebRTC ICE timeout (30s+). The new host:
+When the beacon holder disconnects, the **oldest remaining client automatically takes over the beacon**. Detection uses a heartbeat mechanism (`ping` 1s interval, 2.5s timeout) rather than the slow WebRTC ICE timeout. Migration is narrow — only the beacon ownership and the lighthouse owner flag are handed over; per-player respawn timers etc. already live on each owner locally, so no state reconstruction is needed.
 
-1. Connects to remaining peers directly (PeerJS) or promotes itself on the relay server (WS Relay)
-2. Broadcasts a `hostMigration` message with scores and dead player state
-3. Reconstructs respawn timers from recorded death timestamps
-
-Design details: `2+1/DESIGN.md`. Networking troubleshooting: `docs/NETWORKING.md`.
+Design details: `2+1/DESIGN.md § Authority 解体 (完了リファクタ)`. Networking troubleshooting: `docs/NETWORKING.md`.
 
 ---
 
@@ -68,4 +64,8 @@ Design details: `2+1/DESIGN.md`. Networking troubleshooting: `docs/NETWORKING.md
   - Z is used as **time** (t)
 
 Keeping `t` as the vertical axis makes the “world line” literally a line in the scene.
+
+The 2+1 renderer uses a **"D pattern"**: geometry is defined in *world coordinates* and the observer's Lorentz boost + translation is applied as the mesh's `matrix` (per-vertex on the GPU). React only deals with world coordinates; switching the observer frame, or extending to 3+1D later, is just a matrix swap. Decision rationale and alternatives: `2+1/DESIGN.md § D pattern 化 (完了リファクタ)`.
+
+Volumetric point markers (player spheres, explosion particles, etc.) are an intentional exception — they stay in a translation-only placement to avoid being γ-stretched into ellipsoids.
 

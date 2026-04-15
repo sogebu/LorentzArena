@@ -14,7 +14,7 @@
 
 build `2026/04/15 10:27:08` (commit `302f7da`) でデプロイ済み。
 
-- **D pattern (頂点単位 Lorentz) 化**: scene の物理オブジェクトを「world 座標 geometry + `mesh.matrix = displayMatrix × T(worldPos) × [rotation]`」に統一。`DisplayFrameContext` 新設、`buildMeshMatrix` helper。Phase 1 (点), 2 (ring), 4 (cone triangle), 煙 (debris), 5 (laser batch) を移行。Phase 3 (照準矢印) は 2+1 固有のため skip。詳細は DESIGN.md § 描画「D pattern」
+- **D pattern (頂点単位 Lorentz) 化**: scene の物理オブジェクトを「world 座標 geometry + `mesh.matrix = displayMatrix × T(worldPos) × [rotation]`」に統一。`DisplayFrameContext` 新設、`buildMeshMatrix` helper。Phase 1 (点), 2 (ring), 4 (cone triangle), 煙 (debris), 5 (laser batch) を移行。Phase 3 (照準矢印) は 2+1 固有のため skip。詳細は DESIGN.md § D pattern 化
 - **球は C pattern 維持**: volumetric 点マーカーに per-vertex Lorentz を掛けると γ 楕円化で「点」の意味が損なわれるため。`playerSphere`、`intersectionSphere`+core、`killSphere`、`explosionParticle` は `position={[dp.x, dp.y, dp.t]}` で並進のみ
 - **Spawn pillar 過去光円錐 anchor**: world-frame 静止だと観測者時間前進で過去に流れるため、`anchorT = observer.t − |Δxy|` で null cone に貼り付け。形状アニメ撤廃、opacity のみフェード
 - **Pillar 軸オリエンテーション latent bug 修正**: `CylinderGeometry` default +Y → `rotation={[π/2, 0, 0]}` で +Z (時間軸) に。従来コメントが「時間軸」と主張していたが実態は空間 Y。半径 0.04 → 0.5 (直径 1)
