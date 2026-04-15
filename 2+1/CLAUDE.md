@@ -280,9 +280,12 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 
 | エネルギーパラメータ（`constants.ts`） | 値 | 説明 |
 |---|---|---|
-| `ENERGY_MAX` | 1.0 | エネルギー満タン値 |
+| `ENERGY_MAX` | 1.0 | エネルギー満タン値。fire と thrust が共有する単一プール |
 | `ENERGY_PER_SHOT` | 1/30 ≈ 0.033 | 1 発あたりの消費。30 発で枯渇（≈3 秒連射） |
-| `ENERGY_RECOVERY_RATE` | 1/6 ≈ 0.167/s | 6 秒で 0→満タン。撃っていないときのみ回復 |
+| `THRUST_ENERGY_RATE` | 1/9 ≈ 0.111/s | フル thrust 連続で 9 秒で空。部分 thrust は使用率 (`\|a\|/PLAYER_ACCELERATION`) に比例。fire と同時で ~2.25 秒で枯渇 |
+| `ENERGY_RECOVERY_RATE` | 1/6 ≈ 0.167/s | 6 秒で 0→満タン。**fire も thrust もしていない**ときのみ回復 |
+
+HUD: `energy < 0.001` で "FUEL" 赤ラベル + バー点滅 (`fuel-empty-pulse` 0.7s)、`energy < 0.2` で赤色化。設計根拠は DESIGN.md § Thrust energy。
 
 ### Relay サーバーセキュリティ（`relay-server/server.mjs`）
 
