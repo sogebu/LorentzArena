@@ -21,7 +21,7 @@ export const SpawnRenderer = ({
   observerPos: Vector4 | null;
   observerBoost: ReturnType<typeof lorentzBoost> | null;
 }) => {
-  const { ringQuat } = useDisplayFrame();
+  const { ringMatrix } = useDisplayFrame();
   const elapsed = Date.now() - spawn.startTime;
   const progress = Math.min(elapsed / SPAWN_EFFECT_DURATION, 1);
   const opacity = 1 - progress;
@@ -57,20 +57,24 @@ export const SpawnRenderer = ({
         if (ringRadius < 0.1 || ringOpacity < 0.01) return null;
 
         return (
-          <mesh
+          <group
             key={`ring-${spawn.id}-${i}`}
             position={[displayPos.x, displayPos.y, displayPos.t]}
-            quaternion={ringQuat}
             scale={[ringRadius, ringRadius, 1]}
-            geometry={sharedGeometries.spawnRing}
           >
-            <meshBasicMaterial
-              color={color}
-              transparent
-              opacity={ringOpacity}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
+            <mesh
+              geometry={sharedGeometries.spawnRing}
+              matrix={ringMatrix}
+              matrixAutoUpdate={false}
+            >
+              <meshBasicMaterial
+                color={color}
+                transparent
+                opacity={ringOpacity}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+          </group>
         );
       })}
       {/* 中心の光柱（時間軸方向） */}

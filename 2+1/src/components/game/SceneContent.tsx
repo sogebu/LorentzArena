@@ -27,7 +27,7 @@ import {
 import {
   transformEventForDisplay,
 } from "./displayTransform";
-import { computeRingQuat, DisplayFrameProvider } from "./DisplayFrameContext";
+import { computeRingMatrix, DisplayFrameProvider } from "./DisplayFrameContext";
 import { futureLightConeIntersectionLaser, pastLightConeIntersectionLaser } from "./laserPhysics";
 import {
   getThreeColor,
@@ -303,16 +303,16 @@ export const SceneContent = ({
     return results;
   }, [myPlayer, myId, playerList, observerPos, observerBoost]);
 
-  const ringQuat = useMemo(
-    () => computeRingQuat(observerU, observerBoost),
-    [observerU, observerBoost],
+  const ringMatrix = useMemo(
+    () => computeRingMatrix(observerBoost),
+    [observerBoost],
   );
 
   return (
     <DisplayFrameProvider
       observerU={observerU}
       observerBoost={observerBoost}
-      ringQuat={ringQuat}
+      ringMatrix={ringMatrix}
     >
       <ambientLight intensity={0.5} />
       <pointLight position={[5, 5, 5]} intensity={1} />
@@ -469,7 +469,11 @@ export const SceneContent = ({
             <mesh geometry={sharedGeometries.intersectionCore}>
               <meshBasicMaterial color="#ffffff" />
             </mesh>
-            <mesh geometry={sharedGeometries.intersectionRing} quaternion={ringQuat}>
+            <mesh
+              geometry={sharedGeometries.intersectionRing}
+              matrix={ringMatrix}
+              matrixAutoUpdate={false}
+            >
               <meshBasicMaterial color={c} transparent opacity={0.9} side={THREE.DoubleSide} />
             </mesh>
           </group>
@@ -522,9 +526,15 @@ export const SceneContent = ({
             <mesh geometry={sharedGeometries.intersectionSphere} scale={[0.6, 0.6, 0.6]}>
               <meshBasicMaterial color={c} transparent opacity={0.15} depthWrite={false} />
             </mesh>
-            <mesh geometry={sharedGeometries.intersectionRing} scale={[0.8, 0.8, 0.8]} quaternion={ringQuat}>
-              <meshBasicMaterial color={c} transparent opacity={0.12} depthWrite={false} />
-            </mesh>
+            <group scale={[0.8, 0.8, 0.8]}>
+              <mesh
+                geometry={sharedGeometries.intersectionRing}
+                matrix={ringMatrix}
+                matrixAutoUpdate={false}
+              >
+                <meshBasicMaterial color={c} transparent opacity={0.12} depthWrite={false} />
+              </mesh>
+            </group>
           </group>
         );
       })}
@@ -602,7 +612,11 @@ export const SceneContent = ({
             <mesh geometry={sharedGeometries.killSphere}>
               <meshBasicMaterial color={kc} transparent opacity={0.6} />
             </mesh>
-            <mesh geometry={sharedGeometries.killRing} quaternion={ringQuat}>
+            <mesh
+              geometry={sharedGeometries.killRing}
+              matrix={ringMatrix}
+              matrixAutoUpdate={false}
+            >
               <meshBasicMaterial color={kc} transparent opacity={0.8} side={THREE.DoubleSide} />
             </mesh>
           </group>

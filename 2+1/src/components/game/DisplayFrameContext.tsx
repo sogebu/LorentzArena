@@ -3,26 +3,34 @@ import * as THREE from "three";
 import type { lorentzBoost } from "../../physics";
 
 /**
- * 観測者の瞬間静止系 display における「世界系同時面」の Euclidean 法線を、
- * 観測者の 4-velocity u = (u_x, u_y) (spatial, γ は導出) から一本の式で返す。
+ * 観測者の瞬間静止系 display における Lorentz boost のみ (並進なし) を
+ * three.js Matrix4 で返す。three.js の (x, y, z) ↔ Minkowski の (x, y, t) マッピング付き。
  *
- * 物理的導出:
- *   - 観測者 rest frame で、世界系観測者の 4-velocity は (t: γ, x: -u_x, y: -u_y)
- *   - 世界系同時面 = これに Minkowski-perp な 2D 超平面
- *   - 超平面の Euclidean 法線 = (u_x, u_y, γ)  (signature (+,+,+,-) の変換で時間成分が反転)
+ * この matrix を ring mesh の `matrix` として設定し `matrixAutoUpdate = false` にすると、
+ * mesh の local 頂点 v に対して group 位置 (display) へ置かれたうえで **頂点単位 Lorentz**
+ * が掛かる (parent · Boost · v)。クォータニオン方式と違い:
+ *   - β=0 / 世界系表示: identity、同じ見た目
+ *   - 運動中 rest frame: 運動方向に γ 倍伸びた楕円として tilted plane 上に乗る
  *
- * 言い換えれば **観測者自身の 4-velocity を (x, y, t) 順に並べて正規化したもの** が
- * そのまま ring の軸方向。observerBoost が null (= 世界系表示) なら identity。
+ * これは「世界系で固定の円」を観測者 rest frame で素直に描画した結果。3+1 への自然な拡張
+ * (boost matrix を増やすだけ、geometry/code 無改造) が利く。`buildDisplayMatrix` と同じ基底
+ * 変換を使うが、観測者位置の減算 (translation) は含めない: 並進は group position が担う。
  */
-export const computeRingQuat = (
-  observerU: { x: number; y: number } | null,
+export const computeRingMatrix = (
   observerBoost: ReturnType<typeof lorentzBoost> | null,
-): THREE.Quaternion => {
-  const u = observerBoost ? observerU : null;
-  if (!u) return new THREE.Quaternion();
-  const gamma = Math.sqrt(1 + u.x * u.x + u.y * u.y);
-  const n = new THREE.Vector3(u.x, u.y, gamma).normalize();
-  return new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+): THREE.Matrix4 => {
+  const m = new THREE.Matrix4();
+  if (!observerBoost) return m; // identity
+  const L = observerBoost;
+  const get = (r: number, c: number) => L.data[r * 4 + c];
+  // Minkowski (t=row/col 0, x=1, y=2) → three.js (x=row 0, y=row 1, z=t=row 2)
+  m.set(
+    get(1, 1), get(1, 2), get(1, 0), 0,
+    get(2, 1), get(2, 2), get(2, 0), 0,
+    get(0, 1), get(0, 2), get(0, 0), 0,
+    0, 0, 0, 1,
+  );
+  return m;
 };
 
 export interface DisplayFrameValue {
@@ -30,8 +38,8 @@ export interface DisplayFrameValue {
   observerU: { x: number; y: number } | null;
   /** 観測者の Lorentz boost (display frame の性質を決める)。null = 世界系表示 */
   observerBoost: ReturnType<typeof lorentzBoost> | null;
-  /** 世界系同時面に ring を寝かせる quaternion。local +z (= display t) を法線に回す */
-  ringQuat: THREE.Quaternion;
+  /** Ring mesh の頂点単位 Lorentz 用 Matrix4 (boost のみ、並進なし、three.js 座標) */
+  ringMatrix: THREE.Matrix4;
 }
 
 const DisplayFrameCtx = createContext<DisplayFrameValue | null>(null);
@@ -39,12 +47,12 @@ const DisplayFrameCtx = createContext<DisplayFrameValue | null>(null);
 export const DisplayFrameProvider = ({
   observerU,
   observerBoost,
-  ringQuat,
+  ringMatrix,
   children,
 }: DisplayFrameValue & { children: ReactNode }) => {
   const value = useMemo<DisplayFrameValue>(
-    () => ({ observerU, observerBoost, ringQuat }),
-    [observerU, observerBoost, ringQuat],
+    () => ({ observerU, observerBoost, ringMatrix }),
+    [observerU, observerBoost, ringMatrix],
   );
   return <DisplayFrameCtx.Provider value={value}>{children}</DisplayFrameCtx.Provider>;
 };
