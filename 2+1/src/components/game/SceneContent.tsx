@@ -2,7 +2,6 @@ import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import {
-  createVector4,
   futureLightConeIntersectionWorldLine,
   lorentzBoost,
   pastLightConeIntersectionWorldLine,
@@ -34,10 +33,7 @@ import {
   getThreeColor,
   sharedGeometries,
 } from "./threeCache";
-import type {
-  DisplayLaser,
-  Laser,
-} from "./types";
+import type { Laser } from "./types";
 
 /**
  * 交点 `eventPos` (world frame) における光円錐接平面の **world frame rotation matrix** を返す。
@@ -132,29 +128,6 @@ export const SceneContent = ({
       showInRestFrame && myPlayer ? lorentzBoost(myPlayer.phaseSpace.u) : null,
     [showInRestFrame, myPlayer],
   );
-  const displayLasers = useMemo<DisplayLaser[]>(() => {
-    return lasers.map((laser) => {
-      const worldStart = createVector4(
-        laser.emissionPos.t,
-        laser.emissionPos.x,
-        laser.emissionPos.y,
-        laser.emissionPos.z,
-      );
-      const worldEnd = createVector4(
-        laser.emissionPos.t + laser.range,
-        laser.emissionPos.x + laser.direction.x * laser.range,
-        laser.emissionPos.y + laser.direction.y * laser.range,
-        laser.emissionPos.z + laser.direction.z * laser.range,
-      );
-      return {
-        id: laser.id,
-        color: laser.color,
-        start: transformEventForDisplay(worldStart, observerPos, observerBoost),
-        end: transformEventForDisplay(worldEnd, observerPos, observerBoost),
-      };
-    });
-  }, [lasers, observerPos, observerBoost]);
-
   // カメラ制御
   useFrame(({ camera }) => {
     if (!myPlayer) return;
@@ -508,8 +481,8 @@ export const SceneContent = ({
         );
       })}
 
-      {/* レーザー描画（バッチ） */}
-      <LaserBatchRenderer displayLasers={displayLasers} />
+      {/* レーザー描画（バッチ, 頂点 world / matrix = displayMatrix） */}
+      <LaserBatchRenderer lasers={lasers} />
 
       {/* レーザー方向マーカー（自機のみ、トリガー中） */}
       {isFiring && myPlayer && myId && (() => {
@@ -561,12 +534,7 @@ export const SceneContent = ({
 
       {/* デブリの世界線とマーカー（世界オブジェクト） */}
       {myPlayer && (
-        <DebrisRenderer
-          debrisRecords={debrisRecords}
-          myPlayer={myPlayer}
-          observerPos={observerPos}
-          observerBoost={observerBoost}
-        />
+        <DebrisRenderer debrisRecords={debrisRecords} myPlayer={myPlayer} />
       )}
 
       {/* キル通知（キル時空点に 3D 表示） */}

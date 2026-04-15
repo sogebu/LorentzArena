@@ -1,13 +1,9 @@
 import type React from "react";
 import { useRef } from "react";
 import * as THREE from "three";
-import {
-  createVector4,
-  type lorentzBoost,
-  type Vector4,
-} from "../../physics";
+import { createVector4, type Vector4 } from "../../physics";
 import { pastLightConeIntersectionDebris } from "./debris";
-import { transformEventForDisplay } from "./displayTransform";
+import { buildMeshMatrix, useDisplayFrame } from "./DisplayFrameContext";
 import {
   getDebrisMaterial,
   getThreeColor,
@@ -26,25 +22,24 @@ const _debrisUp = new THREE.Vector3(0, 1, 0);
 const _debrisQuat = new THREE.Quaternion();
 const _debrisScale = new THREE.Vector3();
 
-// デブリ描画コンポーネント（InstancedMesh で太いシリンダー描画）
+// D pattern: InstancedMesh の matrix に displayMatrix を設定、
+// 各 instance の matrix は world frame で cylinder 配置を計算。合成 matrix
+// (displayMatrix × worldInstanceMatrix) で頂点単位 Lorentz。
 export const DebrisRenderer = ({
   debrisRecords,
   myPlayer,
-  observerPos,
-  observerBoost,
 }: {
   debrisRecords: SceneContentProps["debrisRecords"];
   myPlayer: { phaseSpace: { pos: Vector4 }; color: string };
-  observerPos: Vector4 | null;
-  observerBoost: ReturnType<typeof lorentzBoost> | null;
 }) => {
+  const { displayMatrix } = useDisplayFrame();
   const instancedRef = useRef<THREE.InstancedMesh>(null);
   const materialRef = useRef<THREE.MeshBasicMaterial>(null);
 
-  // collect all debris segments + markers
+  // collect all debris segments (world frame) + intersection markers (world frame)
   type DebrisSegment = {
-    startX: number; startY: number; startT: number;
-    endX: number; endY: number; endT: number;
+    sx: number; sy: number; st: number;
+    ex: number; ey: number; et: number;
     r: number; g: number; b: number;
     radius: number;
   };
@@ -62,31 +57,19 @@ export const DebrisRenderer = ({
     const maxLambda = 2.5;
     const debrisColor = getThreeColor(debris.color);
 
-    const startDisplay = transformEventForDisplay(
-      deathEvent,
-      observerPos,
-      observerBoost,
-    );
-
     for (let pi = 0; pi < debris.particles.length; pi++) {
       const p = debris.particles[pi];
 
-      const endWorld = createVector4(
-        debris.deathPos.t + maxLambda,
-        debris.deathPos.x + p.dx * maxLambda,
-        debris.deathPos.y + p.dy * maxLambda,
-        0,
-      );
-      const endDisplay = transformEventForDisplay(
-        endWorld,
-        observerPos,
-        observerBoost,
-      );
-
       segments.push({
-        startX: startDisplay.x, startY: startDisplay.y, startT: startDisplay.t,
-        endX: endDisplay.x, endY: endDisplay.y, endT: endDisplay.t,
-        r: debrisColor.r, g: debrisColor.g, b: debrisColor.b,
+        sx: debris.deathPos.x,
+        sy: debris.deathPos.y,
+        st: debris.deathPos.t,
+        ex: debris.deathPos.x + p.dx * maxLambda,
+        ey: debris.deathPos.y + p.dy * maxLambda,
+        et: debris.deathPos.t + maxLambda,
+        r: debrisColor.r,
+        g: debrisColor.g,
+        b: debrisColor.b,
         radius: p.size * 0.2,
       });
 
@@ -98,32 +81,35 @@ export const DebrisRenderer = ({
         myPlayer.phaseSpace.pos,
       );
       if (intersection) {
-        const displayPos = transformEventForDisplay(
-          intersection,
-          observerPos,
-          observerBoost,
-        );
+        const wp = { x: intersection.x, y: intersection.y, t: intersection.t };
         markerElements.push(
-          <mesh
+          <group
             key={`debris-${di}-${pi}`}
-            position={[displayPos.x, displayPos.y, displayPos.t]}
-            scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
-            geometry={sharedGeometries.explosionParticle}
-            material={getDebrisMaterial(debrisColor)}
-          />,
+            matrix={buildMeshMatrix(wp, displayMatrix)}
+            matrixAutoUpdate={false}
+          >
+            <mesh
+              scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
+              geometry={sharedGeometries.explosionParticle}
+              material={getDebrisMaterial(debrisColor)}
+            />
+          </group>,
         );
       }
     }
   }
 
-  // update instanced mesh
+  // update instanced mesh — per-instance matrix in WORLD frame; displayMatrix
+  // is applied as the InstancedMesh's own matrix so GPU composes per-vertex.
   const mesh = instancedRef.current;
   if (mesh) {
+    mesh.matrix.copy(displayMatrix);
+    mesh.matrixAutoUpdate = false;
     const colorAttr = new Float32Array(segments.length * 3);
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
-      _debrisStart.set(seg.startX, seg.startY, seg.startT);
-      _debrisEnd.set(seg.endX, seg.endY, seg.endT);
+      _debrisStart.set(seg.sx, seg.sy, seg.st);
+      _debrisEnd.set(seg.ex, seg.ey, seg.et);
       _debrisMid.addVectors(_debrisStart, _debrisEnd).multiplyScalar(0.5);
       _debrisDir.subVectors(_debrisEnd, _debrisStart);
       const len = _debrisDir.length();
@@ -143,7 +129,6 @@ export const DebrisRenderer = ({
     }
     mesh.count = segments.length;
     mesh.instanceMatrix.needsUpdate = true;
-    // per-instance color
     mesh.instanceColor = new THREE.InstancedBufferAttribute(colorAttr, 3);
     mesh.instanceColor.needsUpdate = true;
   }
