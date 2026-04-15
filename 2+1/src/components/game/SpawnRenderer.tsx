@@ -6,6 +6,7 @@ import {
   type Vector4,
 } from "../../physics";
 import { SPAWN_EFFECT_DURATION } from "./constants";
+import { useDisplayFrame } from "./DisplayFrameContext";
 import { transformEventForDisplay } from "./displayTransform";
 import { getThreeColor, sharedGeometries } from "./threeCache";
 import type { SpawnEffect } from "./types";
@@ -20,6 +21,7 @@ export const SpawnRenderer = ({
   observerPos: Vector4 | null;
   observerBoost: ReturnType<typeof lorentzBoost> | null;
 }) => {
+  const { ringQuat } = useDisplayFrame();
   const elapsed = Date.now() - spawn.startTime;
   const progress = Math.min(elapsed / SPAWN_EFFECT_DURATION, 1);
   const opacity = 1 - progress;
@@ -58,7 +60,7 @@ export const SpawnRenderer = ({
           <mesh
             key={`ring-${spawn.id}-${i}`}
             position={[displayPos.x, displayPos.y, displayPos.t]}
-            rotation={[Math.PI / 2, 0, 0]}
+            quaternion={ringQuat}
             scale={[ringRadius, ringRadius, 1]}
             geometry={sharedGeometries.spawnRing}
           >
