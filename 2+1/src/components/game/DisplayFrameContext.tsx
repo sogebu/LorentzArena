@@ -1,45 +1,34 @@
 import { createContext, type ReactNode, useContext, useMemo } from "react";
 import * as THREE from "three";
-import type { lorentzBoost } from "../../physics";
+import type { lorentzBoost, Vector4 } from "../../physics";
 
 /**
- * 観測者の瞬間静止系 display における Lorentz boost のみ (並進なし) を
- * three.js Matrix4 で返す。three.js の (x, y, z) ↔ Minkowski の (x, y, t) マッピング付き。
+ * D pattern: 全 mesh を「world frame の geometry + per-mesh display matrix」で表現する。
+ * mesh matrix = `displayMatrix` × T(worldEventPos) × [optional worldRotation]
  *
- * この matrix を ring mesh の `matrix` として設定し `matrixAutoUpdate = false` にすると、
- * mesh の local 頂点 v に対して group 位置 (display) へ置かれたうえで **頂点単位 Lorentz**
- * が掛かる (parent · Boost · v)。クォータニオン方式と違い:
- *   - β=0 / 世界系表示: identity、同じ見た目
- *   - 運動中 rest frame: 運動方向に γ 倍伸びた楕円として tilted plane 上に乗る
+ * - `displayMatrix`: world → display の Lorentz boost + 観測者位置の並進 (`buildDisplayMatrix`
+ *   の出力)。観測者変化時に 1 回だけ計算し全 mesh で共有。
+ * - `T(worldPos)`: 事象の world 座標への並進。mesh ごとに異なる。`buildMeshMatrix` helper で合成。
  *
- * これは「世界系で固定の円」を観測者 rest frame で素直に描画した結果。3+1 への自然な拡張
- * (boost matrix を増やすだけ、geometry/code 無改造) が利く。`buildDisplayMatrix` と同じ基底
- * 変換を使うが、観測者位置の減算 (translation) は含めない: 並進は group position が担う。
+ * 世界系表示 (observerBoost = null) では `buildDisplayMatrix` が identity を返すので自動的に
+ * world = display。β=0 でも同じ。
  */
-export const computeRingMatrix = (
-  observerBoost: ReturnType<typeof lorentzBoost> | null,
+
+/** Compose `displayMatrix × T(worldPos)`. mesh の `matrix` prop に渡す共通の組み立て。 */
+export const buildMeshMatrix = (
+  worldPos: { x: number; y: number; t: number },
+  displayMatrix: THREE.Matrix4,
 ): THREE.Matrix4 => {
-  const m = new THREE.Matrix4();
-  if (!observerBoost) return m; // identity
-  const L = observerBoost;
-  const get = (r: number, c: number) => L.data[r * 4 + c];
-  // Minkowski (t=row/col 0, x=1, y=2) → three.js (x=row 0, y=row 1, z=t=row 2)
-  m.set(
-    get(1, 1), get(1, 2), get(1, 0), 0,
-    get(2, 1), get(2, 2), get(2, 0), 0,
-    get(0, 1), get(0, 2), get(0, 0), 0,
-    0, 0, 0, 1,
-  );
-  return m;
+  const m = new THREE.Matrix4().makeTranslation(worldPos.x, worldPos.y, worldPos.t);
+  return new THREE.Matrix4().multiplyMatrices(displayMatrix, m);
 };
 
 export interface DisplayFrameValue {
-  /** 観測者の 4-velocity 空間成分。静止系表示中のみ意味あり (世界系表示では null) */
   observerU: { x: number; y: number } | null;
-  /** 観測者の Lorentz boost (display frame の性質を決める)。null = 世界系表示 */
   observerBoost: ReturnType<typeof lorentzBoost> | null;
-  /** Ring mesh の頂点単位 Lorentz 用 Matrix4 (boost のみ、並進なし、three.js 座標) */
-  ringMatrix: THREE.Matrix4;
+  observerPos: Vector4 | null;
+  /** world → display 変換 matrix (boost + 観測者位置並進)。identity if 世界系表示 */
+  displayMatrix: THREE.Matrix4;
 }
 
 const DisplayFrameCtx = createContext<DisplayFrameValue | null>(null);
@@ -47,12 +36,13 @@ const DisplayFrameCtx = createContext<DisplayFrameValue | null>(null);
 export const DisplayFrameProvider = ({
   observerU,
   observerBoost,
-  ringMatrix,
+  observerPos,
+  displayMatrix,
   children,
 }: DisplayFrameValue & { children: ReactNode }) => {
   const value = useMemo<DisplayFrameValue>(
-    () => ({ observerU, observerBoost, ringMatrix }),
-    [observerU, observerBoost, ringMatrix],
+    () => ({ observerU, observerBoost, observerPos, displayMatrix }),
+    [observerU, observerBoost, observerPos, displayMatrix],
   );
   return <DisplayFrameCtx.Provider value={value}>{children}</DisplayFrameCtx.Provider>;
 };

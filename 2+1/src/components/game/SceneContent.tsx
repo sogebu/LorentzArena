@@ -25,9 +25,10 @@ import {
   PLAYER_MARKER_SIZE_SELF,
 } from "./constants";
 import {
+  buildDisplayMatrix,
   transformEventForDisplay,
 } from "./displayTransform";
-import { computeRingMatrix, DisplayFrameProvider } from "./DisplayFrameContext";
+import { buildMeshMatrix, DisplayFrameProvider } from "./DisplayFrameContext";
 import { futureLightConeIntersectionLaser, pastLightConeIntersectionLaser } from "./laserPhysics";
 import {
   getThreeColor,
@@ -39,44 +40,47 @@ import type {
 } from "./types";
 
 /**
- * 交点 `pos` (観測者 = 原点) における光円錐接平面に、レーザー方向を tip とする三角形を
- * 寝かせるための回転 quaternion を返す。三角形ジオメトリは local xy 平面、tip=+x、法線=+z。
- * 過去/未来どちらの光円錐も 外向き法線 n = (x, y, -t)/(ρ√2) の 1 本で扱える。
+ * 交点 `eventPos` (world frame) における光円錐接平面の **world frame rotation matrix** を返す。
+ * 三角形ジオメトリは local xy 平面、tip=+x、法線=+z。観測者 `obsPos` と event の world 相対位置
+ * から接平面を導出するので過去/未来両方、rest frame 表示中でも世界系表示でも同じ式で動く。
+ *
+ * 数式: Δ = event - observer。ρ = |Δ_xy|、n = (Δx, Δy, -Δt) / √(ρ² + Δt²)。
+ * laser direction を接平面に射影して u、v = n × u。
  */
-const computeConeTangentQuaternion = (
-  pos: { x: number; y: number; t: number },
+const computeConeTangentWorldRotation = (
+  eventPos: { x: number; y: number; t: number },
+  obsPos: { x: number; y: number; t: number },
   laserDir: { x: number; y: number; z: number },
-  out: THREE.Quaternion,
-  scratch: THREE.Matrix4,
-): boolean => {
-  const rho2 = pos.x * pos.x + pos.y * pos.y;
-  if (rho2 < 1e-12) return false;
-  const denom = Math.sqrt(rho2 + pos.t * pos.t); // ρ√2 on the cone
-  if (denom < 1e-12) return false;
-  const nx = pos.x / denom;
-  const ny = pos.y / denom;
-  const nt = -pos.t / denom;
+): THREE.Matrix4 | null => {
+  const dx = eventPos.x - obsPos.x;
+  const dy = eventPos.y - obsPos.y;
+  const dt = eventPos.t - obsPos.t;
+  const rho2 = dx * dx + dy * dy;
+  if (rho2 < 1e-12) return null;
+  const denom = Math.sqrt(rho2 + dt * dt); // ρ√2 on the cone
+  if (denom < 1e-12) return null;
+  const nx = dx / denom;
+  const ny = dy / denom;
+  const nt = -dt / denom;
   // Project laser direction onto the tangent plane (laser has no t-component)
   const ldotN = laserDir.x * nx + laserDir.y * ny;
   let ux = laserDir.x - ldotN * nx;
   let uy = laserDir.y - ldotN * ny;
   let ut = -ldotN * nt;
   const ulen = Math.sqrt(ux * ux + uy * uy + ut * ut);
-  if (ulen < 1e-9) return false;
+  if (ulen < 1e-9) return null;
   ux /= ulen; uy /= ulen; ut /= ulen;
   // v = n × u
   const vx = ny * ut - nt * uy;
   const vy = nt * ux - nx * ut;
   const vt = nx * uy - ny * ux;
   // Local (x, y, z) → world (u, v, n). Three.js maps local z ↔ world t.
-  scratch.set(
+  return new THREE.Matrix4().set(
     ux, vx, nx, 0,
     uy, vy, ny, 0,
     ut, vt, nt, 0,
     0, 0, 0, 1,
   );
-  out.setFromRotationMatrix(scratch);
-  return true;
 };
 
 export type SceneContentProps = {
@@ -192,11 +196,7 @@ export const SceneContent = ({
         results.push({
           playerId: player.id,
           color: player.color,
-          pos: transformEventForDisplay(
-            intersection.pos,
-            observerPos,
-            observerBoost,
-          ),
+          pos: intersection.pos, // world frame
         });
       }
     }
@@ -212,24 +212,13 @@ export const SceneContent = ({
         results.push({
           playerId: `frozen-${fi}-${fw.worldLine.history[0]?.pos.t ?? 0}`,
           color: fw.color,
-          pos: transformEventForDisplay(
-            intersection.pos,
-            observerPos,
-            observerBoost,
-          ),
+          pos: intersection.pos, // world frame
         });
       }
     }
 
     return results;
-  }, [
-    myPlayer,
-    myId,
-    playerList,
-    frozenWorldLines,
-    observerPos,
-    observerBoost,
-  ]);
+  }, [myPlayer, myId, playerList, frozenWorldLines]);
 
   const laserIntersections = useMemo(() => {
     if (!myPlayer || !myId) return [];
@@ -240,19 +229,12 @@ export const SceneContent = ({
           myPlayer.phaseSpace.pos,
         );
         if (!intersection) return null;
-        return {
-          laser,
-          pos: transformEventForDisplay(
-            intersection,
-            observerPos,
-            observerBoost,
-          ),
-        };
+        return { laser, pos: intersection }; // world frame
       })
       .filter(
         (value): value is { laser: Laser; pos: Vector4 } => value !== null,
       );
-  }, [lasers, myPlayer, myId, observerPos, observerBoost]);
+  }, [lasers, myPlayer, myId]);
 
   // Future light cone intersections with lasers
   const laserFutureIntersections = useMemo(() => {
@@ -264,19 +246,12 @@ export const SceneContent = ({
           myPlayer.phaseSpace.pos,
         );
         if (!intersection) return null;
-        return {
-          laser,
-          pos: transformEventForDisplay(
-            intersection,
-            observerPos,
-            observerBoost,
-          ),
-        };
+        return { laser, pos: intersection }; // world frame
       })
       .filter(
         (value): value is { laser: Laser; pos: Vector4 } => value !== null,
       );
-  }, [lasers, myPlayer, myId, observerPos, observerBoost]);
+  }, [lasers, myPlayer, myId]);
 
   // Future light cone intersections: where a signal from the observer would reach each player
   const futureLightConeIntersections = useMemo(() => {
@@ -292,27 +267,24 @@ export const SceneContent = ({
         results.push({
           playerId: player.id,
           color: player.color,
-          pos: transformEventForDisplay(
-            intersection.pos,
-            observerPos,
-            observerBoost,
-          ),
+          pos: intersection.pos, // world frame
         });
       }
     }
     return results;
-  }, [myPlayer, myId, playerList, observerPos, observerBoost]);
+  }, [myPlayer, myId, playerList]);
 
-  const ringMatrix = useMemo(
-    () => computeRingMatrix(observerBoost),
-    [observerBoost],
+  const displayMatrix = useMemo(
+    () => buildDisplayMatrix(observerPos, observerBoost),
+    [observerPos, observerBoost],
   );
 
   return (
     <DisplayFrameProvider
       observerU={observerU}
       observerBoost={observerBoost}
-      ringMatrix={ringMatrix}
+      observerPos={observerPos}
+      displayMatrix={displayMatrix}
     >
       <ambientLight intensity={0.5} />
       <pointLight position={[5, 5, 5]} intensity={1} />
@@ -344,11 +316,7 @@ export const SceneContent = ({
       {playerList.map((player) => {
         if (player.id === myId && player.isDead) return null;
 
-        const pos = transformEventForDisplay(
-          player.phaseSpace.pos,
-          observerPos,
-          observerBoost,
-        );
+        const wp = player.phaseSpace.pos; // world
         const isMe = player.id === myId;
         const color = getThreeColor(player.color);
         const size = isMe ? PLAYER_MARKER_SIZE_SELF : PLAYER_MARKER_SIZE_OTHER;
@@ -358,7 +326,11 @@ export const SceneContent = ({
         const pulse = isInvincible ? 0.65 + 0.35 * Math.sin(Date.now() * 0.012) : 1.0;
 
         return (
-          <group key={`player-${player.id}`} position={[pos.x, pos.y, pos.t]}>
+          <group
+            key={`player-${player.id}`}
+            matrix={buildMeshMatrix(wp, displayMatrix)}
+            matrixAutoUpdate={false}
+          >
             <mesh
               scale={[size, size, size]}
               geometry={sharedGeometries.playerSphere}
@@ -391,18 +363,18 @@ export const SceneContent = ({
       {playerList
         .filter((p) => p.id === myId)
         .map((player) => {
-          const pos = transformEventForDisplay(
-            player.phaseSpace.pos,
-            observerPos,
-            observerBoost,
-          );
+          const wp = player.phaseSpace.pos; // world
           const color = getThreeColor(player.color);
-
+          // group は world event へ並進、中の mesh は (cone offset) × R_x(±π/2) を scale/position/rotation で表現
           return (
-            <group key={`lightcone-${player.id}`}>
+            <group
+              key={`lightcone-${player.id}`}
+              matrix={buildMeshMatrix(wp, displayMatrix)}
+              matrixAutoUpdate={false}
+            >
               {/* Future cone: surface + wireframe */}
               <mesh
-                position={[pos.x, pos.y, pos.t + LIGHT_CONE_HEIGHT / 2]}
+                position={[0, 0, LIGHT_CONE_HEIGHT / 2]}
                 rotation={[-Math.PI / 2, 0.0, 0.0]}
                 geometry={sharedGeometries.lightCone}
               >
@@ -415,7 +387,7 @@ export const SceneContent = ({
                 />
               </mesh>
               <mesh
-                position={[pos.x, pos.y, pos.t + LIGHT_CONE_HEIGHT / 2]}
+                position={[0, 0, LIGHT_CONE_HEIGHT / 2]}
                 rotation={[-Math.PI / 2, 0.0, 0.0]}
                 geometry={sharedGeometries.lightCone}
               >
@@ -429,7 +401,7 @@ export const SceneContent = ({
               </mesh>
               {/* Past cone: surface + wireframe */}
               <mesh
-                position={[pos.x, pos.y, pos.t - LIGHT_CONE_HEIGHT / 2]}
+                position={[0, 0, -LIGHT_CONE_HEIGHT / 2]}
                 rotation={[Math.PI / 2, 0.0, 0.0]}
                 geometry={sharedGeometries.lightCone}
               >
@@ -442,7 +414,7 @@ export const SceneContent = ({
                 />
               </mesh>
               <mesh
-                position={[pos.x, pos.y, pos.t - LIGHT_CONE_HEIGHT / 2]}
+                position={[0, 0, -LIGHT_CONE_HEIGHT / 2]}
                 rotation={[Math.PI / 2, 0.0, 0.0]}
                 geometry={sharedGeometries.lightCone}
               >
@@ -462,18 +434,18 @@ export const SceneContent = ({
       {worldLineIntersections.map(({ playerId, color: colorText, pos }) => {
         const c = getThreeColor(colorText);
         return (
-          <group key={`intersection-${playerId}`} position={[pos.x, pos.y, pos.t]}>
+          <group
+            key={`intersection-${playerId}`}
+            matrix={buildMeshMatrix(pos, displayMatrix)}
+            matrixAutoUpdate={false}
+          >
             <mesh geometry={sharedGeometries.intersectionSphere}>
               <meshStandardMaterial color={c} emissive={c} emissiveIntensity={1.15} />
             </mesh>
             <mesh geometry={sharedGeometries.intersectionCore}>
               <meshBasicMaterial color="#ffffff" />
             </mesh>
-            <mesh
-              geometry={sharedGeometries.intersectionRing}
-              matrix={ringMatrix}
-              matrixAutoUpdate={false}
-            >
+            <mesh geometry={sharedGeometries.intersectionRing}>
               <meshBasicMaterial color={c} transparent opacity={0.9} side={THREE.DoubleSide} />
             </mesh>
           </group>
@@ -481,37 +453,36 @@ export const SceneContent = ({
       })}
 
       {/* レーザー過去光円錐交差マーカー（円錐接平面に貼り付いた三角形、tip=laser.direction の接平面射影） */}
-      {laserIntersections.map(({ laser, pos }) => {
+      {observerPos && laserIntersections.map(({ laser, pos }) => {
         const c = getThreeColor(laser.color);
-        const quat = new THREE.Quaternion();
-        const m = new THREE.Matrix4();
-        const ok = computeConeTangentQuaternion(pos, laser.direction, quat, m);
-        if (!ok) return null;
+        const rot = computeConeTangentWorldRotation(pos, observerPos, laser.direction);
+        if (!rot) return null;
+        const m = buildMeshMatrix(pos, displayMatrix);
+        m.multiply(rot);
         return (
-          <group
+          <mesh
             key={`laser-intersection-${laser.id}`}
-            position={[pos.x, pos.y, pos.t]}
-            quaternion={quat}
+            geometry={sharedGeometries.laserIntersectionTriangle}
+            matrix={m}
+            matrixAutoUpdate={false}
           >
-            <mesh geometry={sharedGeometries.laserIntersectionTriangle}>
-              <meshBasicMaterial color={c} side={THREE.DoubleSide} />
-            </mesh>
-          </group>
+            <meshBasicMaterial color={c} side={THREE.DoubleSide} />
+          </mesh>
         );
       })}
 
       {/* 未来光円錐交差マーカー（接平面に貼り付いた三角形、うっすら表示） */}
-      {laserFutureIntersections.map(({ laser, pos }) => {
+      {observerPos && laserFutureIntersections.map(({ laser, pos }) => {
         const c = getThreeColor(laser.color);
-        const quat = new THREE.Quaternion();
-        const m = new THREE.Matrix4();
-        const ok = computeConeTangentQuaternion(pos, laser.direction, quat, m);
-        if (!ok) return null;
+        const rot = computeConeTangentWorldRotation(pos, observerPos, laser.direction);
+        if (!rot) return null;
+        const m = buildMeshMatrix(pos, displayMatrix);
+        m.multiply(rot);
         return (
           <group
             key={`laser-future-${laser.id}`}
-            position={[pos.x, pos.y, pos.t]}
-            quaternion={quat}
+            matrix={m}
+            matrixAutoUpdate={false}
           >
             <mesh geometry={sharedGeometries.laserIntersectionTriangle} scale={[0.65, 0.65, 0.65]}>
               <meshBasicMaterial color={c} transparent opacity={0.15} side={THREE.DoubleSide} depthWrite={false} />
@@ -522,19 +493,17 @@ export const SceneContent = ({
       {futureLightConeIntersections.map(({ playerId, color: colorText, pos }) => {
         const c = getThreeColor(colorText);
         return (
-          <group key={`future-${playerId}`} position={[pos.x, pos.y, pos.t]}>
+          <group
+            key={`future-${playerId}`}
+            matrix={buildMeshMatrix(pos, displayMatrix)}
+            matrixAutoUpdate={false}
+          >
             <mesh geometry={sharedGeometries.intersectionSphere} scale={[0.6, 0.6, 0.6]}>
               <meshBasicMaterial color={c} transparent opacity={0.15} depthWrite={false} />
             </mesh>
-            <group scale={[0.8, 0.8, 0.8]}>
-              <mesh
-                geometry={sharedGeometries.intersectionRing}
-                matrix={ringMatrix}
-                matrixAutoUpdate={false}
-              >
-                <meshBasicMaterial color={c} transparent opacity={0.12} depthWrite={false} />
-              </mesh>
-            </group>
+            <mesh geometry={sharedGeometries.intersectionRing} scale={[0.8, 0.8, 0.8]}>
+              <meshBasicMaterial color={c} transparent opacity={0.12} depthWrite={false} />
+            </mesh>
           </group>
         );
       })}
@@ -601,22 +570,22 @@ export const SceneContent = ({
       )}
 
       {/* キル通知（キル時空点に 3D 表示） */}
-      {killNotification && observerPos && (() => {
-        const dp = transformEventForDisplay(
-          createVector4(killNotification.hitPos.t, killNotification.hitPos.x, killNotification.hitPos.y, killNotification.hitPos.z),
-          observerPos, observerBoost,
-        );
+      {killNotification && (() => {
+        const wp = {
+          x: killNotification.hitPos.x,
+          y: killNotification.hitPos.y,
+          t: killNotification.hitPos.t,
+        };
         const kc = getThreeColor(killNotification.color);
         return (
-          <group position={[dp.x, dp.y, dp.t]}>
+          <group
+            matrix={buildMeshMatrix(wp, displayMatrix)}
+            matrixAutoUpdate={false}
+          >
             <mesh geometry={sharedGeometries.killSphere}>
               <meshBasicMaterial color={kc} transparent opacity={0.6} />
             </mesh>
-            <mesh
-              geometry={sharedGeometries.killRing}
-              matrix={ringMatrix}
-              matrixAutoUpdate={false}
-            >
+            <mesh geometry={sharedGeometries.killRing}>
               <meshBasicMaterial color={kc} transparent opacity={0.8} side={THREE.DoubleSide} />
             </mesh>
           </group>
@@ -625,12 +594,7 @@ export const SceneContent = ({
 
       {/* スポーンエフェクト */}
       {spawns.map((spawn) => (
-        <SpawnRenderer
-          key={spawn.id}
-          spawn={spawn}
-          observerPos={observerPos}
-          observerBoost={observerBoost}
-        />
+        <SpawnRenderer key={spawn.id} spawn={spawn} />
       ))}
     </DisplayFrameProvider>
   );
