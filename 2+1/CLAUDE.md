@@ -16,7 +16,7 @@ pnpm run analyze               # バンドルサイズ分析
 
 ### テスト・デプロイの使い分け
 
-- **スマホ操作に関係しない変更**（エフェクト調整、ゲームロジック、HUD レイアウト等）は **localhost（preview_start）でテストしてから** push・deploy。GitHub Pages のキャッシュ反映にはタイムラグがあり、毎回デプロイして待つのは非効率
+- **スマホ操作に関係しない変更**（エフェクト調整、ゲームロジック、HUD レイアウト等）は **localhost でテストしてから** push・deploy。GitHub Pages のキャッシュ反映にはタイムラグがあり、毎回デプロイして待つのは非効率。視覚的・動作的に観察可能な変更は **deploy 前にユーザーにもローカル URL (`http://localhost:5173/LorentzArena/`) を提示して OK を得てから** push・deploy。詳細規約: `claude-config/conventions/preview.md` §「Deploy 前のユーザー確認を省かない」
 - **スマホ実機テストが必要な変更**（タッチ入力、レスポンシブ、ジェスチャ等）は deploy して実機で確認
 
 ### デプロイ後の報告ルール
