@@ -2,13 +2,14 @@
 
 ## 現在のステータス
 
-対戦可能。**`0b029e1` デプロイ済み** (build `2026/04/16 07:39:22 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`9456c5d` デプロイ済み** (build `2026/04/17 08:46:43 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
 完了済みリファクタ (判断根拠は DESIGN.md):
 - **Authority 解体 Stage A〜H** (2026-04-14〜15): target-authoritative 化 + event-sourced。plan: `plans/2026-04-14-authority-dissolution.md`
 - **D pattern 化** (2026-04-15): scene の物理オブジェクトを world 座標 + 頂点単位 Lorentz に統一、3+1 拡張に親和。球は例外で C pattern 維持
 - **Spawn 座標時刻の統一** (2026-04-16): `computeSpawnCoordTime(players) = max(p.phaseSpace.pos.t)` で初回/リスポーン/新 joiner 共通化。beacon holder の t 依存を廃止し、新 joiner 過去スポーンバグを解消。詳細は DESIGN.md § スポーン座標時刻
 - **Thrust energy mechanic** (2026-04-16): thrust も fire と同じ energy pool を消費 (フル tank 9 秒)。両方同時で ~2.25 秒で枯渇。枯渇時は FUEL ラベル点滅で明示。詳細は DESIGN.md § thrust energy
+- **アリーナ円柱** (2026-04-17): 視覚ガイドとしての world-frame 静止円柱 (半径 20, 中心 (5,5))。本体は D pattern、各プレイヤーは自分の過去光円錐との交線を独立に描画。物理判定なし。詳細は DESIGN.md §描画「アリーナ円柱」
 
 ## 直近の作業
 
