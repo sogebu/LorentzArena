@@ -9,6 +9,7 @@ import {
   type Vector4,
 } from "../../physics";
 import { selectInvincibleUntil, useGameStore } from "../../stores/game-store";
+import { ArenaRenderer } from "./ArenaRenderer";
 import { DebrisRenderer } from "./DebrisRenderer";
 import { LaserBatchRenderer } from "./LaserBatchRenderer";
 import { isLighthouse } from "./lighthouse";
@@ -262,6 +263,9 @@ export const SceneContent = ({
     >
       <ambientLight intensity={0.5} />
       <pointLight position={[5, 5, 5]} intensity={1} />
+
+      {/* アリーナ円柱 (視覚ガイド、world-frame 静止、過去光円錐交線ハイライト) */}
+      <ArenaRenderer />
 
       {/* 凍結世界線（世界オブジェクト）を描画 */}
       {frozenWorldLines.map((fw, i) => (

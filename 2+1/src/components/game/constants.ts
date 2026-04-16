@@ -100,3 +100,20 @@ export const LASER_WORLDLINE_OPACITY = 0.3;
 // --- Player marker sizes ---
 export const PLAYER_MARKER_SIZE_SELF = 0.42;
 export const PLAYER_MARKER_SIZE_OTHER = 0.2;
+
+// --- Arena (world-frame static cylinder, visual guide only) ---
+// スポーン中心 (= [0, SPAWN_RANGE]² 一様分布の中心) に配置。
+export const ARENA_CENTER_X = SPAWN_RANGE / 2;
+export const ARENA_CENTER_Y = SPAWN_RANGE / 2;
+// 半径: LASER_RANGE (=10) の 2 倍、光円錐 HEIGHT と同じスケール感。
+export const ARENA_RADIUS = 20;
+// 時間方向の描画レンジ (中心は観測者 t に合わせ、上下 ±HALF をカバー)。
+// world 静止の円柱 geometry を観測者時間中心で窓を切る形。LIGHT_CONE_HEIGHT と
+// 同じスケールで future/past 両方を余裕を持って含む。
+export const ARENA_HEIGHT = LIGHT_CONE_HEIGHT * 2;
+export const ARENA_RADIAL_SEGMENTS = 64;
+export const ARENA_SURFACE_OPACITY = 0.05;
+export const ARENA_WIRE_OPACITY = 0.06;
+// 過去光円錐 × 円柱交線 LineLoop のサンプル数 + 透明度
+export const ARENA_PAST_CONE_SEGMENTS = 128;
+export const ARENA_PAST_CONE_OPACITY = 0.55;

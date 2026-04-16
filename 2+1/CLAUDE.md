@@ -170,6 +170,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 - プレイヤー色は `colorForJoinOrder(index)` が主（接続順 × 黄金角）、peerList 未受信時は `colorForPlayerId(id)` にフォールバック。ネットワーク同期不要の純関数方式。詳細は DESIGN.md § 描画「色割り当て」
 - 因果律の守護者: 他プレイヤーの未来光円錐内で操作凍結。死亡プレイヤー・灯台は除外。灯台は別方式: 誰かの過去光円錐に落ちたら最も過去の生存プレイヤーの座標時間にジャンプ
 - 光円錐描画: DoubleSide 半透明サーフェス（`LIGHT_CONE_SURFACE_OPACITY`）+ ワイヤーフレーム（`LIGHT_CONE_WIRE_OPACITY`）の 2 層構造で未来/過去光円錐を表示
+- アリーナ円柱 (`ArenaRenderer`): world-frame 静止、中心 `(ARENA_CENTER_X, ARENA_CENTER_Y)` 半径 `ARENA_RADIUS` の半透明円柱で戦闘領域の視覚ガイドを提示。物理判定なし（drifter 封じ込めは thrust energy で既済、視覚的境界として補完）。D pattern で per-vertex Lorentz 変換し、rest frame では光行差で楕円歪みを表現。本体は t-span 中心を observer.t に追従させ描画 window として機能、各プレイヤーは自分の過去光円錐と円柱の交線 (LineLoop) を独立に描画して「今まさに見えている周縁」を明示
 
 ### Store 構造 (`src/stores/game-store.ts`、Stage C 以降)
 
@@ -256,6 +257,14 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `CAMERA_PITCH_MIN/MAX` | ±89.9° | カメラ仰角範囲 |
 | `PLAYER_MARKER_SIZE_SELF` | 0.42 | 自機マーカーサイズ（playerSphere geo 0.5 × scale） |
 | `PLAYER_MARKER_SIZE_OTHER` | 0.2 | 他機マーカーサイズ |
+| `ARENA_CENTER_X/Y` | SPAWN_RANGE/2 = 5 | アリーナ円柱の中心（= spawn 一様分布の中心） |
+| `ARENA_RADIUS` | 20 | アリーナ円柱半径（= LASER_RANGE × 2） |
+| `ARENA_HEIGHT` | LIGHT_CONE_HEIGHT × 2 = 40 | 円柱 geometry の高さ。中心 t は観測者 t に追従し、常に観測者時間近傍の slice を描画 |
+| `ARENA_RADIAL_SEGMENTS` | 64 | 円柱側面の周方向分割数（光行差表現のため細かく） |
+| `ARENA_SURFACE_OPACITY` | 0.05 | 円柱側面 surface の透明度 |
+| `ARENA_WIRE_OPACITY` | 0.06 | 円柱 wireframe の透明度 |
+| `ARENA_PAST_CONE_SEGMENTS` | 128 | 過去光円錐 × 円柱 交線 LineLoop のサンプル数 |
+| `ARENA_PAST_CONE_OPACITY` | 0.55 | 過去光円錐交線の透明度 |
 | `LIGHT_CONE_HEIGHT` | 20 | 描画上の円錐サイズ（c=1 で radius=height） |
 | `LIGHT_CONE_SURFACE_OPACITY` | 0.08 | 光円錐サーフェスの透明度 |
 | `LIGHT_CONE_WIRE_OPACITY` | 0.04 | 光円錐ワイヤーフレームの透明度 |
