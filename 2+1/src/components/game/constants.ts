@@ -113,7 +113,8 @@ export const ARENA_RADIUS = 20;
 export const ARENA_HEIGHT = LIGHT_CONE_HEIGHT * 2;
 export const ARENA_RADIAL_SEGMENTS = 64;
 export const ARENA_SURFACE_OPACITY = 0.05;
-export const ARENA_WIRE_OPACITY = 0.06;
+// 時間方向に伸びる垂直線 ARENA_RADIAL_SEGMENTS 本の opacity (対角線のない純粋な縦線)
+export const ARENA_VERTICAL_LINE_OPACITY = 0.18;
 // 過去光円錐 × 円柱交線 LineLoop のサンプル数 + 透明度
 export const ARENA_PAST_CONE_SEGMENTS = 128;
 export const ARENA_PAST_CONE_OPACITY = 0.55;

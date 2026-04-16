@@ -3,11 +3,13 @@ import * as THREE from "three";
 import {
   ARENA_CENTER_X,
   ARENA_CENTER_Y,
+  ARENA_HEIGHT,
   ARENA_PAST_CONE_OPACITY,
   ARENA_PAST_CONE_SEGMENTS,
+  ARENA_RADIAL_SEGMENTS,
   ARENA_RADIUS,
   ARENA_SURFACE_OPACITY,
-  ARENA_WIRE_OPACITY,
+  ARENA_VERTICAL_LINE_OPACITY,
 } from "./constants";
 import { useDisplayFrame } from "./DisplayFrameContext";
 import { sharedGeometries } from "./threeCache";
@@ -34,6 +36,42 @@ export const ArenaRenderer = () => {
     const model = new THREE.Matrix4().multiplyMatrices(translate, rotate);
     return new THREE.Matrix4().multiplyMatrices(displayMatrix, model);
   }, [displayMatrix, observerPos]);
+
+  // 垂直線用 matrix: rotation 不要 (geometry を直接 +z = 時間方向で定義するため)
+  const verticalLinesMatrix = useMemo(() => {
+    const centerT = observerPos?.t ?? 0;
+    const translate = new THREE.Matrix4().makeTranslation(
+      ARENA_CENTER_X,
+      ARENA_CENTER_Y,
+      centerT,
+    );
+    return new THREE.Matrix4().multiplyMatrices(displayMatrix, translate);
+  }, [displayMatrix, observerPos]);
+
+  // 時間方向に伸びる垂直線 N 本 (N = ARENA_RADIAL_SEGMENTS) の LineSegments geometry。
+  // 各 θ で 2 頂点 (下端 −H/2, 上端 +H/2) のペア。CylinderGeometry + wireframe と違い、
+  // 三角形の対角線・上下 ring は一切出ない。per-vertex Lorentz で rest frame では
+  // boost 方向に応じて時間軸が傾斜した直線群になる。
+  const verticalLinesGeometry = useMemo(() => {
+    const positions = new Float32Array(ARENA_RADIAL_SEGMENTS * 2 * 3);
+    const half = ARENA_HEIGHT / 2;
+    for (let i = 0; i < ARENA_RADIAL_SEGMENTS; i++) {
+      const theta = (i / ARENA_RADIAL_SEGMENTS) * Math.PI * 2;
+      const lx = ARENA_RADIUS * Math.cos(theta);
+      const ly = ARENA_RADIUS * Math.sin(theta);
+      const o0 = (i * 2 + 0) * 3;
+      const o1 = (i * 2 + 1) * 3;
+      positions[o0 + 0] = lx;
+      positions[o0 + 1] = ly;
+      positions[o0 + 2] = -half;
+      positions[o1 + 0] = lx;
+      positions[o1 + 1] = ly;
+      positions[o1 + 2] = +half;
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    return g;
+  }, []);
 
   // 過去光円錐 × 円柱の交線: world 座標で vertex 列を作り、matrix=displayMatrix で per-vertex Lorentz
   const pastConeGeometry = useMemo(() => {
@@ -72,19 +110,19 @@ export const ArenaRenderer = () => {
           depthWrite={false}
         />
       </mesh>
-      <mesh
-        geometry={sharedGeometries.arenaCylinder}
-        matrix={cylinderMatrix}
+      {/* 時間方向の垂直線 ARENA_RADIAL_SEGMENTS 本 (対角線や上下 ring は出さない) */}
+      <lineSegments
+        geometry={verticalLinesGeometry}
+        matrix={verticalLinesMatrix}
         matrixAutoUpdate={false}
       >
-        <meshBasicMaterial
+        <lineBasicMaterial
           color="#ffffff"
           transparent
-          opacity={ARENA_WIRE_OPACITY}
-          wireframe
+          opacity={ARENA_VERTICAL_LINE_OPACITY}
           depthWrite={false}
         />
-      </mesh>
+      </lineSegments>
       {/* 観測者の過去光円錐 × 円柱 交線 */}
       {pastConeGeometry && (
         <lineLoop
