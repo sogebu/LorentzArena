@@ -1,5 +1,6 @@
 import {
   createVector4,
+  findLatestIndexAtOrBeforeTime,
   futureLightConeIntersectionSegment,
   pastLightConeIntersectionSegment,
   subVector4,
@@ -14,6 +15,12 @@ import type { Laser } from "./types";
  *
  * Laser trajectory: L(λ) = emissionPos + λ * (dir, 1),  λ ∈ [0, range]
  * World line segment: W(μ) = p1 + μ * (p2 - p1),  μ ∈ [0, 1]
+ *
+ * **Optimization (time-range narrowing)**: laser の時刻範囲 [eT, eT + range] と
+ * 重なる segment だけスキャン。worldLine.history の time span が laser.range より
+ * 広い場合 (例: MAX_WORLDLINE_HISTORY 5000 × 8ms = 40s > laser range 10s) に有効。
+ * range ≥ history span のときは従来通り full scan。`findLatestIndexAtOrBeforeTime`
+ * の O(log N) 二分探索で両端 index を求めて [lo, hi] に絞る。
  */
 export const findLaserHitPosition = (
   laser: Laser,
@@ -31,7 +38,17 @@ export const findLaserHitPosition = (
   const range = laser.range;
   const r2 = hitRadius * hitRadius;
 
-  for (let i = 1; i < history.length; i++) {
+  // Laser の時刻範囲 [eT, eT + range] をカバーする segment index range を絞り込む。
+  // segment i は [history[i-1].t, history[i].t]。
+  //   lo = min i with history[i].t ≥ eT        → findLatestIndexAtOrBeforeTime(eT) + 1
+  //   hi = max i with history[i-1].t ≤ eT+range → findLatestIndexAtOrBeforeTime(eT+range)
+  // 境界は ±1 の余裕を見る (laser 始点・終点が segment 途中にあるケース)。
+  const idxAtEt = findLatestIndexAtOrBeforeTime(history, eT);
+  const idxAtEtEnd = findLatestIndexAtOrBeforeTime(history, eT + range);
+  const iStart = Math.max(1, idxAtEt + 1);
+  const iEnd = Math.min(history.length - 1, Math.max(idxAtEtEnd + 1, iStart));
+
+  for (let i = iStart; i <= iEnd; i++) {
     const p1 = history[i - 1].pos;
     const p2 = history[i].pos;
 

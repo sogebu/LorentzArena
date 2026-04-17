@@ -143,7 +143,7 @@ const findLightlikeIntersectionParam = (
  * Find the latest index k such that history[k].pos.t <= t.
  * Returns -1 if all samples are in the future (history[0].pos.t > t).
  */
-const findLatestIndexAtOrBeforeTime = (
+export const findLatestIndexAtOrBeforeTime = (
   history: PhaseSpace[],
   t: number,
 ): number => {
@@ -241,28 +241,28 @@ const pastLightConeIntersectionHalfLine = (
   return createPhaseSpace(intersectionPos, origin.u);
 };
 
-export const pastLightConeIntersectionWorldLine = (
+/**
+ * Linear scan reference implementation (O(N)).
+ * Kept exported for regression tests against the binary-search production path.
+ * 呼び出し元は `pastLightConeIntersectionWorldLine` (binary) を使うこと。
+ */
+export const pastLightConeIntersectionWorldLineLinear = (
   wl: WorldLine,
   observerPosition: Vector4,
 ): PhaseSpace | null => {
   const history = wl.history;
   if (history.length === 0) {
-    // history が空でも origin があれば半直線で探す
     if (wl.origin) {
       return pastLightConeIntersectionHalfLine(wl.origin, observerPosition);
     }
     return null;
   }
 
-  // We may have samples slightly "in the future" compared to the observer's t due to clock drift.
-  // Start from the newest sample that is at/before observer time, but include one future sample
-  // to cover the boundary segment.
   const lastPastIdx = findLatestIndexAtOrBeforeTime(
     history,
     observerPosition.t,
   );
   if (lastPastIdx < 0) {
-    // history 全体が観測者の未来 → origin 半直線で探す
     if (wl.origin) {
       return pastLightConeIntersectionHalfLine(wl.origin, observerPosition);
     }
@@ -274,15 +274,9 @@ export const pastLightConeIntersectionWorldLine = (
   for (let i = startIdx; i >= 1; i--) {
     const state = history[i];
     const prevState = history[i - 1];
-
-    // If both endpoints are not in the observer's past, skip.
-    // We use separation = observer - event; separation.t > 0 means "event is in the past".
     const sepPrev = subVector4(observerPosition, prevState.pos);
     const sepCurr = subVector4(observerPosition, state.pos);
-
-    if (sepPrev.t <= 0 && sepCurr.t <= 0) {
-      continue;
-    }
+    if (sepPrev.t <= 0 && sepCurr.t <= 0) continue;
 
     const tParam = findLightlikeIntersectionParam(
       prevState.pos,
@@ -302,9 +296,7 @@ export const pastLightConeIntersectionWorldLine = (
     }
   }
 
-  // history を走査しても見つからなかった → origin 半直線で探す
   if (wl.origin) {
-    // origin → history[0] のセグメントも探す（trimming でギャップがある場合）
     if (wl.origin.pos.t !== history[0].pos.t) {
       const tParam = findLightlikeIntersectionParam(
         wl.origin.pos,
@@ -315,8 +307,6 @@ export const pastLightConeIntersectionWorldLine = (
         return createPhaseSpace(wl.origin.pos, wl.origin.u);
       }
     }
-
-    // 半直線で探す
     return pastLightConeIntersectionHalfLine(wl.origin, observerPosition);
   }
 
@@ -324,14 +314,248 @@ export const pastLightConeIntersectionWorldLine = (
 };
 
 /**
- * Future light-cone intersection between an observer event and a world line.
+ * Signed "past cone distance" at history[i] relative to an observer event:
+ *   g(i) = (observer.t − history[i].t) − |observer.xy(z) − history[i].xy(z)|
+ * g > 0: history[i] is inside the observer's past light cone (timelike past).
+ * g < 0: spacelike-separated or in the observer's future.
  *
- * Finds the earliest point on the world line that lies on the observer's
- * future light cone. This represents "where a signal sent NOW would reach
- * the target's world line" (i.e., the intercept point for a laser).
+ * In typical play g(i) is *roughly* monotonic decreasing as i increases
+ * (observer.t − t_i shrinks linearly while ρ_i varies at speeds < c).
+ * We use this for an O(log N) binary search, then scan a small ±K neighborhood
+ * around the boundary as a safety net against non-monotonic target motion.
+ */
+const pastConeSignedDistance = (
+  sample: PhaseSpace,
+  observer: Vector4,
+): number => {
+  const dt = observer.t - sample.pos.t;
+  const dx = observer.x - sample.pos.x;
+  const dy = observer.y - sample.pos.y;
+  const dz = observer.z - sample.pos.z;
+  return dt - Math.sqrt(dx * dx + dy * dy + dz * dz);
+};
+
+/**
+ * Binary-search the largest index in `[lo, hi]` with g(i) ≥ 0 (= still inside
+ * the observer's past light cone). Returns -1 if g(lo) < 0 (no such index).
+ */
+const findPastConeBoundary = (
+  history: PhaseSpace[],
+  lo: number,
+  hi: number,
+  observer: Vector4,
+): number => {
+  if (lo > hi) return -1;
+  if (pastConeSignedDistance(history[lo], observer) < 0) return -1;
+  if (pastConeSignedDistance(history[hi], observer) >= 0) return hi;
+  let left = lo;
+  let right = hi;
+  // invariant: g(left) ≥ 0, g(right) < 0
+  while (right - left > 1) {
+    const mid = (left + right) >> 1;
+    if (pastConeSignedDistance(history[mid], observer) >= 0) {
+      left = mid;
+    } else {
+      right = mid;
+    }
+  }
+  return left;
+};
+
+/** ± how many segments to linearly scan around the binary-search boundary. */
+const CONE_NEIGHBORHOOD = 16;
+
+/**
+ * Past light-cone intersection between an observer event and a world line.
  *
- * JP: 観測者の未来光円錐と世界線の交差点（最も過去側）を求める。
- * 「今レーザーを撃ったら、どこでターゲットの世界線と交わるか」を表す。
+ * **Algorithm (binary search + neighborhood scan, O(log N + K))**:
+ *   1. Binary-search `findLatestIndexAtOrBeforeTime(history, observer.t)` to
+ *      skip samples in the observer's future (clock drift tolerance).
+ *   2. Binary-search `findPastConeBoundary` to find the largest i with g(i) ≥ 0,
+ *      where g(i) = (observer.t − t_i) − ρ_i.
+ *   3. Linearly scan ±`CONE_NEIGHBORHOOD` segments around the boundary from newest
+ *      to oldest to find the first segment that actually intersects the null cone
+ *      (via `findLightlikeIntersectionParam`). Neighborhood scan handles
+ *      non-monotonic g cases (rare, but possible with fast-moving targets).
+ *   4. Fall back to `origin` half-line if no segment intersects (respawn gap or
+ *      history entirely in spacelike region).
+ *
+ * This replaces the O(N) full-history scan (see `*Linear` above) while
+ * preserving identical results in all test cases.
+ *
+ * JP: 観測者の過去光円錐と世界線の交差 (最新側)。O(log N + K) で探す。
+ */
+export const pastLightConeIntersectionWorldLine = (
+  wl: WorldLine,
+  observerPosition: Vector4,
+): PhaseSpace | null => {
+  const history = wl.history;
+  if (history.length === 0) {
+    if (wl.origin) {
+      return pastLightConeIntersectionHalfLine(wl.origin, observerPosition);
+    }
+    return null;
+  }
+
+  const lastPastIdx = findLatestIndexAtOrBeforeTime(
+    history,
+    observerPosition.t,
+  );
+  if (lastPastIdx < 0) {
+    if (wl.origin) {
+      return pastLightConeIntersectionHalfLine(wl.origin, observerPosition);
+    }
+    return null;
+  }
+
+  const startIdx = Math.min(history.length - 1, lastPastIdx + 1);
+
+  // Binary-search the boundary where g(i) changes sign (≥ 0 → < 0).
+  // boundary = -1 if every sample in [0, startIdx] is spacelike (rare).
+  const boundary = findPastConeBoundary(history, 0, startIdx, observerPosition);
+  const center = boundary >= 0 ? boundary : startIdx;
+  const hi = Math.min(startIdx, center + CONE_NEIGHBORHOOD);
+  const lo = Math.max(1, center - CONE_NEIGHBORHOOD);
+
+  for (let i = hi; i >= lo; i--) {
+    const state = history[i];
+    const prevState = history[i - 1];
+    const sepPrev = subVector4(observerPosition, prevState.pos);
+    const sepCurr = subVector4(observerPosition, state.pos);
+    if (sepPrev.t <= 0 && sepCurr.t <= 0) continue;
+
+    const tParam = findLightlikeIntersectionParam(
+      prevState.pos,
+      state.pos,
+      observerPosition,
+    );
+
+    if (tParam >= 0 && tParam <= 1) {
+      const t1 = 1 - tParam;
+      const interpPos = createVector4(
+        prevState.pos.t * t1 + state.pos.t * tParam,
+        prevState.pos.x * t1 + state.pos.x * tParam,
+        prevState.pos.y * t1 + state.pos.y * tParam,
+        prevState.pos.z * t1 + state.pos.z * tParam,
+      );
+      return createPhaseSpace(interpPos, prevState.u);
+    }
+  }
+
+  if (wl.origin) {
+    if (wl.origin.pos.t !== history[0].pos.t) {
+      const tParam = findLightlikeIntersectionParam(
+        wl.origin.pos,
+        history[0].pos,
+        observerPosition,
+      );
+      if (tParam >= 0 && tParam <= 1) {
+        return createPhaseSpace(wl.origin.pos, wl.origin.u);
+      }
+    }
+    return pastLightConeIntersectionHalfLine(wl.origin, observerPosition);
+  }
+
+  return null;
+};
+
+/**
+ * Linear scan reference implementation (O(N)).
+ * Kept exported for regression tests. 呼び出し元は `futureLightConeIntersectionWorldLine` を使うこと。
+ */
+export const futureLightConeIntersectionWorldLineLinear = (
+  wl: WorldLine,
+  observerPosition: Vector4,
+): PhaseSpace | null => {
+  const history = wl.history;
+  if (history.length < 2) return null;
+
+  for (let i = 1; i < history.length; i++) {
+    const prevState = history[i - 1];
+    const state = history[i];
+    const sepPrev = subVector4(prevState.pos, observerPosition);
+    const sepCurr = subVector4(state.pos, observerPosition);
+    if (sepPrev.t < 0 && sepCurr.t < 0) continue;
+
+    const tParam = findLightlikeIntersectionParam(
+      prevState.pos,
+      state.pos,
+      observerPosition,
+    );
+
+    if (tParam >= 0 && tParam <= 1) {
+      const t1 = 1 - tParam;
+      const intersectionT = prevState.pos.t * t1 + state.pos.t * tParam;
+      if (intersectionT <= observerPosition.t) continue;
+      const interpPos = createVector4(
+        intersectionT,
+        prevState.pos.x * t1 + state.pos.x * tParam,
+        prevState.pos.y * t1 + state.pos.y * tParam,
+        prevState.pos.z * t1 + state.pos.z * tParam,
+      );
+      return createPhaseSpace(interpPos, prevState.u);
+    }
+  }
+
+  return null;
+};
+
+/**
+ * Signed "future cone distance":
+ *   f(i) = (history[i].t − observer.t) − |history[i].xy(z) − observer.xy(z)|
+ * f > 0: history[i] is inside the observer's future light cone.
+ */
+const futureConeSignedDistance = (
+  sample: PhaseSpace,
+  observer: Vector4,
+): number => {
+  const dt = sample.pos.t - observer.t;
+  const dx = sample.pos.x - observer.x;
+  const dy = sample.pos.y - observer.y;
+  const dz = sample.pos.z - observer.z;
+  return dt - Math.sqrt(dx * dx + dy * dy + dz * dz);
+};
+
+/**
+ * Binary-search the smallest index in `[lo, hi]` with f(i) ≥ 0 (= inside the
+ * observer's future light cone). Returns -1 if f(hi) < 0 (no such index).
+ */
+const findFutureConeBoundary = (
+  history: PhaseSpace[],
+  lo: number,
+  hi: number,
+  observer: Vector4,
+): number => {
+  if (lo > hi) return -1;
+  if (futureConeSignedDistance(history[hi], observer) < 0) return -1;
+  if (futureConeSignedDistance(history[lo], observer) >= 0) return lo;
+  let left = lo;
+  let right = hi;
+  // invariant: f(left) < 0, f(right) ≥ 0
+  while (right - left > 1) {
+    const mid = (left + right) >> 1;
+    if (futureConeSignedDistance(history[mid], observer) >= 0) {
+      right = mid;
+    } else {
+      left = mid;
+    }
+  }
+  return right;
+};
+
+/**
+ * Future light-cone intersection between an observer event and a world line
+ * (earliest intersection = where a signal sent NOW first reaches the target).
+ *
+ * **Algorithm (binary search + neighborhood scan, O(log N + K))**:
+ *   1. Skip past samples via `findLatestIndexAtOrBeforeTime(history, observer.t)`.
+ *      Only samples in the observer's future (t > observer.t) can be inside the
+ *      future light cone.
+ *   2. Binary-search `findFutureConeBoundary` to find the smallest i with f(i) ≥ 0.
+ *   3. Linearly scan ±`CONE_NEIGHBORHOOD` around the boundary from oldest to newest,
+ *      returning the earliest segment that actually intersects the null cone.
+ *
+ * 「今レーザーを撃ったら、どこでターゲットの世界線と交わるか」を表す最も過去側の交点。
  */
 export const futureLightConeIntersectionWorldLine = (
   wl: WorldLine,
@@ -340,12 +564,27 @@ export const futureLightConeIntersectionWorldLine = (
   const history = wl.history;
   if (history.length < 2) return null;
 
-  // Search from oldest to newest: we want the earliest future intersection
-  for (let i = 1; i < history.length; i++) {
+  const lastPastIdx = findLatestIndexAtOrBeforeTime(
+    history,
+    observerPosition.t,
+  );
+  const startIdx = Math.max(1, lastPastIdx + 1);
+  const endIdx = history.length - 1;
+  if (startIdx > endIdx) return null;
+
+  const boundary = findFutureConeBoundary(
+    history,
+    startIdx,
+    endIdx,
+    observerPosition,
+  );
+  const center = boundary >= 0 ? boundary : startIdx;
+  const lo = Math.max(1, center - CONE_NEIGHBORHOOD);
+  const hi = Math.min(endIdx, center + CONE_NEIGHBORHOOD);
+
+  for (let i = lo; i <= hi; i++) {
     const prevState = history[i - 1];
     const state = history[i];
-
-    // Both endpoints must be potentially in the observer's future
     const sepPrev = subVector4(prevState.pos, observerPosition);
     const sepCurr = subVector4(state.pos, observerPosition);
     if (sepPrev.t < 0 && sepCurr.t < 0) continue;
