@@ -123,8 +123,8 @@ export const ARENA_COLOR = "hsl(180, 40%, 70%)";
 export const ARENA_SURFACE_OPACITY = 0.08;
 // 時間方向に伸びる垂直線 ARENA_RADIAL_SEGMENTS 本の opacity (対角線のない純粋な縦線)
 export const ARENA_VERTICAL_LINE_OPACITY = 0.04;
-// 過去光円錐 × 円柱交線 LineLoop のサンプル数 + 透明度
-export const ARENA_PAST_CONE_SEGMENTS = 128;
+// 過去光円錐 × 円柱交線 LineLoop の透明度。サンプル数は surface と共有するため
+// `ARENA_RADIAL_SEGMENTS` と同じ (shared position attribute で surface/ 交線 の頂点ズレ回避)。
 export const ARENA_PAST_CONE_OPACITY = 1.0;
 // 未来光円錐 × 円柱交線 (上端) の透明度。過去光円錐より控えめ (既に起きた event vs
 // まだ起きていない event の情報量差を視覚で反映)。

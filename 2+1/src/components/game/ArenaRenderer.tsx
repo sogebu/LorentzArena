@@ -7,7 +7,6 @@ import {
   ARENA_COLOR,
   ARENA_FUTURE_CONE_OPACITY,
   ARENA_PAST_CONE_OPACITY,
-  ARENA_PAST_CONE_SEGMENTS,
   ARENA_RADIAL_SEGMENTS,
   ARENA_RADIUS,
   ARENA_SURFACE_OPACITY,
@@ -24,11 +23,18 @@ import { getThreeColor } from "./threeCache";
 //   上端 = observer.t + ρ(θ) (未来光円錐 ∩ 円柱)。
 //   観測者中心では均一な円、離れると双円錐で切り出された形に歪む。
 //
-// **in-place update パターン**: BufferGeometry は初回だけ作成し、以後毎フレーム
-// `useFrame` で position attribute を in-place 更新 + `needsUpdate=true` で GPU
-// に差分 upload する。observer 位置が毎 tick 変わっても BufferGeometry /
-// Float32Array の allocation は発生しない (GC 圧・GPU buffer leak を回避)。
-// 旧実装 (毎 tick useMemo で BufferGeometry 新規作成) から切り替えた FPS 対策。
+// **shared position attribute**: surface / 垂直線 / 過去光円錐交線 / 未来光円錐交線の
+// 4 geometry は同じ `N × 2` 頂点 (上 vertex と下 vertex のペア × N) を共有し、
+// 各 geometry は index buffer だけが異なる (triangle strip / line pair / bottom ring /
+// top ring)。これにより surface の上下辺と cone loop が**完全に同じ頂点を通る**ので
+// 密度差による線ズレが発生しない。position attribute 1 つ分の GPU upload で 4 geometry
+// すべてに反映されるので軽量。
+//
+// **in-place update**: BufferGeometry / position array は初回だけ作成、以後 `useFrame`
+// で position を in-place 更新 + `needsUpdate=true`。allocation ゼロ、GC 圧なし。
+//
+// 各 mesh は `frustumCulled={false}` で bounding sphere 依存の culling を無効化 (本
+// geometry は position が毎 frame 変わるので初期 boundingSphere が意味を持たない)。
 export const ArenaRenderer = () => {
   const { displayMatrix, observerPos } = useDisplayFrame();
 
@@ -38,68 +44,62 @@ export const ArenaRenderer = () => {
 
   const arenaThreeColor = useMemo(() => getThreeColor(ARENA_COLOR), []);
 
-  // --- Geometry 初期化 (マウント時 1 回のみ) ---
-  // positions は 0 埋め、indices は静的 (観測者非依存)。
-  // positions は useFrame で in-place 更新される。
-
-  const surfaceGeometry = useMemo(() => {
+  // --- 共有 position attribute + 4 geometry (初回のみ作成) ---
+  const arenaGeometries = useMemo(() => {
     const N = ARENA_RADIAL_SEGMENTS;
-    const positions = new Float32Array(N * 2 * 3); // 上下 2 vertex per θ
-    const indices: number[] = [];
+    // 頂点 layout: 各 θ_i に対して [上 vertex (i*2), 下 vertex (i*2+1)]
+    const positions = new Float32Array(N * 2 * 3);
+    const positionAttr = new THREE.BufferAttribute(positions, 3);
+
+    // surface: triangle strip の (i, i+1) quad を 2 三角形に分解
+    const surfaceIndices: number[] = [];
     for (let i = 0; i < N; i++) {
       const j = (i + 1) % N;
-      const a = i * 2 + 0; // 上 i
-      const b = i * 2 + 1; // 下 i
-      const c = j * 2 + 0; // 上 j
-      const d = j * 2 + 1; // 下 j
-      indices.push(a, b, c);
-      indices.push(b, d, c);
+      const topI = i * 2 + 0;
+      const botI = i * 2 + 1;
+      const topJ = j * 2 + 0;
+      const botJ = j * 2 + 1;
+      surfaceIndices.push(topI, botI, topJ);
+      surfaceIndices.push(botI, botJ, topJ);
     }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    g.setIndex(indices);
-    return g;
-  }, []);
 
-  const verticalLinesGeometry = useMemo(() => {
-    const N = ARENA_RADIAL_SEGMENTS;
-    const positions = new Float32Array(N * 2 * 3); // 2 vertex per θ (下→上)
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    return g;
-  }, []);
+    // 垂直線: 各 θ で (上, 下) の vertex pair (LineSegments は pairs を線として描く)
+    const verticalIndices: number[] = [];
+    for (let i = 0; i < N; i++) {
+      verticalIndices.push(i * 2 + 0, i * 2 + 1);
+    }
 
-  const pastConeGeometry = useMemo(() => {
-    const N = ARENA_PAST_CONE_SEGMENTS;
-    const positions = new Float32Array(N * 3); // 1 vertex per θ (closed loop)
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    return g;
-  }, []);
+    // 過去光円錐交線 (下地平線): 下 vertex だけ順に辿る LineLoop
+    const pastConeIndices: number[] = [];
+    for (let i = 0; i < N; i++) pastConeIndices.push(i * 2 + 1);
 
-  const futureConeGeometry = useMemo(() => {
-    const N = ARENA_PAST_CONE_SEGMENTS;
-    const positions = new Float32Array(N * 3);
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    return g;
+    // 未来光円錐交線 (上地平線): 上 vertex だけ順に辿る LineLoop
+    const futureConeIndices: number[] = [];
+    for (let i = 0; i < N; i++) futureConeIndices.push(i * 2 + 0);
+
+    const makeGeo = (indices: number[]): THREE.BufferGeometry => {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", positionAttr);
+      g.setIndex(indices);
+      return g;
+    };
+
+    return {
+      positions,
+      positionAttr,
+      surface: makeGeo(surfaceIndices),
+      verticalLines: makeGeo(verticalIndices),
+      pastCone: makeGeo(pastConeIndices),
+      futureCone: makeGeo(futureConeIndices),
+    };
   }, []);
 
   // --- Per-frame in-place update ---
   useFrame(() => {
     const pos = observerPosRef.current;
     if (!pos) return;
-
+    const { positions, positionAttr } = arenaGeometries;
     const N = ARENA_RADIAL_SEGMENTS;
-    const sPosAttr = surfaceGeometry.getAttribute(
-      "position",
-    ) as THREE.BufferAttribute;
-    const vPosAttr = verticalLinesGeometry.getAttribute(
-      "position",
-    ) as THREE.BufferAttribute;
-    const sArr = sPosAttr.array as Float32Array;
-    const vArr = vPosAttr.array as Float32Array;
-
     for (let i = 0; i < N; i++) {
       const theta = (i / N) * Math.PI * 2;
       const wx = ARENA_CENTER_X + ARENA_RADIUS * Math.cos(theta);
@@ -109,64 +109,27 @@ export const ArenaRenderer = () => {
       const rho = Math.sqrt(dx * dx + dy * dy);
       const topT = pos.t + rho;
       const botT = pos.t - rho;
-
-      const o0 = (i * 2 + 0) * 3;
-      const o1 = (i * 2 + 1) * 3;
-      // surface: 上 vertex
-      sArr[o0 + 0] = wx;
-      sArr[o0 + 1] = wy;
-      sArr[o0 + 2] = topT;
-      // surface: 下 vertex
-      sArr[o1 + 0] = wx;
-      sArr[o1 + 1] = wy;
-      sArr[o1 + 2] = botT;
-      // vertical line: 下 → 上 の 2 頂点ペア
-      vArr[o0 + 0] = wx;
-      vArr[o0 + 1] = wy;
-      vArr[o0 + 2] = botT;
-      vArr[o1 + 0] = wx;
-      vArr[o1 + 1] = wy;
-      vArr[o1 + 2] = topT;
+      const o0 = (i * 2 + 0) * 3; // 上
+      const o1 = (i * 2 + 1) * 3; // 下
+      positions[o0 + 0] = wx;
+      positions[o0 + 1] = wy;
+      positions[o0 + 2] = topT;
+      positions[o1 + 0] = wx;
+      positions[o1 + 1] = wy;
+      positions[o1 + 2] = botT;
     }
-    sPosAttr.needsUpdate = true;
-    vPosAttr.needsUpdate = true;
-
-    // Past / Future cone loops (密度は別定数で指定、surface の N と独立に滑らか)
-    const Nc = ARENA_PAST_CONE_SEGMENTS;
-    const pPosAttr = pastConeGeometry.getAttribute(
-      "position",
-    ) as THREE.BufferAttribute;
-    const fPosAttr = futureConeGeometry.getAttribute(
-      "position",
-    ) as THREE.BufferAttribute;
-    const pArr = pPosAttr.array as Float32Array;
-    const fArr = fPosAttr.array as Float32Array;
-    for (let i = 0; i < Nc; i++) {
-      const theta = (i / Nc) * Math.PI * 2;
-      const wx = ARENA_CENTER_X + ARENA_RADIUS * Math.cos(theta);
-      const wy = ARENA_CENTER_Y + ARENA_RADIUS * Math.sin(theta);
-      const dx = wx - pos.x;
-      const dy = wy - pos.y;
-      const rho = Math.sqrt(dx * dx + dy * dy);
-      const idx = i * 3;
-      pArr[idx + 0] = wx;
-      pArr[idx + 1] = wy;
-      pArr[idx + 2] = pos.t - rho;
-      fArr[idx + 0] = wx;
-      fArr[idx + 1] = wy;
-      fArr[idx + 2] = pos.t + rho;
-    }
-    pPosAttr.needsUpdate = true;
-    fPosAttr.needsUpdate = true;
+    // shared attribute なので 1 回の needsUpdate で 4 geometry すべてに反映
+    positionAttr.needsUpdate = true;
   });
 
   return (
     <>
       {/* 円柱側面 surface (双円錐で切り出された形、両面可視) */}
       <mesh
-        geometry={surfaceGeometry}
+        geometry={arenaGeometries.surface}
         matrix={displayMatrix}
         matrixAutoUpdate={false}
+        frustumCulled={false}
       >
         <meshBasicMaterial
           color={arenaThreeColor}
@@ -178,9 +141,10 @@ export const ArenaRenderer = () => {
       </mesh>
       {/* 時間方向の垂直線 N 本 (上下端は観測者因果コーンで clipped) */}
       <lineSegments
-        geometry={verticalLinesGeometry}
+        geometry={arenaGeometries.verticalLines}
         matrix={displayMatrix}
         matrixAutoUpdate={false}
+        frustumCulled={false}
       >
         <lineBasicMaterial
           color={arenaThreeColor}
@@ -189,11 +153,12 @@ export const ArenaRenderer = () => {
           depthWrite={false}
         />
       </lineSegments>
-      {/* 過去光円錐 ∩ 円柱 (下地平線) */}
+      {/* 過去光円錐 ∩ 円柱 (下地平線、surface 下辺と同じ頂点を通る) */}
       <lineLoop
-        geometry={pastConeGeometry}
+        geometry={arenaGeometries.pastCone}
         matrix={displayMatrix}
         matrixAutoUpdate={false}
+        frustumCulled={false}
       >
         <lineBasicMaterial
           color={arenaThreeColor}
@@ -202,11 +167,12 @@ export const ArenaRenderer = () => {
           depthWrite={false}
         />
       </lineLoop>
-      {/* 未来光円錐 ∩ 円柱 (上地平線、過去光円錐より控えめの opacity) */}
+      {/* 未来光円錐 ∩ 円柱 (上地平線、surface 上辺と同じ頂点を通る、opacity 控えめ) */}
       <lineLoop
-        geometry={futureConeGeometry}
+        geometry={arenaGeometries.futureCone}
         matrix={displayMatrix}
         matrixAutoUpdate={false}
+        frustumCulled={false}
       >
         <lineBasicMaterial
           color={arenaThreeColor}
