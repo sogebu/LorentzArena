@@ -77,10 +77,15 @@
 
 ## 次にやること
 
-- **[次セッション最優先] 進行方向の可視化 分岐 A: 他機の noise exhaust 対応** — phaseSpace に共変 α^μ を同梱 (発信者 owner が自機の `Λ(u_own)` で世界系へ boost)、受信側は観測者の `Λ(u_obs)^{-1}` で rest frame に戻して cone 方向決定。D pattern + Lorentz 収縮 + 光行差が自然に入る (物理モデル step 2 + step 3 を同時実装)。作業スコープ: phaseSpace message schema 拡張 + messageHandler validation + snapshot への同梱 + ExhaustCone を自機専用経路から他機対応経路に広げる。`SceneContent.tsx` の `ExhaustCone` は現在 `player={myPlayer}` 固定だが、`playerList.map` 内に組み込む形に書き換える (ただし球は C pattern、cone は step 2-3 完成で D pattern に昇格)
+- **[次セッション最優先] 時空星屑 (案 17) + 時間的距離 opacity fade** — 2 案を並行 or 連続で実装:
+  - **時空星屑**: N 個 (500〜2000) の spark を world frame で (x, y, t) 4D 一様分布、交差計算なし、D pattern で毎 frame `THREE.Points` 描画 (`matrix = displayMatrix`)。光行差・Lorentz 変換は per-vertex で自動。新規 `StardustRenderer.tsx`、`constants.ts` に `STARDUST_COUNT` / 空間・時間範囲 / `STARDUST_COLOR` / `STARDUST_SIZE` 追加
+  - **時間 fade (per-mesh v0、Lorentzian)**: `fade = base × r² / (r² + Δt²)`、`r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT = 20`。Δt = r で 50%、Δt = 2r (= 2 × LCH) で 20%、Δt = 3r で 10% と滑らかに減衰 (時間距離の 2 乗反比例、物理的な逆 2 乗法則と同型)。凍結世界線・デブリ・レーザー世界線を優先対象に、各 renderer で上式を base opacity に掛け算。per-vertex (v1) はその後
+  - **相乗効果**: 時空星屑 + 時間 fade で、観測者周辺に dynamic window が自然にできて pop-in 抑止。両方同時実装が効率
+  - 詳細: EXPLORING.md §「進行方向・向きの認知支援」§追加案「案 17」 + EXPLORING.md §「時間的距離 opacity fade」
+- **[上記の後] 進行方向の可視化 分岐 A: 他機の noise exhaust 対応** — phaseSpace に共変 α^μ を同梱 (発信者 owner が自機の `Λ(u_own)` で世界系へ boost)、受信側は観測者の `Λ(u_obs)^{-1}` で rest frame に戻して cone 方向決定。D pattern + Lorentz 収縮 + 光行差が自然に入る (物理モデル step 2 + step 3 を同時実装)。作業スコープ: phaseSpace message schema 拡張 + messageHandler validation + snapshot への同梱 + ExhaustCone を自機専用経路から他機対応経路に広げる。`SceneContent.tsx` の `ExhaustCone` は現在 `player={myPlayer}` 固定だが、`playerList.map` 内に組み込む形に書き換える (ただし球は C pattern、cone は step 2-3 完成で D pattern に昇格)
 - **進行方向の可視化: その他分岐 (今後検討)** — 分岐 A 完了後に着手:
   - **分岐 B (Step 2 = 案 14)**: sphere + heading-dart ハイブリッド、rest-frame で静止時も向きが読める。dart を D pattern で world-frame view の Lorentz 収縮が自然に入る
-  - **分岐 C (Step 3 = 案 16)**: star aberration skybox、β 理念・モバイル UI 要素ゼロ原則と両立、教材価値最大
+  - **分岐 C (Step 3 = 案 16)**: star aberration skybox (timelike 星、案 17 時空星屑とは独立の天体背景)、β 理念・モバイル UI 要素ゼロ原則と両立、教材価値最大
   - **上位メタ TODO**: default frame 選択 (rest-frame 固定 vs world-frame 固定 vs 段階学習型)、Step 2/3 実装後に体感で再評価推奨
   - 詳細は EXPLORING.md §「進行方向・向きの認知支援」§育成パス案
 - **チュートリアル（必須）** — 初見ユーザーが操作・ゲーム概念を理解できない
