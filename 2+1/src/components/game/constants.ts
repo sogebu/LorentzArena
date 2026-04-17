@@ -166,6 +166,16 @@ export const STARDUST_COLOR = "hsl(42, 55%, 80%)";
 // Base opacity。per-vertex time fade shader で乗算される (境界で ~0 まで減衰)。
 export const STARDUST_OPACITY = 0.5;
 
+// --- Stardust light-cone flash (観測者光円錐通過時のきらめき、2026-04-17 夜) ---
+// spark が観測者の光円錐面 (dt = ±ρ) に近いと Gaussian kernel で alpha をブースト。
+// 未来側は「まだ届いていない event」の情報量が相対的に少ないため控えめ。
+// flash 幅 σ (coord time 単位)。σ が小さいほど瞬間的 (パチッと)、大きいと緩やか。
+export const STARDUST_FLASH_SIGMA = 0.1;
+// 過去光円錐 flash 強さ (alpha 乗算係数、peak 時 `1 + BOOST` 倍)。0 で無効。
+export const STARDUST_FLASH_PAST_BOOST = 2.0;
+// 未来光円錐 flash 強さ。過去より控えめ。
+export const STARDUST_FLASH_FUTURE_BOOST = 1.0;
+
 // --- Worldline / laser opacity ---
 export const PLAYER_WORLDLINE_OPACITY = 0.65;
 export const LIGHTHOUSE_WORLDLINE_OPACITY = 0.4;

@@ -10,8 +10,8 @@ import {
   STARDUST_TIME_HALF_RANGE,
 } from "./constants";
 import { useDisplayFrame } from "./DisplayFrameContext";
+import { applyStardustShader } from "./stardustShader";
 import { getThreeColor } from "./threeCache";
-import { applyTimeFadeShader } from "./timeFadeShader";
 
 // Stardust (時空星屑、案 17、2026-04-17):
 //
@@ -118,7 +118,7 @@ export const StardustRenderer = () => {
         transparent
         opacity={STARDUST_OPACITY}
         depthWrite={false}
-        onBeforeCompile={applyTimeFadeShader}
+        onBeforeCompile={applyStardustShader}
       />
     </points>
   );
