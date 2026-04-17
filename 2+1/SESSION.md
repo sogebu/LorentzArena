@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**`befdcc5` デプロイ済み** (build `2026/04/17 10:05:08 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`1430eba` デプロイ済み** (build `2026/04/17 12:41:57 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
 完了済みリファクタ (判断根拠は DESIGN.md):
 - **Authority 解体 Stage A〜H** (2026-04-14〜15): target-authoritative 化 + event-sourced。plan: `plans/2026-04-14-authority-dissolution.md`
@@ -10,6 +10,7 @@
 - **Spawn 座標時刻の統一** (2026-04-16): `computeSpawnCoordTime(players) = max(p.phaseSpace.pos.t)` で初回/リスポーン/新 joiner 共通化。beacon holder の t 依存を廃止し、新 joiner 過去スポーンバグを解消。詳細は DESIGN.md § スポーン座標時刻
 - **Thrust energy mechanic** (2026-04-16): thrust も fire と同じ energy pool を消費 (フル tank 9 秒)。両方同時で ~2.25 秒で枯渇。枯渇時は FUEL ラベル点滅で明示。詳細は DESIGN.md § thrust energy
 - **アリーナ円柱** (2026-04-17): 視覚ガイドとしての world-frame 静止円柱 (半径 20, 中心 (5,5))。本体は D pattern、各プレイヤーは自分の過去光円錐との交線を独立に描画。物理判定なし。詳細は DESIGN.md §描画「アリーナ円柱」
+- **ghost 物理統合 + respawn 時刻対称化** (2026-04-17): 死亡中も生存時と同じ物理 (processPlayerPhysics 流用) で自機 ghost を動的更新、光行差などの相対論的視点移動が連続する。`DeathEvent.ghostPhaseSpace` を追加、`processGhostPosition` (等速直線) を削除。`computeSpawnCoordTime(players, excludeId?)` を拡張して自機を respawn 計算から除外、ghost thrust 自由化でも自機 respawn 時刻が暴走しない。死亡プレイヤーは LH 含め「死亡時刻を持ち時刻とする placeholder」で対称扱い (原則 2 条)。詳細は DESIGN.md §物理「スポーン座標時刻」
 
 ## 直近の作業
 
