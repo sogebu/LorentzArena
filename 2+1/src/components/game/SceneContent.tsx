@@ -17,6 +17,8 @@ import { isLighthouse } from "./lighthouse";
 import { SpawnRenderer } from "./SpawnRenderer";
 import { WorldLineRenderer } from "./WorldLineRenderer";
 import {
+  AIM_ARROW_BASE_OPACITY,
+  AIM_ARROW_OPACITY_STEP,
   CAMERA_DISTANCE_ORTHOGRAPHIC,
   CAMERA_DISTANCE_PERSPECTIVE,
   EXHAUST_ATTACK_TIME,
@@ -28,11 +30,21 @@ import {
   EXHAUST_OUTER_COLOR,
   EXHAUST_RELEASE_TIME,
   EXHAUST_VISIBILITY_THRESHOLD,
+  FUTURE_CONE_LASER_TRIANGLE_OPACITY,
+  FUTURE_CONE_WORLDLINE_RING_OPACITY,
+  FUTURE_CONE_WORLDLINE_SPHERE_OPACITY,
+  KILL_NOTIFICATION_RING_OPACITY,
+  KILL_NOTIFICATION_SPHERE_OPACITY,
   LIGHT_CONE_HEIGHT,
   LIGHT_CONE_SURFACE_OPACITY,
   LIGHT_CONE_WIRE_OPACITY,
   LIGHTHOUSE_WORLDLINE_OPACITY,
+  PAST_CONE_WORLDLINE_RING_OPACITY,
   PLAYER_ACCELERATION,
+  PLAYER_MARKER_GLOW_OPACITY_OTHER,
+  PLAYER_MARKER_GLOW_OPACITY_SELF,
+  PLAYER_MARKER_MAIN_OPACITY_OTHER,
+  PLAYER_MARKER_MAIN_OPACITY_SELF,
   PLAYER_MARKER_SIZE_OTHER,
   PLAYER_MARKER_SIZE_SELF,
 } from "./constants";
@@ -463,7 +475,7 @@ export const SceneContent = ({
                 roughness={0.3}
                 metalness={0.1}
                 transparent
-                opacity={(isMe ? 1.0 : 0.5) * pulse}
+                opacity={(isMe ? PLAYER_MARKER_MAIN_OPACITY_SELF : PLAYER_MARKER_MAIN_OPACITY_OTHER) * pulse}
               />
             </mesh>
             <mesh
@@ -473,7 +485,7 @@ export const SceneContent = ({
               <meshBasicMaterial
                 color={color}
                 transparent
-                opacity={(isMe ? 0.32 : 0.1) * pulse}
+                opacity={(isMe ? PLAYER_MARKER_GLOW_OPACITY_SELF : PLAYER_MARKER_GLOW_OPACITY_OTHER) * pulse}
               />
             </mesh>
           </group>
@@ -588,7 +600,7 @@ export const SceneContent = ({
               matrix={buildMeshMatrix(pos, displayMatrix)}
               matrixAutoUpdate={false}
             >
-              <meshBasicMaterial color={c} transparent opacity={0.9} side={THREE.DoubleSide} />
+              <meshBasicMaterial color={c} transparent opacity={PAST_CONE_WORLDLINE_RING_OPACITY} side={THREE.DoubleSide} />
             </mesh>
           </group>
         );
@@ -628,7 +640,7 @@ export const SceneContent = ({
             matrixAutoUpdate={false}
           >
             <mesh geometry={sharedGeometries.laserIntersectionTriangle} scale={[1.2, 1.2, 1.2]}>
-              <meshBasicMaterial color={c} transparent opacity={0.1} side={THREE.DoubleSide} depthWrite={false} />
+              <meshBasicMaterial color={c} transparent opacity={FUTURE_CONE_LASER_TRIANGLE_OPACITY} side={THREE.DoubleSide} depthWrite={false} />
             </mesh>
           </group>
         );
@@ -645,14 +657,14 @@ export const SceneContent = ({
               position={[dp.x, dp.y, dp.t]}
               scale={[0.6, 0.6, 0.6]}
             >
-              <meshBasicMaterial color={c} transparent opacity={0.15} depthWrite={false} />
+              <meshBasicMaterial color={c} transparent opacity={FUTURE_CONE_WORLDLINE_SPHERE_OPACITY} depthWrite={false} />
             </mesh>
             <mesh
               geometry={sharedGeometries.intersectionRing}
               matrix={ringMatrix}
               matrixAutoUpdate={false}
             >
-              <meshBasicMaterial color={c} transparent opacity={0.12} depthWrite={false} />
+              <meshBasicMaterial color={c} transparent opacity={FUTURE_CONE_WORLDLINE_RING_OPACITY} depthWrite={false} />
             </mesh>
           </group>
         );
@@ -691,7 +703,7 @@ export const SceneContent = ({
         const visibleCount = Math.min(3, Math.floor(elapsed / 50) + 1);
         return [1, 2, 3].map((i) => {
           if (i > visibleCount) return null;
-          const opacity = 0.9 - (i - 1) * 0.15;
+          const opacity = AIM_ARROW_BASE_OPACITY - (i - 1) * AIM_ARROW_OPACITY_STEP;
           return (
             <mesh
               key={`aim-arrow-${i}`}
@@ -732,14 +744,14 @@ export const SceneContent = ({
         return (
           <group>
             <mesh geometry={sharedGeometries.killSphere} position={[dp.x, dp.y, dp.t]}>
-              <meshBasicMaterial color={kc} transparent opacity={0.6} />
+              <meshBasicMaterial color={kc} transparent opacity={KILL_NOTIFICATION_SPHERE_OPACITY} />
             </mesh>
             <mesh
               geometry={sharedGeometries.killRing}
               matrix={buildMeshMatrix(wp, displayMatrix)}
               matrixAutoUpdate={false}
             >
-              <meshBasicMaterial color={kc} transparent opacity={0.8} side={THREE.DoubleSide} />
+              <meshBasicMaterial color={kc} transparent opacity={KILL_NOTIFICATION_RING_OPACITY} side={THREE.DoubleSide} />
             </mesh>
           </group>
         );

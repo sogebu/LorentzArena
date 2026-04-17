@@ -113,8 +113,8 @@ export const MAX_RESPAWN_LOG = 500;
 
 // --- Light cone rendering ---
 export const LIGHT_CONE_HEIGHT = 20;
-export const LIGHT_CONE_SURFACE_OPACITY = 0.08;
-export const LIGHT_CONE_WIRE_OPACITY = 0.04;
+export const LIGHT_CONE_SURFACE_OPACITY = 0.1;
+export const LIGHT_CONE_WIRE_OPACITY = 0.05;
 
 // --- Time-distance opacity fade (Lorentzian, 2026-04-17) ---
 // fade = r² / (r² + Δt²)、r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT。
@@ -130,9 +130,40 @@ export const PLAYER_WORLDLINE_OPACITY = 0.65;
 export const LIGHTHOUSE_WORLDLINE_OPACITY = 0.4;
 export const LASER_WORLDLINE_OPACITY = 0.3;
 
+// --- Debris opacity ---
+// InstancedMesh 全 instance 共通 (per-vertex 時間 fade が shader で乗算される)。
+export const DEBRIS_WORLDLINE_OPACITY = 0.1;
+// 過去光円錐との交差時に出現する球マーカーの透明度 (C pattern、fade 非適用)。
+export const DEBRIS_MARKER_OPACITY = 0.7;
+
 // --- Player marker sizes ---
 export const PLAYER_MARKER_SIZE_SELF = 0.42;
 export const PLAYER_MARKER_SIZE_OTHER = 0.2;
+
+// --- Player marker opacity (C pattern、時間 fade 非対象、pulse で無敵点滅) ---
+export const PLAYER_MARKER_MAIN_OPACITY_SELF = 1.0;
+export const PLAYER_MARKER_MAIN_OPACITY_OTHER = 0.5;
+// 外層 1.8x scale の halo (glow) 部分。
+export const PLAYER_MARKER_GLOW_OPACITY_SELF = 0.32;
+export const PLAYER_MARKER_GLOW_OPACITY_OTHER = 0.1;
+
+// --- Intersection marker opacity ---
+// 世界線 × 自機過去光円錐 ring (sphere + core は emissive、opacity 不要)。
+export const PAST_CONE_WORLDLINE_RING_OPACITY = 0.9;
+// 世界線 × 自機未来光円錐 sphere + ring (過去より控えめ、まだ届いていない event)。
+export const FUTURE_CONE_WORLDLINE_SPHERE_OPACITY = 0.15;
+export const FUTURE_CONE_WORLDLINE_RING_OPACITY = 0.12;
+// レーザー × 自機未来光円錐 接平面三角形 (過去側の gnomon は solid=1.0)。
+export const FUTURE_CONE_LASER_TRIANGLE_OPACITY = 0.2;
+
+// --- Aim arrow opacity (射撃中 1..3 本順次表示) ---
+// 1 本目の opacity。i 本目 (1-indexed) は `BASE - (i-1) × STEP` で計算。
+export const AIM_ARROW_BASE_OPACITY = 0.9;
+export const AIM_ARROW_OPACITY_STEP = 0.15;
+
+// --- Kill notification opacity (因果律遅延で発火する kill event の 3D マーカー) ---
+export const KILL_NOTIFICATION_SPHERE_OPACITY = 0.6;
+export const KILL_NOTIFICATION_RING_OPACITY = 0.8;
 
 // --- Arena (world-frame static cylinder, visual guide only) ---
 // スポーン中心 (= [0, SPAWN_RANGE]² 一様分布の中心) に配置。
@@ -146,9 +177,9 @@ export const ARENA_RADIAL_SEGMENTS = 128;
 // 暫定色 (シアン, 仮想空間境界のメタファー)。パステル化時に再検討。
 // プレイヤー色 (HSL 黄金角分散) と Lighthouse (hsl(220,70%,75%)) の色相帯を避ける
 export const ARENA_COLOR = "hsl(180, 40%, 70%)";
-export const ARENA_SURFACE_OPACITY = 0.08;
+export const ARENA_SURFACE_OPACITY = 0.1;
 // 時間方向に伸びる垂直線 ARENA_RADIAL_SEGMENTS 本の opacity (対角線のない純粋な縦線)
-export const ARENA_VERTICAL_LINE_OPACITY = 0.04;
+export const ARENA_VERTICAL_LINE_OPACITY = 0.05;
 // 過去光円錐 × 円柱交線 LineLoop の透明度。サンプル数は surface と共有するため
 // `ARENA_RADIAL_SEGMENTS` と同じ (shared position attribute で surface/ 交線 の頂点ズレ回避)。
 export const ARENA_PAST_CONE_OPACITY = 1.0;

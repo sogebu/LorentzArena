@@ -862,15 +862,15 @@ PeerProvider が append-only `joinRegistryRef` を管理。peerList 受信時に
 
 | 定数 | 値 | 旧リテラル箇所数 |
 |---|---|---|
-| `LIGHT_CONE_SURFACE_OPACITY` | 0.08 | 2 (過去/未来サーフェス) |
-| `LIGHT_CONE_WIRE_OPACITY` | 0.04 | 2 (過去/未来ワイヤー) |
+| `LIGHT_CONE_SURFACE_OPACITY` | 0.1 | 2 (過去/未来サーフェス) |
+| `LIGHT_CONE_WIRE_OPACITY` | 0.05 | 2 (過去/未来ワイヤー) |
 | `PLAYER_WORLDLINE_OPACITY` | 0.65 | 1 (WorldLineRenderer default) |
 | `LIGHTHOUSE_WORLDLINE_OPACITY` | 0.4 | 1 (SceneContent LH override) |
 | `LASER_WORLDLINE_OPACITY` | 0.3 | 1 (LaserBatchRenderer) |
 
 **基準 (§7.4 運用)**: 「代替検討 / tradeoff 議論のある判断」のみ定数化。光円錐 surface/wire は 4 箇所重複 + 意味のペア、worldline 3 定数は「人間 vs 灯台」「実体 vs 仮想」の視覚階層を名前で expressive にする。対して単発の局所値 (未来交差 0.15 / 0.12、キル通知 0.6 / 0.8、プレイヤー自他 1.0 / 0.5 等) は in-place のまま: 三項内の対比が読めるので定数名にするより直接数値の方が分かりやすい場合がある。
 
-**トレードオフ**: surface と wire を別定数にしたのは、将来「ワイヤーだけ濃くしたい / 薄くしたい」の可能性のため (実際 0.12→0.08→0.04 と独立に調整)。同値でも分離維持。
+**トレードオフ**: surface と wire を別定数にしたのは、将来「ワイヤーだけ濃くしたい / 薄くしたい」の可能性のため (実際 0.12→0.08→0.04→0.05 と独立に調整、surface は 0.08→0.1)。同値でも分離維持。
 
 ### Spawn エフェクト: pillar は過去光円錐 anchor、ring は世界系同時面
 
@@ -976,7 +976,7 @@ D pattern は維持: 全 geometry は world 座標で vertex を持ち、`matrix
 
 **anchor 思想の対比**: spawn pillar は「点 + null cone anchor」、アリーナは「時間方向に延びた空間構造 + observer.t 中心 window + 交線ハイライト」。M13 (時空 anchor は表現したいもので選ぶ) の 2 つ目の適用例。時間的に拡張された幾何は「固定 anchor 1 点」では足らず、「window + 今の周縁」の 2 層が要る。
 
-**透明度と両面可視**: surface 0.08 (= 光円錐 surface と同値) / 垂直線 0.04 (= 光円錐 wireframe と同値) / PastConeLoop 1.0 / FutureConeLoop 0.3 (過去光円錐より控えめ、まだ起きていない event の情報量差を視覚反映)。surface は `THREE.DoubleSide` (光円錐と同じ扱い、カメラが円柱の内側にあっても裏面から側面が見える)。
+**透明度と両面可視**: surface 0.1 (= 光円錐 surface と同値) / 垂直線 0.05 (= 光円錐 wireframe と同値) / PastConeLoop 1.0 / FutureConeLoop 0.3 (過去光円錐より控えめ、まだ起きていない event の情報量差を視覚反映)。surface は `THREE.DoubleSide` (光円錐と同じ扱い、カメラが円柱の内側にあっても裏面から側面が見える)。
 
 **surface 削除案を検討して却下 (历史)**: 初期の overdraw FPS 問題の調査で、surface を削除して垂直線 + 交線のみにする案も試したが、線だけでは円柱の「存在感」が失われて視認性が大きく低下。**その後に観測者因果コーンで切り出す方式へ移行したことで overdraw 問題自体が根本解決**し、surface も維持できる構成に到達。
 

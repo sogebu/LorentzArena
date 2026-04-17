@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { LIGHT_CONE_HEIGHT } from "./constants";
+import { DEBRIS_MARKER_OPACITY, LIGHT_CONE_HEIGHT } from "./constants";
 
 // Color キャッシュ
 const colorCache = new Map<string, THREE.Color>();
@@ -66,7 +66,7 @@ export const getDebrisMaterial = (
     mat = new THREE.MeshBasicMaterial({
       color,
       transparent: true,
-      opacity: 0.7,
+      opacity: DEBRIS_MARKER_OPACITY,
     });
     debrisMaterialCache.set(key, mat);
   }

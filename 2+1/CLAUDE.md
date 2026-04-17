@@ -282,13 +282,13 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | ~~`ARENA_HEIGHT`~~ | (廃止) | 旧実装は observer.t 中心の固定高さで描画していたが、現実装は各 θ の上下端を観測者の過去/未来光円錐交点 (`observer.t ± ρ(θ)`) に動的設定するため固定 height 定数は不要 |
 | `ARENA_RADIAL_SEGMENTS` | 128 | 円柱側面の周方向分割数（surface / 垂直線 / 過去光円錐交線 / 未来光円錐交線で共有、光行差表現のため細かく） |
 | `ARENA_COLOR` | `hsl(180,40%,70%)` | アリーナ円柱の色 (暫定シアン、surface / 垂直線 / 交線同色)。プレイヤー色や LH 色と干渉しない色相帯。パステル化時に再検討 |
-| `ARENA_SURFACE_OPACITY` | 0.08 | 円柱側面 surface の透明度 (= 光円錐 surface と同値) |
-| `ARENA_VERTICAL_LINE_OPACITY` | 0.04 | 時間方向に伸びる垂直線 (ARENA_RADIAL_SEGMENTS 本) の透明度 (= 光円錐 wireframe と同値)。CylinderGeometry + wireframe だと三角形の対角線も出てジグザグになるため、LineSegments で純粋な縦線のみ描画 |
+| `ARENA_SURFACE_OPACITY` | 0.1 | 円柱側面 surface の透明度 (= 光円錐 surface と同値) |
+| `ARENA_VERTICAL_LINE_OPACITY` | 0.05 | 時間方向に伸びる垂直線 (ARENA_RADIAL_SEGMENTS 本) の透明度 (= 光円錐 wireframe と同値)。CylinderGeometry + wireframe だと三角形の対角線も出てジグザグになるため、LineSegments で純粋な縦線のみ描画 |
 | `ARENA_PAST_CONE_OPACITY` | 1.0 | 過去光円錐交線 (下地平線) の透明度。「いま光が届いている周縁」を強調 |
 | `ARENA_FUTURE_CONE_OPACITY` | 0.3 | 未来光円錐交線 (上地平線) の透明度。過去より控えめ (まだ起きていない event の情報量差を視覚反映) |
 | `LIGHT_CONE_HEIGHT` | 20 | 描画上の円錐サイズ（c=1 で radius=height） |
-| `LIGHT_CONE_SURFACE_OPACITY` | 0.08 | 光円錐サーフェスの透明度 |
-| `LIGHT_CONE_WIRE_OPACITY` | 0.04 | 光円錐ワイヤーフレームの透明度 |
+| `LIGHT_CONE_SURFACE_OPACITY` | 0.1 | 光円錐サーフェスの透明度 |
+| `LIGHT_CONE_WIRE_OPACITY` | 0.05 | 光円錐ワイヤーフレームの透明度 |
 | `TIME_FADE_SCALE` | `= LIGHT_CONE_HEIGHT` = 20 | 時間的距離 opacity fade の Lorentzian scale。`fade = r²/(r² + Δt²)` の r。per-vertex shader (`timeFadeShader.ts`) で全 D pattern material に適用。LCH を変更すると自動追従 |
 | `PLAYER_WORLDLINE_OPACITY` | 0.65 | 人間プレイヤーの世界線チューブ透明度 |
 | `LIGHTHOUSE_WORLDLINE_OPACITY` | 0.4 | 灯台の世界線チューブ透明度 |

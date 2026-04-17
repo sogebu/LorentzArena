@@ -2,6 +2,7 @@ import type React from "react";
 import { useRef } from "react";
 import * as THREE from "three";
 import { createVector4, type Vector4 } from "../../physics";
+import { DEBRIS_WORLDLINE_OPACITY } from "./constants";
 import { pastLightConeIntersectionDebris } from "./debris";
 import { transformEventForDisplay } from "./displayTransform";
 import { useDisplayFrame } from "./DisplayFrameContext";
@@ -148,7 +149,7 @@ export const DebrisRenderer = ({
         <meshBasicMaterial
           ref={materialRef}
           transparent
-          opacity={0.10}
+          opacity={DEBRIS_WORLDLINE_OPACITY}
           depthWrite={false}
           onBeforeCompile={applyTimeFadeShader}
         />
