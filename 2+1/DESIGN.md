@@ -575,21 +575,43 @@ Lighthouse (静止 AI) が誰かの過去光円錐内に落ちたら、最も過
 
 安全弁: `maxHistorySize * 2` を超えたら因果的判定を無視して強制削除 (メモリ保護)。コストは O(P) per frame、P = 2-4。無視できる。
 
-### スポーン座標時刻: 全プレイヤー最大値 (maxT)
+### スポーン座標時刻: 自分以外の全プレイヤー最大値
 
-`computeSpawnCoordTime()` (`game/respawnTime.ts`): **全プレイヤー** (生存/死亡/LH 問わず) の `phaseSpace.pos.t` 最大値。初回スポーン・リスポーン・新 joiner スポーンの **3 経路すべてで共通**。
+`computeSpawnCoordTime(players, excludeId?)` (`game/respawnTime.ts`): **excludeId を除いた全プレイヤー** (生存/死亡/LH 問わず) の `phaseSpace.pos.t` 最大値。初回スポーン・リスポーン・新 joiner スポーンの **3 経路すべてで共通**。
 
-**なぜ「全」プレイヤーか**:
-- 生存者がいれば彼らの最先端に追随 (因果律の守護者に引っかからず即座に相互作用可能)
-- 人間が全員死んでいても **LH は常に alive** なので LH.t が拾われ、ゲームの「現在」が保たれる
-- 死亡中ゴーストの `.pos.t` も単調増加するが、LH.t に劣るので実質選ばれない。LH のない異常系でのみ選ばれ、そこは「最後に死んだイベント直後に復活」という自然な動作になる
-- peer ごとの `OFFSET` (= page-load 時刻) に依存しないため、**非 beacon holder の新 joiner でも正しい時刻**が取れる (旧 `Date.now()/1000 - OFFSET` フォールバックは新 joiner では OFFSET が join 時刻なのでほぼ 0 になり、ホストの現時刻より過去にスポーンする latent バグがあった)
+**2 つの原則**:
 
-**buildSnapshot との統一**: `snapshot.hostTime` も `computeSpawnCoordTime(players)` で算出。旧実装は `me?.phaseSpace.pos.t` (= beacon holder 本人の t) を使っていたため、beacon holder が γ で遅れている・ghosting 中等で他プレイヤーより過去の t を持っていると新 joiner が過去にスポーンしていた。
+1. **自機除外 (excludeId)**: 呼び出し元が自機 ID を渡すと除外される。自機が ghost 中の自己 respawn 計算で自分の ghost.pos.t を参照するのを防ぐ。ghost は thrust 自由 + energy 消費ありで生存時と同じ物理で進むが、自由に加速すると `pos.t` が γ に比例して先走る。自己参照しなければ他人の timeline で respawn 時刻が決まり、自機 ghost 挙動は自分の respawn に影響しない。初回スポーン・新 joiner 経路では自機がまだ `players` に未登録 (or 登録時のみ) なので `excludeId` を渡さなくても結果は変わらないが、意味論的統一のため呼び分けは呼び出し元の責務。
 
-**History**: ホスト時刻 → maxT (全) → (minT+maxT)/2 (`36abf67`) → maxT (生存のみ、`getRespawnCoordTime`) → **maxT (全、`computeSpawnCoordTime`)**。生存限定は一見安全だが、snapshot が別ルート (`me.t`) で過去時刻を入れていた不整合と、OFFSET フォールバックが非 host で壊れる問題があり、全プレイヤー対象に統一。
+2. **死亡プレイヤー (LH 含む) は死亡時刻を持ち時刻とする (純粋な placeholder)**: 他人間・LH 問わず死亡中の entity は tick されず、`phaseSpace.pos.t` は死亡時刻で固定された「placeholder」として `players` Map に残り、max 計算に参加する。これは各 peer 側で:
+   - **他人間 ghost**: 死亡中の phaseSpace は**ネットワーク送信されない**ため他 peer 側で自然に死亡時刻 fixed (ネットワーク同期の副作用として明示的ロジック不要で成立)
+   - **LH ghost**: `useGameLoop` の LH loop が `if (lh.isDead) continue;` で tick をスキップ、phaseSpace は死亡時刻のまま変化しない
+   
+   両者は**対称的に扱われる**。alive の entity (自機以外の他人間 + alive LH) が 1 人でもいれば彼らの進行中 `pos.t` が max に勝つため、死亡時刻の寄与は背景に沈む。全員死亡の稀なケースでは「最後に死んだ event の時刻」が respawn 時刻になる (この瞬間 respawn する人間は死亡時刻相当に戻る形で spawn、wall clock での 10 秒 RESPAWN_DELAY は回っているが coord time は巻き戻る)。
 
-`createRespawnPosition(players)`: 座標時間 (`computeSpawnCoordTime`) + ランダム空間位置 (`[0, SPAWN_RANGE]²`) の生成もここに抽出。
+**将来耐性**: 原則 2 の「他人間 ghost 死亡時刻固定」は「死亡中 phaseSpace 非送信」というネットワーク仕様に依存している。将来「死亡中も phaseSpace を送信する」設計変更が入ると他人間 ghost も進行して max 計算に寄与してしまうため、その時点で `computeSpawnCoordTime` に明示的な `isDead` フィルタを加える必要がある (LH は `useGameLoop` 側で tick skip が担保するので影響なし、ただし LH の phaseSpace を誰かが死亡中に触る変更を入れないことが前提)。respawnTime.ts 冒頭コメントで依存を明示。
+
+**fallback 0 は形式保険のみ**: `players` map が完全に空 (ゲーム初期化直前の一瞬) のときだけ `maxT = -∞` で 0 fallback。LH は常に `players` に登録されているため、通常プレイ中は必ず maxT 有限。
+
+**LH が alive の場合の役割**: alive な LH は通常プレイ中は **常に `pos.t` を進行している構成員**として max 計算に参加し、solo プレイ (他人間 0) でも LH.pos.t が maxT を確保する。wall clock・OFFSET・Date.now() 等の外部時刻への退避は respawn 計算経路から一切消えて、peer 合意だけで閉じた clean な coord-time モデルを構成する。死亡中だけ placeholder になる点が人間と対称。
+
+**buildSnapshot との統一**: `snapshot.hostTime` も `computeSpawnCoordTime(players)` で算出 (新 joiner 自身はまだ `players` に未登録なので excludeId なしでも自然に除外された状態)。旧実装は `me?.phaseSpace.pos.t` (= beacon holder 本人の t) を使っていたため、beacon holder が γ で遅れている・ghosting 中等で他プレイヤーより過去の t を持っていると新 joiner が過去にスポーンしていた。
+
+**History**:
+- ホスト時刻
+- → maxT (全)
+- → (minT+maxT)/2 (`36abf67`)
+- → maxT (生存のみ、`getRespawnCoordTime`)
+- → maxT (全プレイヤー、`computeSpawnCoordTime`) (2026-04-16)
+- → **maxT (自機除外、死亡者は LH 含め placeholder)** (2026-04-17、ghost thrust 自由化に向けた調整。自機 ghost の自己参照を排除、死亡した他人間と LH は死亡時刻で固定された placeholder として対称扱い)
+
+**なぜ「自機のみ除外 + LH も死亡時は placeholder」の対称設計か**:
+- 自機除外なし → ghost thrust 自由で自機 respawn が遠未来へ暴走
+- LH 幽霊化 (死亡中も tick して pos.t 進行) → 非対称 (LH だけ特別)、tick コスト、設計が肥大
+- LH 除外 → solo 時に他 alive 0 人で fallback 必要、wall clock 依存等で複雑化
+- → **自機除外 + 死亡者 (人間・LH 問わず) は死亡時刻固定** が、対称性・実装・エッジケースの全方面で最もシンプル。全員死亡の稀なケースだけ「最後に死んだ event 時刻に respawn」になるが、wall clock 10 秒 RESPAWN_DELAY は回っているので実プレイ的には視点巻き戻りを伴うものの許容範囲
+
+`createRespawnPosition(players, excludeId?)`: 座標時間 (`computeSpawnCoordTime`) + ランダム空間位置 (`[0, SPAWN_RANGE]²`) の生成もここに抽出。
 
 ### Thrust energy: laser と同一プール
 

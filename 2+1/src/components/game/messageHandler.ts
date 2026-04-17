@@ -81,7 +81,7 @@ export const createMessageHandler =
       // Stale 復帰検知: stale 凍結されたプレイヤーから phaseSpace が来た
       if (staleFrozenRef.current.has(playerId)) {
         if (!peerManager.getIsBeaconHolder()) return; // クライアントはホストの respawn を待つ
-        const respawnPos = createRespawnPosition(store.players);
+        const respawnPos = createRespawnPosition(store.players, playerId);
         staleFrozenRef.current.delete(playerId);
         lastUpdateTimeRef.current.set(playerId, Date.now());
         peerManager.send({

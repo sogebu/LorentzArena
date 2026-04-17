@@ -191,7 +191,13 @@ export const useGameStore = create<GameState>()((set, get) => ({
       killLog: [...state.killLog, killLogEntry],
       myDeathEvent:
         victimId === myId
-          ? { pos: victim.phaseSpace.pos, u: getVelocity4(victim.phaseSpace.u) }
+          ? {
+              pos: victim.phaseSpace.pos,
+              u: getVelocity4(victim.phaseSpace.u),
+              // ghost の動的 phaseSpace 初期値: 死亡時 phaseSpace を copy。
+              // 以後 useGameLoop の死亡分岐で生存時物理を流用して更新される。
+              ghostPhaseSpace: victim.phaseSpace,
+            }
           : state.myDeathEvent,
     });
   },

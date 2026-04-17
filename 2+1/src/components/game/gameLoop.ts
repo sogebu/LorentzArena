@@ -153,6 +153,9 @@ export function processLighthouseAI(
   lastFireMap: Map<string, number>,
   spawnTimeMap: Map<string, number>,
 ): LighthouseResult {
+  // 死亡中 LH は呼び出し側 (useGameLoop) で既に continue されているため、ここには
+  // alive な LH しか来ない。死亡中 LH の phaseSpace.pos.t は死亡時刻で固定されており、
+  // 他の死亡プレイヤーと対称的に扱われる (DESIGN.md §物理「スポーン座標時刻」原則 2)。
   let lhNewPs = evolvePhaseSpace(lh.phaseSpace, vector3Zero(), dTau);
 
   // 因果律ジャンプ: 灯台が誰かの過去光円錐内に落ちたら、
@@ -306,20 +309,6 @@ export function processHitDetection(
   }
 
   return { kills, hitLaserIds };
-}
-
-// --- Ghost movement ---
-
-export function processGhostPosition(
-  deathEvent: { pos: Vector4; u: Vector4 },
-  ghostTau: number,
-): Vector4 {
-  return createVector4(
-    deathEvent.pos.t + deathEvent.u.t * ghostTau,
-    deathEvent.pos.x + deathEvent.u.x * ghostTau,
-    deathEvent.pos.y + deathEvent.u.y * ghostTau,
-    0,
-  );
 }
 
 // --- Causality Guard ---

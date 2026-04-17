@@ -20,8 +20,15 @@ export type FrozenWorldLine = {
 
 // 死亡イベント（ゴーストカメラの起点）
 export type DeathEvent = {
-  readonly pos: Vector4; // 死亡位置（4元位置）
-  readonly u: Vector4; // 死亡時の4元速度（ローレンツブースト計算用）
+  readonly pos: Vector4; // 死亡位置（4元位置、fixed、UI key 等の参照用）
+  readonly u: Vector4; // 死亡時の4元速度（fixed、ローレンツブースト初期値）
+  /**
+   * ghost の動的 phaseSpace。自機入力 (thrust/heading/friction/energy) で
+   * 生存時と同じ物理 (`processPlayerPhysics`) を流用して更新される。
+   * ローカルのみ更新・ネットワーク非送信。他 peer からは自機は死亡時刻で
+   * 固定に見える (DESIGN.md §スポーン座標時刻 原則 3)。
+   */
+  readonly ghostPhaseSpace: PhaseSpace;
 };
 
 // スポーンイベント（過去光円錐到達まで UI 遅延）

@@ -97,7 +97,7 @@ export function useBeaconMigration({
       const timerId = setTimeout(() => {
         respawnTimeoutsRef.current.delete(timerId);
         const currentStore = useGameStore.getState();
-        const respawnPos = createRespawnPosition(currentStore.players);
+        const respawnPos = createRespawnPosition(currentStore.players, playerId);
         peerManager.send({
           type: "respawn" as const,
           playerId,

@@ -122,7 +122,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `game/laserPhysics.ts` | レーザー当たり判定 + 光円錐交差 |
 | `game/debris.ts` | デブリ生成 + 光円錐交差 |
 | `game/killRespawn.ts` | `applyKill`/`applyRespawn` 純粋関数（全 peer 共通、players Map を返す） |
-| `game/respawnTime.ts` | `computeSpawnCoordTime`（全プレイヤー最大 t、初回/リスポーン/新 joiner 共通）、`createRespawnPosition`（座標時間 + ランダム空間位置） |
+| `game/respawnTime.ts` | `computeSpawnCoordTime(players, excludeId?)`（excludeId 除外した全プレイヤー最大 t。自機の self-respawn では excludeId=myId を渡して ghost thrust 自由化に伴う自己参照暴走を避ける。LH は含む。初回/リスポーン/新 joiner 共通。詳細: DESIGN.md §物理「スポーン座標時刻」）、`createRespawnPosition`（座標時間 + ランダム空間位置） |
 | `game/lighthouse.ts` | Lighthouse AI（`createLighthouse` ファクトリ、`isLighthouse` 判定、`computeInterceptDirection` 相対論的偏差射撃） |
 | `game/gameLoop.ts` | ゲームループ内の純関数群（カメラ制御、プレイヤー物理、Lighthouse AI、当たり判定、ゴースト移動、因果律ガード、レーザー発射） |
 | `game/causalEvents.ts` | 因果律遅延イベント処理（キル通知・スポーンエフェクトの過去光円錐チェック） |

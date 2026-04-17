@@ -1,5 +1,5 @@
 import { useEffect, useRef, type MutableRefObject, type RefObject } from "react";
-import { createPhaseSpace, type Vector4 } from "../physics";
+import type { createPhaseSpace, Vector4 } from "../physics";
 import {
   DEFAULT_CAMERA_PITCH,
   ENERGY_MAX,
@@ -19,7 +19,6 @@ import {
   processPlayerPhysics,
   processLighthouseAI,
   processHitDetection,
-  processGhostPosition,
   checkCausalFreeze,
   processLaserFiring,
 } from "../components/game/gameLoop";
@@ -27,7 +26,7 @@ import {
   firePendingKillEvents,
   firePendingSpawnEvents,
 } from "../components/game/causalEvents";
-import type { Laser } from "../components/game/types";
+import type { Laser, RelativisticPlayer } from "../components/game/types";
 import type { useStaleDetection } from "./useStaleDetection";
 import type { useTouchInput } from "../components/game/touchInput";
 import {
@@ -104,9 +103,8 @@ export function useGameLoop({
   const lastLaserTimeRef = useRef<number>(0);
   const fpsRef = useRef({ frameCount: 0, lastTime: performance.now() });
   const energyRef = useRef(ENERGY_MAX);
-  const ghostTauRef = useRef<number>(0);
 
-  // Track myDeathEvent transitions (for ghostTau + camera/energy reset)
+  // Track myDeathEvent transitions (for camera/energy reset on respawn)
   const prevMyDeathEventRef = useRef<unknown>(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: see stability analysis above — all other deps are refs or stable callbacks
@@ -142,11 +140,9 @@ export function useGameLoop({
         cameraYawRef.current = 0;
         cameraPitchRef.current = DEFAULT_CAMERA_PITCH;
         energyRef.current = ENERGY_MAX;
-        ghostTauRef.current = 0;
-      } else if (prevMyDeathEventRef.current === null && currentMyDeathEvent !== null) {
-        // null → non-null: self-death just happened → reset ghost
-        ghostTauRef.current = 0;
       }
+      // null → non-null: self-death。ghost phaseSpace は handleKill 内で
+      // 死亡時 phaseSpace から初期化されているため、ここでの特別リセットは不要。
       prevMyDeathEventRef.current = currentMyDeathEvent;
 
       // --- Cleanup ---
@@ -284,21 +280,44 @@ export function useGameLoop({
         const freshDead = freshMe?.isDead ?? true;
 
         if (freshDead) {
-          ghostTauRef.current += dTau;
+          // ghost 中: 生存時物理 (processPlayerPhysics) を流用して ghost phaseSpace
+          // を動的更新する。thrust/heading/friction/energy はすべて生存時と同一挙動。
+          // ローカルのみ更新・ネットワーク非送信、worldLine 更新もしない。
+          // (DESIGN.md §スポーン座標時刻 原則 3 および §物理 ghost 物理統合)
           const de = fresh.myDeathEvent;
-          if (de) {
-            const ghostPos = processGhostPosition(de, ghostTauRef.current);
+          if (de && freshMe) {
+            const ghostMe: RelativisticPlayer = {
+              ...freshMe,
+              phaseSpace: de.ghostPhaseSpace,
+            };
+            const otherPositions: Vector4[] = [];
+            for (const [id, p] of fresh.players) {
+              if (id !== myId) otherPositions.push(p.phaseSpace.pos);
+            }
+            const physics = processPlayerPhysics(
+              ghostMe,
+              keysPressed.current,
+              touch,
+              cameraYawRef.current,
+              dTau,
+              otherPositions,
+              energyRef.current,
+            );
+            energyRef.current = Math.max(
+              0,
+              energyRef.current - physics.thrustEnergyConsumed,
+            );
+            thrustRequestedThisTick = physics.thrustRequested;
+
+            fresh.setMyDeathEvent({
+              ...de,
+              ghostPhaseSpace: physics.newPhaseSpace,
+            });
             fresh.setPlayers((prev) => {
               const me = prev.get(myId);
               if (!me || !me.isDead) return prev;
               const next = new Map(prev);
-              next.set(myId, {
-                ...me,
-                phaseSpace: createPhaseSpace(
-                  ghostPos,
-                  { x: de.u.x, y: de.u.y, z: de.u.z },
-                ),
-              });
+              next.set(myId, { ...me, phaseSpace: physics.newPhaseSpace });
               return next;
             });
           }
@@ -381,6 +400,8 @@ export function useGameLoop({
           if (lh.ownerId !== myId) continue;
           if (!isLighthouse(lhId)) continue; // metadata: この owner filter 下で AI を回すのは LH のみ
           if (lh.isDead) continue;
+          // 死亡中 LH は純粋な placeholder (他人間 ghost と対称的に死亡時刻で固定)。
+          // tick 不要、phaseSpace の pos.t は死亡時刻のまま。詳細: DESIGN.md §スポーン座標時刻。
 
           const result = processLighthouseAI(
             freshForLH.players,
@@ -476,7 +497,7 @@ export function useGameLoop({
             const timerId = setTimeout(() => {
               respawnTimeoutsRef.current.delete(timerId);
               const currentStore = useGameStore.getState();
-              const respawnPos = createRespawnPosition(currentStore.players);
+              const respawnPos = createRespawnPosition(currentStore.players, victimId);
               sendToNetwork({
                 type: "respawn" as const,
                 playerId: victimId,
