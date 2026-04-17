@@ -1,10 +1,5 @@
 import * as THREE from "three";
-import {
-  ARENA_HEIGHT,
-  ARENA_RADIAL_SEGMENTS,
-  ARENA_RADIUS,
-  LIGHT_CONE_HEIGHT,
-} from "./constants";
+import { LIGHT_CONE_HEIGHT } from "./constants";
 
 // Color キャッシュ
 const colorCache = new Map<string, THREE.Color>();
@@ -53,16 +48,8 @@ export const sharedGeometries = {
   })(),
   killSphere: new THREE.SphereGeometry(0.55, 16, 16),
   killRing: new THREE.RingGeometry(0.65, 0.8, 24),
-  // Arena cylinder (openEnded, side surface only). local axis = +Y (CylinderGeometry default);
-  // X 軸 π/2 rotation で +Z (= world t) に起こす (spawnPillar と同じ思想)。
-  arenaCylinder: new THREE.CylinderGeometry(
-    ARENA_RADIUS,
-    ARENA_RADIUS,
-    ARENA_HEIGHT,
-    ARENA_RADIAL_SEGMENTS,
-    1,
-    true,
-  ),
+  // Arena 用の固定 cylinder geometry は不要 (ArenaRenderer が observer 因果コーンで
+  // 動的に triangle strip を生成する)。
 };
 
 // デブリマーカー用 material キャッシュ（色ごとに1つ）

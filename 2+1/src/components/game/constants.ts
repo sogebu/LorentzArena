@@ -114,13 +114,8 @@ export const ARENA_CENTER_X = SPAWN_RANGE / 2;
 export const ARENA_CENTER_Y = SPAWN_RANGE / 2;
 // 半径: LASER_RANGE (=10) の 2 倍、光円錐 HEIGHT と同じスケール感。
 export const ARENA_RADIUS = 20;
-// 時間方向の描画レンジ (中心は観測者 t に合わせ、上下 ±HALF をカバー)。
-// world 静止の円柱 geometry を観測者時間中心で窓を切る形。LIGHT_CONE_HEIGHT と
-// 同じスケール (±HALF = ±LIGHT_CONE_HEIGHT) で future/past 両方を含む。
-// ±100 超の大きいレンジは観測者が円柱外に出たときの surface overdraw が画面を
-// 覆って fill-rate bound を招く (実測 FPS 10 まで低下、位置 (67, 52) で)。
-// 周期境界 (トーラス化、SESSION.md defer 中) で外に出なくなったら再検討可。
-export const ARENA_HEIGHT = LIGHT_CONE_HEIGHT * 2;
+// 円柱の時間方向レンジは観測者の因果コーン (過去・未来光円錐) で動的に切り出される
+// ため、固定の ARENA_HEIGHT 定数は不要 (ArenaRenderer で observer.t ± ρ(θ) を直接計算)。
 export const ARENA_RADIAL_SEGMENTS = 64;
 // 暫定色 (シアン, 仮想空間境界のメタファー)。パステル化時に再検討。
 // プレイヤー色 (HSL 黄金角分散) と Lighthouse (hsl(220,70%,75%)) の色相帯を避ける
@@ -131,3 +126,6 @@ export const ARENA_VERTICAL_LINE_OPACITY = 0.04;
 // 過去光円錐 × 円柱交線 LineLoop のサンプル数 + 透明度
 export const ARENA_PAST_CONE_SEGMENTS = 128;
 export const ARENA_PAST_CONE_OPACITY = 1.0;
+// 未来光円錐 × 円柱交線 (上端) の透明度。過去光円錐より控えめ (既に起きた event vs
+// まだ起きていない event の情報量差を視覚で反映)。
+export const ARENA_FUTURE_CONE_OPACITY = 0.3;
