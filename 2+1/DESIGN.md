@@ -1025,14 +1025,15 @@ v0 は自機のみで step 2-3 不要なので、rest frame 3-vector を **C pat
 **式 (Lorentzian / Cauchy 形、時間距離の 2 乗反比例)**:
 
 ```
-fade = r² / (r² + Δt²)、r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT = 20
+fade = r² / (r² + Δt²)、r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT / 2 = 10
 opacity = baseOpacity × fade
 ```
 
 - `Δt = 0` で fade = 1 (発散せず smooth)
-- `Δt = r` で fade = 0.5
-- `Δt = 2r` (= 2 × LCH) で fade = 0.2
-- `Δt = 3r` で fade = 0.1
+- `Δt = r` (= LCH/2 = 10) で fade = 0.5
+- `Δt = LCH` (= 20 = 2r) で fade = **0.2** ← 光円錐描画範囲の端でちょうど「ほぼ透明」
+- `Δt = 2×LCH` (= 40 = 4r) で fade = 0.06
+- `Δt = 3×LCH` (= 60 = 6r) で fade = 0.03
 - `Δt → ∞` で 漸近的に `r²/Δt²` (純粋な 1/Δt² 挙動)
 
 物理の逆 2 乗法則 (重力・光の強度) と同型。完全 0 にはならないが、`< 0.05` で実用上視認不能。
@@ -1058,7 +1059,9 @@ opacity = baseOpacity × fade
 
 **helper**: `game/timeFade.ts` に `computeTimeFade(deltaT: number): number` を集約。全 renderer で共有。将来 per-vertex 化時も同じ式を shader に移植すれば挙動一致。
 
-**定数**: `TIME_FADE_SCALE = 20` (= `LIGHT_CONE_HEIGHT`)。光円錐の描画スケールと揃えることで、「光円錐の 1 個分の時間距離で半減、2 個分で 1/5」という視覚的な数値直感を保つ。
+**定数**: `TIME_FADE_SCALE = LIGHT_CONE_HEIGHT / 2 = 10` (`constants.ts` で `LIGHT_CONE_HEIGHT` を参照して自動連動)。光円錐の描画スケール半分を基準に置くことで、**「光円錐範囲の端 (Δt = LCH) でちょうど fade ≈ 0.2 = ほぼ透明」** という視覚的意味論を達成 (光円錐の時間範囲内だけが濃く可視、それ以遠は消える)。LCH を将来変更した場合も TIME_FADE_SCALE が自動追従。
+
+**なぜ半分か (LCH = r でなく LCH/2 = r)**: 直観では `r = LCH` にして「LCH で fade = 0.5」とする手もあるが、それだと LCH を 2 倍した `2×LCH` で fade = 0.2 (まだ 20% 残存) と光円錐範囲外にまで event がうっすら残る。`r = LCH/2` にすれば `Δt = LCH` で既に 0.2、`Δt = 2×LCH` で 0.06 と光円錐範囲の端で実用上消え、視覚的な「光円錐窓」と「時間可視窓」が一致。
 
 **時空星屑 (案 17) との相乗効果 (案 17 実装時)**: star event を world frame で 4D 一様分布させたとき、観測者時刻から遠い spark も時間 fade で自動的に薄くなる → pop-in 抑止 + 観測者周辺の dynamic window が自然に生成される。
 

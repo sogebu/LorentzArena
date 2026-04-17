@@ -69,14 +69,6 @@ export const INVINCIBILITY_DURATION = 5000;
 export const PLAYER_ACCELERATION = 0.8; // c/s
 export const FRICTION_COEFFICIENT = 0.5; // 速度に比例する減速
 
-// --- Time-distance opacity fade (Lorentzian, 2026-04-17) ---
-// fade = r² / (r² + Δt²)、r = TIME_FADE_SCALE。LIGHT_CONE_HEIGHT と同値で
-// 2 × LCH で fade ≈ 0.2、3 × LCH で 0.1 と滑らかに減衰 (時間距離の 2 乗反比例、
-// 物理の逆 2 乗法則と同型)。観測者時刻から遠い凍結世界線・debris を徐々に
-// 透明化し、pop-in 抑止 + 時間的距離感の視覚 cue として機能。
-// 詳細: DESIGN.md §描画「時間的距離 opacity fade」
-export const TIME_FADE_SCALE = 20; // = LIGHT_CONE_HEIGHT
-
 // --- Exhaust (推進ジェット、視覚のみ) ---
 // 自機 rest frame での thrust 加速度方向の反対側に cone を描画。
 // v0 は自機のみ、他機対応は phaseSpace に α^μ を乗せたら同じ描画経路で拡張予定。
@@ -123,6 +115,16 @@ export const MAX_RESPAWN_LOG = 500;
 export const LIGHT_CONE_HEIGHT = 20;
 export const LIGHT_CONE_SURFACE_OPACITY = 0.08;
 export const LIGHT_CONE_WIRE_OPACITY = 0.04;
+
+// --- Time-distance opacity fade (Lorentzian, 2026-04-17) ---
+// fade = r² / (r² + Δt²)、r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT / 2。
+// Δt = r (= LCH/2) で fade = 0.5、Δt = LCH でちょうど 0.2、Δt = 2×LCH で 0.06。
+// 光円錐描画スケール LCH の半分を reference に置くことで、「光円錐範囲の端で
+// ほぼ透明」という視覚的意味論を達成 (時間距離の 2 乗反比例、物理の逆 2 乗
+// 法則と同型)。観測者時刻から遠い凍結世界線・debris を徐々に透明化し、
+// pop-in 抑止 + 時間的距離感の視覚 cue として機能。
+// 詳細: DESIGN.md §描画「時間的距離 opacity fade」
+export const TIME_FADE_SCALE = LIGHT_CONE_HEIGHT / 2;
 
 // --- Worldline / laser opacity ---
 export const PLAYER_WORLDLINE_OPACITY = 0.65;
