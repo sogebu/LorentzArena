@@ -13,6 +13,7 @@ import {
 	TIME_FADE_SCALE,
 } from "./constants";
 import { applyTimeFadeShader } from "./timeFadeShader";
+import { getThreeColor } from "./threeCache";
 
 const hashCell = (cx: number, cy: number, ct: number): number => {
 	const p1 = 73856093;
@@ -115,17 +116,13 @@ export const StardustRenderer = () => {
 	}, [observerPos]);
 
 	const pointsMaterial = useMemo(() => {
-		const mat = new THREE.PointsMaterial({
-			color: STARDUST_COLOR,
+		return new THREE.PointsMaterial({
+			color: getThreeColor(STARDUST_COLOR),
 			size: STARDUST_SIZE,
 			sizeAttenuation: true,
 			transparent: true,
 			opacity: 0.6,
 		});
-
-		// D パターン: per-vertex 時間 fade シェーダを適用
-		applyTimeFadeShader(mat, TIME_FADE_SCALE);
-		return mat;
 	}, []);
 
 	const points = useMemo(
