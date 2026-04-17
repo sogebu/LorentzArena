@@ -77,11 +77,12 @@
 
 ## 次にやること
 
-- **進行方向の可視化: Step 1 (exhaust v0) 済、次分岐未決** — 3 候補あり、詳細は EXPLORING.md §「進行方向・向きの認知支援」§育成パス案:
-  - **分岐 A (他機対応)**: phaseSpace に共変 α^μ を同梱、受信側は Λ(u_obs)^{-1} で観測者 rest frame に boost back (step 2-3 を実装し D pattern + 物理放出に昇格)。network protocol 変更コスト中
+- **[次セッション最優先] 進行方向の可視化 分岐 A: 他機の noise exhaust 対応** — phaseSpace に共変 α^μ を同梱 (発信者 owner が自機の `Λ(u_own)` で世界系へ boost)、受信側は観測者の `Λ(u_obs)^{-1}` で rest frame に戻して cone 方向決定。D pattern + Lorentz 収縮 + 光行差が自然に入る (物理モデル step 2 + step 3 を同時実装)。作業スコープ: phaseSpace message schema 拡張 + messageHandler validation + snapshot への同梱 + ExhaustCone を自機専用経路から他機対応経路に広げる。`SceneContent.tsx` の `ExhaustCone` は現在 `player={myPlayer}` 固定だが、`playerList.map` 内に組み込む形に書き換える (ただし球は C pattern、cone は step 2-3 完成で D pattern に昇格)
+- **進行方向の可視化: その他分岐 (今後検討)** — 分岐 A 完了後に着手:
   - **分岐 B (Step 2 = 案 14)**: sphere + heading-dart ハイブリッド、rest-frame で静止時も向きが読める。dart を D pattern で world-frame view の Lorentz 収縮が自然に入る
   - **分岐 C (Step 3 = 案 16)**: star aberration skybox、β 理念・モバイル UI 要素ゼロ原則と両立、教材価値最大
   - **上位メタ TODO**: default frame 選択 (rest-frame 固定 vs world-frame 固定 vs 段階学習型)、Step 2/3 実装後に体感で再評価推奨
+  - 詳細は EXPLORING.md §「進行方向・向きの認知支援」§育成パス案
 - **チュートリアル（必須）** — 初見ユーザーが操作・ゲーム概念を理解できない
 - 各プレイヤーに固有時刻表示
 - スマホ UI 残課題（レスポンシブ HUD、オンボーディング）
