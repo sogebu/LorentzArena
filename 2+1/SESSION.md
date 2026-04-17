@@ -14,6 +14,7 @@
 - **アリーナ円柱を観測者因果コーンで切り出し** (2026-04-17): 各 θ で上下端を `observer.t ± ρ(θ)` に動的設定、観測者の過去光円錐交点 (下地平線) と未来光円錐交点 (上地平線) で clipped。観測者が中心なら均一な円、離れると双円錐歪みが現れる。旧 ARENA_HEIGHT 設計で発生していた「観測者が円柱外から眺めた時の overdraw FPS 低下」を自動解消。FutureConeLoop 新設 (ARENA_FUTURE_CONE_OPACITY=0.3、過去より控えめ)。詳細は DESIGN.md §描画「アリーナ円柱」
 - **光円錐交差計算の二分探索化** (2026-04-17): `pastLightConeIntersectionWorldLine` / `futureLightConeIntersectionWorldLine` を O(N) → O(log N + K=16)。`findLaserHitPosition` は laser 時刻範囲で絞り込み。Vitest 導入 (`pnpm test`)、linear scan reference 実装 (`*Linear`) と binary 版の regression test 11 本 green。長時間プレイでの FPS 低下を根治
 - **Exhaust v0** (2026-04-17): 自機 rest-frame での -加速度方向に 2 層 cone (外=プレイヤー色、内=白熱コア、MeshBasic + additive blending) を描画。PC binary 入力の点滅防止に magnitude EMA smoothing (attack 60ms / release 180ms)、方向は即時。v0 は C pattern (step 1: rest frame で与える) のみ、他機対応の step 2-3 (world boost + 観測者 rest frame に戻す) は phaseSpace に共変 α^μ を載せる段階で実装予定。詳細は DESIGN.md §描画「Exhaust」
+- **スマホ pitch 廃止** (2026-04-17): ghost 物理統合で死亡中も thrust 入力が効くようになった後、縦スワイプ = thrust と旧 pitch 分岐が衝突していたバグを解消。`processCamera` の死亡時 pitch 分岐を削除、`pitchDelta` を毎 tick リセット。生死問わず縦スワイプ = thrust、pitch 回転は PC 矢印キーのみ。詳細は DESIGN.md §UI / 入力「モバイルタッチ入力」
 
 ## 直近の作業
 

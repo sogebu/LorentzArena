@@ -1137,6 +1137,10 @@ HUD のインタラクティブ要素 (ボタン・チェックボックス等) 
 
 Keyboard coexistence: ゲームループで keyboard と touch の入力を加算。両方同時に使えるがタッチデバイスでキーボードを使うケースは稀なので問題なし。
 
+**pitch 制御は touch から除外 (2026-04-17)**: 初期は「死亡中のみ縦スワイプを camera pitch に回す」分岐が `processCamera` にあった (生存時の縦スワイプ = thrust と棲み分け)。だが ghost 物理統合 (2026-04-17) で死亡中も thrust 入力で ghost が動くようになり、**縦スワイプ = thrust と pitch rotation が衝突**。ユーザーから「死亡中もスワイプで移動できるべき、回転に切り替わるのは違和感」の報告。
+
+修正: `processCamera` の死亡時 pitch 分岐を削除、`useGameLoop` で `pitchDelta` を毎 tick リセット (蓄積防止)。**縦スワイプは生死問わず thrust に固定**、pitch rotation は PC 矢印キーのみに集約。スマホで pitch 観賞したいニーズが出たら 2 本指縦スワイプ等の別ジェスチャで将来拡張。
+
 設計検討の詳細経緯: [`EXPLORING.md`](./EXPLORING.md) の「スマホ UI の設計思考」および「2026-04-10 の設計議論と方針決定」参照。
 
 ### レーザーエネルギー制

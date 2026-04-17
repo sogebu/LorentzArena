@@ -191,7 +191,9 @@ export function useGameLoop({
       cameraYawRef.current = cam.yaw;
       cameraPitchRef.current = cam.pitch;
       touch.yawDelta = 0;
-      if (isDeadForCamera) touch.pitchDelta = 0;
+      // pitch は touch で制御しない (processCamera 内の pitch 処理削除済み)。
+      // pitchDelta を毎 tick リセットして蓄積を防ぐ。
+      touch.pitchDelta = 0;
 
       // --- Causal events ---
       // Stage C: pending kill events は killLog.filter(!firedForUi) で derive。

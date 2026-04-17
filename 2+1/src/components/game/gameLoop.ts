@@ -58,9 +58,11 @@ export function processCamera(
     yaw += touch.yawDelta;
   }
 
-  if (isDeadForCamera && touch.pitchDelta !== 0) {
-    pitch = Math.max(CAMERA_PITCH_MIN, Math.min(CAMERA_PITCH_MAX, pitch + touch.pitchDelta));
-  }
+  // pitch は touch で制御しない (縦スワイプは thrust に固定、死亡中も ghost 物理で
+  // 動けるので pitch 回転との衝突を避ける)。PC の矢印キーのみ。
+  // isDeadForCamera は旧仕様 (ghost は等速直線移動のみで touch で pitch できる) の
+  // 名残で現在未使用だが signature 維持のため引数は残す。
+  void isDeadForCamera;
 
   return { yaw, pitch };
 }
