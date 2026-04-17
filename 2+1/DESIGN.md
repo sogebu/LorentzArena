@@ -958,7 +958,7 @@ D pattern は維持: 全 geometry は world 座標で vertex を持ち、`matrix
 - pastCone: 下 vertex の輪 index (N 頂点 LineLoop)
 - futureCone: 上 vertex の輪 index (N 頂点 LineLoop)
 
-`N = ARENA_RADIAL_SEGMENTS = 64` の頂点 (上・下の pair × N) を初回 1 回だけ allocation、以後 `useFrame` で positions を **in-place 更新 + `positionAttr.needsUpdate = true`**。共有 attribute なので needsUpdate 1 回で 4 geometry 全部に反映、GPU upload も 1 回/frame。
+`N = ARENA_RADIAL_SEGMENTS = 128` の頂点 (上・下の pair × N) を初回 1 回だけ allocation、以後 `useFrame` で positions を **in-place 更新 + `positionAttr.needsUpdate = true`**。共有 attribute なので needsUpdate 1 回で 4 geometry 全部に反映、GPU upload も 1 回/frame。
 
 **頂点共有の効能**: surface の下辺と pastCone loop、surface の上辺と futureCone loop が**完全に同じ頂点を通る**ので、密度差による線ズレが発生しない。旧実装では surface 64 頂点 / cone loop 128 頂点と密度が違い、直線補間の曲線近似が微妙に食い違って線が数ピクセルずれていた。shared attribute で原理的に解消。
 

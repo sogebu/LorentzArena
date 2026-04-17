@@ -116,7 +116,7 @@ export const ARENA_CENTER_Y = SPAWN_RANGE / 2;
 export const ARENA_RADIUS = 20;
 // 円柱の時間方向レンジは観測者の因果コーン (過去・未来光円錐) で動的に切り出される
 // ため、固定の ARENA_HEIGHT 定数は不要 (ArenaRenderer で observer.t ± ρ(θ) を直接計算)。
-export const ARENA_RADIAL_SEGMENTS = 64;
+export const ARENA_RADIAL_SEGMENTS = 128;
 // 暫定色 (シアン, 仮想空間境界のメタファー)。パステル化時に再検討。
 // プレイヤー色 (HSL 黄金角分散) と Lighthouse (hsl(220,70%,75%)) の色相帯を避ける
 export const ARENA_COLOR = "hsl(180, 40%, 70%)";

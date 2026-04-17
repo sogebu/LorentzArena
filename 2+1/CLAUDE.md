@@ -276,7 +276,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `ARENA_CENTER_X/Y` | SPAWN_RANGE/2 = 5 | アリーナ円柱の中心（= spawn 一様分布の中心） |
 | `ARENA_RADIUS` | 20 | アリーナ円柱半径（= LASER_RANGE × 2） |
 | ~~`ARENA_HEIGHT`~~ | (廃止) | 旧実装は observer.t 中心の固定高さで描画していたが、現実装は各 θ の上下端を観測者の過去/未来光円錐交点 (`observer.t ± ρ(θ)`) に動的設定するため固定 height 定数は不要 |
-| `ARENA_RADIAL_SEGMENTS` | 64 | 円柱側面の周方向分割数（光行差表現のため細かく） |
+| `ARENA_RADIAL_SEGMENTS` | 128 | 円柱側面の周方向分割数（surface / 垂直線 / 過去光円錐交線 / 未来光円錐交線で共有、光行差表現のため細かく） |
 | `ARENA_COLOR` | `hsl(180,40%,70%)` | アリーナ円柱の色 (暫定シアン、surface / 垂直線 / 交線同色)。プレイヤー色や LH 色と干渉しない色相帯。パステル化時に再検討 |
 | `ARENA_SURFACE_OPACITY` | 0.08 | 円柱側面 surface の透明度 (= 光円錐 surface と同値) |
 | `ARENA_VERTICAL_LINE_OPACITY` | 0.04 | 時間方向に伸びる垂直線 (ARENA_RADIAL_SEGMENTS 本) の透明度 (= 光円錐 wireframe と同値)。CylinderGeometry + wireframe だと三角形の対角線も出てジグザグになるため、LineSegments で純粋な縦線のみ描画 |
