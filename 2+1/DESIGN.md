@@ -1018,6 +1018,50 @@ v0 は自機のみで step 2-3 不要なので、rest frame 3-vector を **C pat
 - **他機対応 (step 2-3)**: phaseSpace メッセージに `alpha: Vector4` を追加、発信者が `Λ(u_own)` で世界系へ boost、受信側は `Λ(u_obs)^{-1}` で観測者 rest frame に戻して cone 方向決定。この段階で D pattern + 共変 α に昇格し、Lorentz 収縮・光行差が自然に入る。世界線 sample に α^μ を同梱する形が clean (位置・4-velocity と frame 統一、世界線が物理的に 1st jet bundle を持つ視点)
 - **内側コアの色グラデーション**: 強度依存で Planck 放射 metaphor (低強度=橙、高強度=白) にする選択肢。現状は単色
 
+### 時間的距離 opacity fade (Lorentzian、2026-04-17)
+
+**動機**: 凍結世界線・デブリは event 時刻が固定されているので、観測者の世界系時刻 `t_obs` が進むにつれて相対的に「過去へ遠ざかる」。現状は opacity 一定なので、遠い過去の event も常に同じ濃さで描画され、観測者の「今」の情報密度が相対的に薄まる + 昔の凍結世界線が画面に残り続けて視覚的ノイズ化。
+
+**式 (Lorentzian / Cauchy 形、時間距離の 2 乗反比例)**:
+
+```
+fade = r² / (r² + Δt²)、r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT = 20
+opacity = baseOpacity × fade
+```
+
+- `Δt = 0` で fade = 1 (発散せず smooth)
+- `Δt = r` で fade = 0.5
+- `Δt = 2r` (= 2 × LCH) で fade = 0.2
+- `Δt = 3r` で fade = 0.1
+- `Δt → ∞` で 漸近的に `r²/Δt²` (純粋な 1/Δt² 挙動)
+
+物理の逆 2 乗法則 (重力・光の強度) と同型。完全 0 にはならないが、`< 0.05` で実用上視認不能。
+
+**却下した代替式**:
+
+- **放物線** `max(0, 1 − (Δt/R)²)`: Δt に対する 2 次多項式減衰で **「2 乗反比例」ではない**。R でハード境界を持つが、Lorentzian と比較して近傍の厚みが薄く遠方の落ち方が急で、物理 metaphor (逆 2 乗法則) にも乗らない
+- **Hard-clamped inverse square** `min(1, (r/Δt)²)`: Δt ≤ r で完全フラットな 1、Δt > r で `1/Δt²`。近傍に切り替え段差があり smooth さに劣る
+- **線形** `max(0, 1 − Δt/R)`: 等速減衰、物理類推なし
+- **指数** `exp(−Δt²/r²)` (Gaussian): 指数関数で「反比例」ではない
+
+**対象オブジェクト (per-mesh v0)**:
+
+| object | 代表時刻 | 実装 |
+|---|---|---|
+| 凍結世界線 | 死亡時刻 (tip.t) | `WorldLineRenderer` 内で `tubeOpacity × fade` |
+| 生存世界線 (player / LH) | tip.t ≒ observer.t | 同じ経路だが fade ≈ 1 で実効変化なし |
+| デブリ (InstancedMesh) | 全 record の**最新** deathPos.t | 全 instance を一括で 1 opacity × fade。per-instance alpha は per-vertex v1 で対応 |
+| レーザー (LineSegments) | 各 laser 個別 | v0 は scope out。短命 (< range 秒) で fade 効果が小さく、個別 fade には per-vertex (vertex color alpha) が必要 |
+| 自己光円錐 / player marker / spawn effect / kill 通知 | observer.t そのもの or 短命 | fade 不要 or 効果なし、scope 外 |
+
+**per-vertex v1 (将来)**: 世界線 tube の手前 vs 奥で濃淡、tail 部分が自然消失、レーザー個別 fade、デブリ個別 fade。実装は shader modifier (onBeforeCompile) または vertex color alpha + カスタム shader。コスト 100 行オーダー。v0 で効果を見てから判断。
+
+**helper**: `game/timeFade.ts` に `computeTimeFade(deltaT: number): number` を集約。全 renderer で共有。将来 per-vertex 化時も同じ式を shader に移植すれば挙動一致。
+
+**定数**: `TIME_FADE_SCALE = 20` (= `LIGHT_CONE_HEIGHT`)。光円錐の描画スケールと揃えることで、「光円錐の 1 個分の時間距離で半減、2 個分で 1/5」という視覚的な数値直感を保つ。
+
+**時空星屑 (案 17) との相乗効果 (案 17 実装時)**: star event を world frame で 4D 一様分布させたとき、観測者時刻から遠い spark も時間 fade で自動的に薄くなる → pop-in 抑止 + 観測者周辺の dynamic window が自然に生成される。
+
 ### 世界系カメラ: プレイヤー追随
 
 世界系カメラモードではプレイヤーの世界系座標 (x, y, t) にカメラが追随。カメラ向き (yaw) もプレイヤーと同じ。静止系と世界系でカメラ挙動を統一 (ローレンツブーストの有無だけが異なる)。

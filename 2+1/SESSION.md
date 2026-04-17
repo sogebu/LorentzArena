@@ -14,6 +14,7 @@
 - **アリーナ円柱を観測者因果コーンで切り出し** (2026-04-17): 各 θ で上下端を `observer.t ± ρ(θ)` に動的設定、観測者の過去光円錐交点 (下地平線) と未来光円錐交点 (上地平線) で clipped。観測者が中心なら均一な円、離れると双円錐歪みが現れる。旧 ARENA_HEIGHT 設計で発生していた「観測者が円柱外から眺めた時の overdraw FPS 低下」を自動解消。FutureConeLoop 新設 (ARENA_FUTURE_CONE_OPACITY=0.3、過去より控えめ)。詳細は DESIGN.md §描画「アリーナ円柱」
 - **光円錐交差計算の二分探索化** (2026-04-17): `pastLightConeIntersectionWorldLine` / `futureLightConeIntersectionWorldLine` を O(N) → O(log N + K=16)。`findLaserHitPosition` は laser 時刻範囲で絞り込み。Vitest 導入 (`pnpm test`)、linear scan reference 実装 (`*Linear`) と binary 版の regression test 11 本 green。長時間プレイでの FPS 低下を根治
 - **Exhaust v0** (2026-04-17): 自機 rest-frame での -加速度方向に 2 層 cone (外=明るい青 `hsl(210, 85%, 60%)`、内=冷たい白 `hsl(210, 70%, 92%)`、MeshBasic + additive blending で青白プラズマ発光。`EXHAUST_MAX_OPACITY = 0.45` で透明感)。プレイヤー色依存は廃止、識別は sphere / worldline に任せる。PC binary 入力の点滅防止に magnitude EMA smoothing (attack 60ms / release 180ms)、方向は即時。v0 は C pattern (step 1: rest frame で与える) のみ、他機対応の step 2-3 (world boost + 観測者 rest frame に戻す) は phaseSpace に共変 α^μ を載せる段階で実装予定。詳細は DESIGN.md §描画「Exhaust」
+- **時間的距離 opacity fade (Lorentzian v0)** (2026-04-17): `fade = r²/(r² + Δt²)`、`r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT = 20` (時間距離の 2 乗反比例、物理の逆 2 乗法則と同型)。凍結世界線 (WorldLineRenderer) は tip.t で fade、デブリ (DebrisRenderer) は全 record の最新 deathPos.t で代表 fade (per-mesh v0、InstancedMesh 一括スケール)。生存世界線は tip.t ≒ observer.t で fade ≈ 1、実効変化なし。レーザーは短命なので v0 では scope out (per-vertex v1 で個別 fade 対応予定)。helper は `game/timeFade.ts` に集約。詳細は DESIGN.md §描画「時間的距離 opacity fade」
 - **スマホ pitch 廃止** (2026-04-17): ghost 物理統合で死亡中も thrust 入力が効くようになった後、縦スワイプ = thrust と旧 pitch 分岐が衝突していたバグを解消。`processCamera` の死亡時 pitch 分岐を削除、`pitchDelta` を毎 tick リセット。生死問わず縦スワイプ = thrust、pitch 回転は PC 矢印キーのみ。詳細は DESIGN.md §UI / 入力「モバイルタッチ入力」
 
 ## 直近の作業
@@ -77,11 +78,8 @@
 
 ## 次にやること
 
-- **[次セッション最優先] 時空星屑 (案 17) + 時間的距離 opacity fade** — 2 案を並行 or 連続で実装:
-  - **時空星屑**: N 個 (500〜2000) の spark を world frame で (x, y, t) 4D 一様分布、交差計算なし、D pattern で毎 frame `THREE.Points` 描画 (`matrix = displayMatrix`)。光行差・Lorentz 変換は per-vertex で自動。新規 `StardustRenderer.tsx`、`constants.ts` に `STARDUST_COUNT` / 空間・時間範囲 / `STARDUST_COLOR` / `STARDUST_SIZE` 追加
-  - **時間 fade (per-mesh v0、Lorentzian)**: `fade = base × r² / (r² + Δt²)`、`r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT = 20`。Δt = r で 50%、Δt = 2r (= 2 × LCH) で 20%、Δt = 3r で 10% と滑らかに減衰 (時間距離の 2 乗反比例、物理的な逆 2 乗法則と同型)。凍結世界線・デブリ・レーザー世界線を優先対象に、各 renderer で上式を base opacity に掛け算。per-vertex (v1) はその後
-  - **相乗効果**: 時空星屑 + 時間 fade で、観測者周辺に dynamic window が自然にできて pop-in 抑止。両方同時実装が効率
-  - 詳細: EXPLORING.md §「進行方向・向きの認知支援」§追加案「案 17」 + EXPLORING.md §「時間的距離 opacity fade」
+- **[次セッション最優先] 時空星屑 (案 17)** — N 個 (500〜2000) の spark を world frame で (x, y, t) 4D 一様分布、交差計算なし、D pattern で毎 frame `THREE.Points` 描画 (`matrix = displayMatrix`)。光行差・Lorentz 変換は per-vertex で自動。新規 `StardustRenderer.tsx`、`constants.ts` に `STARDUST_COUNT` / 空間・時間範囲 / `STARDUST_COLOR` / `STARDUST_SIZE` 追加。既実装の時間 fade と組み合わせれば観測者周辺に dynamic window が自然にできて pop-in 抑止。詳細: EXPLORING.md §「進行方向・向きの認知支援」§追加案「案 17」
+- **時間 fade per-vertex v1 (将来)** — 現状 per-mesh v0 で世界線 tube は全体が一括スケール、debris も InstancedMesh 全体が 1 opacity。per-vertex に昇格すると tube tip と tail で濃淡、debris per-instance 個別 fade、laser 個別 fade が実現。shader modifier (onBeforeCompile) or vertex color alpha。v0 の体感で必要と判断したら着手
 - **[上記の後] 進行方向の可視化 分岐 A: 他機の noise exhaust 対応** — phaseSpace に共変 α^μ を同梱 (発信者 owner が自機の `Λ(u_own)` で世界系へ boost)、受信側は観測者の `Λ(u_obs)^{-1}` で rest frame に戻して cone 方向決定。D pattern + Lorentz 収縮 + 光行差が自然に入る (物理モデル step 2 + step 3 を同時実装)。作業スコープ: phaseSpace message schema 拡張 + messageHandler validation + snapshot への同梱 + ExhaustCone を自機専用経路から他機対応経路に広げる。`SceneContent.tsx` の `ExhaustCone` は現在 `player={myPlayer}` 固定だが、`playerList.map` 内に組み込む形に書き換える (ただし球は C pattern、cone は step 2-3 完成で D pattern に昇格)
 - **進行方向の可視化: その他分岐 (今後検討)** — 分岐 A 完了後に着手:
   - **分岐 B (Step 2 = 案 14)**: sphere + heading-dart ハイブリッド、rest-frame で静止時も向きが読める。dart を D pattern で world-frame view の Lorentz 収縮が自然に入る

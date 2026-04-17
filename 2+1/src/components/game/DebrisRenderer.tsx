@@ -5,6 +5,7 @@ import { createVector4, type Vector4 } from "../../physics";
 import { pastLightConeIntersectionDebris } from "./debris";
 import { transformEventForDisplay } from "./displayTransform";
 import { useDisplayFrame } from "./DisplayFrameContext";
+import { computeTimeFade } from "./timeFade";
 import {
   getDebrisMaterial,
   getThreeColor,
@@ -134,6 +135,19 @@ export const DebrisRenderer = ({
   // max possible instances: MAX_DEBRIS * EXPLOSION_PARTICLE_COUNT
   const maxInstances = 20 * 30;
 
+  // 時間 fade: 全 debris の最新 deathPos.t で代表 fade (v0、per-mesh で全 instance 一括
+  // スケール)。per-instance alpha にしたければ per-vertex v1 で InstancedBufferAttribute
+  // の alpha channel を使う。最新死亡からしばらく経てば全 debris が一斉に薄くなる挙動。
+  const baseDebrisOpacity = 0.10;
+  let latestDeathT = -Infinity;
+  for (const d of debrisRecords) {
+    if (d.deathPos.t > latestDeathT) latestDeathT = d.deathPos.t;
+  }
+  const debrisFade =
+    observerPos && latestDeathT > -Infinity
+      ? computeTimeFade(latestDeathT - observerPos.t)
+      : 1;
+
   return (
     <>
       <instancedMesh
@@ -144,7 +158,7 @@ export const DebrisRenderer = ({
         <meshBasicMaterial
           ref={materialRef}
           transparent
-          opacity={0.10}
+          opacity={baseDebrisOpacity * debrisFade}
           depthWrite={false}
         />
       </instancedMesh>

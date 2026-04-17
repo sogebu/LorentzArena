@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { PLAYER_WORLDLINE_OPACITY } from "./constants";
 import { buildDisplayMatrix } from "./displayTransform";
+import { computeTimeFade } from "./timeFade";
 import { getThreeColor } from "./threeCache";
 import type { WorldLineRendererProps } from "./types";
 
@@ -56,7 +57,13 @@ export const WorldLineRenderer = ({
     }
   });
 
+  // 時間 fade: tip.t (世界線の最新 sample 時刻) と観測者時刻の差で Lorentzian 減衰。
+  // 生存世界線は tip.t ≒ observer.t で fade ≈ 1 (影響なし)、凍結世界線は死亡時刻で
+  // 固定なので時間経過に応じて薄くなる。per-mesh v0 (tube 全体を 1 opacity でスケール、
+  // tail が古い部分も同じ fade になる点は許容。per-vertex v1 で改善検討)。
   const threeColor = getThreeColor(color);
+  const tipT = wl.history[wl.history.length - 1]?.pos.t ?? observerPos.t;
+  const fadeFactor = computeTimeFade(tipT - observerPos.t);
   return (
     <>
       {tubeGeo && (
@@ -68,7 +75,7 @@ export const WorldLineRenderer = ({
             roughness={0.4}
             metalness={0.1}
             transparent
-            opacity={tubeOpacity}
+            opacity={tubeOpacity * fadeFactor}
           />
         </mesh>
       )}
