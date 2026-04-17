@@ -8,6 +8,7 @@ import {
   pastLightConeIntersectionWorldLine,
   subVector4,
   vector3Zero,
+  type Vector3,
   type Vector4,
 } from "../../physics";
 import { getLaserColor } from "./colors";
@@ -74,6 +75,10 @@ export interface PhysicsResult {
   /** この tick で thrust が要求された (キー/タッチが入っていた) か。
    *  エネルギー不足で実効加速が 0 だった場合も true。recovery 判定に使う。 */
   thrustRequested: boolean;
+  /** friction を除外した、この tick の thrust 由来 3-acceleration (world coords)。
+   *  視覚 (exhaust) 用。energy 枯渇や非入力時はゼロベクトル。
+   *  ゆくゆく phaseSpace に共変 α^μ を乗せる段階で boost(u_own) して 4-vector 化予定。 */
+  thrustAcceleration: Vector3;
 }
 
 export function processPlayerPhysics(
@@ -126,6 +131,8 @@ export function processPlayerPhysics(
   const ax = Math.cos(yaw) * forwardAccel + Math.cos(yaw + Math.PI / 2) * lateralAccel;
   const ay = Math.sin(yaw) * forwardAccel + Math.sin(yaw + Math.PI / 2) * lateralAccel;
 
+  const thrustAcceleration = createVector3(ax, ay, 0);
+
   const frictionX = -me.phaseSpace.u.x * FRICTION_COEFFICIENT;
   const frictionY = -me.phaseSpace.u.y * FRICTION_COEFFICIENT;
 
@@ -133,7 +140,13 @@ export function processPlayerPhysics(
   const newPhaseSpace = evolvePhaseSpace(me.phaseSpace, acceleration, dTau);
   const updatedWorldLine = appendWorldLine(me.worldLine, newPhaseSpace, otherPositions);
 
-  return { newPhaseSpace, updatedWorldLine, thrustEnergyConsumed, thrustRequested };
+  return {
+    newPhaseSpace,
+    updatedWorldLine,
+    thrustEnergyConsumed,
+    thrustRequested,
+    thrustAcceleration,
+  };
 }
 
 // --- Lighthouse AI ---

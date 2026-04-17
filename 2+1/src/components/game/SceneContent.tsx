@@ -6,6 +6,7 @@ import {
   futureLightConeIntersectionWorldLine,
   lorentzBoost,
   pastLightConeIntersectionWorldLine,
+  type Vector3,
   type Vector4,
 } from "../../physics";
 import { selectInvincibleUntil, useGameStore } from "../../stores/game-store";
@@ -18,10 +19,19 @@ import { WorldLineRenderer } from "./WorldLineRenderer";
 import {
   CAMERA_DISTANCE_ORTHOGRAPHIC,
   CAMERA_DISTANCE_PERSPECTIVE,
+  EXHAUST_ATTACK_TIME,
+  EXHAUST_BASE_LENGTH,
+  EXHAUST_BASE_RADIUS,
+  EXHAUST_EMISSIVE_INTENSITY,
+  EXHAUST_MAX_OPACITY,
+  EXHAUST_OFFSET,
+  EXHAUST_RELEASE_TIME,
+  EXHAUST_VISIBILITY_THRESHOLD,
   LIGHT_CONE_HEIGHT,
   LIGHT_CONE_SURFACE_OPACITY,
   LIGHT_CONE_WIRE_OPACITY,
   LIGHTHOUSE_WORLDLINE_OPACITY,
+  PLAYER_ACCELERATION,
   PLAYER_MARKER_SIZE_OTHER,
   PLAYER_MARKER_SIZE_SELF,
 } from "./constants";
@@ -81,12 +91,145 @@ const computeConeTangentWorldRotation = (
   );
 };
 
+/**
+ * Exhaust cone: 自機の thrust 加速度の逆方向 (反推力) に cone を 2 層描画。
+ *
+ * - **v0: C pattern (rest-frame 固定)**。自機球と同じ display 座標系で並進のみ、
+ *   displayMatrix の boost 効果は `transformEventForDisplay` で既に自機 position に
+ *   適用済み (dp 経由)。自機 rest-frame view では自機が原点に来て、cone も rest-frame
+ *   の -accel 方向にまっすぐ真後ろ。world-frame view では Lorentz 収縮なしの
+ *   剛体 exhaust になる (視覚簡略化、物理精密版は D pattern + 共変 α へ上位化予定)。
+ *   EXPLORING.md §進行方向・向きの認知支援 §「(3) exhaust の visual-only vs 物理放出」。
+ * - **2 層 cone**: 外側=プレイヤー色 (広がった炎)、内側=白 (白熱コア、細め・短め)。
+ *   MeshBasicMaterial + additive blending で「固体の三角錐」でなく「発光する炎」に。
+ * - **magnitude EMA smoothing** (attack 60ms / release 180ms)。PC の binary 入力でも
+ *   点滅せず、mobile の連続値でもほぼ即時。方向は smoothing しない (入力との対応保持)。
+ * - energy 枯渇時は `thrustAccel` がゼロになるので自動非表示。
+ *
+ * 詳細は DESIGN.md §描画「exhaust」。
+ */
+const INNER_CORE_SCALE = 0.45; // 内側 core cone の radius / length 共通倍率
+
+const ExhaustCone = ({
+  player,
+  thrustAccelRef,
+  color,
+  observerPos,
+  observerBoost,
+}: {
+  player: {
+    phaseSpace: { pos: { x: number; y: number; t: number } };
+  };
+  thrustAccelRef: React.RefObject<Vector3>;
+  color: string;
+  observerPos: Vector4 | null;
+  observerBoost: ReturnType<typeof lorentzBoost> | null;
+}) => {
+  const outerRef = useRef<THREE.Mesh>(null);
+  const innerRef = useRef<THREE.Mesh>(null);
+  const outerMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const innerMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const smoothedMagRef = useRef(0);
+  const threeColor = getThreeColor(color);
+  const whiteColor = useMemo(() => new THREE.Color("#fff3e0"), []);
+
+  const tmpQuat = useMemo(() => new THREE.Quaternion(), []);
+  const vecY = useMemo(() => new THREE.Vector3(0, 1, 0), []);
+  const vecDir = useMemo(() => new THREE.Vector3(), []);
+
+  useFrame((_, delta) => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    const outerMat = outerMatRef.current;
+    const innerMat = innerMatRef.current;
+    if (!outer || !inner || !outerMat || !innerMat) return;
+
+    const accel = thrustAccelRef.current;
+    const norm = Math.hypot(accel.x, accel.y);
+    const rawTarget = Math.min(1, norm / PLAYER_ACCELERATION);
+
+    const current = smoothedMagRef.current;
+    const tauMs = rawTarget > current ? EXHAUST_ATTACK_TIME : EXHAUST_RELEASE_TIME;
+    const rate = 1 - Math.exp(-(delta * 1000) / tauMs);
+    const smoothed = current + (rawTarget - current) * rate;
+    smoothedMagRef.current = smoothed;
+
+    if (smoothed < EXHAUST_VISIBILITY_THRESHOLD || norm < 1e-6) {
+      outer.visible = false;
+      inner.visible = false;
+      return;
+    }
+    outer.visible = true;
+    inner.visible = true;
+
+    // 反推力方向 = rest-frame -accel を正規化 (display 座標と同じ basis で使用)
+    const dirX = -accel.x / norm;
+    const dirY = -accel.y / norm;
+    vecDir.set(dirX, dirY, 0);
+    tmpQuat.setFromUnitVectors(vecY, vecDir);
+
+    // 自機の display 座標 (rest-frame view なら原点、world-frame view なら world pos)
+    const dp = transformEventForDisplay(
+      player.phaseSpace.pos,
+      observerPos,
+      observerBoost,
+    );
+
+    const length = EXHAUST_BASE_LENGTH * smoothed;
+    const radius = EXHAUST_BASE_RADIUS;
+    const offset = EXHAUST_OFFSET + length / 2;
+
+    // 外側 cone: 自機位置 + offset × dir (cone 中心)
+    outer.position.set(dp.x + dirX * offset, dp.y + dirY * offset, dp.t);
+    outer.quaternion.copy(tmpQuat);
+    outer.scale.set(radius, length, radius);
+
+    // 内側 core cone: 同じ向き、短くて細く (白熱コア)。base が外側 cone と同じ位置で
+    // 先端も外側に包まれるよう length を短縮、base offset で揃える。
+    const innerLength = length * INNER_CORE_SCALE;
+    const innerRadius = radius * INNER_CORE_SCALE;
+    const innerOffset = EXHAUST_OFFSET + innerLength / 2;
+    inner.position.set(dp.x + dirX * innerOffset, dp.y + dirY * innerOffset, dp.t);
+    inner.quaternion.copy(tmpQuat);
+    inner.scale.set(innerRadius, innerLength, innerRadius);
+
+    outerMat.opacity = smoothed * EXHAUST_MAX_OPACITY;
+    innerMat.opacity = smoothed * EXHAUST_MAX_OPACITY;
+  });
+
+  return (
+    <>
+      <mesh ref={outerRef} geometry={sharedGeometries.exhaustCone}>
+        <meshBasicMaterial
+          ref={outerMatRef}
+          color={threeColor}
+          transparent
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </mesh>
+      <mesh ref={innerRef} geometry={sharedGeometries.exhaustCone}>
+        <meshBasicMaterial
+          ref={innerMatRef}
+          color={whiteColor}
+          transparent
+          depthWrite={false}
+          blending={THREE.AdditiveBlending}
+          toneMapped={false}
+        />
+      </mesh>
+    </>
+  );
+};
+
 export type SceneContentProps = {
   myId: string | null;
   showInRestFrame: boolean;
   useOrthographic: boolean;
   cameraYawRef: React.RefObject<number>;
   cameraPitchRef: React.RefObject<number>;
+  thrustAccelRef: React.RefObject<Vector3>;
   isFiring: boolean;
 };
 
@@ -97,6 +240,7 @@ export const SceneContent = ({
   useOrthographic,
   cameraYawRef,
   cameraPitchRef,
+  thrustAccelRef,
   isFiring,
 }: SceneContentProps) => {
   // --- Firing start time (for sequential arrow animation) ---
@@ -335,6 +479,19 @@ export const SceneContent = ({
           </group>
         );
       })}
+
+      {/* 自機 exhaust (rest-frame で反推力方向に 2 層 cone、自機のみ、C pattern)。
+          v0 はステップ 1 (自機の rest-frame 加速度を直接表示) のみ。他機対応 (broadcast +
+          観測者 rest-frame に戻す) は phaseSpace に α^μ を乗せる段階で実装予定。 */}
+      {myPlayer && !myPlayer.isDead && (
+        <ExhaustCone
+          player={myPlayer}
+          thrustAccelRef={thrustAccelRef}
+          color={myPlayer.color}
+          observerPos={observerPos}
+          observerBoost={observerBoost}
+        />
+      )}
 
       {/* 自分の光円錐のみ描画 */}
       {playerList

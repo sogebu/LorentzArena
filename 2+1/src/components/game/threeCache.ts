@@ -48,6 +48,9 @@ export const sharedGeometries = {
   })(),
   killSphere: new THREE.SphereGeometry(0.55, 16, 16),
   killRing: new THREE.RingGeometry(0.65, 0.8, 24),
+  // Exhaust cone: local +y 方向を軸に、底面が y=-0.5、頂点が y=+0.5 にある単位 cone。
+  // scale(r, length, r) で実寸調整、rotation で反推力方向へ向ける。
+  exhaustCone: new THREE.ConeGeometry(1, 1, 12, 1, true),
   // Arena 用の固定 cylinder geometry は不要 (ArenaRenderer が observer 因果コーンで
   // 動的に triangle strip を生成する)。
 };

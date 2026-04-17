@@ -1,5 +1,5 @@
 import { useEffect, useRef, type MutableRefObject, type RefObject } from "react";
-import type { createPhaseSpace, Vector4 } from "../physics";
+import { vector3Zero, type createPhaseSpace, type Vector3, type Vector4 } from "../physics";
 import {
   DEFAULT_CAMERA_PITCH,
   ENERGY_MAX,
@@ -59,6 +59,9 @@ export interface GameLoopDeps {
   // Per-frame local refs (shared with SceneContent)
   cameraYawRef: MutableRefObject<number>;
   cameraPitchRef: MutableRefObject<number>;
+  /** 自機の最新 thrust 加速度 (world coords、friction 除外)。
+   *  exhaust 描画用、毎 tick 更新。死亡中・frozen・非入力時はゼロベクトル。 */
+  thrustAccelRef: MutableRefObject<Vector3>;
 
   // Lifecycle (shared with useHostMigration)
   respawnTimeoutsRef: RefObject<Set<ReturnType<typeof setTimeout>>>;
@@ -90,6 +93,7 @@ export function useGameLoop({
   setDeathFlash,
   cameraYawRef,
   cameraPitchRef,
+  thrustAccelRef,
   respawnTimeoutsRef,
   keysPressed,
   touchInput,
@@ -274,6 +278,8 @@ export function useGameLoop({
       // --- Ghost or physics ---
       // Re-read fresh state to avoid stale worldLine after respawn
       let thrustRequestedThisTick = false;
+      // exhaust 描画用: この tick の thrust 加速度 (物理が走らない経路では 0 のまま)。
+      let thrustAccelerationThisTick: Vector3 = vector3Zero();
       {
         const fresh = useGameStore.getState();
         const freshMe = fresh.players.get(myId);
@@ -308,6 +314,7 @@ export function useGameLoop({
               energyRef.current - physics.thrustEnergyConsumed,
             );
             thrustRequestedThisTick = physics.thrustRequested;
+            thrustAccelerationThisTick = physics.thrustAcceleration;
 
             fresh.setMyDeathEvent({
               ...de,
@@ -351,6 +358,7 @@ export function useGameLoop({
               energyRef.current - physics.thrustEnergyConsumed,
             );
             thrustRequestedThisTick = physics.thrustRequested;
+            thrustAccelerationThisTick = physics.thrustAcceleration;
 
             fresh.setPlayers((prev) => {
               const me = prev.get(myId);
@@ -388,6 +396,9 @@ export function useGameLoop({
         );
       }
       setEnergy(energyRef.current);
+
+      // 自機 thrust 加速度を ref に反映 (exhaust 描画用)。
+      thrustAccelRef.current = thrustAccelerationThisTick;
 
       // --- Stage E: Lighthouse AI (owner-based, authority 構造から切り離し) ---
       // host-ness ではなく owner-ness で分岐。LH.ownerId === myId な peer が AI を回す。

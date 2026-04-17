@@ -69,6 +69,20 @@ export const INVINCIBILITY_DURATION = 5000;
 export const PLAYER_ACCELERATION = 0.8; // c/s
 export const FRICTION_COEFFICIENT = 0.5; // 速度に比例する減速
 
+// --- Exhaust (推進ジェット、視覚のみ) ---
+// 自機 rest frame での thrust 加速度方向の反対側に cone を描画。
+// v0 は自機のみ、他機対応は phaseSpace に α^μ を乗せたら同じ描画経路で拡張予定。
+export const EXHAUST_BASE_LENGTH = 0.8; // cone の最大長 (magnitude=1 のとき)
+export const EXHAUST_BASE_RADIUS = 0.15; // cone 底面半径 (固定)
+export const EXHAUST_OFFSET = 0.3; // 球表面から cone 底面までのすき間
+export const EXHAUST_MAX_OPACITY = 0.7;
+export const EXHAUST_EMISSIVE_INTENSITY = 1.3;
+// PC 入力は on/off の 2 値なので、magnitude を描画層で EMA smoothing して
+// 点滅感を避ける (方向は即時)。Mobile の連続値には attack=60ms でほぼ即時。
+export const EXHAUST_ATTACK_TIME = 60; // ms: 0 → 1 の追従時定数
+export const EXHAUST_RELEASE_TIME = 180; // ms: 1 → 0 の追従時定数 (余韻)
+export const EXHAUST_VISIBILITY_THRESHOLD = 0.01; // smoothed magnitude < これ で非表示
+
 // --- Camera ---
 export const CAMERA_YAW_SPEED = 0.8; // rad/s
 export const CAMERA_PITCH_SPEED = 0.5; // rad/s

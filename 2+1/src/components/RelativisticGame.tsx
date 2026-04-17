@@ -58,6 +58,8 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   // --- Per-frame local refs (shared with SceneContent) ---
   const cameraYawRef = useRef(0);
   const cameraPitchRef = useRef(DEFAULT_CAMERA_PITCH);
+  // 自機の最新 thrust 加速度 (world coords、friction 除外)。exhaust 描画用。
+  const thrustAccelRef = useRef(vector3Zero());
 
   // Extracted hooks
   const keysPressed = useKeyboardInput();
@@ -299,7 +301,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   useGameLoop({
     peerManager, myId, getPlayerColor,
     setFps, setEnergy, setIsFiring, setDeathFlash,
-    cameraYawRef, cameraPitchRef, respawnTimeoutsRef,
+    cameraYawRef, cameraPitchRef, thrustAccelRef, respawnTimeoutsRef,
     keysPressed, touchInput, stale,
   });
 
@@ -350,6 +352,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             useOrthographic={true}
             cameraYawRef={cameraYawRef}
             cameraPitchRef={cameraPitchRef}
+            thrustAccelRef={thrustAccelRef}
             isFiring={isFiring}
           />
         </Canvas>
@@ -361,6 +364,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             useOrthographic={false}
             cameraYawRef={cameraYawRef}
             cameraPitchRef={cameraPitchRef}
+            thrustAccelRef={thrustAccelRef}
             isFiring={isFiring}
           />
         </Canvas>

@@ -986,6 +986,34 @@ D pattern は維持: 全 geometry は world 座標で vertex を持ち、`matrix
 
 **物理判定なし (視覚ガイドのみ)**: 越えても何も起きない。代替案 (壁で跳ね返す / 外に出たら即死 / 周期境界でトーラス化) は別議論として defer。SESSION.md にトーラス化 todo を保持、un-defer トリガーは「壁で閉じ込める物理」要望 / 「トーラス地図で体験向上」検証希望。
 
+### Exhaust (推進ジェット): rest-frame 固定 + 2 層 cone + 共変 α への paving
+
+**動機**: EXPLORING.md §進行方向・向きの認知支援 §2026-04-16 追記 の育成パス Step 1 ((3) exhaust)。入力→結果の直接 feedback を視覚化、ユーザー期待「進行方向が分かる」の初手。SESSION.md TODO「自機/敵機マーカーに向き」の最小構成。
+
+**物理モデル (3 ステップ想定、v0 は step 1 のみ実装)**:
+
+1. **加速度を rest frame で与える**: `gameLoop.ts` の keys + yaw から `(ax, ay, 0)` を作る (自機 rest frame proper acceleration を world basis で表現)
+2. **world frame に boost して broadcast**: 発信者 owner が phaseSpace に共変 α^μ を同梱 (未実装)
+3. **観測者 rest frame に戻して表示**: 受信側が観測者 4-velocity で boost back して cone を描画 (未実装)
+
+v0 は自機のみで step 2-3 不要なので、rest frame 3-vector を **C pattern で直接 display 座標に貼る**のが最短経路。他機対応は phaseSpace protocol 拡張と同時に step 2-3 を実装予定。
+
+**C pattern (rest-frame 固定)**: cone は自機球と同じ group で display 座標に並進のみ、`transformEventForDisplay(wp, observerPos, observerBoost)` 経由。自機視点では dp=(0,0,0) に来るので cone は原点から反推力方向に伸びる (ユーザー期待「自機 rest frame で真後ろ」が自動実現)。world-frame view では自機の world pos を起点に同じ向きで描かれる (Lorentz 収縮なし = 視覚簡略化、step 2-3 実装時に D pattern へ昇格して物理的に正しくなる)。
+
+**D pattern を初版で試行して却下**: `displayMatrix × T(worldPos) × R(quat) × T(offset) × S` で共変 α path に先回りしようとしたが、rest frame 3-vector を world 3-vector として誤って扱い、rest-frame view で自機 boost が cone 向きを歪めた。**EXPLORING.md の「初回 visual-only → Step 1 完了後に物理放出へ上位化」の推奨が正解**。step 2-3 未実装で D pattern を組むには Λ(u_own) boost の挿入が必要で、それは他機対応時にまとめて入れる。
+
+**2 層 cone + additive blending**: 外側 = プレイヤー色、内側 (`INNER_CORE_SCALE = 0.45`) = 白熱コア (`#fff3e0`)。`MeshBasicMaterial` + `blending: THREE.AdditiveBlending` + `toneMapped: false` で「固体の三角錐」でなく「発光する炎」の見た目。identification (誰の exhaust か) と熱らしさの両立。1 層プレイヤー色 emissive (MeshStandard) は初版で試したが「色付きの三角錐」に見えて噴射感ゼロ、却下。
+
+**magnitude EMA smoothing**: PC の WSAD 入力は binary で `|a|` は常に 0 or `PLAYER_ACCELERATION` の 2 値 → 長さ/opacity 直結だと点滅的。描画層で EMA (attack 60ms / release 180ms) を入れて滑らかに。方向は smoothing しない (入力との対応が崩れる)。モバイルは元々連続値だが attack 60ms でほぼ即時、release 180ms で離した後フワッと余韻 (= cinematic)。
+
+**energy 枯渇との連携**: `thrustAcceleration` は `processPlayerPhysics` で energy scaling 適用済み、枯渇時ゼロベクトル → `EXHAUST_VISIBILITY_THRESHOLD` 未満で自動非表示。特別分岐不要。
+
+**パラメータ** (`constants.ts`): `EXHAUST_BASE_LENGTH = 0.8` / `EXHAUST_BASE_RADIUS = 0.15` / `EXHAUST_OFFSET = 0.3` (球表面から cone 底面) / `EXHAUST_MAX_OPACITY = 0.7` / `EXHAUST_EMISSIVE_INTENSITY = 1.3` (v0 では MeshBasic 採用で未使用、2 層 cone 化前の残滓) / `EXHAUST_ATTACK_TIME = 60ms` / `EXHAUST_RELEASE_TIME = 180ms` / `EXHAUST_VISIBILITY_THRESHOLD = 0.01`。
+
+**将来拡張**:
+- **他機対応 (step 2-3)**: phaseSpace メッセージに `alpha: Vector4` を追加、発信者が `Λ(u_own)` で世界系へ boost、受信側は `Λ(u_obs)^{-1}` で観測者 rest frame に戻して cone 方向決定。この段階で D pattern + 共変 α に昇格し、Lorentz 収縮・光行差が自然に入る。世界線 sample に α^μ を同梱する形が clean (位置・4-velocity と frame 統一、世界線が物理的に 1st jet bundle を持つ視点)
+- **内側コアの色グラデーション**: 強度依存で Planck 放射 metaphor (低強度=橙、高強度=白) にする選択肢。現状は単色
+
 ### 世界系カメラ: プレイヤー追随
 
 世界系カメラモードではプレイヤーの世界系座標 (x, y, t) にカメラが追随。カメラ向き (yaw) もプレイヤーと同じ。静止系と世界系でカメラ挙動を統一 (ローレンツブーストの有無だけが異なる)。
