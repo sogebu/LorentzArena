@@ -66,6 +66,11 @@
 - 推定原因: 旧 beacon holder 切断→新昇格の間にタイムギャップが生じ、新 owner が最後の phaseSpace から再開すると座標時間の不連続で世界線にジャンプ。Stage D-3 で LH の上書き問題は修正済みだが、migration 中の phaseSpace 発信途絶による不連続は残る
 - 現状: Stage F-H 完了後に再現テスト未実施。実機で要確認
 
+### モバイルバグ (2026-04-17 報告、要修正)
+
+- **スマホ UI で指を離しても加速し続ける**: `touchInput.ts` の `handleTouchEnd` は state を全 reset するはずだが、onTouchEnd が発火しないケース (ジェスチャ途中で iOS Safari が touch を横取り・ホームインジケータ近傍での touchcancel 未発火・複数指同時操作時の残留 touch) があると `state.thrust` が非ゼロのまま残って加速が止まらない。`touchcancel` は reset しているはずだが未検出経路があるかも。修正候補: `touchRef.current` が存在し続けるのを検知して一定時間ごとに stale check / visibility 変化時の強制 reset / pointer events への切替検討
+- **リスポーン後「DEAD 0」表示が戻らず自機が表示されない**: `RESPAWN_DELAY` 経過後にカウントダウン UI と ghost overlay は消えるはずだが、state の遷移が漏れて残留する。かつ自機 sphere が復活しない (SceneContent の `playerList.map` で `player.id === myId && player.isDead` 判定が true のまま？)。`myDeathEvent` の null 化・`isDead` の切替・`store.players` の mutation の順序を確認。`handleRespawn` から UI 経路への伝播漏れの可能性。モバイル限定か PC でも起きるかを要切り分け
+
 ### 要テスト
 
 - グローバルリーダーボード: sendBeacon 修正後、実際にスコアが KV に保存されるか確認
