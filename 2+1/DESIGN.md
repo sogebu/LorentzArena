@@ -1008,7 +1008,7 @@ v0 は自機のみで step 2-3 不要なので、rest frame 3-vector を **C pat
 
 **energy 枯渇との連携**: `thrustAcceleration` は `processPlayerPhysics` で energy scaling 適用済み、枯渇時ゼロベクトル → `EXHAUST_VISIBILITY_THRESHOLD` 未満で自動非表示。特別分岐不要。
 
-**パラメータ** (`constants.ts`): `EXHAUST_BASE_LENGTH = 0.8` / `EXHAUST_BASE_RADIUS = 0.15` / `EXHAUST_OFFSET = 0.3` (球表面から cone 底面) / `EXHAUST_MAX_OPACITY = 0.7` / `EXHAUST_EMISSIVE_INTENSITY = 1.3` (v0 では MeshBasic 採用で未使用、2 層 cone 化前の残滓) / `EXHAUST_ATTACK_TIME = 60ms` / `EXHAUST_RELEASE_TIME = 180ms` / `EXHAUST_VISIBILITY_THRESHOLD = 0.01`。
+**パラメータ** (`constants.ts`): `EXHAUST_BASE_LENGTH = 0.8` / `EXHAUST_BASE_RADIUS = 0.15` / `EXHAUST_OFFSET = 0.3` (球表面から cone 底面) / `EXHAUST_MAX_OPACITY = 0.7` / `EXHAUST_ATTACK_TIME = 60ms` / `EXHAUST_RELEASE_TIME = 180ms` / `EXHAUST_VISIBILITY_THRESHOLD = 0.01`。SceneContent 内に `INNER_CORE_SCALE = 0.45` (内側 core cone の radius/length 倍率)。
 
 **将来拡張**:
 - **他機対応 (step 2-3)**: phaseSpace メッセージに `alpha: Vector4` を追加、発信者が `Λ(u_own)` で世界系へ boost、受信側は `Λ(u_obs)^{-1}` で観測者 rest frame に戻して cone 方向決定。この段階で D pattern + 共変 α に昇格し、Lorentz 収縮・光行差が自然に入る。世界線 sample に α^μ を同梱する形が clean (位置・4-velocity と frame 統一、世界線が物理的に 1st jet bundle を持つ視点)

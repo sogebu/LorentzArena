@@ -76,7 +76,6 @@ export const EXHAUST_BASE_LENGTH = 0.8; // cone の最大長 (magnitude=1 のと
 export const EXHAUST_BASE_RADIUS = 0.15; // cone 底面半径 (固定)
 export const EXHAUST_OFFSET = 0.3; // 球表面から cone 底面までのすき間
 export const EXHAUST_MAX_OPACITY = 0.7;
-export const EXHAUST_EMISSIVE_INTENSITY = 1.3;
 // PC 入力は on/off の 2 値なので、magnitude を描画層で EMA smoothing して
 // 点滅感を避ける (方向は即時)。Mobile の連続値には attack=60ms でほぼ即時。
 export const EXHAUST_ATTACK_TIME = 60; // ms: 0 → 1 の追従時定数
