@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**`374972f` デプロイ済み** (build `2026/04/17 17:38:06 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`0db4ab3` デプロイ済み** (build `2026/04/17 18:42:26 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
 完了済みリファクタ (判断根拠は DESIGN.md):
 - **Authority 解体 Stage A〜H** (2026-04-14〜15): target-authoritative 化 + event-sourced。plan: `plans/2026-04-14-authority-dissolution.md`
