@@ -1236,15 +1236,21 @@ stale 除外
 
 現在は store の reactive state (3 モジュール参照のため)。`ghostTauRef` と同じパターンで HUD の re-render は `setPlayers(applyKill(...))` の副次効果として保証される。
 
-### 自機 respawn は setTimeout ではなく tick poll で駆動 (2026-04-18)
+### owner respawn は setTimeout ではなく tick poll で駆動 (2026-04-18)
 
-**問題**: useGameLoop の useEffect deps `[peerManager, myId]` は kill とは独立に変化しうる。モバイルで tab を hidden にすると `PeerProvider` の `HOST_HIDDEN_GRACE` 経過で beacon holder が destroy され、`setPeerManager(null)` → 再接続で peerManager が差し替わる。この時 useGameLoop の cleanup が走り、pending respawn timer が全て `clearTimeout` される。新しい effect 実行では hit detection は再発火しないので (kill は処理済み)、自機の respawn が永久に来ず「DEAD 0」UI と ghost overlay が残る。
+**問題**: useGameLoop の useEffect deps `[peerManager, myId]` は kill とは独立に変化しうる。`[peerManager, myId]` 差し替えが起きると、useGameLoop の cleanup で pending respawn timer が全て `clearTimeout` され、新しい effect 実行では hit detection も再発火しない (kill は処理済み) ので、自機および自分が owner の LH の respawn が永久に来ず「DEAD 0」UI + ghost overlay が残る。
 
-**解決**: 自機の respawn を setTimeout ではなく tick 末尾の poll で駆動する。毎 tick `killLog` を走査して自分の最新 `kill.wallTime` を読み、`+ RESPAWN_DELAY <= Date.now()` なら `handleRespawn` を呼ぶ + `sendToNetwork({type:"respawn",...})`。state (log) が source of truth なので component 再マウント・peerManager 差し替え・HMR すべてに耐える。
+**発火経路**:
+- **(a) 自機**: モバイルで tab を hidden にすると `PeerProvider` の `HOST_HIDDEN_GRACE` 経過で beacon holder が destroy され、`setPeerManager(null)` → 再接続で peerManager が差し替わる (実機再現確認済、2026-04-18 初版 commit b41500a で自機のみ修正済)。
+- **(b) solo 環境の LH**: solo (= 自分 1 人) の beacon holder が hidden→visible したとき、Phase 1 の beacon 再取得経路を通る。ここでは `setIsMigrating(true)` が呼ばれず、`useBeaconMigration` の LH setTimeout rebuild も動かない。結果として LH の respawn timer だけが消失したまま復帰できない (コードレビューで発見、実機未確認だが `PeerProvider.tsx` line 821 `setIsMigrating(true)` が heartbeat timeout 経路でしか呼ばれないことから path は実在、2026-04-18 拡張で LH も poll 対象化)。
 
-**LH は setTimeout 維持**: LH の respawn は owner = beacon holder が扱い、hit detection と respawn 仕込みの両方が同じ useGameLoop 内で完結する。beacon migration 時は `useBeaconMigration` が残り時間で setTimeout を仕込み直す既存経路があり、tick poll 化する必要がない。scope を「自機のみ」に限定することで、LH migration 経路の regression リスクを避けた。
+**解決**: 自機 + 自分が owner の LH (= beacon holder なら全 LH) の respawn を setTimeout ではなく tick 末尾の poll で駆動する。毎 tick `killLog` を走査し、死亡中 owner の最新 `kill.wallTime + RESPAWN_DELAY <= Date.now()` なら `handleRespawn` を呼ぶ + `sendToNetwork({type:"respawn",...})`。state (log) が source of truth なので component 再マウント・peerManager 差し替え・HMR すべてに耐える。
 
-**過去類似バグ**: 上記「myDeathEvent は ref で持つ」も同じ class (useEffect cleanup が respawn timer を殺す)。あの時は `[myDeathEvent]` が deps に入って kill のたびに cleanup だったので、deps から外す (ref 化) ことで解決した。今回は kill とは独立 (= deps から外しようがない) な peerManager swap で cleanup が起きるため、setTimeout 自体を撤廃して state-based poll に置換する必要があった。
+**setTimeout は belt として残す (sub-tick 精度)**: LH の hit detection loop 内の setTimeout は撤去せず、callback 内に `selectIsDead` guard を挟むだけに留めた。tick poll は最大 `GAME_LOOP_INTERVAL` = 8ms 遅れで発火するので、setTimeout と poll が同 tick で競合する可能性がある。その場合も最初の `handleRespawn` で `respawnLog` に entry が追加され `selectIsDead` が false に落ちるので、2 発目は guard で skip される。`useBeaconMigration` の LH 再 schedule 経路にも同じ guard を追加した。
+
+**冪等性 invariant**: `handleRespawn(victimId, ...)` 直後に `selectIsDead(state, victimId)` が必ず `false` になる、という暗黙の不変条件に依存する。これが壊れると poll が毎 tick 同じ victim で respawn を spam する。dev build では `import.meta.env.DEV` ガード下で `handleRespawn` 直後に `selectIsDead` を確認し、`true` のままなら `console.warn` を出す (compile-time tree-shaking で production には残らない)。
+
+**過去類似バグ**: 上記「myDeathEvent は ref で持つ」も同じ class (useEffect cleanup が respawn timer を殺す)。あの時は `[myDeathEvent]` が deps に入って kill のたびに cleanup だったので、deps から外す (ref 化) ことで解決した。今回は kill とは独立 (= deps から外しようがない) な peerManager swap で cleanup が起きるため、setTimeout 自体を state-based poll に置換する必要があった。教訓: **不安定な component の lifecycle に依存する scheduling (setTimeout/setInterval) は code smell、可能なら state-derived polling に切り替える**。
 
 ---
 

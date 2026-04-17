@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { RESPAWN_DELAY } from "../components/game/constants";
 import { isLighthouse } from "../components/game/lighthouse";
 import { createRespawnPosition } from "../components/game/respawnTime";
-import { selectDeadPlayerIds, useGameStore } from "../stores/game-store";
+import { selectDeadPlayerIds, selectIsDead, useGameStore } from "../stores/game-store";
 
 interface UseBeaconMigrationArgs {
   isMigrating: boolean;
@@ -97,6 +97,8 @@ export function useBeaconMigration({
       const timerId = setTimeout(() => {
         respawnTimeoutsRef.current.delete(timerId);
         const currentStore = useGameStore.getState();
+        // useGameLoop の owner poll が先に発火している可能性があるので state guard
+        if (!selectIsDead(currentStore, playerId)) return;
         const respawnPos = createRespawnPosition(currentStore.players, playerId);
         peerManager.send({
           type: "respawn" as const,

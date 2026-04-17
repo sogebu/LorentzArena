@@ -508,16 +508,18 @@ export function useGameLoop({
             sendToNetwork({ type: "kill" as const, victimId, killerId, hitPos });
             useGameStore.getState().handleKill(victimId, killerId, hitPos, myId);
 
-            // 自機の respawn は tick 末尾の poll で駆動 (killLog.wallTime ベース)。
-            // setTimeout 方式は useGameLoop の useEffect cleanup ([peerManager, myId] 差し替え
-            // 時) で timer が消失し、モバイル visibility hidden や再接続で DEAD 永続する
-            // 脆弱性があった。LH は owner=host のみが扱い、この loop 内だけで完結する
-            // ため従来通り setTimeout で OK。
+            // 自機の respawn は owner poll (下の block) で駆動 (killLog.wallTime ベース)。
+            // setTimeout 方式は useEffect cleanup ([peerManager, myId] 差し替え) で消失し、
+            // モバイル visibility hidden 後の再接続で DEAD 永続する脆弱性があった。
             if (victimId === myId) continue;
 
+            // 非自機 victim (= 自分が owner の LH) には setTimeout を仕込む (sub-tick 精度)。
+            // poll 経由で同 tick fire する race を避けるため、callback 内で
+            // selectIsDead guard を挟む。
             const timerId = setTimeout(() => {
               respawnTimeoutsRef.current.delete(timerId);
               const currentStore = useGameStore.getState();
+              if (!selectIsDead(currentStore, victimId)) return; // poll 先行 or 別経路で respawn 済
               const respawnPos = createRespawnPosition(currentStore.players, victimId);
               sendToNetwork({
                 type: "respawn" as const,
@@ -531,33 +533,62 @@ export function useGameLoop({
         }
       }
 
-      // --- Self respawn poll (killLog.wallTime based) ---
-      // setTimeout に依存せず、毎 tick killLog から自分の最新 kill.wallTime を読み、
-      // RESPAWN_DELAY 経過済みなら respawn を送信。useGameLoop の useEffect cleanup
-      // ([peerManager, myId] 差し替え) や再マウントで setTimeout が消えても、state (log)
-      // が source of truth なので DEAD 永続化しない。モバイル visibility hidden →
-      // HOST_HIDDEN_GRACE 経過で beacon holder 再構築 → peerManager 差し替えのシナリオで
-      // 旧 tab の respawn timer が消えて「DEAD 0」永続する bug の対策 (2026-04-18)。
+      // --- Owner respawn poll (killLog.wallTime based) ---
+      // setTimeout に依存せず、毎 tick killLog から死亡中 owner の最新 kill.wallTime を読み、
+      // RESPAWN_DELAY 経過済みなら respawn を送信。owner = 自機 (myId) + 自分が ownerId の
+      // LH (= beacon holder なら全 LH)。useEffect cleanup / 再マウントで setTimeout が消えても、
+      // state (log) が source of truth なので DEAD 永続化しない。
+      //
+      // 対応シナリオ (2026-04-18):
+      // - 自機: モバイル visibility hidden → HOST_HIDDEN_GRACE 経過で beacon holder 再構築、
+      //   peerManager 差し替えで respawnTimeoutsRef.clear() される
+      // - LH: solo 環境 (= 唯一の peer) で beacon holder が hidden→visible し Phase 1 経由で
+      //   再取得するケース。setIsMigrating を経由しないため useBeaconMigration の LH setTimeout
+      //   rebuild が動かず、LH 永続 DEAD に陥る
+      //
+      // 冪等性: handleRespawn が respawnLog に entry 追加 → selectIsDead が false に落ちる →
+      // 次 tick で poll が skip。dev build では assert で壊れていないか確認。
       {
         const pollState = useGameStore.getState();
-        if (selectIsDead(pollState, myId)) {
-          let myLastKillTime = Number.NEGATIVE_INFINITY;
+        const ownedDeadIds: string[] = [];
+        if (selectIsDead(pollState, myId)) ownedDeadIds.push(myId);
+        for (const [id, player] of pollState.players) {
+          if (!isLighthouse(id)) continue;
+          if (player.ownerId !== myId) continue;
+          if (selectIsDead(pollState, id)) ownedDeadIds.push(id);
+        }
+
+        if (ownedDeadIds.length > 0) {
+          const latestKillTime = new Map<string, number>();
           for (const e of pollState.killLog) {
-            if (e.victimId === myId && e.wallTime > myLastKillTime) {
-              myLastKillTime = e.wallTime;
+            const prev = latestKillTime.get(e.victimId);
+            if (prev === undefined || e.wallTime > prev) {
+              latestKillTime.set(e.victimId, e.wallTime);
             }
           }
-          if (
-            Number.isFinite(myLastKillTime) &&
-            myLastKillTime + RESPAWN_DELAY <= currentTime
-          ) {
-            const respawnPos = createRespawnPosition(pollState.players, myId);
+          for (const victimId of ownedDeadIds) {
+            const deathTime = latestKillTime.get(victimId);
+            if (deathTime === undefined) continue; // selectIsDead true なら必ず entry あるはず
+            if (deathTime + RESPAWN_DELAY > currentTime) continue;
+
+            const respawnPos = createRespawnPosition(pollState.players, victimId);
             sendToNetwork({
               type: "respawn" as const,
-              playerId: myId,
+              playerId: victimId,
               position: respawnPos,
             });
-            pollState.handleRespawn(myId, respawnPos, myId, getPlayerColor);
+            pollState.handleRespawn(victimId, respawnPos, myId, getPlayerColor);
+
+            if (import.meta.env.DEV) {
+              const after = useGameStore.getState();
+              if (selectIsDead(after, victimId)) {
+                console.warn(
+                  "[respawn-poll] selectIsDead still true after handleRespawn for",
+                  victimId,
+                  "— per-tick respawn spam likely. Check handleRespawn/gcLogs/selectIsDead.",
+                );
+              }
+            }
           }
         }
       }
