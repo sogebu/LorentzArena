@@ -40,8 +40,15 @@ export const ENERGY_PER_SHOT = 1.0 / 30; // 30 発で枯渇（≈3 秒連射）
 export const THRUST_ENERGY_RATE = 1.0 / 9;
 export const ENERGY_RECOVERY_RATE = 1.0 / 6; // 6 秒で 0→満タン（撃/推どちらもしていないときのみ回復）
 
-// 世界線の最大サンプル数
-export const MAX_WORLDLINE_HISTORY = 5000;
+// 世界線の最大サンプル数。
+// 本来は 5000 だったが、長時間プレイで SceneContent.tsx の
+// `worldLineIntersections` / `laserIntersections` / `futureLightConeIntersections`
+// useMemo と game loop の交差計算が毎フレーム history を走査する O(N) コストで
+// FPS が 10 まで低下 (固有時間 ~170s 付近)。切り分けで worldLine.history 走査が
+// 主因と確定したため、短期対策として 1000 に削減 (視覚的には世界線がやや短く切れる)。
+// 中期対策: `pastLightConeIntersectionWorldLine` 等を二分探索で O(log N) 化
+// (history は時系列順 t 単調なので可)。実装後に history を 5000 に戻せる。
+export const MAX_WORLDLINE_HISTORY = 1000;
 
 // 爆発パーティクル数
 export const EXPLOSION_PARTICLE_COUNT = 30;
@@ -108,11 +115,12 @@ export const ARENA_CENTER_Y = SPAWN_RANGE / 2;
 // 半径: LASER_RANGE (=10) の 2 倍、光円錐 HEIGHT と同じスケール感。
 export const ARENA_RADIUS = 20;
 // 時間方向の描画レンジ (中心は観測者 t に合わせ、上下 ±HALF をカバー)。
-// world 静止の円柱 geometry を観測者時間中心で窓を切る形。光円錐より広いレンジ
-// (= ±200) で描画することで、観測者の因果構造の外まで含めて「世界に常に存在する
-// 空間境界」の意味論を強調する。Float32 精度的にも ±200 なら十分 (observer.x の
-// 最大 ±10 を足しても ~200)。延ばしすぎると 1e4 付近で精度が落ちるので注意。
-export const ARENA_HEIGHT = 400;
+// world 静止の円柱 geometry を観測者時間中心で窓を切る形。LIGHT_CONE_HEIGHT と
+// 同じスケール (±HALF = ±LIGHT_CONE_HEIGHT) で future/past 両方を含む。
+// ±100 超の大きいレンジは観測者が円柱外に出たときの surface overdraw が画面を
+// 覆って fill-rate bound を招く (実測 FPS 10 まで低下、位置 (67, 52) で)。
+// 周期境界 (トーラス化、SESSION.md defer 中) で外に出なくなったら再検討可。
+export const ARENA_HEIGHT = LIGHT_CONE_HEIGHT * 2;
 export const ARENA_RADIAL_SEGMENTS = 64;
 // 暫定色 (シアン, 仮想空間境界のメタファー)。パステル化時に再検討。
 // プレイヤー色 (HSL 黄金角分散) と Lighthouse (hsl(220,70%,75%)) の色相帯を避ける

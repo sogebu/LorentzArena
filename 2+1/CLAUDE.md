@@ -170,7 +170,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 - プレイヤー色は `colorForJoinOrder(index)` が主（接続順 × 黄金角）、peerList 未受信時は `colorForPlayerId(id)` にフォールバック。ネットワーク同期不要の純関数方式。詳細は DESIGN.md § 描画「色割り当て」
 - 因果律の守護者: 他プレイヤーの未来光円錐内で操作凍結。死亡プレイヤー・灯台は除外。灯台は別方式: 誰かの過去光円錐に落ちたら最も過去の生存プレイヤーの座標時間にジャンプ
 - 光円錐描画: DoubleSide 半透明サーフェス（`LIGHT_CONE_SURFACE_OPACITY`）+ ワイヤーフレーム（`LIGHT_CONE_WIRE_OPACITY`）の 2 層構造で未来/過去光円錐を表示
-- アリーナ円柱 (`ArenaRenderer`): world-frame 静止、中心 `(ARENA_CENTER_X, ARENA_CENTER_Y)` 半径 `ARENA_RADIUS` の半透明円柱で戦闘領域の視覚ガイドを提示。物理判定なし（drifter 封じ込めは thrust energy で既済、視覚的境界として補完）。D pattern で per-vertex Lorentz 変換し、rest frame では光行差で楕円歪みを表現。本体は t-span 中心を observer.t に追従させ描画 window として機能、各プレイヤーは自分の過去光円錐と円柱の交線 (LineLoop) を独立に描画して「今まさに見えている周縁」を明示。骨組みは時間方向の垂直線 LineSegments（CylinderGeometry の wireframe は三角形の対角線も描画してジグザグに見えるため採用せず、`ARENA_RADIAL_SEGMENTS` 本の純粋な縦線のみ自前 BufferGeometry で描画）
+- アリーナ円柱 (`ArenaRenderer`): world-frame 静止、中心 `(ARENA_CENTER_X, ARENA_CENTER_Y)` 半径 `ARENA_RADIUS` の半透明円柱で戦闘領域の視覚ガイドを提示。物理判定なし（drifter 封じ込めは thrust energy で既済、視覚的境界として補完）。D pattern で per-vertex Lorentz 変換し、rest frame では光行差で楕円歪みを表現。本体は t-span 中心を observer.t に追従させ描画 window として機能、各プレイヤーは自分の過去光円錐と円柱の交線 (LineLoop) を独立に描画して「今まさに見えている周縁」を明示。骨組みは時間方向の垂直線 LineSegments（CylinderGeometry の wireframe は三角形の対角線も描画してジグザグに見えるため採用せず、`ARENA_RADIAL_SEGMENTS` 本の純粋な縦線のみ自前 BufferGeometry で描画）。半透明 surface (DoubleSide) は視認性のため採用、大きい `ARENA_HEIGHT` (~100 超) では外側から見ると画面全体が overdraw で覆われ FPS 低下するので現状は LIGHT_CONE_HEIGHT × 2 に抑制（周期境界 defer 解消で再検討）
 
 ### Store 構造 (`src/stores/game-store.ts`、Stage C 以降)
 
@@ -247,7 +247,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `MAX_FROZEN_WORLDLINES` | 20 | 凍結世界線の保持上限 |
 | `MAX_DEBRIS` | 20 | デブリの保持上限 |
 | `EXPLOSION_PARTICLE_COUNT` | 30 | デブリパーティクル数 |
-| `MAX_WORLDLINE_HISTORY` | 5000 | 世界線のサンプル数上限 |
+| `MAX_WORLDLINE_HISTORY` | 1000 | 世界線のサンプル数上限。5000 から削減 (SceneContent useMemo と game loop の交差計算が毎フレーム O(N) で history 走査 → 長時間プレイで FPS 低下、1000 に下げて視覚妥協と FPS 改善のバランス取り)。中期対策: 交差計算を O(log N) 化すれば 5000 に戻せる |
 | `MAX_KILL_LOG` | 1000 | kill event log の安全 cap (通常は GC で届かない) |
 | `MAX_RESPAWN_LOG` | 500 | respawn event log の安全 cap |
 | `PLAYER_ACCELERATION` | 0.8 c/s | プレイヤー加速度 |
@@ -259,9 +259,9 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `PLAYER_MARKER_SIZE_OTHER` | 0.2 | 他機マーカーサイズ |
 | `ARENA_CENTER_X/Y` | SPAWN_RANGE/2 = 5 | アリーナ円柱の中心（= spawn 一様分布の中心） |
 | `ARENA_RADIUS` | 20 | アリーナ円柱半径（= LASER_RANGE × 2） |
-| `ARENA_HEIGHT` | 400 | 円柱 geometry の高さ (± 200)。中心 t は観測者 t に追従し、常に観測者時間近傍の slice を描画。光円錐より広いレンジで「世界に常に存在する空間境界」を強調 (Float32 精度は ±200 + observer.x ±10 で十分、~1e4 以上は要注意) |
+| `ARENA_HEIGHT` | LIGHT_CONE_HEIGHT × 2 = 40 | 円柱 geometry の高さ。中心 t は観測者 t に追従し、常に観測者時間近傍の slice を描画。±100 以上に延ばすと観測者が円柱外に出たとき surface overdraw で FPS 低下 (周期境界 defer 解消後に再検討) |
 | `ARENA_RADIAL_SEGMENTS` | 64 | 円柱側面の周方向分割数（光行差表現のため細かく） |
-| `ARENA_COLOR` | `hsl(180,40%,70%)` | アリーナ円柱の色 (暫定シアン、surface / 垂直線 / 交線すべて同色)。プレイヤー色や LH 色と干渉しない色相帯。パステル化時に再検討 |
+| `ARENA_COLOR` | `hsl(180,40%,70%)` | アリーナ円柱の色 (暫定シアン、surface / 垂直線 / 交線同色)。プレイヤー色や LH 色と干渉しない色相帯。パステル化時に再検討 |
 | `ARENA_SURFACE_OPACITY` | 0.08 | 円柱側面 surface の透明度 (= 光円錐 surface と同値) |
 | `ARENA_VERTICAL_LINE_OPACITY` | 0.04 | 時間方向に伸びる垂直線 (ARENA_RADIAL_SEGMENTS 本) の透明度 (= 光円錐 wireframe と同値)。CylinderGeometry + wireframe だと三角形の対角線も出てジグザグになるため、LineSegments で純粋な縦線のみ描画 |
 | `ARENA_PAST_CONE_SEGMENTS` | 128 | 過去光円錐 × 円柱 交線 LineLoop のサンプル数 |

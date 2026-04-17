@@ -48,12 +48,13 @@ build `2026/04/15 08:44:09` (commit `0dad175`) でデプロイ済み。主な変
 - DESIGN.md 残存する設計臭 #2（#1 は実質解決、#3/#4 は Authority 解体で自然消滅）
 - PeerProvider Phase 1 effect のコールバックネスト
 - 色調をポップで明るく（方向性未定）
-- **アリーナ円柱の周期的境界条件 (トーラス化)**: 視覚ガイドとしてアリーナ円柱を入れた次ステップ。円柱壁で座標空間を周期境界にしてトーラス宇宙にする。un-defer トリガー: アリーナ実装後「壁で閉じ込める物理」が欲しくなった場合 / トーラス地図での体験向上を検証したくなった場合。物理改変なので spawn 位置や rendering (世界線の折り返し描画) への影響も設計範囲
+- **アリーナ円柱の周期的境界条件 (トーラス化)**: 視覚ガイドとしてアリーナ円柱を入れた次ステップ。円柱壁で座標空間を周期境界にしてトーラス宇宙にする。un-defer トリガー: アリーナ実装後「壁で閉じ込める物理」が欲しくなった場合 / トーラス地図での体験向上を検証したくなった場合 / **ARENA_HEIGHT を光円錐より広く取りたくなった場合** (観測者が円柱外から見ると半透明 surface の overdraw で FPS 低下、周期境界で外に出なくなれば解消)。物理改変なので spawn 位置や rendering (世界線の折り返し描画) への影響も設計範囲
 - **snapshot に frozenWorldLines / debrisRecords 同梱**: 「リスポーン時世界線連続」既知課題と同じ surface。spawn 時刻統一とは別 commit として切り出し。un-defer トリガー: リスポーン世界線連続が実際に観測されたら優先度上げ
 - **host migration の LH 時刻 anchor 見直し**: 「ホストマイグレーション時の位置飛び」既知課題。spawn 座標時刻統一と同じ「時刻 anchor」族だが、今回は触れず
 
 ### パフォーマンス検討課題
 
+- **`worldLine.history` 交差計算 O(N) 走査 (主因確定 2026-04-17)**: `SceneContent.tsx` の `worldLineIntersections` / `laserIntersections` / `futureLightConeIntersections` useMemo と game loop 内の `pastLightConeIntersectionWorldLine` / `findLaserHitPosition` が毎フレーム全 history を舐めている。固有時間 170s で FPS 10 まで低下を実測。短期対策として `MAX_WORLDLINE_HISTORY` を 5000 → 1000 に削減済 (FPS 120+ 維持)。中期対策: history が時系列順 (t 単調) なので二分探索で O(log N) 化 → 5000 復帰可能
 - `appendWorldLine` O(n) → ring buffer
 - useMemo 毎フレーム再計算 → カリング
 

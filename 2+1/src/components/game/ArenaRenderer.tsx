@@ -98,7 +98,7 @@ export const ArenaRenderer = () => {
 
   return (
     <>
-      {/* 円柱本体: 半透明 surface + wireframe */}
+      {/* 円柱本体: 半透明 surface (両面可視) */}
       <mesh
         geometry={sharedGeometries.arenaCylinder}
         matrix={cylinderMatrix}
