@@ -151,7 +151,7 @@ export const TIME_FADE_SCALE = LIGHT_CONE_HEIGHT;
 // = 視覚ポッピング) は **採用しない**。
 //
 // 詳細: EXPLORING.md §進行方向・向きの認知支援 §追加案「案 17」
-export const STARDUST_COUNT = 6000;
+export const STARDUST_COUNT = 20000;
 // 空間方向の ±範囲 (world 単位)。observer boost で display frame に mix されても
 // 大半が視認 window 内に残るよう、TIME_HALF_RANGE と同程度に取る。
 export const STARDUST_SPATIAL_HALF_RANGE = 60;
@@ -159,7 +159,7 @@ export const STARDUST_SPATIAL_HALF_RANGE = 60;
 // LCH 変更時に自動追従。
 export const STARDUST_TIME_HALF_RANGE = TIME_FADE_SCALE * 3;
 // Point size (world 単位、sizeAttenuation で perspective 縮小)
-export const STARDUST_SIZE = 0.06;
+export const STARDUST_SIZE = 0.04;
 // 暖色 amber (彩度上げて LH の light blue `hsl(220, 70%, 75%)` との視覚混同を回避)。
 // arena cyan / exhaust blue / LH blue 全て寒色側なので、暖色方向で明確に分離。
 export const STARDUST_COLOR = "hsl(42, 55%, 80%)";
