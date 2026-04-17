@@ -2,9 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**`d740295` デプロイ済み** (build `2026/04/17 19:10:09 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
-
-2026-04-17 夜: **時空星屑 (案 17) 実装完了、ローカル動作確認済み (未デプロイ)**。`StardustRenderer.tsx` 新規、`constants.ts` に `STARDUST_*` 追加、`timeFadeShader.ts` を PointsMaterial 対応に拡張。FPS 116-125 @ N=1500。Haiku 版 (grid+hash procedural) が revert されていた経緯と修正点は DESIGN.md §描画「時空星屑」参照。
+対戦可能。**`b15694d` デプロイ済み** (build `2026/04/17 23:27:38 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
 完了済みリファクタ (判断根拠は DESIGN.md):
 - **Authority 解体 Stage A〜H** (2026-04-14〜15): target-authoritative 化 + event-sourced。plan: `plans/2026-04-14-authority-dissolution.md`
@@ -18,20 +16,11 @@
 - **Exhaust v0** (2026-04-17): 自機 rest-frame での -加速度方向に 2 層 cone (外=明るい青 `hsl(210, 85%, 60%)`、内=冷たい白 `hsl(210, 70%, 92%)`、MeshBasic + additive blending で青白プラズマ発光。`EXHAUST_MAX_OPACITY = 0.45` で透明感)。プレイヤー色依存は廃止、識別は sphere / worldline に任せる。PC binary 入力の点滅防止に magnitude EMA smoothing (attack 60ms / release 180ms)、方向は即時。v0 は C pattern (step 1: rest frame で与える) のみ、他機対応の step 2-3 (world boost + 観測者 rest frame に戻す) は phaseSpace に共変 α^μ を載せる段階で実装予定。詳細は DESIGN.md §描画「Exhaust」
 - **時間的距離 opacity fade (Lorentzian per-vertex shader)** (2026-04-17): `fade = r²/(r² + Δt²)`、`r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT = 20` (時間距離の 2 乗反比例、物理の逆 2 乗法則と同型)。Δt = LCH で 0.5、2×LCH で 0.2、3×LCH で 0.1。`game/timeFadeShader.ts` の `applyTimeFadeShader` を material の `onBeforeCompile` で inject、各 vertex の `modelMatrix × position` の z 成分 (= observer rest frame での時間距離) から per-vertex fade を alpha に乗算。適用対象: 世界線 (生存・凍結 tube)、デブリ (InstancedMesh、`USE_INSTANCING` 分岐)、自己光円錐 4 mesh、アリーナ円柱 4 mesh、レーザー batch。生存世界線も tail 方向が自然に消え、凍結世界線は時間経過で全体が薄くなる。詳細は DESIGN.md §描画「時間的距離 opacity fade」
 - **スマホ pitch 廃止** (2026-04-17): ghost 物理統合で死亡中も thrust 入力が効くようになった後、縦スワイプ = thrust と旧 pitch 分岐が衝突していたバグを解消。`processCamera` の死亡時 pitch 分岐を削除、`pitchDelta` を毎 tick リセット。生死問わず縦スワイプ = thrust、pitch 回転は PC 矢印キーのみ。詳細は DESIGN.md §UI / 入力「モバイルタッチ入力」
-- **時空星屑 (案 17)** (2026-04-17 夜、ローカル動作確認済 / 未デプロイ): N=1500 の 4D event を world 座標で pre-generated、`THREE.Points` で D pattern 描画。periodic boundary (wrap-around) で無限供給、per-vertex 時間 fade で境界不可視。光行差・Lorentz 変換は per-vertex で自動。`applyTimeFadeShader` を PointsMaterial 対応に拡張 (`FRAGMENT_APPLY_KEYS` fallback、Mesh/Line は `dithering_fragment` / Points は `premultiplied_alpha_fragment`)。FPS 116-125 @ N=1500 (Apple Silicon)。Haiku agent 版が revert された経緯と失敗点 (grid+hash で cell 境界ポッピング、毎フレーム BufferGeometry 再生成、存在しない `state.observer` 参照、shader 未適用) は DESIGN.md §描画「時空星屑」参照
+- **時空星屑 (案 17)** (2026-04-17 夜、デプロイ済): N=6000 の 4D event を world 座標で pre-generated、`THREE.Points` で D pattern 描画。periodic boundary (wrap-around) で無限供給、per-vertex 時間 fade で境界不可視。光行差・Lorentz 変換は per-vertex で自動。static 観測者でも spark が display 下方向へ流れ「時空を通過している」体感 (timelike drift 版を一度試して撤回)。`applyTimeFadeShader` を PointsMaterial 対応に拡張 (`FRAGMENT_APPLY_KEYS` fallback、Mesh/Line は `dithering_fragment` / Points は `premultiplied_alpha_fragment`)。Haiku agent 版 (grid+hash 動的再生成で cell 境界ポッピング・存在しない store field 参照・shader 未適用) は revert。詳細: DESIGN.md §描画「時空星屑」
+- **Temporal GC** (2026-04-17 夜): laser / frozen worldline / debris の最未来点が 全プレイヤー最早時刻 より `5 × LIGHT_CONE_HEIGHT` 以上過去なら毎 tick 削除。time fade が実質不可視 (fade ≈ 0.04) の領域を刈り、交差計算 / tube 再生成 / InstancedMesh 更新の per-object 線形コストを削減。GC_PAST_LCH_MULTIPLIER = 5、DEBRIS_MAX_LAMBDA = 2.5 定数化
+- **spawn effect depthWrite 修正** (2026-04-17 夜): ring / pillar が fade 終盤で `depthWrite=true` (default) のため opacity 減少中も depth を書き、後続の透明物 (光円錐等) の rendering を reject → 四角い「穴」が一瞬見える既知バグを解消。他の透明材質と統一して `depthWrite={false}` 追加
 
-## 直近の作業
-
-### 2026-04-17: アリーナ視覚化 + ghost 物理統合 + 光円錐交差 O(log N) 化 (全デプロイ済)
-
-一気通貫で実装した知見は DESIGN.md に集約 (以下の pointer 先)。
-
-- **アリーナ円柱** (DESIGN.md §描画「アリーナ円柱」): world-frame 静止の視覚ガイド。各 θ で観測者因果コーン (過去/未来光円錐) 交点を上下端にして双円錐で歪む形。4 geometry (surface / 垂直線 / 下地平線 / 上地平線) が shared BufferAttribute + in-place update で同じ頂点セットを共有し線ズレなし。frustumCulled=false で in-place boundingSphere 問題回避。`ARENA_RADIAL_SEGMENTS = 128`、暫定色シアン `hsl(180,40%,70%)`
-- **ghost 物理統合** (DESIGN.md §物理「スポーン座標時刻」): 死亡中も生存時物理 `processPlayerPhysics` を流用して自機 ghost を動的更新、相対論的視点移動が連続。`DeathEvent.ghostPhaseSpace` 追加、`computeSpawnCoordTime(players, excludeId?)` で自機除外、死亡者 (LH 含む) は placeholder として対称扱い (原則 2 条)
-- **光円錐交差 O(log N) 化** (DESIGN.md §worldLine.history サイズ): `pastLightConeIntersectionWorldLine` / `futureLightConeIntersectionWorldLine` を binary search + ±K=16 近傍スキャンで O(log N + K)、`findLaserHitPosition` は laser 時刻範囲で絞り込み。Vitest 導入 (`pnpm test`)、linear scan reference 実装との regression test 11 本 green。長時間プレイ FPS 低下を根治 (MAX_WORLDLINE_HISTORY 1000 維持、5000 復帰余地あり)
-- **メタ原則追加** (DESIGN.md §メタ原則): M16 (時間経過悪化は蓄積 state O(N) を疑う) / M17 (Three.js + R3F の in-place BufferGeometry pattern、frustum culling trap、shared BufferAttribute) / M18 (段階的 α=0 切り分け二分法)。M15 (HMR stale) に 2026-04-17 事例を追記
-
-### 過去セッションのダイジェスト
+## 過去セッションのダイジェスト
 
 - **2026-04-15**: D pattern (world 座標 + 頂点単位 Lorentz)、球は C pattern 維持、spawn pillar 過去光円錐 anchor、Lighthouse 調整 (射撃間隔 / spawn grace / 無敵 / 照準ジッタ)、レーザー × 光円錐 交点マーカーの接平面三角形化、opacity 定数集約。M13/M14/M15 追加。DESIGN.md 時系列→topic 別再編。`plans/2026-04-15-design-reorg.md`
 - **2026-04-14**: Authority 解体 Stage A〜E、handleKill 二重キル防止、sendBeacon CORS 修正 (`text/plain`)、制約ネットワーク検証 (Cloudflare TURN)
@@ -86,9 +75,8 @@
 
 ## 次にやること
 
-- **[最優先] 時空星屑 deploy** — ローカル動作確認済み (2026-04-17 夜)、本番反映待ち。`pnpm run deploy` 実行 + main に source commit/push。デプロイ後 build 値をユーザーに報告
 - **世界系時の time fade 統一** (任意、architectural) — 現状 `buildDisplayMatrix` が world frame で identity を返すため、time fade shader の `modelMatrix × vertex` の z は絶対 world t になる → 観測者.t 進行で全 D pattern 描画 (star / arena / worldline / debris / laser) が薄くなる。修正案: world frame でも `T(-observer)` 並進を含める + `transformEventForDisplay` で world - observer を返す → rest / world で fade 挙動統一。star 固有の issue ではなく全 D pattern renderer 共通の pre-existing 問題。詳細: DESIGN.md §描画「時空星屑」の world frame 段落
-- **[時空星屑 deploy 後] 進行方向の可視化 分岐 A: 他機の noise exhaust 対応** — phaseSpace に共変 α^μ を同梱 (発信者 owner が自機の `Λ(u_own)` で世界系へ boost)、受信側は観測者の `Λ(u_obs)^{-1}` で rest frame に戻して cone 方向決定。D pattern + Lorentz 収縮 + 光行差が自然に入る (物理モデル step 2 + step 3 を同時実装)。作業スコープ: phaseSpace message schema 拡張 + messageHandler validation + snapshot への同梱 + ExhaustCone を自機専用経路から他機対応経路に広げる。`SceneContent.tsx` の `ExhaustCone` は現在 `player={myPlayer}` 固定だが、`playerList.map` 内に組み込む形に書き換える (ただし球は C pattern、cone は step 2-3 完成で D pattern に昇格)
+- **進行方向の可視化 分岐 A: 他機の noise exhaust 対応** — phaseSpace に共変 α^μ を同梱 (発信者 owner が自機の `Λ(u_own)` で世界系へ boost)、受信側は観測者の `Λ(u_obs)^{-1}` で rest frame に戻して cone 方向決定。D pattern + Lorentz 収縮 + 光行差が自然に入る (物理モデル step 2 + step 3 を同時実装)。作業スコープ: phaseSpace message schema 拡張 + messageHandler validation + snapshot への同梱 + ExhaustCone を自機専用経路から他機対応経路に広げる。`SceneContent.tsx` の `ExhaustCone` は現在 `player={myPlayer}` 固定だが、`playerList.map` 内に組み込む形に書き換える (ただし球は C pattern、cone は step 2-3 完成で D pattern に昇格)
 - **進行方向の可視化: その他分岐 (今後検討)** — 分岐 A 完了後に着手:
   - **分岐 B (Step 2 = 案 14)**: sphere + heading-dart ハイブリッド、rest-frame で静止時も向きが読める。dart を D pattern で world-frame view の Lorentz 収縮が自然に入る
   - **分岐 C (Step 3 = 案 16)**: star aberration skybox (timelike 星、案 17 時空星屑とは独立の天体背景)、β 理念・モバイル UI 要素ゼロ原則と両立、教材価値最大
