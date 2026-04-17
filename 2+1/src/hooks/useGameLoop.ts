@@ -36,6 +36,7 @@ import {
   gcLogs,
   selectDeadPlayerIds,
   selectInvincibleIds,
+  selectIsDead,
   useGameStore,
 } from "../stores/game-store";
 
@@ -507,9 +508,13 @@ export function useGameLoop({
             sendToNetwork({ type: "kill" as const, victimId, killerId, hitPos });
             useGameStore.getState().handleKill(victimId, killerId, hitPos, myId);
 
-            // Stage D: respawn schedule は owner local。hit detection が
-            // owner 絞り込み済みなので、ここに到達した kill は全て自分 owner
-            // の target。target 本人 (または LH owner = host) が timer を持つ。
+            // 自機の respawn は tick 末尾の poll で駆動 (killLog.wallTime ベース)。
+            // setTimeout 方式は useGameLoop の useEffect cleanup ([peerManager, myId] 差し替え
+            // 時) で timer が消失し、モバイル visibility hidden や再接続で DEAD 永続する
+            // 脆弱性があった。LH は owner=host のみが扱い、この loop 内だけで完結する
+            // ため従来通り setTimeout で OK。
+            if (victimId === myId) continue;
+
             const timerId = setTimeout(() => {
               respawnTimeoutsRef.current.delete(timerId);
               const currentStore = useGameStore.getState();
@@ -522,6 +527,37 @@ export function useGameLoop({
               currentStore.handleRespawn(victimId, respawnPos, myId, getPlayerColor);
             }, RESPAWN_DELAY);
             respawnTimeoutsRef.current.add(timerId);
+          }
+        }
+      }
+
+      // --- Self respawn poll (killLog.wallTime based) ---
+      // setTimeout に依存せず、毎 tick killLog から自分の最新 kill.wallTime を読み、
+      // RESPAWN_DELAY 経過済みなら respawn を送信。useGameLoop の useEffect cleanup
+      // ([peerManager, myId] 差し替え) や再マウントで setTimeout が消えても、state (log)
+      // が source of truth なので DEAD 永続化しない。モバイル visibility hidden →
+      // HOST_HIDDEN_GRACE 経過で beacon holder 再構築 → peerManager 差し替えのシナリオで
+      // 旧 tab の respawn timer が消えて「DEAD 0」永続する bug の対策 (2026-04-18)。
+      {
+        const pollState = useGameStore.getState();
+        if (selectIsDead(pollState, myId)) {
+          let myLastKillTime = Number.NEGATIVE_INFINITY;
+          for (const e of pollState.killLog) {
+            if (e.victimId === myId && e.wallTime > myLastKillTime) {
+              myLastKillTime = e.wallTime;
+            }
+          }
+          if (
+            Number.isFinite(myLastKillTime) &&
+            myLastKillTime + RESPAWN_DELAY <= currentTime
+          ) {
+            const respawnPos = createRespawnPosition(pollState.players, myId);
+            sendToNetwork({
+              type: "respawn" as const,
+              playerId: myId,
+              position: respawnPos,
+            });
+            pollState.handleRespawn(myId, respawnPos, myId, getPlayerColor);
           }
         }
       }

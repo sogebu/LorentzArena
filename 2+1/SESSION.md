@@ -19,6 +19,7 @@
 - **時空星屑 (案 17)** (2026-04-17 夜、デプロイ済): N=6000 の 4D event を world 座標で pre-generated、`THREE.Points` で D pattern 描画。periodic boundary (wrap-around) で無限供給、per-vertex 時間 fade で境界不可視。光行差・Lorentz 変換は per-vertex で自動。static 観測者でも spark が display 下方向へ流れ「時空を通過している」体感 (timelike drift 版を一度試して撤回)。`applyTimeFadeShader` を PointsMaterial 対応に拡張 (`FRAGMENT_APPLY_KEYS` fallback、Mesh/Line は `dithering_fragment` / Points は `premultiplied_alpha_fragment`)。Haiku agent 版 (grid+hash 動的再生成で cell 境界ポッピング・存在しない store field 参照・shader 未適用) は revert。詳細: DESIGN.md §描画「時空星屑」
 - **Temporal GC** (2026-04-17 夜): laser / frozen worldline / debris の最未来点が 全プレイヤー最早時刻 より `5 × LIGHT_CONE_HEIGHT` 以上過去なら毎 tick 削除。time fade が実質不可視 (fade ≈ 0.04) の領域を刈り、交差計算 / tube 再生成 / InstancedMesh 更新の per-object 線形コストを削減。GC_PAST_LCH_MULTIPLIER = 5、DEBRIS_MAX_LAMBDA = 2.5 定数化
 - **spawn effect depthWrite 修正** (2026-04-17 夜): ring / pillar が fade 終盤で `depthWrite=true` (default) のため opacity 減少中も depth を書き、後続の透明物 (光円錐等) の rendering を reject → 四角い「穴」が一瞬見える既知バグを解消。他の透明材質と統一して `depthWrite={false}` 追加
+- **自機 respawn を tick poll 化** (2026-04-18): モバイルで発生していた「RESPAWN_DELAY 後も DEAD 0 残留 + 自機非表示」バグを修正。旧実装は hit detection 時に `setTimeout(() => handleRespawn(...), RESPAWN_DELAY)` を仕込んでいたが、useGameLoop の useEffect deps `[peerManager, myId]` が死亡中に変化すると cleanup で timer が `clearTimeout` される。モバイル tab hidden → `HOST_HIDDEN_GRACE` 経過で beacon holder destroy → `setPeerManager(null)` → 再接続で peerManager 差し替えの経路で発火。自機 (victimId === myId) は setTimeout を仕込まず、毎 tick 末尾で `killLog` から自分の最新 `kill.wallTime` を読み `+ RESPAWN_DELAY <= Date.now()` なら respawn を送信する方式に切替。state (log) が source of truth なので component lifecycle に非依存。LH の respawn は owner=beacon holder がこの useGameLoop 内で完結するため従来通り setTimeout 維持。DESIGN.md §D. respawn schedule を owner-local に + §myDeathEvent は ref で持つ の続編
 
 ## 過去セッションのダイジェスト
 
@@ -61,7 +62,6 @@
 ### モバイルバグ (2026-04-17 報告、要修正)
 
 - **スマホ UI で指を離しても加速し続ける**: `touchInput.ts` の `handleTouchEnd` は state を全 reset するはずだが、onTouchEnd が発火しないケース (ジェスチャ途中で iOS Safari が touch を横取り・ホームインジケータ近傍での touchcancel 未発火・複数指同時操作時の残留 touch) があると `state.thrust` が非ゼロのまま残って加速が止まらない。`touchcancel` は reset しているはずだが未検出経路があるかも。修正候補: `touchRef.current` が存在し続けるのを検知して一定時間ごとに stale check / visibility 変化時の強制 reset / pointer events への切替検討
-- **リスポーン後「DEAD 0」表示が戻らず自機が表示されない**: `RESPAWN_DELAY` 経過後にカウントダウン UI と ghost overlay は消えるはずだが、state の遷移が漏れて残留する。かつ自機 sphere が復活しない (SceneContent の `playerList.map` で `player.id === myId && player.isDead` 判定が true のまま？)。`myDeathEvent` の null 化・`isDead` の切替・`store.players` の mutation の順序を確認。`handleRespawn` から UI 経路への伝播漏れの可能性。モバイル限定か PC でも起きるかを要切り分け
 
 ### 要テスト
 
