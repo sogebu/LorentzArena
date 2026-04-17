@@ -259,7 +259,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `PLAYER_MARKER_SIZE_OTHER` | 0.2 | 他機マーカーサイズ |
 | `ARENA_CENTER_X/Y` | SPAWN_RANGE/2 = 5 | アリーナ円柱の中心（= spawn 一様分布の中心） |
 | `ARENA_RADIUS` | 20 | アリーナ円柱半径（= LASER_RANGE × 2） |
-| `ARENA_HEIGHT` | LIGHT_CONE_HEIGHT × 2 = 40 | 円柱 geometry の高さ。中心 t は観測者 t に追従し、常に観測者時間近傍の slice を描画 |
+| `ARENA_HEIGHT` | 400 | 円柱 geometry の高さ (± 200)。中心 t は観測者 t に追従し、常に観測者時間近傍の slice を描画。光円錐より広いレンジで「世界に常に存在する空間境界」を強調 (Float32 精度は ±200 + observer.x ±10 で十分、~1e4 以上は要注意) |
 | `ARENA_RADIAL_SEGMENTS` | 64 | 円柱側面の周方向分割数（光行差表現のため細かく） |
 | `ARENA_COLOR` | `hsl(180,40%,70%)` | アリーナ円柱の色 (暫定シアン、surface / 垂直線 / 交線すべて同色)。プレイヤー色や LH 色と干渉しない色相帯。パステル化時に再検討 |
 | `ARENA_SURFACE_OPACITY` | 0.08 | 円柱側面 surface の透明度 (= 光円錐 surface と同値) |

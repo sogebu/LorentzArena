@@ -108,9 +108,11 @@ export const ARENA_CENTER_Y = SPAWN_RANGE / 2;
 // 半径: LASER_RANGE (=10) の 2 倍、光円錐 HEIGHT と同じスケール感。
 export const ARENA_RADIUS = 20;
 // 時間方向の描画レンジ (中心は観測者 t に合わせ、上下 ±HALF をカバー)。
-// world 静止の円柱 geometry を観測者時間中心で窓を切る形。LIGHT_CONE_HEIGHT と
-// 同じスケールで future/past 両方を余裕を持って含む。
-export const ARENA_HEIGHT = LIGHT_CONE_HEIGHT * 2;
+// world 静止の円柱 geometry を観測者時間中心で窓を切る形。光円錐より広いレンジ
+// (= ±200) で描画することで、観測者の因果構造の外まで含めて「世界に常に存在する
+// 空間境界」の意味論を強調する。Float32 精度的にも ±200 なら十分 (observer.x の
+// 最大 ±10 を足しても ~200)。延ばしすぎると 1e4 付近で精度が落ちるので注意。
+export const ARENA_HEIGHT = 400;
 export const ARENA_RADIAL_SEGMENTS = 64;
 // 暫定色 (シアン, 仮想空間境界のメタファー)。パステル化時に再検討。
 // プレイヤー色 (HSL 黄金角分散) と Lighthouse (hsl(220,70%,75%)) の色相帯を避ける
