@@ -75,7 +75,11 @@ export const FRICTION_COEFFICIENT = 0.5; // 速度に比例する減速
 export const EXHAUST_BASE_LENGTH = 0.8; // cone の最大長 (magnitude=1 のとき)
 export const EXHAUST_BASE_RADIUS = 0.15; // cone 底面半径 (固定)
 export const EXHAUST_OFFSET = 0.3; // 球表面から cone 底面までのすき間
-export const EXHAUST_MAX_OPACITY = 0.7;
+export const EXHAUST_MAX_OPACITY = 0.45; // 透明度高めでプラズマ噴射らしく
+// プレイヤー識別は sphere / worldline で担保されているので、exhaust は
+// 全機共通の青系プラズマ色に統一。additive blending で重なると青白く光る。
+export const EXHAUST_OUTER_COLOR = "hsl(210, 85%, 60%)"; // 明るい青 (外炎)
+export const EXHAUST_INNER_COLOR = "hsl(210, 70%, 92%)"; // 冷たい白 (コア)
 // PC 入力は on/off の 2 値なので、magnitude を描画層で EMA smoothing して
 // 点滅感を避ける (方向は即時)。Mobile の連続値には attack=60ms でほぼ即時。
 export const EXHAUST_ATTACK_TIME = 60; // ms: 0 → 1 の追従時定数

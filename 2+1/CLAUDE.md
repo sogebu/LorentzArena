@@ -187,7 +187,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 - 因果律の守護者: 他プレイヤーの未来光円錐内で操作凍結。死亡プレイヤー・灯台は除外。灯台は別方式: 誰かの過去光円錐に落ちたら最も過去の生存プレイヤーの座標時間にジャンプ
 - 光円錐描画: DoubleSide 半透明サーフェス（`LIGHT_CONE_SURFACE_OPACITY`）+ ワイヤーフレーム（`LIGHT_CONE_WIRE_OPACITY`）の 2 層構造で未来/過去光円錐を表示
 - アリーナ円柱 (`ArenaRenderer`): world-frame 静止、中心 `(ARENA_CENTER_X, ARENA_CENTER_Y)` 半径 `ARENA_RADIUS` の半透明円柱で戦闘領域の視覚ガイドを提示。物理判定なし（drifter 封じ込めは thrust energy で既済、視覚的境界として補完）。D pattern で per-vertex Lorentz 変換し、rest frame では光行差で楕円歪みを表現。**時間方向は観測者の因果コーンで切り出される**: 各 θ で `(x(θ), y(θ))` から観測者への空間距離 `ρ(θ)` を計算し、下端 = `observer.t − ρ(θ)` (過去光円錐交点)、上端 = `observer.t + ρ(θ)` (未来光円錐交点)。観測者が中心なら均一な円、離れると「観測者双円錐で切り出された」形に歪む。副産物として、観測者が円柱外から眺めた時の overdraw 問題も自動解消。**4 geometry (surface / 垂直線 / 過去光円錐交線 / 未来光円錐交線) は共有 BufferAttribute で 1 セットの N×2 頂点を index だけ違えて描画** (surface 下辺と pastCone loop が完全一致、密度差による線ズレ解消)。geometry は初回 1 回作成、毎 frame `useFrame` で position を in-place 更新 + `needsUpdate=true` (allocation ゼロ、GPU upload 1 回/frame、DESIGN.md §メタ原則 M17)。`frustumCulled={false}` で in-place update 時の boundingSphere 問題を回避。過去光円錐交線は濃く (1.0)、未来光円錐交線は控えめ (0.3) で情報量の非対称を反映。詳細: DESIGN.md §描画「アリーナ円柱」
-- Exhaust (推進ジェット、自機のみ v0): 自機球の反推力方向に 2 層 cone (外=プレイヤー色、内=白熱コア `#fff3e0`、`MeshBasicMaterial` + `THREE.AdditiveBlending` + `toneMapped=false` で発光感)。**v0 は C pattern (rest-frame 固定)**、`transformEventForDisplay` 経由で自機球と同じ display 座標に並進のみ、共変 α^μ を phaseSpace に載せる段階 (他機対応) で D pattern + Lorentz 収縮に昇格予定。magnitude は描画層で EMA smoothing (attack 60ms / release 180ms) して PC binary 入力の点滅を解消、方向は smoothing しない。energy 枯渇で `thrustAcceleration=0` になり自動非表示。物理モデルの 3 ステップ (①rest frame で与える / ②world frame に boost して broadcast / ③観測者 rest frame に戻して表示) のうち v0 は ① のみ実装、②③ は他機対応時。詳細: DESIGN.md §描画「Exhaust」
+- Exhaust (推進ジェット、自機のみ v0): 自機球の反推力方向に 2 層 cone (外=`EXHAUST_OUTER_COLOR` 明るい青、内=`EXHAUST_INNER_COLOR` 冷たい白、`MeshBasicMaterial` + `THREE.AdditiveBlending` + `toneMapped=false` で青白プラズマ発光)。プレイヤー色依存は廃止、識別は sphere / worldline に任せる。**v0 は C pattern (rest-frame 固定)**、`transformEventForDisplay` 経由で自機球と同じ display 座標に並進のみ、共変 α^μ を phaseSpace に載せる段階 (他機対応) で D pattern + Lorentz 収縮に昇格予定。magnitude は描画層で EMA smoothing (attack 60ms / release 180ms) して PC binary 入力の点滅を解消、方向は smoothing しない。energy 枯渇で `thrustAcceleration=0` になり自動非表示。物理モデルの 3 ステップ (①rest frame で与える / ②world frame に boost して broadcast / ③観測者 rest frame に戻して表示) のうち v0 は ① のみ実装、②③ は他機対応時。詳細: DESIGN.md §描画「Exhaust」
 
 ### Store 構造 (`src/stores/game-store.ts`、Stage C 以降)
 
@@ -292,7 +292,9 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `EXHAUST_BASE_LENGTH` | 0.8 | 推進ジェット cone の最大長 (`smoothedMag=1` のとき) |
 | `EXHAUST_BASE_RADIUS` | 0.15 | 推進ジェット cone 底面半径 (固定) |
 | `EXHAUST_OFFSET` | 0.3 | 自機球表面から cone 底面までのすき間 |
-| `EXHAUST_MAX_OPACITY` | 0.7 | cone opacity 上限 (smoothedMag に比例) |
+| `EXHAUST_MAX_OPACITY` | 0.45 | cone opacity 上限 (smoothedMag に比例)。プラズマ噴射らしい透明感 |
+| `EXHAUST_OUTER_COLOR` | `hsl(210, 85%, 60%)` | 外側 cone 色 (明るい青、全機共通。識別性は sphere / worldline 側) |
+| `EXHAUST_INNER_COLOR` | `hsl(210, 70%, 92%)` | 内側 core cone 色 (冷たい白、外側と additive で青白プラズマ) |
 | `EXHAUST_ATTACK_TIME` | 60 ms | magnitude EMA の立ち上がり時定数 (PC binary 入力の点滅防止、方向は smoothing しない) |
 | `EXHAUST_RELEASE_TIME` | 180 ms | 同じ EMA の減衰時定数 (キー離し後の余韻) |
 | `EXHAUST_VISIBILITY_THRESHOLD` | 0.01 | smoothed magnitude がこれ未満で cone 非表示 |

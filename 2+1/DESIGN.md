@@ -1002,13 +1002,17 @@ v0 は自機のみで step 2-3 不要なので、rest frame 3-vector を **C pat
 
 **D pattern を初版で試行して却下**: `displayMatrix × T(worldPos) × R(quat) × T(offset) × S` で共変 α path に先回りしようとしたが、rest frame 3-vector を world 3-vector として誤って扱い、rest-frame view で自機 boost が cone 向きを歪めた。**EXPLORING.md の「初回 visual-only → Step 1 完了後に物理放出へ上位化」の推奨が正解**。step 2-3 未実装で D pattern を組むには Λ(u_own) boost の挿入が必要で、それは他機対応時にまとめて入れる。
 
-**2 層 cone + additive blending**: 外側 = プレイヤー色、内側 (`INNER_CORE_SCALE = 0.45`) = 白熱コア (`#fff3e0`)。`MeshBasicMaterial` + `blending: THREE.AdditiveBlending` + `toneMapped: false` で「固体の三角錐」でなく「発光する炎」の見た目。identification (誰の exhaust か) と熱らしさの両立。1 層プレイヤー色 emissive (MeshStandard) は初版で試したが「色付きの三角錐」に見えて噴射感ゼロ、却下。
+**2 層 cone + additive blending + 青系プラズマ色**: 外側 = `EXHAUST_OUTER_COLOR` (`hsl(210, 85%, 60%)` 明るい青)、内側 (`INNER_CORE_SCALE = 0.45`) = `EXHAUST_INNER_COLOR` (`hsl(210, 70%, 92%)` 冷たい白)。`MeshBasicMaterial` + `blending: THREE.AdditiveBlending` + `toneMapped: false` で「固体の三角錐」でなく「発光するプラズマ噴射」の見た目。
+
+**プレイヤー色依存は廃止 (2026-04-17)**: 初版は外側 cone をプレイヤー色にして identification を担保したが、「炎っぽく見えない」「もっと青系で透明度高めがそれらしい」のフィードバックで青プラズマ統一に変更。**プレイヤー識別は sphere / worldline で既に担保されている**ので exhaust に identification を負わせる必要がなかった (初版で identification と熱らしさを両立させようとした設計過剰の整理)。opacity も `EXHAUST_MAX_OPACITY = 0.7 → 0.45` に下げて透明感を出し、additive blending で背景と加算されて「光っている」印象に。
+
+1 層プレイヤー色 emissive (MeshStandard) は最初の試行で「色付きの三角錐」に見えて噴射感ゼロ、却下。その後 MeshBasic + additive で 2 層化 → 色統一 + 透明度上げ、の 2 段階で現在の姿に。
 
 **magnitude EMA smoothing**: PC の WSAD 入力は binary で `|a|` は常に 0 or `PLAYER_ACCELERATION` の 2 値 → 長さ/opacity 直結だと点滅的。描画層で EMA (attack 60ms / release 180ms) を入れて滑らかに。方向は smoothing しない (入力との対応が崩れる)。モバイルは元々連続値だが attack 60ms でほぼ即時、release 180ms で離した後フワッと余韻 (= cinematic)。
 
 **energy 枯渇との連携**: `thrustAcceleration` は `processPlayerPhysics` で energy scaling 適用済み、枯渇時ゼロベクトル → `EXHAUST_VISIBILITY_THRESHOLD` 未満で自動非表示。特別分岐不要。
 
-**パラメータ** (`constants.ts`): `EXHAUST_BASE_LENGTH = 0.8` / `EXHAUST_BASE_RADIUS = 0.15` / `EXHAUST_OFFSET = 0.3` (球表面から cone 底面) / `EXHAUST_MAX_OPACITY = 0.7` / `EXHAUST_ATTACK_TIME = 60ms` / `EXHAUST_RELEASE_TIME = 180ms` / `EXHAUST_VISIBILITY_THRESHOLD = 0.01`。SceneContent 内に `INNER_CORE_SCALE = 0.45` (内側 core cone の radius/length 倍率)。
+**パラメータ** (`constants.ts`): `EXHAUST_BASE_LENGTH = 0.8` / `EXHAUST_BASE_RADIUS = 0.15` / `EXHAUST_OFFSET = 0.3` (球表面から cone 底面) / `EXHAUST_MAX_OPACITY = 0.45` / `EXHAUST_OUTER_COLOR = "hsl(210, 85%, 60%)"` / `EXHAUST_INNER_COLOR = "hsl(210, 70%, 92%)"` / `EXHAUST_ATTACK_TIME = 60ms` / `EXHAUST_RELEASE_TIME = 180ms` / `EXHAUST_VISIBILITY_THRESHOLD = 0.01`。SceneContent 内に `INNER_CORE_SCALE = 0.45` (内側 core cone の radius/length 倍率)。
 
 **将来拡張**:
 - **他機対応 (step 2-3)**: phaseSpace メッセージに `alpha: Vector4` を追加、発信者が `Λ(u_own)` で世界系へ boost、受信側は `Λ(u_obs)^{-1}` で観測者 rest frame に戻して cone 方向決定。この段階で D pattern + 共変 α に昇格し、Lorentz 収縮・光行差が自然に入る。世界線 sample に α^μ を同梱する形が clean (位置・4-velocity と frame 統一、世界線が物理的に 1st jet bundle を持つ視点)

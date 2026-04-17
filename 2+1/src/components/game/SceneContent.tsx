@@ -22,8 +22,10 @@ import {
   EXHAUST_ATTACK_TIME,
   EXHAUST_BASE_LENGTH,
   EXHAUST_BASE_RADIUS,
+  EXHAUST_INNER_COLOR,
   EXHAUST_MAX_OPACITY,
   EXHAUST_OFFSET,
+  EXHAUST_OUTER_COLOR,
   EXHAUST_RELEASE_TIME,
   EXHAUST_VISIBILITY_THRESHOLD,
   LIGHT_CONE_HEIGHT,
@@ -112,7 +114,6 @@ const INNER_CORE_SCALE = 0.45; // 内側 core cone の radius / length 共通倍
 const ExhaustCone = ({
   player,
   thrustAccelRef,
-  color,
   observerPos,
   observerBoost,
 }: {
@@ -120,7 +121,6 @@ const ExhaustCone = ({
     phaseSpace: { pos: { x: number; y: number; t: number } };
   };
   thrustAccelRef: React.RefObject<Vector3>;
-  color: string;
   observerPos: Vector4 | null;
   observerBoost: ReturnType<typeof lorentzBoost> | null;
 }) => {
@@ -129,8 +129,8 @@ const ExhaustCone = ({
   const outerMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const innerMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const smoothedMagRef = useRef(0);
-  const threeColor = getThreeColor(color);
-  const whiteColor = useMemo(() => new THREE.Color("#fff3e0"), []);
+  const outerColor = getThreeColor(EXHAUST_OUTER_COLOR);
+  const innerColor = getThreeColor(EXHAUST_INNER_COLOR);
 
   const tmpQuat = useMemo(() => new THREE.Quaternion(), []);
   const vecY = useMemo(() => new THREE.Vector3(0, 1, 0), []);
@@ -201,7 +201,7 @@ const ExhaustCone = ({
       <mesh ref={outerRef} geometry={sharedGeometries.exhaustCone}>
         <meshBasicMaterial
           ref={outerMatRef}
-          color={threeColor}
+          color={outerColor}
           transparent
           depthWrite={false}
           blending={THREE.AdditiveBlending}
@@ -211,7 +211,7 @@ const ExhaustCone = ({
       <mesh ref={innerRef} geometry={sharedGeometries.exhaustCone}>
         <meshBasicMaterial
           ref={innerMatRef}
-          color={whiteColor}
+          color={innerColor}
           transparent
           depthWrite={false}
           blending={THREE.AdditiveBlending}
@@ -480,13 +480,13 @@ export const SceneContent = ({
       })}
 
       {/* 自機 exhaust (rest-frame で反推力方向に 2 層 cone、自機のみ、C pattern)。
+          プレイヤー色ではなく全機共通の青プラズマ色。識別性は sphere / worldline で担保。
           v0 はステップ 1 (自機の rest-frame 加速度を直接表示) のみ。他機対応 (broadcast +
           観測者 rest-frame に戻す) は phaseSpace に α^μ を乗せる段階で実装予定。 */}
       {myPlayer && !myPlayer.isDead && (
         <ExhaustCone
           player={myPlayer}
           thrustAccelRef={thrustAccelRef}
-          color={myPlayer.color}
           observerPos={observerPos}
           observerBoost={observerBoost}
         />
