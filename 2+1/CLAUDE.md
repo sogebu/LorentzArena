@@ -8,11 +8,26 @@
 ```bash
 pnpm install && pnpm dev       # PeerJS モード（http://localhost:5173/LorentzArena/）
 pnpm dev:wsrelay               # WS Relay モード（relay-server 同時起動）
-pnpm run deploy                # GitHub Pages デプロイ
+pnpm run build                 # tsc + vite build
+pnpm run deploy                # GitHub Pages デプロイ (build + gh-pages branch push)
 pnpm run lint                  # Biome linter
 pnpm run format                # Biome formatter
+pnpm run test                  # Vitest (1 回実行)
+pnpm run test:watch            # Vitest ウォッチモード
 pnpm run analyze               # バンドルサイズ分析
 ```
+
+### テスト (Vitest)
+
+`pnpm test` で 1 回実行、`pnpm test:watch` でウォッチモード。現時点のテストは `src/physics/worldLine.test.ts` のみ (光円錐交差 binary search の regression test)。
+
+**物理コア (pure 関数) を触るときの規約**:
+1. 旧実装を `*Linear` 等の名前で export 維持 (deprecated だが regression 比較用)
+2. `*.test.ts` を先に書き、random input + エッジケースで旧実装と新実装の結果一致を regression test
+3. 全 test green 後に呼び出し元を新実装に切り替え
+4. feat branch + PR 相当の単位で main に merge、必要なら旧実装を削除 (git history 参照可能)
+
+物理交差計算のような**細かいロジックで bug が視覚異常として即出る部分**は、この TDD 的フローで安全に最適化できる。2026-04-17 の光円錐交差 O(log N) 化がこの運用の事例 (詳細: DESIGN.md §worldLine.history サイズ)。
 
 ### テスト・デプロイの使い分け
 
@@ -171,7 +186,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 - プレイヤー色は `colorForJoinOrder(index)` が主（接続順 × 黄金角）、peerList 未受信時は `colorForPlayerId(id)` にフォールバック。ネットワーク同期不要の純関数方式。詳細は DESIGN.md § 描画「色割り当て」
 - 因果律の守護者: 他プレイヤーの未来光円錐内で操作凍結。死亡プレイヤー・灯台は除外。灯台は別方式: 誰かの過去光円錐に落ちたら最も過去の生存プレイヤーの座標時間にジャンプ
 - 光円錐描画: DoubleSide 半透明サーフェス（`LIGHT_CONE_SURFACE_OPACITY`）+ ワイヤーフレーム（`LIGHT_CONE_WIRE_OPACITY`）の 2 層構造で未来/過去光円錐を表示
-- アリーナ円柱 (`ArenaRenderer`): world-frame 静止、中心 `(ARENA_CENTER_X, ARENA_CENTER_Y)` 半径 `ARENA_RADIUS` の半透明円柱で戦闘領域の視覚ガイドを提示。物理判定なし（drifter 封じ込めは thrust energy で既済、視覚的境界として補完）。D pattern で per-vertex Lorentz 変換し、rest frame では光行差で楕円歪みを表現。**時間方向は観測者の因果コーンで切り出される**: 各 θ で `(x(θ), y(θ))` から観測者への空間距離 `ρ(θ)` を計算し、下端 = `observer.t − ρ(θ)` (過去光円錐交点)、上端 = `observer.t + ρ(θ)` (未来光円錐交点)。観測者が中心なら均一な円、離れると「観測者双円錐で切り出された」形に歪む。副産物として、観測者が円柱外から眺めた時の overdraw 問題も自動解消。4 つの geometry (surface / 垂直線 / 過去光円錐交線 / 未来光円錐交線) はすべて observer 依存で毎 tick 再生成 (~600 頂点/tick、軽微)。過去光円錐交線は濃く (1.0)、未来光円錐交線は控えめ (0.3) で情報量の非対称を反映。詳細: DESIGN.md §描画「アリーナ円柱」
+- アリーナ円柱 (`ArenaRenderer`): world-frame 静止、中心 `(ARENA_CENTER_X, ARENA_CENTER_Y)` 半径 `ARENA_RADIUS` の半透明円柱で戦闘領域の視覚ガイドを提示。物理判定なし（drifter 封じ込めは thrust energy で既済、視覚的境界として補完）。D pattern で per-vertex Lorentz 変換し、rest frame では光行差で楕円歪みを表現。**時間方向は観測者の因果コーンで切り出される**: 各 θ で `(x(θ), y(θ))` から観測者への空間距離 `ρ(θ)` を計算し、下端 = `observer.t − ρ(θ)` (過去光円錐交点)、上端 = `observer.t + ρ(θ)` (未来光円錐交点)。観測者が中心なら均一な円、離れると「観測者双円錐で切り出された」形に歪む。副産物として、観測者が円柱外から眺めた時の overdraw 問題も自動解消。**4 geometry (surface / 垂直線 / 過去光円錐交線 / 未来光円錐交線) は共有 BufferAttribute で 1 セットの N×2 頂点を index だけ違えて描画** (surface 下辺と pastCone loop が完全一致、密度差による線ズレ解消)。geometry は初回 1 回作成、毎 frame `useFrame` で position を in-place 更新 + `needsUpdate=true` (allocation ゼロ、GPU upload 1 回/frame、DESIGN.md §メタ原則 M17)。`frustumCulled={false}` で in-place update 時の boundingSphere 問題を回避。過去光円錐交線は濃く (1.0)、未来光円錐交線は控えめ (0.3) で情報量の非対称を反映。詳細: DESIGN.md §描画「アリーナ円柱」
 
 ### Store 構造 (`src/stores/game-store.ts`、Stage C 以降)
 
@@ -265,7 +280,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `ARENA_COLOR` | `hsl(180,40%,70%)` | アリーナ円柱の色 (暫定シアン、surface / 垂直線 / 交線同色)。プレイヤー色や LH 色と干渉しない色相帯。パステル化時に再検討 |
 | `ARENA_SURFACE_OPACITY` | 0.08 | 円柱側面 surface の透明度 (= 光円錐 surface と同値) |
 | `ARENA_VERTICAL_LINE_OPACITY` | 0.04 | 時間方向に伸びる垂直線 (ARENA_RADIAL_SEGMENTS 本) の透明度 (= 光円錐 wireframe と同値)。CylinderGeometry + wireframe だと三角形の対角線も出てジグザグになるため、LineSegments で純粋な縦線のみ描画 |
-| `ARENA_PAST_CONE_SEGMENTS` | 128 | 過去/未来光円錐 × 円柱 交線 LineLoop のサンプル数 |
+| ~~`ARENA_PAST_CONE_SEGMENTS`~~ | (廃止) | surface と cone loop が position attribute を共有するようになり、共通 `ARENA_RADIAL_SEGMENTS` 密度に統一 (線ズレ解消、DESIGN.md §アリーナ円柱) |
 | `ARENA_PAST_CONE_OPACITY` | 1.0 | 過去光円錐交線 (下地平線) の透明度。「いま光が届いている周縁」を強調 |
 | `ARENA_FUTURE_CONE_OPACITY` | 0.3 | 未来光円錐交線 (上地平線) の透明度。過去より控えめ (まだ起きていない event の情報量差を視覚反映) |
 | `LIGHT_CONE_HEIGHT` | 20 | 描画上の円錐サイズ（c=1 で radius=height） |
