@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**`7667221` デプロイ済み** (build `2026/04/17 13:01:35 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`b9f8545` デプロイ済み** (build `2026/04/17 15:12:38 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
 完了済みリファクタ (判断根拠は DESIGN.md):
 - **Authority 解体 Stage A〜H** (2026-04-14〜15): target-authoritative 化 + event-sourced。plan: `plans/2026-04-14-authority-dissolution.md`
@@ -12,6 +12,7 @@
 - **アリーナ円柱** (2026-04-17): 視覚ガイドとしての world-frame 静止円柱 (半径 20, 中心 (5,5))。本体は D pattern、各プレイヤーは自分の過去光円錐との交線を独立に描画。物理判定なし。詳細は DESIGN.md §描画「アリーナ円柱」
 - **ghost 物理統合 + respawn 時刻対称化** (2026-04-17): 死亡中も生存時と同じ物理 (processPlayerPhysics 流用) で自機 ghost を動的更新、光行差などの相対論的視点移動が連続する。`DeathEvent.ghostPhaseSpace` を追加、`processGhostPosition` (等速直線) を削除。`computeSpawnCoordTime(players, excludeId?)` を拡張して自機を respawn 計算から除外、ghost thrust 自由化でも自機 respawn 時刻が暴走しない。死亡プレイヤーは LH 含め「死亡時刻を持ち時刻とする placeholder」で対称扱い (原則 2 条)。詳細は DESIGN.md §物理「スポーン座標時刻」
 - **アリーナ円柱を観測者因果コーンで切り出し** (2026-04-17): 各 θ で上下端を `observer.t ± ρ(θ)` に動的設定、観測者の過去光円錐交点 (下地平線) と未来光円錐交点 (上地平線) で clipped。観測者が中心なら均一な円、離れると双円錐歪みが現れる。旧 ARENA_HEIGHT 設計で発生していた「観測者が円柱外から眺めた時の overdraw FPS 低下」を自動解消。FutureConeLoop 新設 (ARENA_FUTURE_CONE_OPACITY=0.3、過去より控えめ)。詳細は DESIGN.md §描画「アリーナ円柱」
+- **光円錐交差計算の二分探索化** (2026-04-17): `pastLightConeIntersectionWorldLine` / `futureLightConeIntersectionWorldLine` を O(N) → O(log N + K=16)。`findLaserHitPosition` は laser 時刻範囲で絞り込み。Vitest 導入 (`pnpm test`)、linear scan reference 実装 (`*Linear`) と binary 版の regression test 11 本 green。長時間プレイでの FPS 低下を根治
 
 ## 直近の作業
 
@@ -56,7 +57,7 @@ build `2026/04/15 08:44:09` (commit `0dad175`) でデプロイ済み。主な変
 
 ### パフォーマンス検討課題
 
-- **`worldLine.history` 交差計算 O(N) 走査 (主因確定 2026-04-17)**: `SceneContent.tsx` の `worldLineIntersections` / `laserIntersections` / `futureLightConeIntersections` useMemo と game loop 内の `pastLightConeIntersectionWorldLine` / `findLaserHitPosition` が毎フレーム全 history を舐めている。固有時間 170s で FPS 10 まで低下を実測。短期対策として `MAX_WORLDLINE_HISTORY` を 5000 → 1000 に削減済 (FPS 120+ 維持)。中期対策: history が時系列順 (t 単調) なので二分探索で O(log N) 化 → 5000 復帰可能
+- ~~**`worldLine.history` 交差計算 O(N) 走査**~~ **二分探索で O(log N + K) 化、2026-04-17 解消**。`pastLightConeIntersectionWorldLine` / `futureLightConeIntersectionWorldLine` は signed cone distance g(i) の符号反転境界を二分探索、±K=16 近傍だけ線形走査。`findLaserHitPosition` は laser 時刻範囲 `[eT, eT+range]` を `findLatestIndexAtOrBeforeTime` で絞り込み。Vitest 導入して linear scan reference 実装との regression test 11 個 green。**残課題**: `MAX_WORLDLINE_HISTORY` を 1000 → 5000 に戻して視覚的に世界線を長く見せる余地あり (別 commit)
 - `appendWorldLine` O(n) → ring buffer
 - useMemo 毎フレーム再計算 → カリング
 
