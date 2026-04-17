@@ -16,33 +16,22 @@
 
 ## 直近の作業
 
-### 2026-04-15 (昼): D pattern 化 + 球の例外 + pillar 過去光円錐 anchor (完了)
+### 2026-04-17: アリーナ視覚化 + ghost 物理統合 + 光円錐交差 O(log N) 化 (全デプロイ済)
 
-build `2026/04/15 10:27:08` (commit `302f7da`) でデプロイ済み。
+一気通貫で実装した知見は DESIGN.md に集約 (以下の pointer 先)。
 
-- **D pattern (頂点単位 Lorentz) 化**: scene の物理オブジェクトを「world 座標 geometry + `mesh.matrix = displayMatrix × T(worldPos) × [rotation]`」に統一。`DisplayFrameContext` 新設、`buildMeshMatrix` helper。Phase 1 (点), 2 (ring), 4 (cone triangle), 煙 (debris), 5 (laser batch) を移行。Phase 3 (照準矢印) は 2+1 固有のため skip。詳細は DESIGN.md § D pattern 化
-- **球は C pattern 維持**: volumetric 点マーカーに per-vertex Lorentz を掛けると γ 楕円化で「点」の意味が損なわれるため。`playerSphere`、`intersectionSphere`+core、`killSphere`、`explosionParticle` は `position={[dp.x, dp.y, dp.t]}` で並進のみ
-- **Spawn pillar 過去光円錐 anchor**: world-frame 静止だと観測者時間前進で過去に流れるため、`anchorT = observer.t − |Δxy|` で null cone に貼り付け。形状アニメ撤廃、opacity のみフェード
-- **Pillar 軸オリエンテーション latent bug 修正**: `CylinderGeometry` default +Y → `rotation={[π/2, 0, 0]}` で +Z (時間軸) に。従来コメントが「時間軸」と主張していたが実態は空間 Y。半径 0.04 → 0.5 (直径 1)
-- **メタ原則追加**: M13 (時空 anchor 選択、意味論的), M14 (球/extended の hybrid policy), M15 (HMR stale の切り分け)
+- **アリーナ円柱** (DESIGN.md §描画「アリーナ円柱」): world-frame 静止の視覚ガイド。各 θ で観測者因果コーン (過去/未来光円錐) 交点を上下端にして双円錐で歪む形。4 geometry (surface / 垂直線 / 下地平線 / 上地平線) が shared BufferAttribute + in-place update で同じ頂点セットを共有し線ズレなし。frustumCulled=false で in-place boundingSphere 問題回避。`ARENA_RADIAL_SEGMENTS = 128`、暫定色シアン `hsl(180,40%,70%)`
+- **ghost 物理統合** (DESIGN.md §物理「スポーン座標時刻」): 死亡中も生存時物理 `processPlayerPhysics` を流用して自機 ghost を動的更新、相対論的視点移動が連続。`DeathEvent.ghostPhaseSpace` 追加、`computeSpawnCoordTime(players, excludeId?)` で自機除外、死亡者 (LH 含む) は placeholder として対称扱い (原則 2 条)
+- **光円錐交差 O(log N) 化** (DESIGN.md §worldLine.history サイズ): `pastLightConeIntersectionWorldLine` / `futureLightConeIntersectionWorldLine` を binary search + ±K=16 近傍スキャンで O(log N + K)、`findLaserHitPosition` は laser 時刻範囲で絞り込み。Vitest 導入 (`pnpm test`)、linear scan reference 実装との regression test 11 本 green。長時間プレイ FPS 低下を根治 (MAX_WORLDLINE_HISTORY 1000 維持、5000 復帰余地あり)
+- **メタ原則追加** (DESIGN.md §メタ原則): M16 (時間経過悪化は蓄積 state O(N) を疑う) / M17 (Three.js + R3F の in-place BufferGeometry pattern、frustum culling trap、shared BufferAttribute) / M18 (段階的 α=0 切り分け二分法)。M15 (HMR stale) に 2026-04-17 事例を追記
 
-**関連 commit**: `a7a728c` (Phase 1+2+4)、`fc6d7e9` (Phase 煙+5)、`f155696` (自機 identity + pillar 0.5)、`302f7da` (球全般 C 化 + pillar past cone anchor)
+### 過去セッションのダイジェスト
 
-### 2026-04-15 (午前): Lighthouse 調整 + 交差マーカー刷新 + opacity 定数化 (完了)
+- **2026-04-15**: D pattern (world 座標 + 頂点単位 Lorentz)、球は C pattern 維持、spawn pillar 過去光円錐 anchor、Lighthouse 調整 (射撃間隔 / spawn grace / 無敵 / 照準ジッタ)、レーザー × 光円錐 交点マーカーの接平面三角形化、opacity 定数集約。M13/M14/M15 追加。DESIGN.md 時系列→topic 別再編。`plans/2026-04-15-design-reorg.md`
+- **2026-04-14**: Authority 解体 Stage A〜E、handleKill 二重キル防止、sendBeacon CORS 修正 (`text/plain`)、制約ネットワーク検証 (Cloudflare TURN)
+- **2026-04-13**: Zustand store 移行 (props drilling 解消)、空間スケール再半減、初回スポーン統一、座標時間同期 MAX_DELTA_TAU 撤廃、スポーン色の遅延解決、世界スケール 20→10、光円錐ワイヤーフレーム
 
-build `2026/04/15 08:44:09` (commit `0dad175`) でデプロイ済み。主な変更:
-
-- **Lighthouse**: 射撃間隔 1→2s、spawn grace 10→5s、無敵 10→5s、照準ジッタ (ガウス σ=0.3 rad, 3σ clamp)
-- **レーザー × 光円錐 交点マーカー**: 球 → 光円錐の接平面に貼り付く golden gnomon 三角形。tip=laser.direction の接平面射影、重心=交点。過去/未来共通で `n=(x,y,-t)/(ρ√2)` で扱う。数学 + 代替案は DESIGN.md § 描画「レーザー × 光円錐 交点マーカー」
-- **照準矢印 (トリガー中)**: 0s/0.05s/0.1s に短縮、spacing=1.2 で tip↔base 接合
-- **Opacity 定数化**: `LIGHT_CONE_SURFACE_OPACITY` / `LIGHT_CONE_WIRE_OPACITY` (0.04 に減光) / `PLAYER_WORLDLINE_OPACITY` / `LIGHTHOUSE_WORLDLINE_OPACITY` / `LASER_WORLDLINE_OPACITY` を `constants.ts` に集約
-- **ドキュメント整合性**: CLAUDE.md / DESIGN.md / README.md の古い値 (10秒無敵、必中 LH、0s/0.5s/1s 矢印、ハードコード opacity) を修正
-
-**EXPLORING.md に追加**: 「進行方向・向きの認知支援」13 案。ユーザーが heading/velocity/thrust 方向の認知支援が欲しいと発言、option space を収集。SESSION.md TODO の「自機/敵機 heading 矢印」はこの枠組みの最小 1 案。
-
-### 2026-04-15 (過去): DESIGN.md 再編 + claude-config §7 feedback (完了)
-
-`plans/2026-04-15-design-reorg.md`。DESIGN.md を時系列→topic 別に再編、§ メタ原則新設、SUPERSEDED entry 整理。同知見を `claude-config/docs/convention-design-principles.md` §7 として feedback 済み。
+各項目の設計根拠は DESIGN.md の対応節 (§Authority 解体 / §D pattern 化 / §物理 / §描画 等) を参照。
 
 ## 既知の課題
 
@@ -93,9 +82,3 @@ build `2026/04/15 08:44:09` (commit `0dad175`) でデプロイ済み。主な変
 - 用語の再考（`EXPLORING.md` 参照）
 - 音楽の時間同期（将来計画、`EXPLORING.md` 参照）
 - **世界線 × 未来光円錐の交点マーカー** — レーザー以外（プレイヤー／灯台／凍結世界線／debris）の世界線と自機**未来**光円錐の交点も可視化する。既存のレーザー × 光円錐交点マーカー（golden gnomon、接平面貼り付け。`DESIGN.md` §描画「レーザー × 光円錐 交点マーカー」）と同じ思想の拡張。「これから光が届く／届かれる境界」を提示
-
-## 過去の変更
-
-- 2026-04-14: Authority 解体 Stage A〜E 実装 + handleKill 二重キル防止ガード + sendBeacon CORS 修正（`text/plain`）+ 制約ネットワーク検証（学校ネットで Cloudflare TURN）。ハイスコア異常値の調査は再現せず、Zustand 移行過渡期の蓄積と推定
-- 2026-04-13 夜: Zustand store 移行（props drilling 解消、GameLoopDeps 34→14 等）、空間スケール再半減、二重半減バグ 5 箇所修正、初回スポーン統一、座標時間同期の MAX_DELTA_TAU 撤廃、スポーン色の遅延解決。詳細は DESIGN.md 該当節
-- 2026-04-13 日中: START でホスト決定、ホストマイグレーション堅牢化、リスポーン無敵、世界スケール 20→10、光円錐ワイヤーフレーム

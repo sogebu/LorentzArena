@@ -280,7 +280,6 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `ARENA_COLOR` | `hsl(180,40%,70%)` | アリーナ円柱の色 (暫定シアン、surface / 垂直線 / 交線同色)。プレイヤー色や LH 色と干渉しない色相帯。パステル化時に再検討 |
 | `ARENA_SURFACE_OPACITY` | 0.08 | 円柱側面 surface の透明度 (= 光円錐 surface と同値) |
 | `ARENA_VERTICAL_LINE_OPACITY` | 0.04 | 時間方向に伸びる垂直線 (ARENA_RADIAL_SEGMENTS 本) の透明度 (= 光円錐 wireframe と同値)。CylinderGeometry + wireframe だと三角形の対角線も出てジグザグになるため、LineSegments で純粋な縦線のみ描画 |
-| ~~`ARENA_PAST_CONE_SEGMENTS`~~ | (廃止) | surface と cone loop が position attribute を共有するようになり、共通 `ARENA_RADIAL_SEGMENTS` 密度に統一 (線ズレ解消、DESIGN.md §アリーナ円柱) |
 | `ARENA_PAST_CONE_OPACITY` | 1.0 | 過去光円錐交線 (下地平線) の透明度。「いま光が届いている周縁」を強調 |
 | `ARENA_FUTURE_CONE_OPACITY` | 0.3 | 未来光円錐交線 (上地平線) の透明度。過去より控えめ (まだ起きていない event の情報量差を視覚反映) |
 | `LIGHT_CONE_HEIGHT` | 20 | 描画上の円錐サイズ（c=1 で radius=height） |
