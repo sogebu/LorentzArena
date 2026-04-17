@@ -1252,6 +1252,21 @@ stale 除外
 
 **過去類似バグ**: 上記「myDeathEvent は ref で持つ」も同じ class (useEffect cleanup が respawn timer を殺す)。あの時は `[myDeathEvent]` が deps に入って kill のたびに cleanup だったので、deps から外す (ref 化) ことで解決した。今回は kill とは独立 (= deps から外しようがない) な peerManager swap で cleanup が起きるため、setTimeout 自体を state-based poll に置換する必要があった。教訓: **不安定な component の lifecycle に依存する scheduling (setTimeout/setInterval) は code smell、可能なら state-derived polling に切り替える**。
 
+### isMigrating は scope 外経路でも明示的に reset する (2026-04-18)
+
+**問題**: `setIsMigrating(true)` は heartbeat timeout で新 host に選出された時 ([PeerProvider.tsx:821](src/contexts/PeerProvider.tsx)) に呼ばれるが、reset は `useBeaconMigration` 内の `completeMigration()` だけが担う。当初 `useBeaconMigration` は `if (!peerManager.getIsBeaconHolder()) return;` で早期 return しており、**自分が beacon holder でない状態で effect が fire すると reset されず `isMigrating` が永久に true** のまま残る不具合があった。
+
+**発火経路**:
+- (a) 選出直後に `demoteToClient` (dual-host 解決) が割り込んで beacon holder status を消す
+- (b) 選出直後に `game_redirect` を受けて client 降格する (関数 handler が clearBeaconHolder を呼ぶ)
+- (c) 選出 → 即 tab hide → HOST_HIDDEN_GRACE 経過で peerManager destroy → Phase 1 再接続で別 peer が beacon を先取していて client 復帰する
+
+**影響**: [RelativisticGame.tsx:218](src/components/RelativisticGame.tsx) の snapshot 送信 gate は `peerManager?.getIsBeaconHolder() && !isMigrating` なので、isMigrating stuck が続くと **後で再度 beacon holder になっても新 joiner に snapshot を送れない** → 新規参加者が players / scores / hostTime を受け取れない functional bug (UI 表示だけの問題ではない)。
+
+**解決**: `getIsBeaconHolder() === false` branch で `completeMigration()` を呼んでから return する。semantic: 「migration 仕事が自分のスコープ外だと確定したら flag を落とす」。`!peerManager` / `!myId` は transient (peerManager 再接続 / peer open 待ち) なので reset しない (新 peerManager 到達で effect が再 fire して再判定)。
+
+**教訓**: **一方向に trip させる state flag (false → true) は、reset 経路を漏れなくカバーする責務を明文化する必要がある**。`isMigrating` は「1 箇所でセット → 1 箇所で reset」設計だったが、その reset 箇所が内部で早期 return しうる構造だと reset 漏れを生む。flag を reset する責務が多相的なら、早期 return する各 branch で明示的に reset するか、もしくは `isMigrating` 自体を derived state (peerManager role + roleVersion から計算) に置き換える方がロバスト。後者は将来課題。
+
 ---
 
 ## § UI / 入力

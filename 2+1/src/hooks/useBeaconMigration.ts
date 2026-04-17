@@ -36,9 +36,20 @@ export function useBeaconMigration({
 
   useEffect(() => {
     if (!isMigrating) return;
-    if (!peerManager) return;
-    if (!peerManager.getIsBeaconHolder()) return;
-    if (!myId) return;
+    if (!peerManager) return; // transient — 新 peerManager で effect が再 fire する
+    if (!peerManager.getIsBeaconHolder()) {
+      // isMigrating=true だが自分が beacon holder でない経路:
+      //   (a) demoteToClient (dual-host 解決) が先に走った
+      //   (b) 直後に game_redirect を受けて client 降格した
+      //   (c) 新 host 選出 → 即 tab hide → HOST_HIDDEN_GRACE 後 Phase 1 再接続で client
+      // どれも LH handoff は他 peer が担うので自分の migration 仕事はゼロ。
+      // ここで isMigrating を落とさないと `RelativisticGame` の snapshot gate
+      // (`getIsBeaconHolder && !isMigrating`) が永久に閉じ、もし自分が再度 beacon
+      // holder に戻ったときに新 joiner が snapshot を受け取れない。
+      completeMigration();
+      return;
+    }
+    if (!myId) return; // transient — peer open 待ち
 
     const openConns = connections.filter((c) => c.open);
 
