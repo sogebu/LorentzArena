@@ -46,6 +46,7 @@ import {
   getThreeColor,
   sharedGeometries,
 } from "./threeCache";
+import { applyTimeFadeShader } from "./timeFadeShader";
 import type { Laser } from "./types";
 
 /**
@@ -505,7 +506,8 @@ export const SceneContent = ({
               matrix={buildMeshMatrix(wp, displayMatrix)}
               matrixAutoUpdate={false}
             >
-              {/* Future cone: surface + wireframe */}
+              {/* Future cone: surface + wireframe。per-vertex 時間 fade で apex (観測者の今)
+                  が濃く、base (±LCH の円盤) が薄くなる。 */}
               <mesh
                 position={[0, 0, LIGHT_CONE_HEIGHT / 2]}
                 rotation={[-Math.PI / 2, 0.0, 0.0]}
@@ -517,6 +519,7 @@ export const SceneContent = ({
                   opacity={LIGHT_CONE_SURFACE_OPACITY}
                   side={THREE.DoubleSide}
                   depthWrite={false}
+                  onBeforeCompile={applyTimeFadeShader}
                 />
               </mesh>
               <mesh
@@ -530,6 +533,7 @@ export const SceneContent = ({
                   opacity={LIGHT_CONE_WIRE_OPACITY}
                   wireframe
                   depthWrite={false}
+                  onBeforeCompile={applyTimeFadeShader}
                 />
               </mesh>
               {/* Past cone: surface + wireframe */}
@@ -544,6 +548,7 @@ export const SceneContent = ({
                   opacity={LIGHT_CONE_SURFACE_OPACITY}
                   side={THREE.DoubleSide}
                   depthWrite={false}
+                  onBeforeCompile={applyTimeFadeShader}
                 />
               </mesh>
               <mesh
@@ -557,6 +562,7 @@ export const SceneContent = ({
                   opacity={LIGHT_CONE_WIRE_OPACITY}
                   wireframe
                   depthWrite={false}
+                  onBeforeCompile={applyTimeFadeShader}
                 />
               </mesh>
             </group>

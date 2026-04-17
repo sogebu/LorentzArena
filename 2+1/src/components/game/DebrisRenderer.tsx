@@ -5,12 +5,12 @@ import { createVector4, type Vector4 } from "../../physics";
 import { pastLightConeIntersectionDebris } from "./debris";
 import { transformEventForDisplay } from "./displayTransform";
 import { useDisplayFrame } from "./DisplayFrameContext";
-import { computeTimeFade } from "./timeFade";
 import {
   getDebrisMaterial,
   getThreeColor,
   sharedGeometries,
 } from "./threeCache";
+import { applyTimeFadeShader } from "./timeFadeShader";
 import type { SceneContentProps } from "./types";
 
 // デブリ描画用の共有リソース（太いシリンダーで描画）
@@ -135,19 +135,9 @@ export const DebrisRenderer = ({
   // max possible instances: MAX_DEBRIS * EXPLOSION_PARTICLE_COUNT
   const maxInstances = 20 * 30;
 
-  // 時間 fade: 全 debris の最新 deathPos.t で代表 fade (v0、per-mesh で全 instance 一括
-  // スケール)。per-instance alpha にしたければ per-vertex v1 で InstancedBufferAttribute
-  // の alpha channel を使う。最新死亡からしばらく経てば全 debris が一斉に薄くなる挙動。
-  const baseDebrisOpacity = 0.10;
-  let latestDeathT = -Infinity;
-  for (const d of debrisRecords) {
-    if (d.deathPos.t > latestDeathT) latestDeathT = d.deathPos.t;
-  }
-  const debrisFade =
-    observerPos && latestDeathT > -Infinity
-      ? computeTimeFade(latestDeathT - observerPos.t)
-      : 1;
-
+  // 時間 fade は per-vertex shader で適用 (USE_INSTANCING 分岐あり)。各 instance の
+  // world segment が display frame で自動 fade されるため、死亡時刻から離れた debris
+  // は個別に薄くなる (v0 の「全 instance 一括」より自然)。
   return (
     <>
       <instancedMesh
@@ -158,8 +148,9 @@ export const DebrisRenderer = ({
         <meshBasicMaterial
           ref={materialRef}
           transparent
-          opacity={baseDebrisOpacity * debrisFade}
+          opacity={0.10}
           depthWrite={false}
+          onBeforeCompile={applyTimeFadeShader}
         />
       </instancedMesh>
       {markerElements}

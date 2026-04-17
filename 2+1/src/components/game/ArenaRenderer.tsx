@@ -14,6 +14,7 @@ import {
 } from "./constants";
 import { useDisplayFrame } from "./DisplayFrameContext";
 import { getThreeColor } from "./threeCache";
+import { applyTimeFadeShader } from "./timeFadeShader";
 
 // Arena: world-frame static cylinder (x − cx)² + (y − cy)² = R², 視覚ガイドのみ (物理判定なし)。
 //
@@ -122,9 +123,11 @@ export const ArenaRenderer = () => {
     positionAttr.needsUpdate = true;
   });
 
+  // 4 material すべてに per-vertex 時間 fade shader を適用。surface / 垂直線 は
+  // observer.t 近傍 (円柱中腹) が濃く、上下端 (光円錐交点) が薄くなる。cone loop 2 本は
+  // そもそも観測者光円錐上に乗っているので |dt| = ρ(θ) ≤ LCH 程度、中心に近いほど濃い。
   return (
     <>
-      {/* 円柱側面 surface (双円錐で切り出された形、両面可視) */}
       <mesh
         geometry={arenaGeometries.surface}
         matrix={displayMatrix}
@@ -137,9 +140,9 @@ export const ArenaRenderer = () => {
           opacity={ARENA_SURFACE_OPACITY}
           side={THREE.DoubleSide}
           depthWrite={false}
+          onBeforeCompile={applyTimeFadeShader}
         />
       </mesh>
-      {/* 時間方向の垂直線 N 本 (上下端は観測者因果コーンで clipped) */}
       <lineSegments
         geometry={arenaGeometries.verticalLines}
         matrix={displayMatrix}
@@ -151,9 +154,9 @@ export const ArenaRenderer = () => {
           transparent
           opacity={ARENA_VERTICAL_LINE_OPACITY}
           depthWrite={false}
+          onBeforeCompile={applyTimeFadeShader}
         />
       </lineSegments>
-      {/* 過去光円錐 ∩ 円柱 (下地平線、surface 下辺と同じ頂点を通る) */}
       <lineLoop
         geometry={arenaGeometries.pastCone}
         matrix={displayMatrix}
@@ -165,9 +168,9 @@ export const ArenaRenderer = () => {
           transparent
           opacity={ARENA_PAST_CONE_OPACITY}
           depthWrite={false}
+          onBeforeCompile={applyTimeFadeShader}
         />
       </lineLoop>
-      {/* 未来光円錐 ∩ 円柱 (上地平線、surface 上辺と同じ頂点を通る、opacity 控えめ) */}
       <lineLoop
         geometry={arenaGeometries.futureCone}
         matrix={displayMatrix}
@@ -179,6 +182,7 @@ export const ArenaRenderer = () => {
           transparent
           opacity={ARENA_FUTURE_CONE_OPACITY}
           depthWrite={false}
+          onBeforeCompile={applyTimeFadeShader}
         />
       </lineLoop>
     </>

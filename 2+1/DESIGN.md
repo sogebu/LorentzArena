@@ -1025,18 +1025,18 @@ v0 は自機のみで step 2-3 不要なので、rest frame 3-vector を **C pat
 **式 (Lorentzian / Cauchy 形、時間距離の 2 乗反比例)**:
 
 ```
-fade = r² / (r² + Δt²)、r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT / 2 = 10
+fade = r² / (r² + Δt²)、r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT = 20
 opacity = baseOpacity × fade
 ```
 
 - `Δt = 0` で fade = 1 (発散せず smooth)
-- `Δt = r` (= LCH/2 = 10) で fade = 0.5
-- `Δt = LCH` (= 20 = 2r) で fade = **0.2** ← 光円錐描画範囲の端でちょうど「ほぼ透明」
-- `Δt = 2×LCH` (= 40 = 4r) で fade = 0.06
-- `Δt = 3×LCH` (= 60 = 6r) で fade = 0.03
+- `Δt = LCH` (= 20 = r) で fade = 0.5 (半透明、光円錐の端でちょうど half visibility)
+- `Δt = 2×LCH` (= 40 = 2r) で fade = **0.2**
+- `Δt = 3×LCH` (= 60 = 3r) で fade = 0.1
+- `Δt = 4×LCH` で fade = 0.06 (実用上視認不能)
 - `Δt → ∞` で 漸近的に `r²/Δt²` (純粋な 1/Δt² 挙動)
 
-物理の逆 2 乗法則 (重力・光の強度) と同型。完全 0 にはならないが、`< 0.05` で実用上視認不能。
+物理の逆 2 乗法則 (重力・光の強度) と同型。
 
 **却下した代替式**:
 
@@ -1059,9 +1059,14 @@ opacity = baseOpacity × fade
 
 **helper**: `game/timeFade.ts` に `computeTimeFade(deltaT: number): number` を集約。全 renderer で共有。将来 per-vertex 化時も同じ式を shader に移植すれば挙動一致。
 
-**定数**: `TIME_FADE_SCALE = LIGHT_CONE_HEIGHT / 2 = 10` (`constants.ts` で `LIGHT_CONE_HEIGHT` を参照して自動連動)。光円錐の描画スケール半分を基準に置くことで、**「光円錐範囲の端 (Δt = LCH) でちょうど fade ≈ 0.2 = ほぼ透明」** という視覚的意味論を達成 (光円錐の時間範囲内だけが濃く可視、それ以遠は消える)。LCH を将来変更した場合も TIME_FADE_SCALE が自動追従。
+**定数**: `TIME_FADE_SCALE = LIGHT_CONE_HEIGHT = 20` (`constants.ts` で `LIGHT_CONE_HEIGHT` を参照して自動連動)。per-vertex shader で光円錐・円柱・世界線・レーザーが自然にグラデーションするため、scale は LCH と同値の緩やかな減衰で十分。LCH/2 で試した段階では急峻すぎて光円錐の端が濃くなりすぎた — per-vertex 化で vertex 1 つずつが fade されるので per-mesh 時代より視覚的に急に感じるため、r は広めに取る。
 
-**なぜ半分か (LCH = r でなく LCH/2 = r)**: 直観では `r = LCH` にして「LCH で fade = 0.5」とする手もあるが、それだと LCH を 2 倍した `2×LCH` で fade = 0.2 (まだ 20% 残存) と光円錐範囲外にまで event がうっすら残る。`r = LCH/2` にすれば `Δt = LCH` で既に 0.2、`Δt = 2×LCH` で 0.06 と光円錐範囲の端で実用上消え、視覚的な「光円錐窓」と「時間可視窓」が一致。
+**r の選択経緯** (2026-04-17):
+
+1. 最初 per-mesh v0 で `r = 20 = LCH` を採用、object 単位の fade
+2. ハード境界志向で `r = LCH/2` に調整 (「光円錐端でほぼ透明」の意味論重視)
+3. per-vertex v1 shader 化で全 object (光円錐・円柱・世界線・レーザー) が vertex 単位で fade するようになり、fade が「ドット単位で見える」ため急峻すぎた
+4. `r = LCH` に戻す (現状)。光円錐端で fade = 0.5 (half visibility)、LCH 2 個分離れて ほぼ透明 (0.2)、3 個分で 0.1 と緩やかな減衰で自然
 
 **時空星屑 (案 17) との相乗効果 (案 17 実装時)**: star event を world frame で 4D 一様分布させたとき、観測者時刻から遠い spark も時間 fade で自動的に薄くなる → pop-in 抑止 + 観測者周辺の dynamic window が自然に生成される。
 

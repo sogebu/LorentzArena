@@ -117,14 +117,13 @@ export const LIGHT_CONE_SURFACE_OPACITY = 0.08;
 export const LIGHT_CONE_WIRE_OPACITY = 0.04;
 
 // --- Time-distance opacity fade (Lorentzian, 2026-04-17) ---
-// fade = r² / (r² + Δt²)、r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT / 2。
-// Δt = r (= LCH/2) で fade = 0.5、Δt = LCH でちょうど 0.2、Δt = 2×LCH で 0.06。
-// 光円錐描画スケール LCH の半分を reference に置くことで、「光円錐範囲の端で
-// ほぼ透明」という視覚的意味論を達成 (時間距離の 2 乗反比例、物理の逆 2 乗
-// 法則と同型)。観測者時刻から遠い凍結世界線・debris を徐々に透明化し、
-// pop-in 抑止 + 時間的距離感の視覚 cue として機能。
+// fade = r² / (r² + Δt²)、r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT。
+// Δt = LCH でちょうど 0.5 (半透明)、Δt = 2×LCH で 0.2、Δt = 3×LCH で 0.1。
+// per-vertex shader で光円錐・円柱・世界線・レーザーが自然グラデーションする
+// ため、scale は LCH と同値の緩やかな減衰で十分 (LCH/2 だと急峻すぎた)。
+// 時間距離の 2 乗反比例、物理の逆 2 乗法則と同型。
 // 詳細: DESIGN.md §描画「時間的距離 opacity fade」
-export const TIME_FADE_SCALE = LIGHT_CONE_HEIGHT / 2;
+export const TIME_FADE_SCALE = LIGHT_CONE_HEIGHT;
 
 // --- Worldline / laser opacity ---
 export const PLAYER_WORLDLINE_OPACITY = 0.65;

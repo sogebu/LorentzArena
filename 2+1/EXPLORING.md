@@ -570,24 +570,24 @@ frozen worldline / デブリ / レーザー / spawn effect などの世界 event
 fade = base × r² / (r² + Δt²)
 ```
 
-ここで `Δt = |t_event − t_obs|`、`r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT / 2 = 10` (coord time 単位、`constants.ts` で LCH を参照して自動連動)。
+ここで `Δt = |t_event − t_obs|`、`r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT = 20` (coord time 単位、`constants.ts` で LCH を参照して自動連動)。
 
 **式の意味**: 漸近的に `∝ 1/Δt²` の純粋な 2 乗反比例挙動。重力・光の逆 2 乗法則と同型。`Δt → 0` で発散せず smooth に `fade = 1` (base) に収束。
 
-**性質表** (r = LIGHT_CONE_HEIGHT / 2 = 10 のとき):
+**性質表** (r = LIGHT_CONE_HEIGHT = 20 のとき):
 
-| Δt | Δt / LCH | Δt / r | fade |
-|---|---|---|---|
-| 0 | 0 | 0 | 1.00 |
-| 5 | 0.25 | 0.5 | 0.80 |
-| 10 | 0.5 | 1.0 | 0.50 |
-| 20 (= LCH) | 1.0 | 2.0 | **0.20** |
-| 40 (= 2×LCH) | 2.0 | 4.0 | 0.06 |
-| 60 (= 3×LCH) | 3.0 | 6.0 | 0.03 |
+| Δt | Δt / LCH | fade |
+|---|---|---|
+| 0 | 0 | 1.00 |
+| 10 | 0.5 | 0.80 |
+| 20 (= LCH) | 1.0 | **0.50** |
+| 40 (= 2×LCH) | 2.0 | 0.20 |
+| 60 (= 3×LCH) | 3.0 | 0.10 |
+| 80 (= 4×LCH) | 4.0 | 0.06 |
 
-Δt = LCH (= 光円錐描画スケールの端) でちょうど 0.2 (「ほぼ透明」の閾値)、Δt = 2×LCH で 0.06 と実用上視認不能。**光円錐の視覚窓と時間可視窓が一致** する設計。
+Δt = LCH (= 光円錐の端) でちょうど 0.5 (半透明)、Δt = 2×LCH で 0.2、Δt = 3×LCH で 0.1 と緩やかに減衰。
 
-**r = LCH/2 を選んだ理由**: `r = LCH` だと「LCH で半減」止まりで 2×LCH まで 0.2 残存 → 光円錐範囲外にまで event がうっすら残って pop-in 抑止が弱い。`r = LCH/2` にすれば Δt = LCH の時点で既にほぼ消えていて、光円錐描画範囲内だけが濃く可視になる。
+**r の選択経緯**: per-mesh v0 → per-mesh 値調整 (r = LCH/2) → per-vertex v1 shader 化で急峻すぎ → r = LCH に戻す、の段階的調整。per-vertex 化すると vertex 1 つずつが fade されて体感的に急に見えるため、per-mesh 時代の「ハード境界寄り (LCH/2)」より緩やか (LCH) が適切。詳細: DESIGN.md §描画「時間的距離 opacity fade」§「r の選択経緯」。
 
 **却下した代替式**:
 

@@ -3,6 +3,7 @@ import * as THREE from "three";
 import { LASER_WORLDLINE_OPACITY } from "./constants";
 import { useDisplayFrame } from "./DisplayFrameContext";
 import { getThreeColor } from "./threeCache";
+import { applyTimeFadeShader } from "./timeFadeShader";
 import type { Laser } from "./types";
 
 // D pattern: world frame の端点で BufferGeometry を構築し、lineSegments の matrix に
@@ -66,7 +67,15 @@ export const LaserBatchRenderer = ({
   if (!geometry) return null;
   return (
     <lineSegments ref={meshRef} geometry={geometry}>
-      <lineBasicMaterial vertexColors transparent opacity={LASER_WORLDLINE_OPACITY} />
+      {/* per-vertex 時間 fade: 各 laser の emission 端 (observer.t 近傍) は濃く、
+          range 先の先端 (emissionPos.t + range) は薄くなる。batch の 1 material で
+          全 laser が自動的に個別 fade。 */}
+      <lineBasicMaterial
+        vertexColors
+        transparent
+        opacity={LASER_WORLDLINE_OPACITY}
+        onBeforeCompile={applyTimeFadeShader}
+      />
     </lineSegments>
   );
 };
