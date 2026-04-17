@@ -2,7 +2,7 @@ import type React from "react";
 import { useRef } from "react";
 import * as THREE from "three";
 import { createVector4, type Vector4 } from "../../physics";
-import { DEBRIS_WORLDLINE_OPACITY } from "./constants";
+import { DEBRIS_MAX_LAMBDA, DEBRIS_WORLDLINE_OPACITY } from "./constants";
 import { pastLightConeIntersectionDebris } from "./debris";
 import { transformEventForDisplay } from "./displayTransform";
 import { useDisplayFrame } from "./DisplayFrameContext";
@@ -57,7 +57,7 @@ export const DebrisRenderer = ({
       debris.deathPos.y,
       0,
     );
-    const maxLambda = 2.5;
+    const maxLambda = DEBRIS_MAX_LAMBDA;
     const debrisColor = getThreeColor(debris.color);
 
     for (let pi = 0; pi < debris.particles.length; pi++) {

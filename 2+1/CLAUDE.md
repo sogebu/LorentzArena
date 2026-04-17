@@ -147,7 +147,8 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `game/SpawnRenderer.tsx` | スポーンエフェクト描画（アニメーション付きリング+ピラー） |
 | `game/DebrisRenderer.tsx` | デブリ世界線描画（InstancedMesh シリンダー + 光円錐交差マーカー、per-instance 時間 fade） |
 | `game/ArenaRenderer.tsx` | アリーナ円柱描画（4 geometry: surface / 垂直線 / 過去光円錐交線 / 未来光円錐交線、共有 BufferAttribute で in-place update、per-vertex 時間 fade） |
-| `game/timeFadeShader.ts` | 時間的距離 opacity fade (Lorentzian) の onBeforeCompile shader inject utility。全 D pattern material に適用 (MeshStandardMaterial / MeshBasicMaterial / LineBasicMaterial、InstancedMesh は `USE_INSTANCING` 分岐で対応)。詳細: DESIGN.md §描画「時間的距離 opacity fade」 |
+| `game/StardustRenderer.tsx` | 時空星屑 (案 17) 描画。N=`STARDUST_COUNT` 個の 4D event を world 座標で pre-generated、`THREE.Points` + D pattern (`matrix = displayMatrix`)。観測者が box 外 (半幅 `STARDUST_*_HALF_RANGE`) に出ると反対側へ wrap-around (periodic boundary)、境界は time fade で不可視。光行差・Lorentz 変換は per-vertex で自動。詳細: DESIGN.md §描画「時空星屑」 |
+| `game/timeFadeShader.ts` | 時間的距離 opacity fade (Lorentzian) の onBeforeCompile shader inject utility。Mesh*/Line*/Points の全 D pattern material に適用 (`FRAGMENT_APPLY_KEYS` fallback: Mesh/Line は `dithering_fragment` / PointsMaterial は `premultiplied_alpha_fragment`)。InstancedMesh は `USE_INSTANCING` 分岐で対応。詳細: DESIGN.md §描画「時間的距離 opacity fade」 |
 | `game/messageHandler.ts` | ネットワークメッセージ処理（ファクトリ関数、バリデーション付き） |
 | `game/HUD.tsx` | HUD オーケストレーター（子コンポーネント配置） |
 | `game/hud/ControlPanel.tsx` | 左上パネル（操作説明、トグルスイッチ、FPS、build、スコアボード） |
@@ -286,6 +287,12 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `ARENA_VERTICAL_LINE_OPACITY` | 0.05 | 時間方向に伸びる垂直線 (ARENA_RADIAL_SEGMENTS 本) の透明度 (= 光円錐 wireframe と同値)。CylinderGeometry + wireframe だと三角形の対角線も出てジグザグになるため、LineSegments で純粋な縦線のみ描画 |
 | `ARENA_PAST_CONE_OPACITY` | 1.0 | 過去光円錐交線 (下地平線) の透明度。「いま光が届いている周縁」を強調 |
 | `ARENA_FUTURE_CONE_OPACITY` | 0.3 | 未来光円錐交線 (上地平線) の透明度。過去より控えめ (まだ起きていない event の情報量差を視覚反映) |
+| `STARDUST_COUNT` | 4000 | 時空星屑の spark 総数 (案 17)。前方流入感のため 1500 → 4000 に増量 (2026-04-17 夜) |
+| `STARDUST_SPATIAL_HALF_RANGE` | 60 | x, y の ±範囲 (world 単位)。observer boost で display z にミックスされても大半が view 内 |
+| `STARDUST_TIME_HALF_RANGE` | `TIME_FADE_SCALE × 3` = 60 | t の ±範囲。fade ≈ 0.1 の境界で自然消失 |
+| `STARDUST_SIZE` | 0.06 | point size (world 単位、sizeAttenuation) |
+| `STARDUST_COLOR` | `hsl(40, 15%, 92%)` | 暖色寄り白 (arena cyan / exhaust blue と色相帯干渉回避) |
+| `STARDUST_OPACITY` | 0.9 | base opacity (per-vertex time fade で乗算) |
 | `LIGHT_CONE_HEIGHT` | 20 | 描画上の円錐サイズ（c=1 で radius=height） |
 | `LIGHT_CONE_SURFACE_OPACITY` | 0.1 | 光円錐サーフェスの透明度 |
 | `LIGHT_CONE_WIRE_OPACITY` | 0.05 | 光円錐ワイヤーフレームの透明度 |

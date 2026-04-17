@@ -1063,7 +1063,9 @@ opacity = baseOpacity × fade
 - spawn effect / kill 通知 (短命で fade 以前に消える)
 - レーザー × 光円錐 交点三角形 (観測者光円錐上に配置、display z ≈ 0)
 
-**実装**: `game/timeFadeShader.ts` の `applyTimeFadeShader(shader)` を material の `onBeforeCompile` prop に渡す。vertex shader に `varying float vTimeFade` と `uniform float uTimeFadeScale` を追加、`#include <project_vertex>` 直後で `vec4 tfDisplayPos = modelMatrix × transformed`（InstancedMesh なら `instanceMatrix` 経由）の z 成分から `vTimeFade = r² / (r² + z²)` を計算。fragment shader では `#include <dithering_fragment>` 直後で `gl_FragColor.a *= vTimeFade`。全計算が GPU で、CPU side helper は不要 (`timeFade.ts` は v1 化時に削除済み)。
+**実装**: `game/timeFadeShader.ts` の `applyTimeFadeShader(shader)` を material の `onBeforeCompile` prop に渡す。vertex shader に `varying float vTimeFade` と `uniform float uTimeFadeScale` を追加、`#include <project_vertex>` 直後で `vec4 tfDisplayPos = modelMatrix × transformed`（InstancedMesh なら `instanceMatrix` 経由）の z 成分から `vTimeFade = r² / (r² + z²)` を計算。fragment shader では最終 include 直後で `gl_FragColor.a *= vTimeFade`。全計算が GPU で、CPU side helper は不要 (`timeFade.ts` は v1 化時に削除済み)。
+
+**Fragment inject key の material 別対応** (2026-04-17、案 17 stardust 対応時に顕在化): Mesh*/Line* は `#include <dithering_fragment>` を持つが、PointsMaterial (three r181) は持たず `#include <premultiplied_alpha_fragment>` で終わる。`FRAGMENT_APPLY_KEYS = [dithering, premultiplied_alpha]` を優先順で試し、最初に見つかった key に inject。Mesh/Line は dithering (挙動不変)、Points は premultiplied_alpha にフォールバック。どちらも shader 末尾で alpha を multiply するため、最終描画結果は同等。three.js shader source (`node_modules/three/src/renderers/shaders/ShaderLib/points.glsl.js`) の仕様変更があれば key を追加する。
 
 **定数**: `TIME_FADE_SCALE = LIGHT_CONE_HEIGHT = 20` (`constants.ts` で `LIGHT_CONE_HEIGHT` を参照して自動連動)。per-vertex shader で光円錐・円柱・世界線・レーザーが自然にグラデーションするため、scale は LCH と同値の緩やかな減衰で十分。LCH/2 で試した段階では急峻すぎて光円錐の端が濃くなりすぎた — per-vertex 化で vertex 1 つずつが fade されるので per-mesh 時代より視覚的に急に感じるため、r は広めに取る。
 
@@ -1074,7 +1076,34 @@ opacity = baseOpacity × fade
 3. per-vertex v1 shader 化で全 object (光円錐・円柱・世界線・レーザー) が vertex 単位で fade するようになり、fade が「ドット単位で見える」ため急峻すぎた
 4. `r = LCH` に戻す (現状)。光円錐端で fade = 0.5 (half visibility)、LCH 2 個分離れて ほぼ透明 (0.2)、3 個分で 0.1 と緩やかな減衰で自然
 
-**時空星屑 (案 17) との相乗効果 (案 17 実装時)**: star event を world frame で 4D 一様分布させたとき、観測者時刻から遠い spark も時間 fade で自動的に薄くなる → pop-in 抑止 + 観測者周辺の dynamic window が自然に生成される。
+**時空星屑 (案 17) との相乗効果**: star event を world frame で 4D 一様分布させたとき、観測者時刻から遠い spark も時間 fade で自動的に薄くなる → pop-in 抑止 + 観測者周辺の dynamic window が自然に生成される。2026-04-17 実装完了 (下記「時空星屑」セクション)。
+
+### 時空星屑 (Stardust、案 17、2026-04-17)
+
+世界座標で (x, y, t) 一様分布した N 個の 4D event を `THREE.Points` で D pattern 描画。観測者周辺に「時空の質感」を付与する背景要素。光行差・Lorentz 変換は per-vertex で自動、時間 fade shader で境界消失。交差計算なしで軽量。
+
+**Periodic boundary (recycling)**: 観測者が box 外 (半幅 `STARDUST_*_HALF_RANGE`) に出ると、spark を反対側へ wrap-around させる。境界近傍は per-vertex 時間 fade で既に透明 (fade < 0.1 @ `±3×LCH`) なので recycling は視認されない。
+
+静止していても観測者.t が進むため時間方向には常に spark 流入。空間運動時は +方向から追加流入 = 「4D spacetime を進んでいる」体感。
+
+**Haiku 版 (2026-04-17 revert 済み) の設計欠陥**: grid + hash procedural 生成方式 (観測者が cell を跨ぐと spark 群が全差し替え) を採用していたため、視覚ポッピング発生。さらに (a) `useMemo([observerPos])` で毎フレーム BufferGeometry 再生成、(b) 存在しない `useGameStore((s) => s.observer)` 参照、(c) `applyTimeFadeShader` 未適用、(d) `<primitive>` + `matrix.copy` を useFrame で race。全て修正案で対応済み (固定 N + wrap-around + 宣言的 `<points>` + `useDisplayFrame()` + shader 適用)。
+
+**定数** (`constants.ts` の `STARDUST_*`):
+
+| 定数 | 値 | 意味 |
+|---|---|---|
+| `STARDUST_COUNT` | 4000 | spark 総数。初期 1500 では前方流入 (進行方向への spark 流) が疎で「進んでいる感」が出なかったため 2.7× に増量 (密度 ≈ 0.0023/world 単位³、spark 間隔 ≈ 7.6)。FPS 余裕内 |
+| `STARDUST_SPATIAL_HALF_RANGE` | 60 | x, y の ±範囲 (world 単位)。boost で display z にミックスされても大半が window 内に残るよう、時間範囲と同程度に取る |
+| `STARDUST_TIME_HALF_RANGE` | `TIME_FADE_SCALE × 3` (= 60) | t の ±範囲。fade ≈ 0.1 になる 3×LCH で境界。LCH 変更時に自動追従 |
+| `STARDUST_SIZE` | 0.06 | point size (world 単位、`sizeAttenuation` で perspective 縮小) |
+| `STARDUST_COLOR` | `hsl(40, 15%, 92%)` | 暖色寄りの白。arena cyan / exhaust blue / player HSL と色相帯干渉回避 |
+| `STARDUST_OPACITY` | 0.9 | base opacity (per-vertex time fade で乗算) |
+
+**描画** (`StardustRenderer.tsx`): 宣言的 `<points matrix={displayMatrix} matrixAutoUpdate={false} frustumCulled={false} renderOrder={-1}>` + `<pointsMaterial onBeforeCompile={applyTimeFadeShader}>`。useMemo で初回のみ `BufferAttribute` 確保、useFrame 毎 frame で wrap-around 検査 (1500 × 3 軸比較、recycling があれば `needsUpdate = true`)。
+
+**world frame 時の fade 挙動** (既存 D pattern と同じ限界): `buildDisplayMatrix` が world frame で identity を返すため、shader の `modelMatrix × vertex` の z 成分は絶対 world t。観測者.t が進むと全 star が絶対 t 大きい側で薄くなる。stardust だけの問題ではなく、arena / worldlines / debris / lasers など全 D pattern renderer が world frame で同じ挙動。修正案: `buildDisplayMatrix` と `transformEventForDisplay` が world frame でも観測者並進を含む (= `T(-observer)` を返す) 設計への移行 → 全 D pattern renderer の world frame fade が rest frame と同質になる。本セッションでは stardust 固有の issue ではなく architectural question として defer。
+
+**所感**: 動作確認済み (FPS 116-125 @ N=1500, Apple Silicon 相当)。静止時に微かに流れる星屑 + 加速時の光行差前方集中 + rest/world 切替で見え方が変わる挙動が確認できる。次ステップ案: (a) 円形 alpha texture で点スプライトを丸く、(b) `PointsMaterial` を `additive blending` にして重なり効果、(c) world frame fade 統一のための `buildDisplayMatrix` 修正 (広範囲影響)。
 
 ### 世界系カメラ: プレイヤー追随
 

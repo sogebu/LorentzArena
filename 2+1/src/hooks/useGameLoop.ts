@@ -1,12 +1,15 @@
 import { useEffect, useRef, type MutableRefObject, type RefObject } from "react";
 import { vector3Zero, type createPhaseSpace, type Vector3, type Vector4 } from "../physics";
 import {
+  DEBRIS_MAX_LAMBDA,
   DEFAULT_CAMERA_PITCH,
   ENERGY_MAX,
   ENERGY_PER_SHOT,
   ENERGY_RECOVERY_RATE,
   GAME_LOOP_INTERVAL,
+  GC_PAST_LCH_MULTIPLIER,
   LASER_RANGE,
+  LIGHT_CONE_HEIGHT,
   MAX_LASERS,
   PROCESSED_LASERS_CLEANUP_THRESHOLD,
   RESPAWN_DELAY,
@@ -529,6 +532,54 @@ export function useGameLoop({
         const gc = gcLogs(gcState.killLog, gcState.respawnLog);
         if (gc.killLog !== gcState.killLog || gc.respawnLog !== gcState.respawnLog) {
           useGameStore.setState({ killLog: gc.killLog, respawnLog: gc.respawnLog });
+        }
+      }
+
+      // --- Temporal GC: laser / frozen worldline / debris の最未来点が
+      //     全プレイヤー最早時刻より LCH × GC_PAST_LCH_MULTIPLIER 以上過去なら削除。
+      //     time fade で実質不可視の領域 (fade ≈ 0.04 @ 5×LCH) を刈り、
+      //     交差計算 / tube 再生成 / InstancedMesh 更新の per-frame 線形コスト削減。
+      {
+        const gcState = useGameStore.getState();
+        let earliestPlayerT = Number.POSITIVE_INFINITY;
+        for (const p of gcState.players.values()) {
+          const t = p.phaseSpace.pos.t;
+          if (t < earliestPlayerT) earliestPlayerT = t;
+        }
+        if (Number.isFinite(earliestPlayerT)) {
+          const cutoff = earliestPlayerT - LIGHT_CONE_HEIGHT * GC_PAST_LCH_MULTIPLIER;
+          // laser: 最未来点 = emissionPos.t + range
+          const lasers = gcState.lasers;
+          if (lasers.length > 0) {
+            const kept = lasers.filter(
+              (l) => l.emissionPos.t + l.range >= cutoff,
+            );
+            if (kept.length !== lasers.length) {
+              gcState.setLasers(() => kept);
+            }
+          }
+          // frozen worldline: 最未来点 = history[last].t (= 死亡時刻)
+          const frozen = gcState.frozenWorldLines;
+          if (frozen.length > 0) {
+            const kept = frozen.filter((fw) => {
+              const h = fw.worldLine.history;
+              if (h.length === 0) return false;
+              return h[h.length - 1].pos.t >= cutoff;
+            });
+            if (kept.length !== frozen.length) {
+              gcState.setFrozenWorldLines(() => kept);
+            }
+          }
+          // debris: 最未来点 = deathPos.t + DEBRIS_MAX_LAMBDA
+          const debris = gcState.debrisRecords;
+          if (debris.length > 0) {
+            const kept = debris.filter(
+              (d) => d.deathPos.t + DEBRIS_MAX_LAMBDA >= cutoff,
+            );
+            if (kept.length !== debris.length) {
+              gcState.setDebrisRecords(() => kept);
+            }
+          }
         }
       }
     };

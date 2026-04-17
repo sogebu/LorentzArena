@@ -421,6 +421,9 @@ export const SceneContent = ({
       <ambientLight intensity={0.5} />
       <pointLight position={[5, 5, 5]} intensity={1} />
 
+      {/* 時空星屑 (4D event cloud、world-frame 静止、periodic boundary で無限供給) */}
+      <StardustRenderer />
+
       {/* アリーナ円柱 (視覚ガイド、world-frame 静止、過去光円錐交線ハイライト) */}
       <ArenaRenderer />
 

@@ -38,7 +38,14 @@ export const applyTimeFadeShader = (shader: THREE.Shader): void => {
 const VERTEX_DECL_KEY = "#include <common>";
 const VERTEX_COMPUTE_KEY = "#include <project_vertex>";
 const FRAGMENT_DECL_KEY = "#include <common>";
-const FRAGMENT_APPLY_KEY = "#include <dithering_fragment>";
+// Mesh*/Line* materials は `#include <dithering_fragment>` を持つが、PointsMaterial は
+// 持たない (three r181 時点、`src/renderers/shaders/ShaderLib/points.glsl.js`)。
+// 共通で最後尾にある `#include <premultiplied_alpha_fragment>` にフォールバックする。
+// 優先順: dithering を先に試す (既存の Mesh/Line の inject 位置は不変)。
+const FRAGMENT_APPLY_KEYS = [
+  "#include <dithering_fragment>",
+  "#include <premultiplied_alpha_fragment>",
+];
 
 const injectVertex = (src: string): string => {
   if (!src.includes(VERTEX_DECL_KEY) || !src.includes(VERTEX_COMPUTE_KEY)) {
@@ -71,7 +78,8 @@ uniform float uTimeFadeScale;`,
 };
 
 const injectFragment = (src: string): string => {
-  if (!src.includes(FRAGMENT_DECL_KEY) || !src.includes(FRAGMENT_APPLY_KEY)) {
+  const applyKey = FRAGMENT_APPLY_KEYS.find((k) => src.includes(k));
+  if (!src.includes(FRAGMENT_DECL_KEY) || !applyKey) {
     console.warn(
       "[timeFadeShader] fragment shader inject keys missing; skipping injection",
     );
@@ -84,8 +92,8 @@ const injectFragment = (src: string): string => {
 varying float vTimeFade;`,
     )
     .replace(
-      FRAGMENT_APPLY_KEY,
-      `${FRAGMENT_APPLY_KEY}
+      applyKey,
+      `${applyKey}
 gl_FragColor.a *= vTimeFade;`,
     );
 };

@@ -23,6 +23,22 @@ export const MAX_DEBRIS = 20;
 // レーザーの最大数（メモリ管理）
 export const MAX_LASERS = 1000;
 
+// 時間的オブジェクトの GC 閾値 (laser / frozen worldline / debris 共通):
+// オブジェクトの最未来点 が 全プレイヤー最早時刻 (LH 含む) より
+// LCH × `GC_PAST_LCH_MULTIPLIER` 以上過去なら削除。
+//
+// 時間 fade `r²/(r²+Δt²)` で Δt = 5×LCH のとき fade ≈ 0.038 (実質不可視) なので
+// 5 がデフォルト。交差計算 / 世界線 tube 再生成 / InstancedMesh 更新が per-object
+// 線形コストなので、古いものを落とすと FPS 改善。
+//
+// 各オブジェクトの「最未来点」:
+// - laser: `emissionPos.t + range`
+// - debris: `deathPos.t + DEBRIS_MAX_LAMBDA` (≈ deathPos.t + 2.5)
+// - frozen worldline: `history[last].t` (= 死亡時刻)
+export const GC_PAST_LCH_MULTIPLIER = 5;
+// デブリ 1 粒子の coord time 方向の長さ。DebrisRenderer の segment 生成と GC の両方で参照。
+export const DEBRIS_MAX_LAMBDA = 2.5;
+
 // 当たり判定の半径
 export const HIT_RADIUS = 0.25;
 
@@ -125,6 +141,31 @@ export const LIGHT_CONE_WIRE_OPACITY = 0.05;
 // 詳細: DESIGN.md §描画「時間的距離 opacity fade」
 export const TIME_FADE_SCALE = LIGHT_CONE_HEIGHT;
 
+// --- Stardust (時空星屑、案 17、2026-04-17) ---
+// N 個の 4D event (spark) を world 座標で一様分布、THREE.Points で D pattern 描画。
+// Lorentz 変換・光行差は per-vertex で自動。時間 fade shader を適用して境界で自然消失。
+//
+// **recycling 方式**: 初回 useMemo で固定 N 個を乱数配置、観測者が box 外に出ると
+// 反対側へ wrap-around (periodic boundary)。時間 fade で境界 spark は既に透明なので
+// recycling は視認されない。grid+hash 方式 (=観測者が cell を跨ぐと spark 群が全差し替え
+// = 視覚ポッピング) は **採用しない**。
+//
+// 詳細: EXPLORING.md §進行方向・向きの認知支援 §追加案「案 17」
+export const STARDUST_COUNT = 6000;
+// 空間方向の ±範囲 (world 単位)。observer boost で display frame に mix されても
+// 大半が視認 window 内に残るよう、TIME_HALF_RANGE と同程度に取る。
+export const STARDUST_SPATIAL_HALF_RANGE = 60;
+// 時間方向の ±範囲 (world 単位)。fade ≈ 0.1 となる 3×LCH で境界を置く。
+// LCH 変更時に自動追従。
+export const STARDUST_TIME_HALF_RANGE = TIME_FADE_SCALE * 3;
+// Point size (world 単位、sizeAttenuation で perspective 縮小)
+export const STARDUST_SIZE = 0.06;
+// 暖色 amber (彩度上げて LH の light blue `hsl(220, 70%, 75%)` との視覚混同を回避)。
+// arena cyan / exhaust blue / LH blue 全て寒色側なので、暖色方向で明確に分離。
+export const STARDUST_COLOR = "hsl(42, 55%, 80%)";
+// Base opacity。per-vertex time fade shader で乗算される (境界で ~0 まで減衰)。
+export const STARDUST_OPACITY = 0.9;
+
 // --- Worldline / laser opacity ---
 export const PLAYER_WORLDLINE_OPACITY = 0.65;
 export const LIGHTHOUSE_WORLDLINE_OPACITY = 0.4;
@@ -186,13 +227,3 @@ export const ARENA_PAST_CONE_OPACITY = 1.0;
 // 未来光円錐 × 円柱交線 (上端) の透明度。過去光円錐より控えめ (既に起きた event vs
 // まだ起きていない event の情報量差を視覚で反映)。
 export const ARENA_FUTURE_CONE_OPACITY = 0.3;
-
-// --- 時空星屑（世界線サンプリング） ---
-// グリッド単位で決定論的に世界線を生成、各世界線から均等に点をサンプリング。
-export const STARDUST_GRID_SIZE = 2.0;
-export const STARDUST_MAX_WORLDLINES_PER_CELL = 3;
-export const STARDUST_SAMPLES_PER_WORLDLINE = 8;
-export const STARDUST_COLOR = "hsl(180, 70%, 60%)";
-export const STARDUST_SIZE = 1.5;
-export const STARDUST_SPATIAL_RANGE = 40;
-export const STARDUST_TIME_RANGE = TIME_FADE_SCALE * 2;

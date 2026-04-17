@@ -1,143 +1,147 @@
-import { useMemo } from "react";
 import { useFrame } from "@react-three/fiber";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
-import { useGameStore } from "../../stores/game-store";
-import { useDisplayFrame } from "./DisplayFrameContext";
 import {
-	STARDUST_GRID_SIZE,
-	STARDUST_MAX_WORLDLINES_PER_CELL,
-	STARDUST_COLOR,
-	STARDUST_SIZE,
-	STARDUST_SPATIAL_RANGE,
-	STARDUST_TIME_RANGE,
-	TIME_FADE_SCALE,
+  STARDUST_COLOR,
+  STARDUST_COUNT,
+  STARDUST_OPACITY,
+  STARDUST_SIZE,
+  STARDUST_SPATIAL_HALF_RANGE,
+  STARDUST_TIME_HALF_RANGE,
 } from "./constants";
-import { applyTimeFadeShader } from "./timeFadeShader";
+import { useDisplayFrame } from "./DisplayFrameContext";
 import { getThreeColor } from "./threeCache";
+import { applyTimeFadeShader } from "./timeFadeShader";
 
-const hashCell = (cx: number, cy: number, ct: number): number => {
-	const p1 = 73856093;
-	const p2 = 19349663;
-	const p3 = 83492791;
-	return Math.abs((cx * p1) ^ (cy * p2) ^ (ct * p3));
-};
-
-const seededRandom = (seed: number): number => {
-	const x = Math.sin(seed) * 10000;
-	return x - Math.floor(x);
-};
-
-const generateStardustPoints = (
-	observerX: number,
-	observerY: number,
-	observerT: number,
-): [number, number, number][] => {
-	const points: [number, number, number][] = [];
-
-	const cellXMin = Math.floor(observerX / STARDUST_GRID_SIZE) - 1;
-	const cellXMax = Math.ceil(observerX / STARDUST_GRID_SIZE) + 1;
-	const cellYMin = Math.floor(observerY / STARDUST_GRID_SIZE) - 1;
-	const cellYMax = Math.ceil(observerY / STARDUST_GRID_SIZE) + 1;
-
-	const cellTMin = Math.floor(observerT / STARDUST_GRID_SIZE) - 1;
-	const cellTMax = Math.ceil(observerT / STARDUST_GRID_SIZE) + 1;
-
-	// グリッドセル内に決定論的に点を生成
-	for (let cx = cellXMin; cx <= cellXMax; cx++) {
-		for (let cy = cellYMin; cy <= cellYMax; cy++) {
-			for (let ct = cellTMin; ct <= cellTMax; ct++) {
-				const cellHash = hashCell(cx, cy, ct);
-				const numPoints =
-					(cellHash % STARDUST_MAX_WORLDLINES_PER_CELL) + 1;
-
-				for (let p = 0; p < numPoints; p++) {
-					const seed = cellHash + p * 1000;
-					const r1 = seededRandom(seed);
-					const r2 = seededRandom(seed + 1);
-					const r3 = seededRandom(seed + 2);
-
-					const x =
-						cx * STARDUST_GRID_SIZE +
-						(r1 - 0.5) * STARDUST_GRID_SIZE;
-					const y =
-						cy * STARDUST_GRID_SIZE +
-						(r2 - 0.5) * STARDUST_GRID_SIZE;
-					const t =
-						ct * STARDUST_GRID_SIZE +
-						(r3 - 0.5) * STARDUST_GRID_SIZE;
-
-					points.push([x, y, t]);
-				}
-			}
-		}
-	}
-
-	return points;
-};
-
+// Stardust (時空星屑、案 17 + timelike drift 実験、2026-04-17):
+//
+// N 個の spark を world frame で pre-generated、THREE.Points で D pattern 描画。
+// 光行差と Lorentz 変換は per-vertex で自動適用。
+//
+// **Timelike drift 実験 (2026-04-17)**: 各 spark.t を毎フレーム観測者.t の増分と
+// 同じ dt だけ進める → 観測者との相対 t = 一定。世界系で静止した観測者には spark が
+// 止まって見え、運動すると spatial offset × γβ の光行差だけが現れる。各 spark の
+// world line は (x, y) 固定で t 方向に伸びる timelike worldline = EXPLORING.md
+// §案 16 (star aberration skybox) の pattern。案 17 (null event) との差は後述。
+//
+// **Periodic boundary (x, y のみ)**: 観測者が box 外 (半幅 STARDUST_SPATIAL_HALF_RANGE)
+// に出ると、spark を反対側へ wrap-around。境界近傍は per-vertex 時間 fade で
+// 既に透明なので wrap は視認されない。grid + hash procedural 生成方式 (観測者が
+// cell を跨いだ瞬間に spark 群が全差し替えになり視覚ポッピング) は採用しない。
+//
+// **t 方向の扱い**: 初回 frame のみ wrap-around で [-halfT, halfT] → [obs.t ± halfT]
+// へアラインし、以後は drift が同期を保つので wrap は発火しない (safety net として残す)。
+//
+// 案 16 との differentiation: 16 は「世界固定の天体」で空間位置が world-frame
+// static、17 は「時空の event」。この drift 実装は「(x, y) 固定 + t 方向は同期して
+// 進む」ので案 16 寄り。純粋な案 17 (t drift なし) では静止時も時間方向に spark が
+// 流れ「時空を進んでいる体感」が出るが、静止観測者が「止まって見える」を優先する
+// なら drift 版が適切。どちらに倒すかは体感で決定 (本実装は暫定 drift 版)。
 export const StardustRenderer = () => {
-	const { displayMatrix } = useDisplayFrame();
-	const observerPos = useGameStore((state) => state.observer);
+  const { displayMatrix, observerPos } = useDisplayFrame();
 
-	const pointsGeometry = useMemo(() => {
-		const geo = new THREE.BufferGeometry();
+  const observerPosRef = useRef(observerPos);
+  observerPosRef.current = observerPos;
 
-		if (!observerPos) {
-			geo.setAttribute(
-				"position",
-				new THREE.BufferAttribute(new Float32Array(0), 3),
-			);
-			return geo;
-		}
+  // Drift tracking: previous observer.t for delta computation
+  const prevObsTRef = useRef<number | null>(null);
 
-		const pointsArray = generateStardustPoints(
-			observerPos.x,
-			observerPos.y,
-			observerPos.t,
-		);
+  const color = useMemo(() => getThreeColor(STARDUST_COLOR), []);
 
-		if (pointsArray.length === 0) {
-			geo.setAttribute(
-				"position",
-				new THREE.BufferAttribute(new Float32Array(0), 3),
-			);
-			return geo;
-		}
+  // 初回のみ spark 配置を生成。観測者位置を知らないまま (0,0,0) 原点 box に
+  // 配置し、初回 useFrame の wrap-around で観測者近傍に自動 shift される。
+  const { geometry, positions } = useMemo(() => {
+    const N = STARDUST_COUNT;
+    const arr = new Float32Array(N * 3);
+    const hx = STARDUST_SPATIAL_HALF_RANGE;
+    const hy = STARDUST_SPATIAL_HALF_RANGE;
+    const ht = STARDUST_TIME_HALF_RANGE;
+    for (let i = 0; i < N; i++) {
+      arr[i * 3 + 0] = (Math.random() * 2 - 1) * hx;
+      arr[i * 3 + 1] = (Math.random() * 2 - 1) * hy;
+      arr[i * 3 + 2] = (Math.random() * 2 - 1) * ht;
+    }
+    const posAttr = new THREE.BufferAttribute(arr, 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", posAttr);
+    return { geometry: geo, positions: posAttr };
+  }, []);
 
-		const positions = new Float32Array(pointsArray.length * 3);
-		pointsArray.forEach((p, idx) => {
-			positions[idx * 3] = p[0];
-			positions[idx * 3 + 1] = p[1];
-			positions[idx * 3 + 2] = p[2];
-		});
+  useFrame(() => {
+    const pos = observerPosRef.current;
+    if (!pos) return;
+    const arr = positions.array as Float32Array;
+    const N = STARDUST_COUNT;
+    const hx = STARDUST_SPATIAL_HALF_RANGE;
+    const hy = STARDUST_SPATIAL_HALF_RANGE;
+    const ht = STARDUST_TIME_HALF_RANGE;
+    const spanX = 2 * hx;
+    const spanY = 2 * hy;
+    const spanT = 2 * ht;
 
-		geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-		return geo;
-	}, [observerPos]);
+    // Timelike drift: spark.t を観測者.t の増分だけ進める。
+    // 結果、spark.t - observer.t = 一定 → 静止観測者には止まって見える。
+    const prevT = prevObsTRef.current;
+    const driftDt = prevT === null ? 0 : pos.t - prevT;
+    prevObsTRef.current = pos.t;
 
-	const pointsMaterial = useMemo(() => {
-		return new THREE.PointsMaterial({
-			color: getThreeColor(STARDUST_COLOR),
-			size: STARDUST_SIZE,
-			sizeAttenuation: true,
-			transparent: true,
-			opacity: 0.6,
-		});
-	}, []);
+    let dirty = false;
+    for (let i = 0; i < N; i++) {
+      const bx = i * 3;
+      const by = bx + 1;
+      const bt = bx + 2;
+      // x wrap-around (観測者空間移動への追従)
+      const dx = arr[bx] - pos.x;
+      if (dx > hx) {
+        arr[bx] -= Math.ceil((dx - hx) / spanX) * spanX;
+        dirty = true;
+      } else if (dx < -hx) {
+        arr[bx] += Math.ceil((-dx - hx) / spanX) * spanX;
+        dirty = true;
+      }
+      // y wrap-around
+      const dy = arr[by] - pos.y;
+      if (dy > hy) {
+        arr[by] -= Math.ceil((dy - hy) / spanY) * spanY;
+        dirty = true;
+      } else if (dy < -hy) {
+        arr[by] += Math.ceil((-dy - hy) / spanY) * spanY;
+        dirty = true;
+      }
+      // t: drift で観測者と同期 + 初回 frame のみ wrap で align (以降は drift が範囲維持)
+      if (driftDt !== 0) {
+        arr[bt] += driftDt;
+        dirty = true;
+      }
+      const dt = arr[bt] - pos.t;
+      if (dt > ht) {
+        arr[bt] -= Math.ceil((dt - ht) / spanT) * spanT;
+        dirty = true;
+      } else if (dt < -ht) {
+        arr[bt] += Math.ceil((-dt - ht) / spanT) * spanT;
+        dirty = true;
+      }
+    }
+    if (dirty) positions.needsUpdate = true;
+  });
 
-	const points = useMemo(
-		() => new THREE.Points(pointsGeometry, pointsMaterial),
-		[pointsGeometry, pointsMaterial],
-	);
-
-	useFrame(() => {
-		if (!displayMatrix) return;
-
-		// 表示変換適用: 世界座標系 → 観測者フレーム
-		points.matrix.copy(displayMatrix);
-		points.matrixAutoUpdate = false;
-		points.matrixWorldNeedsUpdate = true;
-	});
-
-	return <primitive object={points} />;
+  return (
+    <points
+      geometry={geometry}
+      matrix={displayMatrix}
+      matrixAutoUpdate={false}
+      frustumCulled={false}
+      renderOrder={-1}
+    >
+      <pointsMaterial
+        color={color}
+        size={STARDUST_SIZE}
+        sizeAttenuation
+        transparent
+        opacity={STARDUST_OPACITY}
+        depthWrite={false}
+        onBeforeCompile={applyTimeFadeShader}
+      />
+    </points>
+  );
 };
