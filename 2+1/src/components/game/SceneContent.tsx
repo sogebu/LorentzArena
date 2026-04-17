@@ -15,7 +15,6 @@ import { DebrisRenderer } from "./DebrisRenderer";
 import { LaserBatchRenderer } from "./LaserBatchRenderer";
 import { isLighthouse } from "./lighthouse";
 import { SpawnRenderer } from "./SpawnRenderer";
-import { StardustRenderer } from "./StardustRenderer";
 import { WorldLineRenderer } from "./WorldLineRenderer";
 import {
   AIM_ARROW_BASE_OPACITY,
@@ -762,9 +761,6 @@ export const SceneContent = ({
       {spawns.map((spawn) => (
         <SpawnRenderer key={spawn.id} spawn={spawn} />
       ))}
-
-      {/* 時空星屑（4D event cloud, D pattern） */}
-      <StardustRenderer />
     </DisplayFrameProvider>
   );
 };

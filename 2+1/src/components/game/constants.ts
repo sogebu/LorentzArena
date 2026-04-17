@@ -186,17 +186,3 @@ export const ARENA_PAST_CONE_OPACITY = 1.0;
 // 未来光円錐 × 円柱交線 (上端) の透明度。過去光円錐より控えめ (既に起きた event vs
 // まだ起きていない event の情報量差を視覚で反映)。
 export const ARENA_FUTURE_CONE_OPACITY = 0.3;
-
-// --- Stardust (4D spacetime event cloud, 2026-04-17) ---
-// 時空に均一分布した spark 群。observer が進むと前方から新しい spark が流れ込む感覚。
-// grid + hash で procedurally generate、per-vertex D pattern で描画。
-// 時間 fade shader で動的 window が自然に出現 (pop-in 抑止)。
-// EXPLORING.md § 案 17 参照。
-export const STARDUST_GRID_SIZE = 2.0; // cell 1 辺のサイズ (world coords)
-export const STARDUST_MAX_SPARKS_PER_CELL = 3; // cell あたりの最大密度
-export const STARDUST_COLOR = "hsl(180, 70%, 60%)"; // シアン、arena と coordinated
-export const STARDUST_SIZE = 2.0; // THREE.Points point size (pixels)
-// 観測者周辺に見える時空範囲。時間は TIME_FADE_SCALE (~20) で半透明に減衰するので、
-// その範囲 ± をちょっと超える程度で OK。
-export const STARDUST_SPATIAL_RANGE = 40; // observer から ±40 の xy 範囲
-export const STARDUST_TIME_RANGE = TIME_FADE_SCALE * 2; // observer.t ± 40 の時間範囲
