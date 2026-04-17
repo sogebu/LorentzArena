@@ -15,6 +15,7 @@ import { DebrisRenderer } from "./DebrisRenderer";
 import { LaserBatchRenderer } from "./LaserBatchRenderer";
 import { isLighthouse } from "./lighthouse";
 import { SpawnRenderer } from "./SpawnRenderer";
+import { StardustRenderer } from "./StardustRenderer";
 import { WorldLineRenderer } from "./WorldLineRenderer";
 import {
   AIM_ARROW_BASE_OPACITY,
@@ -725,6 +726,9 @@ export const SceneContent = ({
       {myPlayer && (
         <DebrisRenderer debrisRecords={debrisRecords} myPlayer={myPlayer} />
       )}
+
+      {/* 時空星屑（個別点のクラウド） */}
+      <StardustRenderer />
 
       {/* キル通知（キル時空点に 3D 表示、球=位置のみ / リング=D pattern） */}
       {killNotification && (() => {

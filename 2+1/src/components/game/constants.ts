@@ -186,3 +186,13 @@ export const ARENA_PAST_CONE_OPACITY = 1.0;
 // 未来光円錐 × 円柱交線 (上端) の透明度。過去光円錐より控えめ (既に起きた event vs
 // まだ起きていない event の情報量差を視覚で反映)。
 export const ARENA_FUTURE_CONE_OPACITY = 0.3;
+
+// --- 時空星屑（世界線サンプリング） ---
+// グリッド単位で決定論的に世界線を生成、各世界線から均等に点をサンプリング。
+export const STARDUST_GRID_SIZE = 2.0;
+export const STARDUST_MAX_WORLDLINES_PER_CELL = 3;
+export const STARDUST_SAMPLES_PER_WORLDLINE = 8;
+export const STARDUST_COLOR = "hsl(180, 70%, 60%)";
+export const STARDUST_SIZE = 1.5;
+export const STARDUST_SPATIAL_RANGE = 40;
+export const STARDUST_TIME_RANGE = TIME_FADE_SCALE * 2;
