@@ -164,12 +164,12 @@ export const STARDUST_SIZE = 0.06;
 // arena cyan / exhaust blue / LH blue 全て寒色側なので、暖色方向で明確に分離。
 export const STARDUST_COLOR = "hsl(42, 55%, 80%)";
 // Base opacity。per-vertex time fade shader で乗算される (境界で ~0 まで減衰)。
-export const STARDUST_OPACITY = 0.9;
+export const STARDUST_OPACITY = 0.5;
 
 // --- Worldline / laser opacity ---
 export const PLAYER_WORLDLINE_OPACITY = 0.65;
 export const LIGHTHOUSE_WORLDLINE_OPACITY = 0.4;
-export const LASER_WORLDLINE_OPACITY = 0.3;
+export const LASER_WORLDLINE_OPACITY = 0.2;
 
 // --- Debris opacity ---
 // InstancedMesh 全 instance 共通 (per-vertex 時間 fade が shader で乗算される)。

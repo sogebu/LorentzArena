@@ -623,7 +623,7 @@ export const SceneContent = ({
             geometry={sharedGeometries.laserIntersectionTriangle}
             matrix={m}
             matrixAutoUpdate={false}
-            scale={[1.2, 1.2, 1.2]}
+            scale={[1.5, 1.5, 1.5]}
           >
             <meshBasicMaterial color={c} side={THREE.DoubleSide} />
           </mesh>

@@ -13,38 +13,26 @@ import { useDisplayFrame } from "./DisplayFrameContext";
 import { getThreeColor } from "./threeCache";
 import { applyTimeFadeShader } from "./timeFadeShader";
 
-// Stardust (時空星屑、案 17 + timelike drift 実験、2026-04-17):
+// Stardust (時空星屑、案 17、2026-04-17):
 //
-// N 個の spark を world frame で pre-generated、THREE.Points で D pattern 描画。
-// 光行差と Lorentz 変換は per-vertex で自動適用。
+// N 個の 4D event (spark) を world frame で pre-generated、THREE.Points で D pattern
+// 描画。各 spark は「時空の 1 event」で位置 (x, y, t) 固定。光行差と Lorentz 変換は
+// per-vertex で自動適用。
 //
-// **Timelike drift 実験 (2026-04-17)**: 各 spark.t を毎フレーム観測者.t の増分と
-// 同じ dt だけ進める → 観測者との相対 t = 一定。世界系で静止した観測者には spark が
-// 止まって見え、運動すると spatial offset × γβ の光行差だけが現れる。各 spark の
-// world line は (x, y) 固定で t 方向に伸びる timelike worldline = EXPLORING.md
-// §案 16 (star aberration skybox) の pattern。案 17 (null event) との差は後述。
+// **静止観測者から見た挙動**: observer.t が進むと各 spark の display z = t_spark -
+// t_obs が減少 → spark が observer の過去方向 (display 下方向) へ一様に流れる。
+// 「時空 event を通過している」体感が出る。timelike drift 版 (t を観測者と同期して
+// 静止時止める) と比較し、本版は静止時も流入があり「動いている感」が強い。
 //
-// **Periodic boundary (x, y のみ)**: 観測者が box 外 (半幅 STARDUST_SPATIAL_HALF_RANGE)
+// **Periodic boundary (recycling)**: 観測者が box 外 (半幅 STARDUST_*_HALF_RANGE)
 // に出ると、spark を反対側へ wrap-around。境界近傍は per-vertex 時間 fade で
 // 既に透明なので wrap は視認されない。grid + hash procedural 生成方式 (観測者が
 // cell を跨いだ瞬間に spark 群が全差し替えになり視覚ポッピング) は採用しない。
-//
-// **t 方向の扱い**: 初回 frame のみ wrap-around で [-halfT, halfT] → [obs.t ± halfT]
-// へアラインし、以後は drift が同期を保つので wrap は発火しない (safety net として残す)。
-//
-// 案 16 との differentiation: 16 は「世界固定の天体」で空間位置が world-frame
-// static、17 は「時空の event」。この drift 実装は「(x, y) 固定 + t 方向は同期して
-// 進む」ので案 16 寄り。純粋な案 17 (t drift なし) では静止時も時間方向に spark が
-// 流れ「時空を進んでいる体感」が出るが、静止観測者が「止まって見える」を優先する
-// なら drift 版が適切。どちらに倒すかは体感で決定 (本実装は暫定 drift 版)。
 export const StardustRenderer = () => {
   const { displayMatrix, observerPos } = useDisplayFrame();
 
   const observerPosRef = useRef(observerPos);
   observerPosRef.current = observerPos;
-
-  // Drift tracking: previous observer.t for delta computation
-  const prevObsTRef = useRef<number | null>(null);
 
   const color = useMemo(() => getThreeColor(STARDUST_COLOR), []);
 
@@ -78,13 +66,6 @@ export const StardustRenderer = () => {
     const spanX = 2 * hx;
     const spanY = 2 * hy;
     const spanT = 2 * ht;
-
-    // Timelike drift: spark.t を観測者.t の増分だけ進める。
-    // 結果、spark.t - observer.t = 一定 → 静止観測者には止まって見える。
-    const prevT = prevObsTRef.current;
-    const driftDt = prevT === null ? 0 : pos.t - prevT;
-    prevObsTRef.current = pos.t;
-
     let dirty = false;
     for (let i = 0; i < N; i++) {
       const bx = i * 3;
@@ -108,11 +89,8 @@ export const StardustRenderer = () => {
         arr[by] += Math.ceil((-dy - hy) / spanY) * spanY;
         dirty = true;
       }
-      // t: drift で観測者と同期 + 初回 frame のみ wrap で align (以降は drift が範囲維持)
-      if (driftDt !== 0) {
-        arr[bt] += driftDt;
-        dirty = true;
-      }
+      // t wrap-around (観測者.t 進行への追従。本版は drift なし = spark は world 固定で
+      // observer.t が進むと display z 方向に流れる = 「時空 event の通過」体感)
       const dt = arr[bt] - pos.t;
       if (dt > ht) {
         arr[bt] -= Math.ceil((dt - ht) / spanT) * spanT;

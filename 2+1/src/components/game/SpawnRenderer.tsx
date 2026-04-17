@@ -48,6 +48,7 @@ export const SpawnRenderer = ({
                 transparent
                 opacity={ringOpacity}
                 side={THREE.DoubleSide}
+                depthWrite={false}
               />
             </mesh>
           </group>
@@ -87,6 +88,7 @@ export const SpawnRenderer = ({
                 color={color}
                 transparent
                 opacity={opacity * 0.6}
+                depthWrite={false}
               />
             </mesh>
           </group>
