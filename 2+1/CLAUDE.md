@@ -261,10 +261,11 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `ARENA_RADIUS` | 20 | アリーナ円柱半径（= LASER_RANGE × 2） |
 | `ARENA_HEIGHT` | LIGHT_CONE_HEIGHT × 2 = 40 | 円柱 geometry の高さ。中心 t は観測者 t に追従し、常に観測者時間近傍の slice を描画 |
 | `ARENA_RADIAL_SEGMENTS` | 64 | 円柱側面の周方向分割数（光行差表現のため細かく） |
-| `ARENA_SURFACE_OPACITY` | 0.05 | 円柱側面 surface の透明度 |
-| `ARENA_VERTICAL_LINE_OPACITY` | 0.18 | 時間方向に伸びる垂直線 (ARENA_RADIAL_SEGMENTS 本) の透明度。CylinderGeometry + wireframe だと三角形の対角線も出てジグザグになるため、LineSegments で純粋な縦線のみ描画 |
+| `ARENA_COLOR` | `hsl(180,40%,70%)` | アリーナ円柱の色 (暫定シアン、surface / 垂直線 / 交線すべて同色)。プレイヤー色や LH 色と干渉しない色相帯。パステル化時に再検討 |
+| `ARENA_SURFACE_OPACITY` | 0.08 | 円柱側面 surface の透明度 (= 光円錐 surface と同値) |
+| `ARENA_VERTICAL_LINE_OPACITY` | 0.04 | 時間方向に伸びる垂直線 (ARENA_RADIAL_SEGMENTS 本) の透明度 (= 光円錐 wireframe と同値)。CylinderGeometry + wireframe だと三角形の対角線も出てジグザグになるため、LineSegments で純粋な縦線のみ描画 |
 | `ARENA_PAST_CONE_SEGMENTS` | 128 | 過去光円錐 × 円柱 交線 LineLoop のサンプル数 |
-| `ARENA_PAST_CONE_OPACITY` | 0.55 | 過去光円錐交線の透明度 |
+| `ARENA_PAST_CONE_OPACITY` | 1.0 | 過去光円錐交線の透明度 (不透明、「いま光が届いている周縁」を強調) |
 | `LIGHT_CONE_HEIGHT` | 20 | 描画上の円錐サイズ（c=1 で radius=height） |
 | `LIGHT_CONE_SURFACE_OPACITY` | 0.08 | 光円錐サーフェスの透明度 |
 | `LIGHT_CONE_WIRE_OPACITY` | 0.04 | 光円錐ワイヤーフレームの透明度 |

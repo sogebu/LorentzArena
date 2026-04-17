@@ -112,9 +112,12 @@ export const ARENA_RADIUS = 20;
 // 同じスケールで future/past 両方を余裕を持って含む。
 export const ARENA_HEIGHT = LIGHT_CONE_HEIGHT * 2;
 export const ARENA_RADIAL_SEGMENTS = 64;
-export const ARENA_SURFACE_OPACITY = 0.05;
+// 暫定色 (シアン, 仮想空間境界のメタファー)。パステル化時に再検討。
+// プレイヤー色 (HSL 黄金角分散) と Lighthouse (hsl(220,70%,75%)) の色相帯を避ける
+export const ARENA_COLOR = "hsl(180, 40%, 70%)";
+export const ARENA_SURFACE_OPACITY = 0.08;
 // 時間方向に伸びる垂直線 ARENA_RADIAL_SEGMENTS 本の opacity (対角線のない純粋な縦線)
-export const ARENA_VERTICAL_LINE_OPACITY = 0.18;
+export const ARENA_VERTICAL_LINE_OPACITY = 0.04;
 // 過去光円錐 × 円柱交線 LineLoop のサンプル数 + 透明度
 export const ARENA_PAST_CONE_SEGMENTS = 128;
-export const ARENA_PAST_CONE_OPACITY = 0.55;
+export const ARENA_PAST_CONE_OPACITY = 1.0;

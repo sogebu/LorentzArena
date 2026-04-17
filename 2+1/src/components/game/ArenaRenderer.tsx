@@ -3,6 +3,7 @@ import * as THREE from "three";
 import {
   ARENA_CENTER_X,
   ARENA_CENTER_Y,
+  ARENA_COLOR,
   ARENA_HEIGHT,
   ARENA_PAST_CONE_OPACITY,
   ARENA_PAST_CONE_SEGMENTS,
@@ -12,17 +13,18 @@ import {
   ARENA_VERTICAL_LINE_OPACITY,
 } from "./constants";
 import { useDisplayFrame } from "./DisplayFrameContext";
-import { sharedGeometries } from "./threeCache";
+import { getThreeColor, sharedGeometries } from "./threeCache";
 
 // Arena: world-frame static cylinder (x - cx)² + (y - cy)² = R², 視覚ガイドのみ (物理判定なし)。
 // D pattern: 円柱 geometry は world 座標で定義 + `displayMatrix` で per-vertex Lorentz 変換。
 // 円柱の time span は geometry 自体は有限 (ARENA_HEIGHT) だが、mesh の translation t を
 // observer.t に追従させることで常に観測者近傍の slice を描画する。world 静止の time-translation
 // invariant な円柱の「観測者時間近傍の window」として機能。
-// 過去光円錐交線 (PastConeLoop) は観測者固有: 各プレイヤーが自分の過去光円錐と円柱の交線
-// を独立に描画する。
+// 過去光円錐交線 (PastConeLoop) は観測者固有だが色は円柱所有物なので ARENA_COLOR を使う
+// (意味論的に交線 ∈ 円柱 であり、光円錐 wireframe の色と区別したいため)。
 export const ArenaRenderer = () => {
   const { displayMatrix, observerPos } = useDisplayFrame();
+  const arenaThreeColor = useMemo(() => getThreeColor(ARENA_COLOR), []);
 
   const cylinderMatrix = useMemo(() => {
     const centerT = observerPos?.t ?? 0;
@@ -103,7 +105,7 @@ export const ArenaRenderer = () => {
         matrixAutoUpdate={false}
       >
         <meshBasicMaterial
-          color="#ffffff"
+          color={arenaThreeColor}
           transparent
           opacity={ARENA_SURFACE_OPACITY}
           side={THREE.DoubleSide}
@@ -117,13 +119,13 @@ export const ArenaRenderer = () => {
         matrixAutoUpdate={false}
       >
         <lineBasicMaterial
-          color="#ffffff"
+          color={arenaThreeColor}
           transparent
           opacity={ARENA_VERTICAL_LINE_OPACITY}
           depthWrite={false}
         />
       </lineSegments>
-      {/* 観測者の過去光円錐 × 円柱 交線 */}
+      {/* 観測者の過去光円錐 × 円柱 交線 (色は円柱の所有物として ARENA_COLOR) */}
       {pastConeGeometry && (
         <lineLoop
           geometry={pastConeGeometry}
@@ -131,7 +133,7 @@ export const ArenaRenderer = () => {
           matrixAutoUpdate={false}
         >
           <lineBasicMaterial
-            color="#ffffff"
+            color={arenaThreeColor}
             transparent
             opacity={ARENA_PAST_CONE_OPACITY}
             depthWrite={false}
