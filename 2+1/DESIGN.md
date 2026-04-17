@@ -1045,19 +1045,25 @@ opacity = baseOpacity × fade
 - **線形** `max(0, 1 − Δt/R)`: 等速減衰、物理類推なし
 - **指数** `exp(−Δt²/r²)` (Gaussian): 指数関数で「反比例」ではない
 
-**対象オブジェクト (per-mesh v0)**:
+**対象オブジェクト (per-vertex v1 shader、2026-04-17 導入)**:
 
-| object | 代表時刻 | 実装 |
+| object | vertex t の範囲 | 挙動 |
 |---|---|---|
-| 凍結世界線 | 死亡時刻 (tip.t) | `WorldLineRenderer` 内で `tubeOpacity × fade` |
-| 生存世界線 (player / LH) | tip.t ≒ observer.t | 同じ経路だが fade ≈ 1 で実効変化なし |
-| デブリ (InstancedMesh) | 全 record の**最新** deathPos.t | 全 instance を一括で 1 opacity × fade。per-instance alpha は per-vertex v1 で対応 |
-| レーザー (LineSegments) | 各 laser 個別 | v0 は scope out。短命 (< range 秒) で fade 効果が小さく、個別 fade には per-vertex (vertex color alpha) が必要 |
-| 自己光円錐 / player marker / spawn effect / kill 通知 | observer.t そのもの or 短命 | fade 不要 or 効果なし、scope 外 |
+| 生存世界線 tube (`WorldLineRenderer`) | [history[0].t, tip.t ≈ observer.t] | tip 濃く、tail (数秒前) 自然消失 |
+| 凍結世界線 tube (`WorldLineRenderer`) | 死亡時刻前後の history range | 各 vertex が死亡時刻からの Δt で fade。時間経過で全体薄く、古い死亡から消える |
+| デブリ (`DebrisRenderer` InstancedMesh) | 各 instance: death event ~ + maxLambda の segment | `USE_INSTANCING` 分岐で各 instance 独立に per-vertex fade |
+| 自己光円錐 4 mesh (`SceneContent`) | cone vertex: apex = observer.t、base = observer.t ± LCH | apex (観測者の今) 濃く、±LCH の base 薄く |
+| アリーナ円柱 4 mesh (`ArenaRenderer`) | 各 θ で 2 vertex: observer.t ± ρ(θ), ρ(θ) ≤ LCH | 中腹 (= observer.t 近傍頂点) 濃く、上下端 (光円錐交点) 薄く |
+| レーザー batch (`LaserBatchRenderer` LineSegments) | 各 laser の 2 vertex: emission.t, emission.t + range | emission 濃く、range 先端薄く |
 
-**per-vertex v1 (将来)**: 世界線 tube の手前 vs 奥で濃淡、tail 部分が自然消失、レーザー個別 fade、デブリ個別 fade。実装は shader modifier (onBeforeCompile) または vertex color alpha + カスタム shader。コスト 100 行オーダー。v0 で効果を見てから判断。
+**対象外 (fade 不要 or 効果なし)**:
 
-**helper**: `game/timeFade.ts` に `computeTimeFade(deltaT: number): number` を集約。全 renderer で共有。将来 per-vertex 化時も同じ式を shader に移植すれば挙動一致。
+- プレイヤー球・交差点マーカー球 (C pattern、`position={[dp.x, dp.y, dp.t]}` で display 座標直接配置、observer 近傍で fade ≈ 1)
+- exhaust cone (C pattern、同上)
+- spawn effect / kill 通知 (短命で fade 以前に消える)
+- レーザー × 光円錐 交点三角形 (観測者光円錐上に配置、display z ≈ 0)
+
+**実装**: `game/timeFadeShader.ts` の `applyTimeFadeShader(shader)` を material の `onBeforeCompile` prop に渡す。vertex shader に `varying float vTimeFade` と `uniform float uTimeFadeScale` を追加、`#include <project_vertex>` 直後で `vec4 tfDisplayPos = modelMatrix × transformed`（InstancedMesh なら `instanceMatrix` 経由）の z 成分から `vTimeFade = r² / (r² + z²)` を計算。fragment shader では `#include <dithering_fragment>` 直後で `gl_FragColor.a *= vTimeFade`。全計算が GPU で、CPU side helper は不要 (`timeFade.ts` は v1 化時に削除済み)。
 
 **定数**: `TIME_FADE_SCALE = LIGHT_CONE_HEIGHT = 20` (`constants.ts` で `LIGHT_CONE_HEIGHT` を参照して自動連動)。per-vertex shader で光円錐・円柱・世界線・レーザーが自然にグラデーションするため、scale は LCH と同値の緩やかな減衰で十分。LCH/2 で試した段階では急峻すぎて光円錐の端が濃くなりすぎた — per-vertex 化で vertex 1 つずつが fade されるので per-mesh 時代より視覚的に急に感じるため、r は広めに取る。
 

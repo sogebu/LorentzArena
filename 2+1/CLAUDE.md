@@ -142,10 +142,12 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `game/gameLoop.ts` | ゲームループ内の純関数群（カメラ制御、プレイヤー物理、Lighthouse AI、当たり判定、ゴースト移動、因果律ガード、レーザー発射） |
 | `game/causalEvents.ts` | 因果律遅延イベント処理（キル通知・スポーンエフェクトの過去光円錐チェック） |
 | `game/SceneContent.tsx` | 3Dシーンオーケストレーター（交差計算 + カメラ制御 + 子コンポーネント配置） |
-| `game/WorldLineRenderer.tsx` | 世界線チューブ描画（TubeGeometry、version throttling） |
-| `game/LaserBatchRenderer.tsx` | レーザー世界線バッチ描画（LineSegments） |
+| `game/WorldLineRenderer.tsx` | 世界線チューブ描画（TubeGeometry、version throttling、per-vertex 時間 fade） |
+| `game/LaserBatchRenderer.tsx` | レーザー世界線バッチ描画（LineSegments、per-vertex 時間 fade） |
 | `game/SpawnRenderer.tsx` | スポーンエフェクト描画（アニメーション付きリング+ピラー） |
-| `game/DebrisRenderer.tsx` | デブリ世界線描画（InstancedMesh シリンダー + 光円錐交差マーカー） |
+| `game/DebrisRenderer.tsx` | デブリ世界線描画（InstancedMesh シリンダー + 光円錐交差マーカー、per-instance 時間 fade） |
+| `game/ArenaRenderer.tsx` | アリーナ円柱描画（4 geometry: surface / 垂直線 / 過去光円錐交線 / 未来光円錐交線、共有 BufferAttribute で in-place update、per-vertex 時間 fade） |
+| `game/timeFadeShader.ts` | 時間的距離 opacity fade (Lorentzian) の onBeforeCompile shader inject utility。全 D pattern material に適用 (MeshStandardMaterial / MeshBasicMaterial / LineBasicMaterial、InstancedMesh は `USE_INSTANCING` 分岐で対応)。詳細: DESIGN.md §描画「時間的距離 opacity fade」 |
 | `game/messageHandler.ts` | ネットワークメッセージ処理（ファクトリ関数、バリデーション付き） |
 | `game/HUD.tsx` | HUD オーケストレーター（子コンポーネント配置） |
 | `game/hud/ControlPanel.tsx` | 左上パネル（操作説明、トグルスイッチ、FPS、build、スコアボード） |
@@ -188,6 +190,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 - 光円錐描画: DoubleSide 半透明サーフェス（`LIGHT_CONE_SURFACE_OPACITY`）+ ワイヤーフレーム（`LIGHT_CONE_WIRE_OPACITY`）の 2 層構造で未来/過去光円錐を表示
 - アリーナ円柱 (`ArenaRenderer`): world-frame 静止、中心 `(ARENA_CENTER_X, ARENA_CENTER_Y)` 半径 `ARENA_RADIUS` の半透明円柱で戦闘領域の視覚ガイドを提示。物理判定なし（drifter 封じ込めは thrust energy で既済、視覚的境界として補完）。D pattern で per-vertex Lorentz 変換し、rest frame では光行差で楕円歪みを表現。**時間方向は観測者の因果コーンで切り出される**: 各 θ で `(x(θ), y(θ))` から観測者への空間距離 `ρ(θ)` を計算し、下端 = `observer.t − ρ(θ)` (過去光円錐交点)、上端 = `observer.t + ρ(θ)` (未来光円錐交点)。観測者が中心なら均一な円、離れると「観測者双円錐で切り出された」形に歪む。副産物として、観測者が円柱外から眺めた時の overdraw 問題も自動解消。**4 geometry (surface / 垂直線 / 過去光円錐交線 / 未来光円錐交線) は共有 BufferAttribute で 1 セットの N×2 頂点を index だけ違えて描画** (surface 下辺と pastCone loop が完全一致、密度差による線ズレ解消)。geometry は初回 1 回作成、毎 frame `useFrame` で position を in-place 更新 + `needsUpdate=true` (allocation ゼロ、GPU upload 1 回/frame、DESIGN.md §メタ原則 M17)。`frustumCulled={false}` で in-place update 時の boundingSphere 問題を回避。過去光円錐交線は濃く (1.0)、未来光円錐交線は控えめ (0.3) で情報量の非対称を反映。詳細: DESIGN.md §描画「アリーナ円柱」
 - Exhaust (推進ジェット、自機のみ v0): 自機球の反推力方向に 2 層 cone (外=`EXHAUST_OUTER_COLOR` 明るい青、内=`EXHAUST_INNER_COLOR` 冷たい白、`MeshBasicMaterial` + `THREE.AdditiveBlending` + `toneMapped=false` で青白プラズマ発光)。プレイヤー色依存は廃止、識別は sphere / worldline に任せる。**v0 は C pattern (rest-frame 固定)**、`transformEventForDisplay` 経由で自機球と同じ display 座標に並進のみ、共変 α^μ を phaseSpace に載せる段階 (他機対応) で D pattern + Lorentz 収縮に昇格予定。magnitude は描画層で EMA smoothing (attack 60ms / release 180ms) して PC binary 入力の点滅を解消、方向は smoothing しない。energy 枯渇で `thrustAcceleration=0` になり自動非表示。物理モデルの 3 ステップ (①rest frame で与える / ②world frame に boost して broadcast / ③観測者 rest frame に戻して表示) のうち v0 は ① のみ実装、②③ は他機対応時。詳細: DESIGN.md §描画「Exhaust」
+- 時間的距離 opacity fade (Lorentzian、per-vertex shader): `fade = r²/(r² + Δt²)`、`r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT = 20`。`applyTimeFadeShader` を `onBeforeCompile` で全 D pattern material に inject、各 vertex の world 座標を `modelMatrix × position` で display frame に変換した z 成分から per-vertex fade を計算、`gl_FragColor.a` に乗算。適用対象: 世界線 tube (生存・凍結)・デブリ (InstancedMesh、`USE_INSTANCING` 分岐)・自己光円錐 4 mesh・アリーナ円柱 4 mesh・レーザー batch。観測者時刻近傍が濃く、±LCH で半透明、±2×LCH で 0.2、±3×LCH で 0.1 と緩やかに減衰 (時間距離の 2 乗反比例、物理の逆 2 乗法則と同型)。**生存世界線も tail vertex は display z < 0 で fade される** (per-mesh v0 時代と異なる、per-vertex の自然な挙動)。詳細: DESIGN.md §描画「時間的距離 opacity fade」
 
 ### Store 構造 (`src/stores/game-store.ts`、Stage C 以降)
 
@@ -286,6 +289,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `LIGHT_CONE_HEIGHT` | 20 | 描画上の円錐サイズ（c=1 で radius=height） |
 | `LIGHT_CONE_SURFACE_OPACITY` | 0.08 | 光円錐サーフェスの透明度 |
 | `LIGHT_CONE_WIRE_OPACITY` | 0.04 | 光円錐ワイヤーフレームの透明度 |
+| `TIME_FADE_SCALE` | `= LIGHT_CONE_HEIGHT` = 20 | 時間的距離 opacity fade の Lorentzian scale。`fade = r²/(r² + Δt²)` の r。per-vertex shader (`timeFadeShader.ts`) で全 D pattern material に適用。LCH を変更すると自動追従 |
 | `PLAYER_WORLDLINE_OPACITY` | 0.65 | 人間プレイヤーの世界線チューブ透明度 |
 | `LIGHTHOUSE_WORLDLINE_OPACITY` | 0.4 | 灯台の世界線チューブ透明度 |
 | `LASER_WORLDLINE_OPACITY` | 0.3 | レーザー世界線の透明度 |

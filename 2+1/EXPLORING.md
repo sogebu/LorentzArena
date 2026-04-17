@@ -596,31 +596,29 @@ fade = base × r² / (r² + Δt²)
 - **線形**: `max(0, 1 − Δt/R)` — 等速減衰。「2 乗に反比例」の物理類推なし
 - **指数**: `exp(−Δt²/r²)` (Gaussian) — 「2 乗が入る」が指数関数で、反比例ではない
 
-**実装の 2 段階**:
+**実装の履歴** (現状は v1 確定):
 
-| 版 | scope | コスト | 効果 |
-|---|---|---|---|
-| **v0 (per-mesh)** | 各 renderer で object の代表時刻 (tip / 死亡時刻 / 発射時刻) から fade factor を計算し、既存 opacity に掛け算 | 30 行 | object 単位で fade (世界線 1 本が一様に薄く) |
-| **v1 (per-vertex)** | shader modifier or vertex color alpha で per-vertex fade。世界線 tube の手前 vs 奥で濃淡 | 100+ 行 | 古い tail が自然消失、tip 近くが濃く |
-
-### 対象 object と代表時刻
-
-| object | 代表 t | fade 適合度 |
+| 版 | scope | 状態 |
 |---|---|---|
-| 凍結世界線 | 死亡時刻 (tip.t) | ◎ (時間経過で単調減) |
-| デブリ | 発射時刻 | ◎ |
-| レーザー世界線 | 発射時刻 | ◎ |
-| 自機/他機の生存世界線 | tip.t ≒ observer t | △ (fade ほぼ 1.0、tail は v1 で per-vertex 必要) |
-| 光円錐 (自己) | observer.t そのもの | ✕ fade 不要 |
-| spawn effect / kill 通知 | event 時刻 | △ (元々短命なので fade 以前に消える) |
-| アリーナ円柱 | observer 因果コーン clipping | ✕ 既に時間制限済み |
-| **時空星屑 (案 17)** | 各 spark の t | ◎ (fade により観測者周辺に dynamic window が自然に生成、pop-in 抑止) |
+| v0 (per-mesh) | 各 renderer で object の代表時刻から fade factor を計算し opacity に掛け算 | 2026-04-17 実装、同日中に v1 へ移行して削除 |
+| **v1 (per-vertex shader)** | `timeFadeShader.ts` の `applyTimeFadeShader` を material の `onBeforeCompile` に inject、`modelMatrix × position` の z 成分から per-vertex fade、alpha に乗算。`USE_INSTANCING` 分岐で InstancedMesh 対応 | **現状 (2026-04-17 導入)** |
+
+### 対象 object (v1 shader 適用状態)
+
+| object | 適用 | 挙動 |
+|---|---|---|
+| 生存世界線 tube | ✓ | tip 濃く、tail 自然消失 |
+| 凍結世界線 tube | ✓ | 死亡時刻中心、時間経過で全体薄く |
+| デブリ InstancedMesh | ✓ | 各 instance 独立 fade (`USE_INSTANCING`) |
+| 自己光円錐 4 mesh | ✓ | apex 濃く、±LCH の base 薄く |
+| アリーナ円柱 4 mesh | ✓ | 中腹濃く、上下端 (光円錐交点) 薄く |
+| レーザー batch | ✓ | emission 濃く、range 先端薄く |
+| プレイヤー球・intersection marker (C pattern) | ✗ | display 原点近傍で fade ≈ 1、shader 適用してもほぼ無効果 |
+| exhaust cone (C pattern) | ✗ | 同上 |
+| spawn effect / kill 通知 | ✗ | 短命で fade 以前に消える |
+| **時空星屑 (案 17、未実装)** | 予定 | 案 17 実装時に shader 適用、観測者周辺に dynamic window |
 
 ### un-shelve トリガー
 
-- 進行方向可視化の分岐 A (他機 exhaust) の前に先行実装する (軽量 + QOL 即効)
-- 時空星屑 (案 17) 実装時に同時に入れると一石二鳥 (spark の可視範囲が動的 window で自然に制限される)
-
-### 次アクション
-
-v0 (per-mesh) から入り、世界線 tube の「tail fade」が欲しくなったら v1 (per-vertex) に拡張する段階化。実装対象は **凍結世界線・デブリ・レーザー** の 3 系 (効果が強い順) を優先、他は効果が微弱なので後回し可。
+- 案 17 (時空星屑) 実装時に shader を併用して observer 周辺の dynamic window を自然生成
+- 現状 shader の対象から漏れている object (spawn effect 等) を fade させたくなったら onBeforeCompile を追加
