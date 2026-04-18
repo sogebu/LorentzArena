@@ -2,7 +2,9 @@
 
 ## 現在のステータス
 
-対戦可能。**`f16fbc5` デプロイ済み** (build `2026/04/18 18:08:28 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`d2ad69a` デプロイ済み** (build `2026/04/18 19:02:38 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+
+2026-04-18 夜 (Phase C2 前哨): **灯台を 3D 塔モデル化** (`LighthouseRenderer`、procedural body/balcony/lantern/lamp/roof/spire) + **過去光円錐マーカーを完全置換** (alive LH + frozen LH の両方を SceneContent worldLineIntersections から除外、`FrozenWorldLine` に `playerId` 追加)。死亡時挙動: past cone が death event に届くまで past cone anchor 維持 → 届いた瞬間から debris と同期で過去に沈み、`deathT + DEBRIS_MAX_LAMBDA` で消失。リスポーンも spawn event が past cone に入るまで非表示。専用パラメータ: `LIGHTHOUSE_HIT_RADIUS = 0.40` (塔底面と同値)、`LIGHTHOUSE_HIT_DAMAGE = 0.2` (6 発死)、無敵時間なし (`selectPostHitUntil` が LH では常に 0)、energy 回復元から無し。`HIT_DEBRIS_MAX_LAMBDA: 1.2 → 2.5` (爆発デブリと同値)。
 
 2026-04-18 夜: **i18n JA を全表示日本語化** (開始/自機/灯台/撃破/撃沈/射撃中/ビルド/ルーム) + **WS Relay 未配備 UI クリーンアップ** (本番 `VITE_WS_RELAY_URL` 未設定のため利用不可だった transport selector / 「WS Relay に切り替えてください」help 文言 / autoFallback 通知を非表示化、コード本体は将来 deploy 用に残置)。設計改善: `LIGHTHOUSE_DISPLAY_NAME` 定数を `lighthouse.ts` に追加し data 層 / render 層を分離、`KillNotification3D` に `victimId` 追加して `Overlays.tsx` を `isLighthouse(id)` 判定に統一 (旧: 文字列マジック `=== "Lighthouse"`)。Connect.tsx の「ルーム "..."」ハードコード解消 (EN モードでも JP が出ていた両言語破綻)。
 
