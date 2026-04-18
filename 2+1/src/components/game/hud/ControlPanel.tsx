@@ -21,11 +21,12 @@ const ToggleSwitch = ({
     type="button"
     onClick={() => onChange(!checked)}
     style={{
-      display: "flex",
+      display: "grid",
+      gridColumn: "1 / -1",
+      gridTemplateColumns: "subgrid",
       alignItems: "center",
-      gap: "6px",
+      columnGap: "6px",
       cursor: "pointer",
-      marginTop: "6px",
       background: "none",
       border: "none",
       padding: 0,
@@ -33,15 +34,20 @@ const ToggleSwitch = ({
       font: "inherit",
     }}
   >
-    <span style={{ opacity: checked ? 1 : 0.4 }}>{labelLeft}</span>
+    <span style={{ opacity: checked ? 0.4 : 1, justifySelf: "end" }}>
+      {labelLeft}
+    </span>
     <div
       style={{
         width: "36px",
         height: "20px",
         borderRadius: "10px",
-        backgroundColor: "rgba(255, 255, 255, 0.25)",
+        backgroundColor: checked
+          ? "rgba(102, 255, 102, 0.35)"
+          : "rgba(255, 255, 255, 0.25)",
         position: "relative",
         flexShrink: 0,
+        transition: "background-color 0.2s",
       }}
     >
       <div
@@ -52,13 +58,28 @@ const ToggleSwitch = ({
           backgroundColor: "white",
           position: "absolute",
           top: "2px",
-          left: checked ? "2px" : "18px",
+          left: checked ? "18px" : "2px",
           transition: "left 0.2s",
         }}
       />
     </div>
-    <span style={{ opacity: checked ? 0.4 : 1 }}>{labelRight}</span>
+    <span style={{ opacity: checked ? 1 : 0.4 }}>{labelRight}</span>
   </button>
+);
+
+const ToggleGroup = ({ children }: { children: React.ReactNode }) => (
+  <div
+    style={{
+      display: "grid",
+      gridTemplateColumns: "max-content 36px max-content",
+      rowGap: "6px",
+      columnGap: "6px",
+      marginTop: "6px",
+      justifyContent: "start",
+    }}
+  >
+    {children}
+  </div>
 );
 
 type ControlPanelProps = {
@@ -70,8 +91,6 @@ type ControlPanelProps = {
   setShowInRestFrame: (v: boolean) => void;
   useOrthographic: boolean;
   setUseOrthographic: (v: boolean) => void;
-  showRadar: boolean;
-  setShowRadar: (v: boolean) => void;
   killGlow: boolean;
   getPlayerColor: (peerId: string) => string;
 };
@@ -85,8 +104,6 @@ export const ControlPanel = ({
   setShowInRestFrame,
   useOrthographic,
   setUseOrthographic,
-  showRadar,
-  setShowRadar,
   killGlow,
   getPlayerColor,
 }: ControlPanelProps) => {
@@ -123,24 +140,20 @@ export const ControlPanel = ({
           <div>{t("hud.controls.fire")}</div>
         </>
       )}
-      <ToggleSwitch
-        checked={showInRestFrame}
-        onChange={setShowInRestFrame}
-        labelLeft={t("hud.restFrame")}
-        labelRight={t("hud.worldFrame")}
-      />
-      <ToggleSwitch
-        checked={useOrthographic}
-        onChange={setUseOrthographic}
-        labelLeft={t("hud.orthographic")}
-        labelRight={t("hud.perspective")}
-      />
-      <ToggleSwitch
-        checked={showRadar}
-        onChange={setShowRadar}
-        labelLeft={t("hud.radar")}
-        labelRight={t("hud.noRadar")}
-      />
+      <ToggleGroup>
+        <ToggleSwitch
+          checked={showInRestFrame}
+          onChange={setShowInRestFrame}
+          labelLeft={t("hud.worldFrame")}
+          labelRight={t("hud.restFrame")}
+        />
+        <ToggleSwitch
+          checked={!useOrthographic}
+          onChange={(v) => setUseOrthographic(!v)}
+          labelLeft={t("hud.orthographic")}
+          labelRight={t("hud.perspective")}
+        />
+      </ToggleGroup>
       <div
         style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
       >

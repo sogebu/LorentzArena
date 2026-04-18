@@ -12,8 +12,6 @@ type HUDProps = {
   setShowInRestFrame: (v: boolean) => void;
   useOrthographic: boolean;
   setUseOrthographic: (v: boolean) => void;
-  showRadar: boolean;
-  setShowRadar: (v: boolean) => void;
   cameraYawRef: React.RefObject<number>;
   energy: number;
   isFiring: boolean;
@@ -29,8 +27,6 @@ export const HUD = ({
   setShowInRestFrame,
   useOrthographic,
   setUseOrthographic,
-  showRadar,
-  setShowRadar,
   cameraYawRef,
   energy,
   isFiring,
@@ -60,13 +56,11 @@ export const HUD = ({
         setShowInRestFrame={setShowInRestFrame}
         useOrthographic={useOrthographic}
         setUseOrthographic={setUseOrthographic}
-        showRadar={showRadar}
-        setShowRadar={setShowRadar}
         killGlow={killGlow}
         getPlayerColor={getPlayerColor}
       />
 
-      {showRadar && <Radar myId={myId} cameraYawRef={cameraYawRef} />}
+      <Radar myId={myId} cameraYawRef={cameraYawRef} />
 
       {myPlayer && (
         <Speedometer
