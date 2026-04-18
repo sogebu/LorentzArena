@@ -291,10 +291,10 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `ARENA_VERTICAL_LINE_OPACITY` | 0.05 | 時間方向に伸びる垂直線 (ARENA_RADIAL_SEGMENTS 本) の透明度 (= 光円錐 wireframe と同値)。CylinderGeometry + wireframe だと三角形の対角線も出てジグザグになるため、LineSegments で純粋な縦線のみ描画 |
 | `ARENA_PAST_CONE_OPACITY` | 1.0 | 過去光円錐交線 (下地平線) の透明度。「いま光が届いている周縁」を強調 |
 | `ARENA_FUTURE_CONE_OPACITY` | 0.3 | 未来光円錐交線 (上地平線) の透明度。過去より控えめ (まだ起きていない event の情報量差を視覚反映) |
-| `STARDUST_COUNT` | 6000 | 時空星屑の spark 総数 (案 17)。前方流入感のため 1500 → 4000 → 6000 に段階増量 (2026-04-17 夜) |
+| `STARDUST_COUNT` | 20000 | 時空星屑の spark 総数 (案 17)。段階増量: 1500 → 4000 → 6000 (2026-04-17 夜) → 10000 → 12000 → 15000 → 20000 (2026-04-18、size 0.06→0.04 で小さくした分密度を上げて前方流入感を強化) |
 | `STARDUST_SPATIAL_HALF_RANGE` | 60 | x, y の ±範囲 (world 単位)。observer boost で display z にミックスされても大半が view 内 |
 | `STARDUST_TIME_HALF_RANGE` | `TIME_FADE_SCALE × 3` = 60 | t の ±範囲。fade ≈ 0.1 の境界で自然消失 |
-| `STARDUST_SIZE` | 0.06 | point size (world 単位、sizeAttenuation) |
+| `STARDUST_SIZE` | 0.04 | point size (world 単位、sizeAttenuation)。0.06 → 0.04 に縮小 (2026-04-18、粒感を細かくしつつ COUNT を 6000→20000 に増やすことで前方流入感を維持) |
 | `STARDUST_COLOR` | `hsl(42, 55%, 80%)` | 暖色 amber。LH `hsl(220,70%,75%)` の淡青と視覚混同を避けるため彩度上げ (初期 15% → 55%) |
 | `STARDUST_OPACITY` | 0.5 | base opacity (per-vertex time fade で乗算)。前景干渉を避け 0.9 → 0.5 に |
 | `LIGHT_CONE_HEIGHT` | 20 | 描画上の円錐サイズ（c=1 で radius=height） |
