@@ -20,10 +20,15 @@ GitHub Pages デプロイは `2+1/` が本番。リポルートの `package.json
 
 ```bash
 pnpm dev                       # 2+1 の dev サーバー
-pnpm run build                 # 2+1 ビルド
+pnpm run build                 # 2+1 ビルド (vite build のみ、型検査は含まない)
+pnpm run typecheck             # 2+1 の tsc -b (deploy pipeline から分離、明示実行)
 pnpm run deploy                # 2+1 を GitHub Pages へ
 pnpm run test                  # 2+1 の Vitest
+pnpm run lint                  # 2+1 の Biome linter
+pnpm run format                # 2+1 の Biome formatter
 ```
+
+`build` から `tsc -b` を分離している理由は `DESIGN.md` §build/typecheck 分離。
 
 1+1 を触る時は `cd 1+1 && pnpm install && pnpm dev`。
 

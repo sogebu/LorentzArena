@@ -9,3 +9,9 @@
 - **Tradeoff**: GitHub Pages デプロイは 2+1 のみ。ルート `package.json` は `2+1/` に委譲する thin wrapper (`pnpm dev` 等が repo root で動くようにするため)
 
 2+1 の設計判断は `2+1/DESIGN.md` + `2+1/design/*.md` を参照。
+
+### build と typecheck の分離
+
+- **What**: `2+1/package.json` の `build` を `vite build` のみとし、`tsc -b` は `typecheck` として別 script 化。root `package.json` にも `typecheck` 委譲を追加
+- **Why**: `0a6ef36` の root 遺物削除時、`2+1/tsconfig.json` の `references` が削除された root `../tsconfig.*.json` を指したまま残り、`files: []` と合わさって `tsc -b` が silent no-op になっていた。参照を `./tsconfig.{app,node}.json` (新設) に直すと Authority 解体期のドリフト型エラーが多数出る状態が露呈。`build` に `tsc -b` を含めると deploy pipeline がブロックされるため、まず分離して「deploy は従来通り可能」「typecheck は明示 script で健全化する」二段構えにした
+- **Tradeoff**: `pnpm run build` では型エラーを検出できない。CI 或いは手動で `pnpm run typecheck` を走らせる discipline が必要。将来 `typecheck` が green になったら `build` に再統合する判断はあり
