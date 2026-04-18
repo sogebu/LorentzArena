@@ -2,7 +2,9 @@
 
 ## 現在のステータス
 
-対戦可能。**`c32c203` デプロイ済み** (build `2026/04/18 20:22:30 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`d69014e` デプロイ済み** (build `2026/04/18 23:11:30 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+
+2026-04-18 深夜 (Phase C2 Radar): **左下レーダー**着地 (`game/hud/Radar.tsx`、Canvas 2D、180×180 PC / 140×140 mobile)。**観測者静止系・真上 orthographic** で heading-up (yaw 方向が上)。描画対象: 他機 / 灯台 / 凍結世界線 / レーザーの **過去光円錐交点** (= 今見えている時空点)、`pastLightConeIntersectionWorldLine` + `pastLightConeIntersectionLaser` を流用。World 4-event → 観測者静止系 Δr は `lorentzBoost(obsU)` + `multiplyVector4Matrix4` で変換、レーザーの進行方向は photon 4-momentum `(1, d̂)` を boost して光行差込みに (rest-frame で止まって見えるレーザーも直感的)。arena 円周は rest-frame で歪むため過去光円錐 ∩ `r_world=ARENA_RADIUS` を 64 点サンプリング描画 (薄く)。自機は中心、三角形は threeCache と同じ **黄金 gnomon** (脚:底辺=φ:1、頂角 36°) を screen px で再現、**重心を過去光円錐交点に一致**。ズーム `ARENA_RADIUS * 0.7`、背景 opaque、`zIndex: 9999` で 3D シーン上に完全上書き。**Radar は常時 ON** (切る意味が無いのでトグル削除)。**ControlPanel トグル整理**: 残り 2 個 (静止系/世界系、透視投影/正射影) を `display: grid` + `gridTemplateColumns: subgrid` で列揃え (CJK 幅問題を構造的回避)、ON 側を常に右配置、トラック muted green tint (`rgba(102,255,102,0.35)`)。設計詳細: design/rendering.md §Radar。
 
 2026-04-18 夜 (視覚調整): **レーザー × 光円錐マーカー scale** 過去 `2 → 3` / 未来 `2 → 1.5` (過去を目立たせ、未来は控えめに)。**星屑 `STARDUST_COUNT 20000 → 40000`** (密度倍化)。**灯台を高さ ~10% (0.16) 下に沈めた** (`LIGHTHOUSE_SINK` 定数、inner group で視覚シフトのみ、past-cone 判定は anchorPos そのままで非干渉)。**`hud.dead` 撃沈 → 被撃墜** (船見立てから相対論的飛翔体見立てへ、灯台側 "撃破" との被動形対比、旧軍電文用法の "被〜" 系採用)。
 
@@ -82,7 +84,7 @@
 ### Phase C (別セッション)
 
 - ~~**C1 Damage-based death (#7)**~~ → 2026-04-18 完了 (上記「完了済みリファクタ」参照)
-- **C2 レーダー画面 (#11)** — 画面隅に top-down orthographic mini-view、過去光円錐上の event のみ 2D 散布図。既存 `pastConeIntersectionSegment` / `findLatestIndexAtOrBeforeTime` 流用、Canvas or 独立 Three.js scene、180×180 (PC) / 140×140 (mobile)、ControlPanel で toggle
+- ~~**C2 レーダー画面 (#11)**~~ → 2026-04-18 深夜 完了 (上記「現在のステータス」参照)
 
 ### 既存の積み残し (Phase 非依存)
 

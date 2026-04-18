@@ -77,6 +77,7 @@
 | `game/hud/ControlPanel.tsx` | 左上パネル (操作説明、トグルスイッチ、FPS、build、スコアボード) |
 | `game/hud/Speedometer.tsx` | 右下パネル (エネルギーゲージ、速度、γ、固有時、座標) |
 | `game/hud/Overlays.tsx` | 全オーバーレイ (死亡フラッシュ、ゴースト、FIRING、KILL 通知、CSS keyframes) |
+| `game/hud/Radar.tsx` | 左下レーダー (観測者静止系・真上 orthographic、Canvas 2D、heading-up、過去光円錐 ∩ 全 event。常時 ON でトグル無し) |
 | `game/hud/utils.ts` | HUD ユーティリティ (isTouchDevice、hslToComponents) |
 | `game/TutorialOverlay.tsx` | モバイル初回チュートリアル (localStorage `la-tutorial-shown` で 1 回限り、`isTouchDevice` gate、4 秒自動 dismiss) |
 | `game/touchInput.ts` | モバイルタッチ入力 (全画面ジェスチャ: スワイプ heading/thrust + ダブルタップ fire)、visibilitychange/blur/pagehide で stale reset |

@@ -389,5 +389,19 @@ opacity = baseOpacity × fade
 
 「世界系で世界線が加速方向に曲がって見える」問題は描画バグではなく、摩擦 (`mu = 0.5`) による減速が物理的に正しく反映されていた。
 
+### Radar (2026-04-18 Phase C2)
+
+`game/hud/Radar.tsx`、左下の Canvas 2D mini-map。採用した非自明な選択:
+
+**rest-frame 強制** (main view の `showInRestFrame` トグルに非連動): 「止まって敵を見る」ミニマップは観測者中心で解釈する道具。world frame にすると自機が動いて見え、radar としての即時性が失われる。main view の toggle 状態に関わらず radar は常に観測者静止系で描画。World 4-event → rest-frame Δr は `lorentzBoost(obsU)` + `multiplyVector4Matrix4`、レーザー進行方向は photon 4-momentum `(1, d̂)` を boost (光行差込み)。
+
+**Canvas 2D vs 第二 R3F Canvas**: 候補比較で 2D 採用。R3F Canvas 案は別 scene / 別 camera / WebGL 円形 clip / キャッシュ分離とコスト高、対する 2D は物理関数 (`pastLightConeIntersection*` + `lorentzBoost`) をそのまま composable に使え、radar 固有要件 (heading-up 回転、px サイズの三角形、opaque bg、zIndex) を直接制御可能。
+
+**arena 円周の歪み許容**: rest-frame では world 原点は観測者時刻で動いて見え、`r_world = ARENA_RADIUS` の locus は Lorentz 収縮 + 過去光円錐のため一般に楕円歪曲。正円で描くと嘘になるため過去光円錐 ∩ arena boundary を θ 64 点サンプリング。ごく薄く (opacity 0.1) で参照用。
+
+**レーザー三角形: 黄金 gnomon + 重心配置**: `threeCache.laserIntersectionTriangle` と同じ比率 (脚:底辺 = φ:1、頂角 36°、高さ = 半底辺 · √(4φ+3)) を screen px で再現。**tip ではなく重心を過去光円錐交点に一致** させる (tip=+2h/3、base=−h/3)。3D 版との整合 + 「マーカーが指す点 = 重心」の視覚法則。
+
+**常時 ON + トグル削除**: 初期はトグル付きで実装したが「切る意味が無い」判断で削除。ControlPanel の残り 2 トグル (静止系/世界系、透視投影/正射影) は `display: grid` + `gridTemplateColumns: subgrid` で列揃え (CJK 幅で `ch` や `minWidth` が効かない問題を構造的に回避)。
+
 ---
 
