@@ -8,6 +8,7 @@ import {
 } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
 import { ENERGY_MAX, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
+import { isLighthouse } from "./lighthouse";
 import { computeSpawnCoordTime } from "./respawnTime";
 import type { RelativisticPlayer } from "./types";
 
@@ -16,13 +17,15 @@ import type { RelativisticPlayer } from "./types";
  *
  * beacon holder (= host) が `peerManager.sendTo(newPeerId, buildSnapshot(myId))`
  * で送る。既存 peer には送らない (彼らの state は event log から自己維持)。
+ *
+ * LH ownerId は caller (= beacon holder) に常時 rewrite する。migration 直後の
+ * 1-tick 窓で assumeHostRole() の setPlayers コミットが snapshot 発行より遅れても
+ * 新 joiner が古い (死んだ) host を LH owner と見る split を防ぐ。
  */
 export const buildSnapshot = (myId: string) => {
   const s = useGameStore.getState();
   // 新 joiner のスポーン時刻は「宇宙の最新時刻」= 全プレイヤーの .pos.t の max。
   // beacon holder が高 γ で座標時間が遅れている / ghosting 等でも正しい時刻が取れる。
-  // `myId` は将来の用途のため引数に残すが、現状は players Map 全体から導出する。
-  void myId;
   const hostTime = computeSpawnCoordTime(s.players);
 
   const players: Array<{
@@ -47,9 +50,11 @@ export const buildSnapshot = (myId: string) => {
   }> = [];
 
   for (const [, p] of s.players) {
+    // LH owner は caller (beacon holder) に強制。他プレイヤーは self-own 維持。
+    const ownerId = isLighthouse(p.id) ? myId : p.ownerId;
     players.push({
       id: p.id,
-      ownerId: p.ownerId,
+      ownerId,
       color: p.color,
       displayName: p.displayName,
       isDead: p.isDead,

@@ -105,7 +105,9 @@ const isRedirectMessage = (
   typeof (msg as { hostId?: string }).hostId === "string";
 
 /** Type guard: is this a ping (heartbeat) message? */
-const isPingMessage = (msg: unknown): msg is { type: "ping" } =>
+const isPingMessage = (
+  msg: unknown,
+): msg is { type: "ping"; peerOrder?: string[] } =>
   msg != null &&
   typeof msg === "object" &&
   (msg as { type?: string }).type === "ping";
@@ -650,14 +652,19 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     if (connectionPhase !== "connected") return;
     if (!peerManager.getIsBeaconHolder()) return;
 
+    // Include peerOrder on ping so clients keep their election view fresh
+    // (≤1s stale) without waiting for the rarer connections-change broadcast.
+    const sendPing = () => {
+      peerManager.send({ type: "ping", peerOrder: peerOrderRef.current });
+    };
     const timer = setInterval(() => {
       // Don't send pings when tab is hidden. Clients will detect heartbeat
       // timeout and trigger host migration automatically.
       if (document.hidden) return;
-      peerManager.send({ type: "ping" });
+      sendPing();
     }, HEARTBEAT_INTERVAL);
     // Send first ping immediately
-    peerManager.send({ type: "ping" });
+    sendPing();
 
     return () => clearInterval(timer);
   }, [peerManager, connectionPhase, roleVersion]);
@@ -678,7 +685,16 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     migrationTriggeredRef.current = false;
 
     peerManager.onMessage("heartbeat", (_senderId, msg) => {
-      if (isPingMessage(msg)) lastPingRef.current = Date.now();
+      if (!isPingMessage(msg)) return;
+      lastPingRef.current = Date.now();
+      // Adopt host's latest peerOrder so all clients run the next migration
+      // election on an identical list. Matches the existing peerList handler:
+      // peers array = host's non-self connected peers (self IS included here
+      // from the host's view), so candidates[0] === peerManager.id() still
+      // elects the oldest client correctly.
+      if (Array.isArray(msg.peerOrder)) {
+        peerOrderRef.current = [...msg.peerOrder];
+      }
     });
 
     // Handle redirect from host during gameplay (dual-host demotion).

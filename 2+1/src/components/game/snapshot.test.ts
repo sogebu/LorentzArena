@@ -8,8 +8,8 @@ import {
   createWorldLine,
 } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
-import { ENERGY_MAX, MAX_WORLDLINE_HISTORY } from "./constants";
-import { applySnapshot, type buildSnapshot } from "./snapshot";
+import { ENERGY_MAX, LIGHTHOUSE_ID_PREFIX, MAX_WORLDLINE_HISTORY } from "./constants";
+import { applySnapshot, buildSnapshot } from "./snapshot";
 import type { RelativisticPlayer } from "./types";
 
 type SnapshotMsg = ReturnType<typeof buildSnapshot>;
@@ -19,6 +19,7 @@ function makePlayer(
   posT: number,
   posX = 0,
   color = "#fff",
+  ownerId: string = id,
 ): RelativisticPlayer {
   const phaseSpace = createPhaseSpace(
     createVector4(posT, posX, 0, 0),
@@ -26,7 +27,7 @@ function makePlayer(
   );
   return {
     id,
-    ownerId: id,
+    ownerId,
     phaseSpace,
     worldLine: appendWorldLine(
       createWorldLine(MAX_WORLDLINE_HISTORY),
@@ -166,5 +167,38 @@ describe("applySnapshot", () => {
     const peer = useGameStore.getState().players.get("peer");
     expect(peer?.phaseSpace.pos.t).toBe(5.0);
     expect(peer?.phaseSpace.pos.x).toBe(999);
+  });
+});
+
+describe("buildSnapshot", () => {
+  beforeEach(() => {
+    resetStore();
+  });
+
+  it("LH ownerId は caller (= beacon holder) に rewrite される", () => {
+    const lhId = `${LIGHTHOUSE_ID_PREFIX}1`;
+    const newHostId = "new-host";
+    const oldHostId = "old-host";
+    useGameStore.setState({
+      players: new Map([
+        // LH は old host が owner だった (migration 前 / assumeHostRole 前の state)
+        [lhId, makePlayer(lhId, 1.0, 0, "#ff0", oldHostId)],
+        [newHostId, makePlayer(newHostId, 1.0, 0, "#fff")],
+        ["peer", makePlayer("peer", 1.0, 0, "#0ff")],
+      ]),
+    });
+
+    const msg = buildSnapshot(newHostId);
+
+    const lhEntry = msg.players.find((p) => p.id === lhId);
+    expect(lhEntry).toBeDefined();
+    // LH ownerId は caller (= newHostId) に強制 rewrite
+    expect(lhEntry?.ownerId).toBe(newHostId);
+
+    // 人間プレイヤーの ownerId は self-own を維持 (rewrite しない)
+    const peerEntry = msg.players.find((p) => p.id === "peer");
+    expect(peerEntry?.ownerId).toBe("peer");
+    const meEntry = msg.players.find((p) => p.id === newHostId);
+    expect(meEntry?.ownerId).toBe(newHostId);
   });
 });

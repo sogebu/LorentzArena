@@ -93,10 +93,19 @@ export type Message =
        * Sent periodically so clients can detect host disconnection quickly,
        * without waiting for the slow WebRTC ICE timeout.
        *
-       * JP: ホストからクライアントへのハートビート。
-       * WebRTC の ICE タイムアウト（30秒以上）を待たずにホスト切断を検知するために使用。
+       * `peerOrder` piggybacks the host's latest view of connected non-host
+       * peers. Clients use it to keep `peerOrderRef` fresh (≤1s stale)
+       * without depending on the rarer `peerList` broadcasts, so that when
+       * the host dies all surviving clients run the migration election on
+       * an identical list — preventing split-brain and dead-candidate waits.
+       *
+       * JP: ホスト→クライアントのハートビート。
+       * ping に host 視点の最新 peerOrder を相乗りさせ、client 側の
+       * peerOrderRef を ≤1s 精度で同期する。host 死亡直後の election が
+       * 全 client で同一リストに対して走り、split 及び死 candidate 待機を防ぐ。
        */
       type: "ping";
+      peerOrder?: string[];
     }
   | {
       /**
