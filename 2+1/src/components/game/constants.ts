@@ -103,7 +103,9 @@ export const MAX_WORLDLINE_HISTORY = 1000;
 export const EXPLOSION_PARTICLE_COUNT = 30;
 
 // Phase C1: 被弾デブリ (hit、lethal/non-lethal 両方) 用パラメータ。
-// 「爆発の半分」コンセプト: 個数・kick・size・opacity すべて半分。
+// 設計コンセプト (2026-04-18 夜 UX 統一後): 「広さ・粒・1 粒の派手さは爆発と同じ、
+// 個数 + opacity だけ半分にして density 控えめ」。半分なのは count と opacity のみ、
+// kick / size / max_lambda は explosion と同値 (Phase C1 着地時の「全パラ半分」から再定義)。
 // 色は **撃った人 (killer)** の色 (2026-04-18 odakin 指定、第 2 次改訂)。
 // 生成方向: レーザー 4-vec (null) + victim 4-velocity の時空和の spatial 部分を
 // baseU として使う (`generateHitParticles`、design/physics.md §被弾デブリ)。

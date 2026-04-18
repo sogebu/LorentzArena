@@ -4,7 +4,7 @@
 
 対戦可能。**`c32c203` デプロイ済み** (build `2026/04/18 20:22:30 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
-2026-04-18 夜 (UX 統一): **hit デブリ size + kick を爆発と同値に**。`HIT_DEBRIS_KICK: 0.3 → 0.8`、`generateHitParticles` size: `0.1+r*0.2 → 0.2+r*0.4` (= explosion)。設計コンセプトを「爆発の半分」→「広さ・粒は爆発と同じ、個数 + opacity だけ半分にして density 控えめ」に再定義 (4 軸のうち 2 軸統一・2 軸据え置き)。`HIT_DEBRIS_MAX_LAMBDA = 2.5` も既に explosion 同値なので、現在 hit / explosion で半分なのは `HIT_DEBRIS_PARTICLE_COUNT = 15` (explosion 30) と opacity (0.05/0.35 vs 0.1/0.7) のみ。**Lobby に build 表示** 追加 (`__BUILD_TIME__`、右下 11px / opacity 0.4、ControlPanel と同 pattern)。詳細: design/physics.md §被弾デブリ。
+2026-04-18 夜 (UX 統一): **hit デブリ size + kick を爆発と同値に**。`HIT_DEBRIS_KICK: 0.3 → 0.8`、`generateHitParticles` size: `0.1+r*0.2 → 0.2+r*0.4` (= explosion)。設計コンセプトを「爆発の半分」→「広さ・粒は爆発と同じ、個数 + opacity だけ半分にして density 控えめ」に再定義。5 軸 (count / opacity / size / kick / max_lambda) のうち size + kick + max_lambda が explosion 同値、半分残は count (15 vs 30) と opacity (0.05/0.35 vs 0.1/0.7) のみ。**Lobby に build 表示** 追加 (`__BUILD_TIME__`、右下 11px / opacity 0.4、ControlPanel と同 pattern)。詳細: design/physics.md §被弾デブリ。
 
 2026-04-18 夜 (build infra): **tsconfig 復元 + build/typecheck 分離**。`0a6ef36` の root 遺物削除時に `2+1/tsconfig.json` の `references` が消えた `../tsconfig.*.json` を指したまま残り、`files: []` と合わさって `tsc -b` が silent no-op になっていた。`2+1/tsconfig.{app,node}.json` を新設し references を `./` に修正、`build` を `vite build` 単独に / `typecheck = tsc -b` を別 script に分離。これにより Authority 解体期から残っていた `peerManager` / `NetworkManager` / `PeerManager` 周辺の **pre-existing 13 errors** が露呈 (deploy には影響なし、`pnpm typecheck` 実行時のみ可視)。詳細: root DESIGN.md §build と typecheck の分離。
 
