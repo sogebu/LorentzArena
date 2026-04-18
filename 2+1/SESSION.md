@@ -4,7 +4,7 @@
 
 対戦可能。**`c32c203` デプロイ済み** (build `2026/04/18 20:22:30 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
-2026-04-18 夜 (視覚調整): **レーザー × 光円錐マーカー scale** 過去 `2 → 3` / 未来 `2 → 1.5` (過去を目立たせ、未来は控えめに)。**星屑 `STARDUST_COUNT 20000 → 40000`** (密度倍化)。**灯台を高さ ~10% (0.16) 下に沈めた** (`LIGHTHOUSE_SINK` 定数、inner group で視覚シフトのみ、past-cone 判定は anchorPos そのままで非干渉)。
+2026-04-18 夜 (視覚調整): **レーザー × 光円錐マーカー scale** 過去 `2 → 3` / 未来 `2 → 1.5` (過去を目立たせ、未来は控えめに)。**星屑 `STARDUST_COUNT 20000 → 40000`** (密度倍化)。**灯台を高さ ~10% (0.16) 下に沈めた** (`LIGHTHOUSE_SINK` 定数、inner group で視覚シフトのみ、past-cone 判定は anchorPos そのままで非干渉)。**`hud.dead` 撃沈 → 被撃墜** (船見立てから相対論的飛翔体見立てへ、灯台側 "撃破" との被動形対比、旧軍電文用法の "被〜" 系採用)。
 
 2026-04-18 夜 (typecheck 13 errors 解消): Authority 解体期ドリフトで pre-existing だった型不整合を全消去 (13 → 0)。変更: (a) `PeerProvider.tsx` の `NetworkManager = PeerManager<Message> | WsRelayManager<Message>` を **export** し共有型化、(b) `useSnapshotRetry` / `useGameLoop` の local inline shape (旧 `getIsHost`/`getHostId` や `sendTo(msg: unknown)` 由来の非互換) を `NetworkManager | null` + `sendToNetwork(msg: Message)` に統一、(c) `WsRelayManager` に parity 用 `disconnectPeer` (local conns map delete + notify、server 側 membership 不変) を追加、(d) `PeerProvider` の `useRef<Timer>()` 引数なしを `useRef<Timer | undefined>(undefined)` に、beacon holder effect に `if (!myId) return` 追加、(e) `RelativisticGame.tsx` の `peerManager?.getIsBeaconHolder()` narrow 破綻を optional chaining 内直 guard 化。**挙動変化なし** (型のみ、test 38/38、build 通過、WS Relay の disconnectPeer 経路は peerjs transport 下でのみ到達)。defer 中の un-defer トリガー「typecheck を CI/build に再統合したい」の地ならし完了。
 

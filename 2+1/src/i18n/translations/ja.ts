@@ -32,7 +32,7 @@ export const ja = {
   // HUD - overlays (in-game state text)
   "hud.firing": "射撃中",
   "hud.kill": "撃破",
-  "hud.dead": "撃沈",
+  "hud.dead": "被撃墜",
   "hud.build": "ビルド",
   // Connect panel
   "connect.title": "接続設定",
