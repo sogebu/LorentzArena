@@ -23,18 +23,14 @@ export const fetchLeaderboard = async (
 };
 
 export const submitScore = (baseUrl: string, entry: HighScoreEntry): void => {
-  // Use sendBeacon for reliability during beforeunload.
-  // Falls back to fire-and-forget fetch if sendBeacon is unavailable.
-  const body = JSON.stringify(entry);
-  const url = `${baseUrl}/leaderboard`;
-  if (navigator.sendBeacon) {
-    navigator.sendBeacon(url, new Blob([body], { type: "text/plain" }));
-  } else {
-    fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-      keepalive: true,
-    }).catch(() => {});
-  }
+  // fetch keepalive — not sendBeacon. Brave Shields blocks cross-origin
+  // Request Type=ping (sendBeacon) as tracker traffic, so submissions were
+  // silently dropped on unload. fetch keepalive survives the page unload and
+  // isn't categorized as a beacon by content blockers.
+  fetch(`${baseUrl}/leaderboard`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(entry),
+    keepalive: true,
+  }).catch(() => {});
 };

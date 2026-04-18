@@ -16,7 +16,7 @@
 
 **グローバルリーダーボード** (`src/services/leaderboard.ts`): Cloudflare Workers + KV。`VITE_LEADERBOARD_URL` に Worker URL (`.env.production` 設定済)。`fetchLeaderboard()` / `submitScore()`。Worker ソースは `turn-worker/src/index.ts` (TURN credential proxy と同居)。KV キー `"top"` にトップ 50 を JSON 配列。
 
-**保存タイミング** (`src/hooks/useHighScoreSaver.ts`): `beforeunload` / `pagehide` / `visibilitychange` で発火。`sessionId` (`crypto.randomUUID()` generated、localStorage 固定) 付与で server-side dedup。sendBeacon は CORS preflight 不可のため Blob Content-Type は `text/plain` (CORS セーフリスト)。
+**保存タイミング** (`src/hooks/useHighScoreSaver.ts`): `beforeunload` / `pagehide` / `visibilitychange` で発火。`sessionId` (`crypto.randomUUID()` generated、localStorage 固定) 付与で server-side dedup。送信は `fetch({ keepalive: true })` (sendBeacon は Brave Shields で block されるため不使用 → DESIGN.md M19)。
 
 ## 物理エンジン (`src/physics/`)
 
