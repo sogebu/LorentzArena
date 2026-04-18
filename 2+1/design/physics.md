@@ -160,13 +160,15 @@ respawn 時:
 - u=(0,0.8) で動く victim + x 方向 laser → baseU=(1, 0.8) → 3 速度 (0.608, 0.480) — laser 推進 + victim 運動の合成
 - 「ぶつかった運動量が煙に transfer される」という直感と一致
 
-**パラメータ**:
-- `HIT_DEBRIS_PARTICLE_COUNT = 15` (explosion 30 の半分 — 「爆発の半分」コンセプト)
-- `HIT_DEBRIS_KICK = 0.3` (explosion 0.8 に対し狭い cone。「半分未満」)
-- size: `0.1 + 0.2 * random` (explosion `0.2 + 0.4*r` の半分)
-- opacity: `HIT_DEBRIS_WORLDLINE_OPACITY = 0.05` / `HIT_DEBRIS_MARKER_OPACITY = 0.35` (explosion の 0.1 / 0.7 の半分)
-- 世界線長さ: `HIT_DEBRIS_MAX_LAMBDA = 1.2` (explosion 2.5 より短い。2026-04-18 odakin 第 4 次指定「もうちょっと短く」)
+**パラメータ** (現在):
+- `HIT_DEBRIS_PARTICLE_COUNT = 15` (explosion 30 の **半分**)
+- `HIT_DEBRIS_KICK = 0.8` (= explosion、2026-04-18 夜 統一)
+- size: `0.2 + 0.4 * random` (= explosion、2026-04-18 夜 統一)
+- opacity: `HIT_DEBRIS_WORLDLINE_OPACITY = 0.05` / `HIT_DEBRIS_MARKER_OPACITY = 0.35` (explosion の 0.1 / 0.7 の **半分**)
+- 世界線長さ: `HIT_DEBRIS_MAX_LAMBDA = 2.5` (= explosion、2026-04-18 夜 LH 3D 塔 work 時に統一)
 - 色: **撃った人 (killer) の色** (2026-04-18 odakin 指定、第 2 次改訂)。killer が `players` Map に不在 (切断・ID 不整合) の fallback は victim 色 (少なくとも描画が可視になる保険)。「被弾は誰に撃たれたかが重要な情報」という視覚意味論 — explosion が死者側の記念碑なのに対し、hit は攻撃側のパルスとして読ませる
+
+**設計コンセプトの変遷**: Phase C1 着地時は「全パラメータ爆発の半分」コンセプトだったが、2026-04-18 夜に「広さ・粒・1 粒の派手さは爆発と同じ、個数 + opacity だけ半分にして density を控えめに」に再定義。半減が残るのは `count` (15 vs 30) と opacity (0.05/0.35 vs 0.1/0.7) のみ、size / kick / max_lambda は同値。視覚効果としては「爆発のような派手な飛散だが密度はまばら」になる。
 
 **lethal hit は 2 層 (hit + explosion)**: 致命 hit でも hit デブリ (killer 色) を生成し、その上に `handleKill` が explosion デブリ (victim 色) を重ねる (追加順 `hit → explosion`)。単発 hit でも同じ流れなので「かすった」と「墜ちた」の視覚差は「explosion が来るか/来ないか」で出る (2 層目の有無)。
 

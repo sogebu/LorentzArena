@@ -2,9 +2,13 @@
 
 ## 現在のステータス
 
-対戦可能。**`d2ad69a` デプロイ済み** (build `2026/04/18 19:02:38 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`c32c203` デプロイ済み** (build `2026/04/18 20:22:30 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
-2026-04-18 夜 (refactor): **spawn/respawn 経路統合** (`handleSpawn` action 新設、旧 `handleRespawn` + `applyRespawn` + RelativisticGame init/snapshot self-not-in-snapshot の 4 経路を一本化)。動機: 「LH 初回 spawn ring が出ない」バグ仮説 — respawn 経路は ring が出るので、unify すれば壊れた init 経路が working respawn 経路に collapse される。変更点: (a) self-spawn も `pendingSpawnEvents` 経由 (旧 immediate `spawns` 廃止、ρ=0 で next-tick 発火、視覚差は感知不能)、(b) 既存 player は color/displayName/ownerId 保持、新規は options で受け取る、(c) StrictMode dedup は呼び出し側 `players.has()` guard に移譲、(d) LH migration 経路は spawn 撃たないため別 branch で setPlayers 直更新を維持。`applyRespawn` 削除、`killRespawn.ts` は `applyKill` のみ残す。
+2026-04-18 夜 (UX 統一): **hit デブリ size + kick を爆発と同値に**。`HIT_DEBRIS_KICK: 0.3 → 0.8`、`generateHitParticles` size: `0.1+r*0.2 → 0.2+r*0.4` (= explosion)。設計コンセプトを「爆発の半分」→「広さ・粒は爆発と同じ、個数 + opacity だけ半分にして density 控えめ」に再定義 (4 軸のうち 2 軸統一・2 軸据え置き)。`HIT_DEBRIS_MAX_LAMBDA = 2.5` も既に explosion 同値なので、現在 hit / explosion で半分なのは `HIT_DEBRIS_PARTICLE_COUNT = 15` (explosion 30) と opacity (0.05/0.35 vs 0.1/0.7) のみ。**Lobby に build 表示** 追加 (`__BUILD_TIME__`、右下 11px / opacity 0.4、ControlPanel と同 pattern)。詳細: design/physics.md §被弾デブリ。
+
+2026-04-18 夜 (build infra): **tsconfig 復元 + build/typecheck 分離**。`0a6ef36` の root 遺物削除時に `2+1/tsconfig.json` の `references` が消えた `../tsconfig.*.json` を指したまま残り、`files: []` と合わさって `tsc -b` が silent no-op になっていた。`2+1/tsconfig.{app,node}.json` を新設し references を `./` に修正、`build` を `vite build` 単独に / `typecheck = tsc -b` を別 script に分離。これにより Authority 解体期から残っていた `peerManager` / `NetworkManager` / `PeerManager` 周辺の **pre-existing 13 errors** が露呈 (deploy には影響なし、`pnpm typecheck` 実行時のみ可視)。詳細: root DESIGN.md §build と typecheck の分離。
+
+2026-04-18 夜 (refactor): **spawn/respawn 経路統合** (`handleSpawn` action 新設、旧 `handleRespawn` + `applyRespawn` + RelativisticGame init/snapshot self-not-in-snapshot の 4 経路を一本化)。動機: 「LH 初回 spawn ring が出ない」バグ仮説 — respawn 経路は ring が出るので、unify すれば壊れた init 経路が working respawn 経路に collapse される。**実機確認済 (odakin "バッチリ")**。変更点: (a) self-spawn も `pendingSpawnEvents` 経由 (旧 immediate `spawns` 廃止、ρ=0 で next-tick 発火、視覚差は感知不能)、(b) 既存 player は color/displayName/ownerId 保持、新規は options で受け取る、(c) StrictMode dedup は呼び出し側 `players.has()` guard に移譲、(d) LH migration 経路は spawn 撃たないため別 branch で setPlayers 直更新を維持。`applyRespawn` 削除、`killRespawn.ts` は `applyKill` のみ残す。
 
 2026-04-18 夜 (Phase C2 前哨): **灯台を 3D 塔モデル化** (`LighthouseRenderer`、procedural body/balcony/lantern/lamp/roof/spire) + **過去光円錐マーカーを完全置換** (alive LH + frozen LH の両方を SceneContent worldLineIntersections から除外、`FrozenWorldLine` に `playerId` 追加)。死亡時挙動: past cone が death event に届くまで past cone anchor 維持 → 届いた瞬間から debris と同期で過去に沈み、`deathT + DEBRIS_MAX_LAMBDA` で消失。リスポーンも spawn event が past cone に入るまで非表示。専用パラメータ: `LIGHTHOUSE_HIT_RADIUS = 0.40` (塔底面と同値)、`LIGHTHOUSE_HIT_DAMAGE = 0.2` (6 発死)、無敵時間なし (`selectPostHitUntil` が LH では常に 0)、energy 回復元から無し。`HIT_DEBRIS_MAX_LAMBDA: 1.2 → 2.5` (爆発デブリと同値)。
 
@@ -19,7 +23,7 @@
 **歴史記録**。詳細は `git log --since=<date>` / `DESIGN.md` を grep で必要時のみ調査。**個別 bullet の pointer は意図的に削除済** (session 冒頭の follow-read を抑制して autocompact 頻度を下げるため、2026-04-18 §10.7 byte budget rationale)。
 
 **2026-04-18**:
-- **Phase C1 Damage-based death**: hit 即死 → energy pool 被弾共有 (`HIT_DAMAGE=0.5`、`energy<0` で死) + `POST_HIT_IFRAME_MS=500ms` post-hit i-frame (人間 + LH、no-hitLog 実装で連続被弾 i-frame 延長封じ) + target-authoritative 維持 (`hit` メッセージに `laserDir` 追加)。非致命 hit の被弾煙 (個数 15、kick 0.3、色・size は爆発と同値)、scatter 中心 = spatial(`k^μ_null + u^μ_victim`)、`debrisRecords[]` 単一 array に `type: "explosion" | "hit"` タグで renderer 型非依存に統合。test `handleDamage.test.ts` 5 シナリオ。詳細: design/physics.md §被弾デブリ、design/state-ui.md §Phase C1
+- **Phase C1 Damage-based death**: hit 即死 → energy pool 被弾共有 (`HIT_DAMAGE=0.5`、`energy<0` で死) + `POST_HIT_IFRAME_MS=500ms` post-hit i-frame (人間 + LH、no-hitLog 実装で連続被弾 i-frame 延長封じ) + target-authoritative 維持 (`hit` メッセージに `laserDir` 追加)。非致命 hit の被弾煙: scatter 中心 = spatial(`k^μ_null + u^μ_victim`)、色 = killer。Phase C1 着地時のサイズ調整は何度かの試行錯誤を経て最終的に「個数・opacity 半分、size・kick・max_lambda 同値」に着地 (上記 2026-04-18 夜 UX 統一エントリ参照)。`debrisRecords[]` 単一 array に `type: "explosion" | "hit"` タグで renderer 型非依存に統合。test `handleDamage.test.ts` 5 シナリオ。詳細: design/physics.md §被弾デブリ、design/state-ui.md §Phase C1
 - Phase B (B1-B4): 光円錐の円柱境界延伸 + LH/星屑 色再設計 (teal/cyan + rose-pink) + モバイル初回チュートリアル (`TutorialOverlay.tsx`) + ハイスコア重複保存解消 (sessionId)
 - Phase A (A1-A4): タブ離席 stale input 解消、Exhaust + AccelerationArrow 視認性改善、接続設定 mobile auto-minimize、光円錐色固定 (`LIGHT_CONE_COLOR`)
 - Phase A 以前: migration 堅牢化 (owner respawn tick poll / isMigrating 固着 fix + derived 化 / snapshot pull retry / WL gap 500ms 凍結 / alone 時 solo 昇格 + roleVersion bump)、アリーナ半幅下限ガード `max(ρ, H)` + pastCone 独立 attribute、DESIGN.md §7 retroactive reorg (1627→1303)
@@ -45,6 +49,7 @@
 - **アリーナ円柱の周期的境界条件 (トーラス化)**: un-defer トリガー = 壁閉じ込め物理希望 / トーラス体験向上検証 / ARENA_HEIGHT を LCH より広くしたくなった場合
 - **snapshot に frozenWorldLines / debrisRecords 同梱**: un-defer = リスポーン世界線連続観測時
 - **host migration の LH 時刻 anchor 見直し**: spawn 座標時刻統一と同じ族、現状定着待ち
+- **typecheck pre-existing 13 errors** (2026-04-18 夜 build infra で露呈): `src/contexts/PeerProvider.tsx` (8)、`src/components/RelativisticGame.tsx` (3)、`src/hooks/useGameLoop.ts` (2) 等の `peerManager` / `NetworkManager` / `PeerManager<Message>` 型不整合 (Authority 解体期のドリフト)。`pnpm typecheck` で再現、`pnpm build` (vite 単独) には影響なし。un-defer トリガー = `typecheck` を CI / `build` に再統合したくなったら / 他の peer 関連リファクタで触る時の地ならし
 
 ### パフォーマンス残課題
 
