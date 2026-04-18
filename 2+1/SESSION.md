@@ -2,15 +2,18 @@
 
 ## 現在のステータス
 
-対戦可能。**`7271f5c` デプロイ済み** (build `2026/04/18 16:06:24 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`0028cef` デプロイ済み** (build `2026/04/18 17:31:38 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
-2026-04-18: Brave Shields が `navigator.sendBeacon` (Request Type=ping) を block してグローバル HS が silent drop される問題を修正 (`fetch({keepalive:true})` に切替)。Brave 実機で保存確認済。詳細: DESIGN.md M19。
+2026-04-18 夕: **Phase C1 damage model** 着地。hit 即死 → energy pool 被弾共有 (`HIT_DAMAGE=0.5`、`energy<0` で死、2 発で死) + `POST_HIT_IFRAME_MS=500ms` post-hit i-frame (人間 + LH)、非致命 hit の被弾煙 (scatter 中心 = 時空 4 元ベクトル和 `k^μ_null + u^μ_victim` の空間成分)、`debrisRecords[]` 単一 array に `type: "explosion" | "hit"` タグで統合。詳細: design/physics.md §被弾デブリ、design/state-ui.md §Phase C1 damage。
+
+2026-04-18 昼: Brave Shields が `navigator.sendBeacon` (Request Type=ping) を block してグローバル HS が silent drop される問題を修正 (`fetch({keepalive:true})` に切替)。Brave 実機で保存確認済。詳細: design/meta-principles.md M19。
 
 ## 完了済みリファクタ
 
 **歴史記録**。詳細は `git log --since=<date>` / `DESIGN.md` を grep で必要時のみ調査。**個別 bullet の pointer は意図的に削除済** (session 冒頭の follow-read を抑制して autocompact 頻度を下げるため、2026-04-18 §10.7 byte budget rationale)。
 
 **2026-04-18**:
+- **Phase C1 Damage-based death**: hit 即死 → energy pool 被弾共有 (`HIT_DAMAGE=0.5`、`energy<0` で死) + `POST_HIT_IFRAME_MS=500ms` post-hit i-frame (人間 + LH、no-hitLog 実装で連続被弾 i-frame 延長封じ) + target-authoritative 維持 (`hit` メッセージに `laserDir` 追加)。非致命 hit の被弾煙 (個数 15、kick 0.3、色・size は爆発と同値)、scatter 中心 = spatial(`k^μ_null + u^μ_victim`)、`debrisRecords[]` 単一 array に `type: "explosion" | "hit"` タグで renderer 型非依存に統合。test `handleDamage.test.ts` 5 シナリオ。詳細: design/physics.md §被弾デブリ、design/state-ui.md §Phase C1
 - Phase B (B1-B4): 光円錐の円柱境界延伸 + LH/星屑 色再設計 (teal/cyan + rose-pink) + モバイル初回チュートリアル (`TutorialOverlay.tsx`) + ハイスコア重複保存解消 (sessionId)
 - Phase A (A1-A4): タブ離席 stale input 解消、Exhaust + AccelerationArrow 視認性改善、接続設定 mobile auto-minimize、光円錐色固定 (`LIGHT_CONE_COLOR`)
 - Phase A 以前: migration 堅牢化 (owner respawn tick poll / isMigrating 固着 fix + derived 化 / snapshot pull retry / WL gap 500ms 凍結 / alone 時 solo 昇格 + roleVersion bump)、アリーナ半幅下限ガード `max(ρ, H)` + pastCone 独立 attribute、DESIGN.md §7 retroactive reorg (1627→1303)
@@ -61,9 +64,9 @@
 
 ## 次にやること
 
-### Phase C (別セッション、C1 と C2 独立)
+### Phase C (別セッション)
 
-- **C1 Damage-based death (#7)** — hit=即死 → hit で energy -0.5 (ENERGY_MAX の半分)、energy<0 で死。C1 着手時に AskUserQuestion で 5 決定確認: (1) 既存 energy pool 共有 vs 独立 HP (推奨: 共有 (a))、(2) 他機 energy 同期 (推奨: しない (x)、被弾パルス cue のみ)、(3) LH も energy (推奨: (p) LH にも 1.0 プール、2発で死)、(4) 500ms post-hit i-frame (推奨: 導入)、(5) self-hit skip (推奨: `laser.playerId !== victimId`)。全エッジケース 17 件分析済 (plan file §C1 edge case matrix)
+- ~~**C1 Damage-based death (#7)**~~ → 2026-04-18 完了 (上記「完了済みリファクタ」参照)
 - **C2 レーダー画面 (#11)** — 画面隅に top-down orthographic mini-view、過去光円錐上の event のみ 2D 散布図。既存 `pastConeIntersectionSegment` / `findLatestIndexAtOrBeforeTime` 流用、Canvas or 独立 Three.js scene、180×180 (PC) / 140×140 (mobile)、ControlPanel で toggle
 
 ### 既存の積み残し (Phase 非依存)

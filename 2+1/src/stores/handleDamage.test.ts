@@ -96,6 +96,67 @@ describe("handleDamage — lethal damage", () => {
   });
 });
 
+describe("handleDamage — デブリ配色 (hit=撃った人の色、explosion=死んだ人の色)", () => {
+  const victimColor = "#ff0000";
+  const killerColor = "#00ff00";
+
+  function victimWith(energy: number): RelativisticPlayer {
+    return { ...makePlayer("victim", energy), color: victimColor };
+  }
+  function killer(): RelativisticPlayer {
+    return { ...makePlayer("killer", ENERGY_MAX), color: killerColor };
+  }
+
+  it("non-lethal: hit デブリ 1 個が撃った人の色で append される", () => {
+    resetStore(
+      new Map<string, RelativisticPlayer>([
+        ["victim", victimWith(ENERGY_MAX)],
+        ["killer", killer()],
+      ]),
+    );
+    useGameStore
+      .getState()
+      .handleDamage("victim", "killer", HIT_POS, HIT_DAMAGE, LASER_DIR, "me");
+
+    const s = useGameStore.getState();
+    expect(s.debrisRecords.length).toBe(1);
+    expect(s.debrisRecords[0].type).toBe("hit");
+    expect(s.debrisRecords[0].color).toBe(killerColor);
+  });
+
+  it("lethal: hit (撃った人色) + explosion (死んだ人色) の 2 層が入る", () => {
+    resetStore(
+      new Map<string, RelativisticPlayer>([
+        ["victim", victimWith(HIT_DAMAGE / 2)],
+        ["killer", killer()],
+      ]),
+    );
+    useGameStore
+      .getState()
+      .handleDamage("victim", "killer", HIT_POS, HIT_DAMAGE, LASER_DIR, "me");
+
+    const s = useGameStore.getState();
+    expect(s.debrisRecords.length).toBe(2);
+    // 追加順: hit → explosion
+    expect(s.debrisRecords[0].type).toBe("hit");
+    expect(s.debrisRecords[0].color).toBe(killerColor);
+    expect(s.debrisRecords[1].type).toBe("explosion");
+    expect(s.debrisRecords[1].color).toBe(victimColor);
+  });
+
+  it("killer が players 未登録なら hit debris は victim 色にフォールバック", () => {
+    resetStore(new Map<string, RelativisticPlayer>([["victim", victimWith(ENERGY_MAX)]]));
+    useGameStore
+      .getState()
+      .handleDamage("victim", "ghostKiller", HIT_POS, HIT_DAMAGE, LASER_DIR, "me");
+
+    const s = useGameStore.getState();
+    expect(s.debrisRecords.length).toBe(1);
+    expect(s.debrisRecords[0].type).toBe("hit");
+    expect(s.debrisRecords[0].color).toBe(victimColor);
+  });
+});
+
 describe("handleDamage — post-hit i-frame", () => {
   beforeEach(() => {
     resetStore(new Map([["victim", makePlayer("victim", ENERGY_MAX)]]));

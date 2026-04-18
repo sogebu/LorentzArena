@@ -310,31 +310,38 @@ export const useGameStore = create<GameState>()((set, get) => ({
     };
     const nextHitLog = [...state.hitLog, hitEntry].slice(-MAX_HIT_LOG);
 
-    // Non-lethal: energy を更新、hitLog に append、hit debris を生成。kill は出さない。
+    // 被弾デブリは lethal / non-lethal 問わず生成し、**撃った人の色** で出す
+    // (2026-04-18 odakin 指定)。killer が未登録 (切断・ID 不整合) の fallback は
+    // victim color (少なくとも描画が可視になる保険)。lethal path では
+    // handleKill が追加で victim 色の explosion デブリを重ねる (二層)。
+    const killerColor = state.players.get(killerId)?.color ?? victim.color;
+    const hitParticles = generateHitParticles(victim.phaseSpace.u, laserDir);
+    const hitDebris: DebrisRecord = {
+      deathPos: hitPos,
+      particles: hitParticles,
+      color: killerColor,
+      type: "hit",
+    };
+    const nextDebris = [...state.debrisRecords, hitDebris].slice(-MAX_DEBRIS);
+
+    // Non-lethal: energy を更新、hitLog + hit debris を commit。kill は出さない。
     if (!isLethal) {
-      const hitParticles = generateHitParticles(victim.phaseSpace.u, laserDir);
-      const hitDebris: DebrisRecord = {
-        deathPos: hitPos,
-        particles: hitParticles,
-        color: victim.color,
-        type: "hit",
-      };
       const nextPlayers = new Map(state.players);
       nextPlayers.set(victimId, { ...victim, energy: newEnergy });
       set({
         players: nextPlayers,
         hitLog: nextHitLog,
-        debrisRecords: [...state.debrisRecords, hitDebris].slice(-MAX_DEBRIS),
+        debrisRecords: nextDebris,
       });
       return;
     }
 
-    // Lethal: hitLog は先に commit、その後 handleKill へ委譲。
-    // energy の clamp は applyKill 内で扱わないため、明示的に 0 にしておく
-    // (respawn で ENERGY_MAX にリセットされるので見た目以外の影響はない)。
+    // Lethal: hitLog + hit debris を先に commit、その後 handleKill へ委譲して
+    // 上に victim 色の explosion を重ねる。energy は明示 0 にしておく
+    // (respawn で ENERGY_MAX にリセット)。
     const nextPlayers = new Map(state.players);
     nextPlayers.set(victimId, { ...victim, energy: 0 });
-    set({ players: nextPlayers, hitLog: nextHitLog });
+    set({ players: nextPlayers, hitLog: nextHitLog, debrisRecords: nextDebris });
     get().handleKill(victimId, killerId, hitPos, myId);
   },
 

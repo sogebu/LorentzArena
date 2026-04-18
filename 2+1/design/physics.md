@@ -143,7 +143,34 @@ respawn 時:
 
 固有速度空間での加算は: (1) 足し算で直感的、(2) `|v| < 1` が正規化で自動保証、(3) 行列演算不要 — ローレンツブースト行列より自然で軽量。
 
-パラメータ: kick 幅 0〜0.8 (γv 単位)。高速移動中の撃破ではデブリが進行方向に偏る。
+パラメータ: kick 幅 0〜0.8 (γv 単位)。高速移動中の撃破ではデブリが進行方向に偏る (baseU = victim の固有速度)。
+
+### 被弾デブリ (non-lethal hit、Phase C1)
+
+`generateHitParticles(victimU, laserDir)` は非致命 hit の「煙」を生成。爆発デブリと同じ proper-velocity 加算ソルバーを使うが、**scatter 中心 baseU を時空 4 元ベクトル和 `k^μ + u^μ` の空間成分に取る**:
+
+- k^μ (null laser): `(1, dx_L, dy_L, 0)` — null なので `|k_spatial|=1`
+- u^μ (victim): `(γ, u_x, u_y, 0)`
+- baseU = spatial(k+u) = `(dx_L + u_x, dy_L + u_y)` を proper velocity として扱う
+
+その後 explosion と同じく `ut = √(1 + |baseU+kick|²)` で正規化し 3速度 `v = u/ut` に落とす。
+
+**物理的意味 (単位検証済)**:
+- 静止 victim + x 方向 laser → baseU=(1,0) → mean v ≈ (1/√2, 0) ≈ (0.71, 0) — scatter が laser 下流に偏る
+- u=(0,0.8) で動く victim + x 方向 laser → baseU=(1, 0.8) → 3 速度 (0.608, 0.480) — laser 推進 + victim 運動の合成
+- 「ぶつかった運動量が煙に transfer される」という直感と一致
+
+**パラメータ**:
+- `HIT_DEBRIS_PARTICLE_COUNT = 15` (explosion 30 の半分 — 「爆発の半分」コンセプト)
+- `HIT_DEBRIS_KICK = 0.3` (explosion 0.8 に対し狭い cone。「半分未満」)
+- size: `0.2 + 0.4 * random` (explosion と同値 — 「煙」の見た目は死亡時と同じ。2026-04-18 odakin 指定で size 半減を取り下げ)
+- 色: **撃った人 (killer) の色** (2026-04-18 odakin 指定、第 2 次改訂)。killer が `players` Map に不在 (切断・ID 不整合) の fallback は victim 色 (少なくとも描画が可視になる保険)。「被弾は誰に撃たれたかが重要な情報」という視覚意味論 — explosion が死者側の記念碑なのに対し、hit は攻撃側のパルスとして読ませる
+
+**lethal hit は 2 層 (hit + explosion)**: 致命 hit でも hit デブリ (killer 色) を生成し、その上に `handleKill` が explosion デブリ (victim 色) を重ねる (追加順 `hit → explosion`)。単発 hit でも同じ流れなので「かすった」と「墜ちた」の視覚差は「explosion が来るか/来ないか」で出る (2 層目の有無)。
+
+**なぜ proper-velocity sum / Lorentz boost 合成ではないか**: Lorentz boost 合成は laser null vector (光速) を含む合成で degenerate。時空ベクトル和 `k+u` の空間成分は null + timelike でも well-defined、proper velocity 空間で再解釈するだけで `|v|<1` 自動保証 + 単位整合 (explosion と同じソルバーに流せる)。物理的厳密性より「laser 方向と victim 運動の自然な中間」という視覚効果優先の判断。
+
+**target-authoritative 維持**: `hit` メッセージに `laserDir: Vector3` を追加 (`messageHandler.ts` で `isValidVector3` validation、`gameLoop.ts` が `laser.direction` を `HitDetectionResult` に乗せて `useGameLoop.ts` が message と `handleDamage` 両方に配る)。各 peer が独立に `generateHitParticles` を走らせて hit debris を独自生成 (random kick は peer 間で微差が出るが視覚 cosmetic、要同期性質なし)。
 
 ### キル通知・スポーンエフェクトの因果律遅延
 

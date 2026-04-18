@@ -56,6 +56,32 @@ DESIGN.md から分離。zustand store、event log authoritative、selectors、U
 
 背景: ハイスコアに異常値 (6099 キル / 1:48) が報告されたため防御的に追加。現行コード (Zustand 移行後) は kill rate 0.1/s で正常と確認済み。異常値は Zustand 移行前後の過渡期のものと推定。
 
+### Phase C1: energy pool 被弾共有 + post-hit i-frame + hit debris 統合
+
+2026-04-18 実装。「hit 即死」→「hit で energy 減少、energy<0 で死」への damage model 転換。
+
+**damage model**: `HIT_DAMAGE = 0.5` を既存の thrust/fire 共有 energy pool (`ENERGY_MAX = 1.0`) から直接引く。フル energy から 2 発で死 (`-0.5 → 0 → -0.5 < 0`)。判定は strict `< 0` (ちょうど 0 は生存)。LH も同プールを持つ (`LIGHTHOUSE_ENERGY = 1.0`、回復ロジックなし) ので LH も 2 発で死亡固定。
+
+**`POST_HIT_IFRAME_MS = 500ms` post-hit i-frame — no-hitLog 防衛**: `handleDamage` は最新 `hitLog` entry の wallTime + 500ms 以内なら **hitLog エントリ自体も追加せず** 早期 return。もし「hitLog は記録するが damage skip」という実装にすると、連続被弾のたびに最新 hitLog が更新されて i-frame window がスライドし**永続無敵**になる。hitLog を源泉に i-frame を derive している以上、i-frame 内被弾は完全無視 (damage + log 両方スキップ) が唯一の正解。selector `selectPostHitUntil(state, victimId)` は最新 hitLog wallTime + `POST_HIT_IFRAME_MS` を返す。
+
+**`debrisRecords[]` 単一 array + `type: "explosion" | "hit"` タグ (option A)**: 非致命 hit でも煙を出すが、`DebrisRenderer` は既に type-agnostic (全 record を InstancedMesh で一括描画)、temporal GC も `deathPos.t + DEBRIS_MAX_LAMBDA` 一律、MAX_DEBRIS cap も共通。別 array (`hitDebrisRecords[]`) に分けると renderer / GC / snapshot 同梱計画のすべてで重複実装が必要で、**既存の型非依存アーキテクチャを壊さない**のが option A。
+
+**hit デブリは常時生成 (lethal / non-lethal 両方) + 撃った人の色 (2026-04-18 odakin 第 2 次指定)**: `handleDamage` は lethal 判定前に hit デブリを 1 個 append (色 = `state.players.get(killerId)?.color ?? victim.color`)。非致命ならそこで終了、致命なら続けて `handleKill` に forward → `handleKill` が victim 色の explosion を重ねる (追加順 `hit → explosion`、MAX_DEBRIS cap 共通)。「かすった / 墜ちた」の視覚差は「explosion の有無」で出るのでレイヤー分離がそのまま意味になる。target-authoritative 経路の race 考察: peer は (a) 発射者側 message を hit → kill の順に受信 (DataChannel 順序保証) → 自分の handleDamage (hit debris) → forward handleKill (explosion)、続いて到着する kill message は `selectIsDead` guard で弾かれて二重 explosion を防ぐ。(b) 発射者自身: hit を echo せず local handleDamage → handleKill。どちらの経路でも最終 debris は `hit + explosion` の 2 層。
+
+**target-authoritative 維持 (message schema 拡張)**: `hit` メッセージに `laserDir: Vector3` を追加 (physics §被弾デブリ 参照)。victim owner が検出 → broadcast → 各 peer が独立 `handleDamage` で hit debris 生成。self-hit skip は hit detection 側 (`laser.playerId !== victimId`) で実施済み、`handleDamage` は skip しない。
+
+**test carve-out (`src/stores/handleDamage.test.ts`)**: 5 シナリオ:
+1. non-lethal damage: energy 減少 + hitLog 追加 + kill しない
+2. lethal damage: energy<0 で `handleKill` 連鎖 + killLog + frozenWorldLines
+3. i-frame guard: 連射第 2 発目が damage 適用されない (energy / hitLog 両方不変)
+4. LH 2 発で死: 初期 energy `HIT_DAMAGE * 1.5 = 0.75` で 2 発目に死 (`< 0` strict 判定で 1.0 から 2×0.5 は exactly 0 でまだ生存、1.5× なら 2 発目 -0.25 < 0 で死。LH 回復なしを間接確認)
+5. 既死 / respawn invincibility guard: `selectIsDead` or `selectInvincibleUntil` 該当なら hitLog 追加もしない
+
+**不採用候補 (damage 値の選定)**:
+- `HIT_DAMAGE = 1.0` (1 発死): 従来の即死と変わらず Phase C1 の意味がない
+- `HIT_DAMAGE = 0.33` (3 発死): 戦闘時間が長くなりすぎて「かすった」感覚が弱い、体感として 2 発が natural
+- `HIT_DAMAGE = 0.5` (採用): 2 発死で「1 発は救い」「2 発目は絶望」のリズムが出る、energy pool 共有なので「燃料削って耐える」か「攻撃に使う」のトレードオフが自然発生
+
 ### Stale プレイヤー処理
 
 **構造**:
