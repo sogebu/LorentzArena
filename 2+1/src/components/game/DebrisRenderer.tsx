@@ -52,9 +52,10 @@ export const DebrisRenderer = ({
     r: number; g: number; b: number;
     radius: number;
   };
-  // Phase C1: hit デブリは opacity/size 半分。同 InstancedMesh 内で per-instance opacity を
-  // 出す手段が無いので (MeshBasicMaterial の opacity は全体一様)、type ごとに 2 本の
-  // InstancedMesh に分割してそれぞれの material opacity で制御。追加 draw call 1 は無視範囲
+  // Phase C1: hit デブリは opacity 半分 (size は 2026-04-18 夜統一で explosion 同値)。
+  // 同 InstancedMesh 内で per-instance opacity を出す手段が無いので
+  // (MeshBasicMaterial の opacity は全体一様)、type ごとに 2 本の InstancedMesh に分割して
+  // それぞれの material opacity で制御。追加 draw call 1 は無視範囲
   // (MAX_DEBRIS=20 × ~15-30 particle)。
   const explosionSegments: DebrisSegment[] = [];
   const hitSegments: DebrisSegment[] = [];
