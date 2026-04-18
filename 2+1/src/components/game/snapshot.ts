@@ -163,29 +163,6 @@ export const applySnapshot = (
     }
   }
 
-  // 自機が snapshot に含まれていない場合 (新規 join の一般ケース) は、
-  // 「宇宙の最新時刻」(= snapshot 送信時点で host が算出した最大 .pos.t) で
-  // 自前の spawn を作る。
-  if (!nextPlayers.has(myId)) {
-    const spawnX = Math.random() * SPAWN_RANGE;
-    const spawnY = Math.random() * SPAWN_RANGE;
-    const phaseSpace = createPhaseSpace(
-      createVector4(msg.hostTime, spawnX, spawnY, 0),
-      createVector3(0, 0, 0),
-    );
-    let wl = createWorldLine(MAX_WORLDLINE_HISTORY);
-    wl = appendWorldLine(wl, phaseSpace);
-    nextPlayers.set(myId, {
-      id: myId,
-      ownerId: myId,
-      phaseSpace,
-      worldLine: wl,
-      color: getPlayerColor(myId),
-      isDead: false,
-      energy: ENERGY_MAX,
-    });
-  }
-
   // displayNames / scores
   for (const [id, name] of Object.entries(msg.displayNames)) {
     store.displayNames.set(id, name);
@@ -198,41 +175,23 @@ export const applySnapshot = (
     respawnLog: msg.respawnLog.map((e) => ({ ...e })),
   });
 
-  // 初回 spawn = 初回 respawn として respawnLog に entry 追加 (invincibility 起点)
-  // snapshot.respawnLog に既に自分の entry が含まれている場合は追加しない
-  const haveMyRespawn = msg.respawnLog.some((e) => e.playerId === myId);
-  if (!haveMyRespawn) {
-    const me = nextPlayers.get(myId);
-    if (me) {
-      useGameStore.setState((state) => ({
-        respawnLog: [
-          ...state.respawnLog,
-          {
-            playerId: myId,
-            position: {
-              t: me.phaseSpace.pos.t,
-              x: me.phaseSpace.pos.x,
-              y: me.phaseSpace.pos.y,
-              z: 0,
-            },
-            wallTime: Date.now(),
-          },
-        ],
-        pendingSpawnEvents: [
-          ...state.pendingSpawnEvents,
-          {
-            id: `spawn-${myId}-${Date.now()}`,
-            playerId: myId,
-            pos: {
-              t: me.phaseSpace.pos.t,
-              x: me.phaseSpace.pos.x,
-              y: me.phaseSpace.pos.y,
-              z: 0,
-            },
-            color: me.color,
-          },
-        ],
-      }));
-    }
+  // 自機が snapshot に含まれていない場合 (新規 join の一般ケース) は、
+  // 「宇宙の最新時刻」(= snapshot 送信時点で host が算出した最大 .pos.t) で
+  // handleSpawn を呼ぶ。これで players + respawnLog (invincibility 起点) +
+  // pendingSpawnEvents (spawn ring) が一括登録される。RelativisticGame init
+  // (beacon holder) と完全対称。
+  if (!nextPlayers.has(myId)) {
+    useGameStore.getState().handleSpawn(
+      myId,
+      {
+        t: msg.hostTime,
+        x: Math.random() * SPAWN_RANGE,
+        y: Math.random() * SPAWN_RANGE,
+        z: 0,
+      },
+      myId,
+      getPlayerColor(myId),
+      { ownerId: myId },
+    );
   }
 };

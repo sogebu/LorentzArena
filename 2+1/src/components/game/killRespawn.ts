@@ -1,11 +1,3 @@
-import {
-  appendWorldLine,
-  createPhaseSpace,
-  createVector4,
-  createWorldLine,
-  vector3Zero,
-} from "../../physics";
-import { ENERGY_MAX, MAX_WORLDLINE_HISTORY } from "./constants";
 import type { RelativisticPlayer } from "./types";
 
 /**
@@ -20,32 +12,5 @@ export const applyKill = (
   if (!victim) return prev;
   const next = new Map(prev);
   next.set(victimId, { ...victim, isDead: true });
-  return next;
-};
-
-/**
- * Respawn: 新しい WorldLine で復活 + isDead=false
- */
-export const applyRespawn = (
-  prev: Map<string, RelativisticPlayer>,
-  playerId: string,
-  position: { t: number; x: number; y: number; z: number },
-): Map<string, RelativisticPlayer> => {
-  const player = prev.get(playerId);
-  if (!player) return prev;
-  const ps = createPhaseSpace(
-    createVector4(position.t, position.x, position.y, position.z),
-    vector3Zero(),
-  );
-  let newWorldLine = createWorldLine(MAX_WORLDLINE_HISTORY); // リスポーン: origin なし（過去に半直線を伸ばさない）
-  newWorldLine = appendWorldLine(newWorldLine, ps);
-  const next = new Map(prev);
-  next.set(playerId, {
-    ...player,
-    phaseSpace: ps,
-    worldLine: newWorldLine,
-    isDead: false,
-    energy: ENERGY_MAX,
-  });
   return next;
 };

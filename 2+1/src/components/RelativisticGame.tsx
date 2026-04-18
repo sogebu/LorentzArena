@@ -1,29 +1,20 @@
 import { Canvas } from "@react-three/fiber";
 import { useEffect, useRef, useState } from "react";
 import { usePeer } from "../hooks/usePeer";
-import {
-  appendWorldLine,
-  createPhaseSpace,
-  createVector4,
-  createWorldLine,
-  vector3Zero,
-} from "../physics";
+import { vector3Zero } from "../physics";
 import { useGameStore } from "../stores/game-store";
 import { getLaserColor } from "./game/colors";
 import {
   DEFAULT_CAMERA_PITCH,
   ENERGY_MAX,
+  LIGHTHOUSE_COLOR,
   LIGHTHOUSE_ID_PREFIX,
-  MAX_WORLDLINE_HISTORY,
   OFFSET,
   SPAWN_RANGE,
 } from "./game/constants";
 import { HUD } from "./game/HUD";
 import { TutorialOverlay } from "./game/TutorialOverlay";
-import {
-  createLighthouse,
-  isLighthouse,
-} from "./game/lighthouse";
+import { isLighthouse } from "./game/lighthouse";
 import { createMessageHandler } from "./game/messageHandler";
 import { SceneContent } from "./game/SceneContent";
 import { buildSnapshot } from "./game/snapshot";
@@ -91,74 +82,30 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
 
     const store = useGameStore.getState();
 
-    // 非決定的な値を reducer 外で計算（StrictMode 安全）
-    const initialPhaseSpace = createPhaseSpace(
-      createVector4(
-        Date.now() / 1000 - OFFSET,
-        Math.random() * SPAWN_RANGE,
-        Math.random() * SPAWN_RANGE,
-        0.0,
-      ),
-      vector3Zero(),
-    );
-    let initialWorldLine = createWorldLine(MAX_WORLDLINE_HISTORY);
-    initialWorldLine = appendWorldLine(initialWorldLine, initialPhaseSpace);
-    const initialColor = getPlayerColor(myId);
-
-    store.setPlayers((prev) => {
-      if (prev.has(myId)) return prev; // Already initialized (reconnect/migration)
-      const next = new Map(prev);
-      next.set(myId, {
-        id: myId,
-        ownerId: myId,
-        phaseSpace: initialPhaseSpace,
-        worldLine: initialWorldLine,
-        color: initialColor,
-        isDead: false,
-        displayName,
-        energy: ENERGY_MAX,
-      });
-      return next;
-    });
-    // Stage C: 初期 invincibility は respawnLog 経由で derive。
-    // 「初回スポーン = 初回 respawn」として扱う (selectInvincibleUntil が拾う)。
-    useGameStore.setState((state) => ({
-      respawnLog: [
-        ...state.respawnLog,
+    // Self spawn: handleSpawn で respawn と同じ経路を通す。StrictMode 二重実行は
+    // players.has(myId) 早期 return で吸収 (handleSpawn 内に dedup 無い前提)。
+    if (!store.players.has(myId)) {
+      const t = Date.now() / 1000 - OFFSET;
+      store.handleSpawn(
+        myId,
         {
-          playerId: myId,
-          position: {
-            t: initialPhaseSpace.pos.t,
-            x: initialPhaseSpace.pos.x,
-            y: initialPhaseSpace.pos.y,
-            z: 0,
-          },
-          wallTime: Date.now(),
+          t,
+          x: Math.random() * SPAWN_RANGE,
+          y: Math.random() * SPAWN_RANGE,
+          z: 0,
         },
-      ],
-    }));
+        myId,
+        getPlayerColor(myId),
+        { displayName, ownerId: myId },
+      );
+    }
 
-    // 初回スポーンエフェクト（過去光円錐到達時に発火）
-    useGameStore.setState((state) => ({
-      pendingSpawnEvents: [
-        ...state.pendingSpawnEvents,
-        {
-          id: `spawn-${myId}-${Date.now()}`,
-          playerId: myId,
-          pos: { t: initialPhaseSpace.pos.t, x: initialPhaseSpace.pos.x, y: initialPhaseSpace.pos.y, z: 0 },
-          color: initialColor,
-        },
-      ],
-    }));
-
-    // Lighthouse AI + score sync to connected clients
+    // Lighthouse: migration 経路では既に players Map に存在し ownerId 差し替えだけ
+    // (spawn エフェクトを撃ち直さない)。初回 boot では handleSpawn で作成。
     const lighthouseId = `${LIGHTHOUSE_ID_PREFIX}0`;
     const existingLh = store.players.get(lighthouseId);
 
     if (existingLh) {
-      // Migration path: LH は既に存在する (旧 host の phaseSpace 履歴を全 peer が
-      // 共有している)。位置・世界線をリセットせず owner だけ自分に差し替える。
-      // spawn エフェクトや grace reset は不要。
       if (existingLh.ownerId !== myId) {
         store.setPlayers((prev) => {
           const lh = prev.get(lighthouseId);
@@ -170,39 +117,20 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       }
       stale.staleFrozenRef.current.delete(lighthouseId);
     } else {
-      // Fresh boot: create LH from scratch
-      const lighthouse = createLighthouse(
-        lighthouseId,
-        Date.now() / 1000 - OFFSET,
-        myId,
-      );
-
-      store.lighthouseSpawnTime.set(lighthouseId, Date.now());
       stale.staleFrozenRef.current.delete(lighthouseId);
-
-      store.setPlayers((prev) => {
-        const next = new Map(prev);
-        next.set(lighthouseId, lighthouse);
-        return next;
-      });
-
-      // Lighthouse スポーンエフェクト (初回のみ、migration 時は発火しない)
-      useGameStore.setState((state) => ({
-        pendingSpawnEvents: [
-          ...state.pendingSpawnEvents,
-          {
-            id: `spawn-${lighthouseId}-${Date.now()}`,
-            playerId: lighthouseId,
-            pos: {
-              t: lighthouse.phaseSpace.pos.t,
-              x: lighthouse.phaseSpace.pos.x,
-              y: lighthouse.phaseSpace.pos.y,
-              z: 0,
-            },
-            color: lighthouse.color,
-          },
-        ],
-      }));
+      const t = Date.now() / 1000 - OFFSET;
+      store.handleSpawn(
+        lighthouseId,
+        {
+          t,
+          x: Math.random() * SPAWN_RANGE,
+          y: Math.random() * SPAWN_RANGE,
+          z: 0,
+        },
+        myId,
+        LIGHTHOUSE_COLOR,
+        { ownerId: myId },
+      );
     }
 
     // Stage F: 初期 host の init effect では既存 connection へ何も送らない。

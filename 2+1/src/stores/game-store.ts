@@ -1,6 +1,15 @@
 import { create } from "zustand";
-import { getVelocity4, type Vector3 } from "../physics";
 import {
+  appendWorldLine,
+  createPhaseSpace,
+  createVector4,
+  createWorldLine,
+  getVelocity4,
+  vector3Zero,
+  type Vector3,
+} from "../physics";
+import {
+  ENERGY_MAX,
   INVINCIBILITY_DURATION,
   MAX_DEBRIS,
   MAX_FROZEN_WORLDLINES,
@@ -8,13 +17,14 @@ import {
   MAX_KILL_LOG,
   MAX_PENDING_SPAWN_EVENTS,
   MAX_RESPAWN_LOG,
+  MAX_WORLDLINE_HISTORY,
   POST_HIT_IFRAME_MS,
 } from "../components/game/constants";
 import {
   generateExplosionParticles,
   generateHitParticles,
 } from "../components/game/debris";
-import { applyKill, applyRespawn } from "../components/game/killRespawn";
+import { applyKill } from "../components/game/killRespawn";
 import { isLighthouse, LIGHTHOUSE_DISPLAY_NAME } from "../components/game/lighthouse";
 import type {
   DeathEvent,
@@ -91,11 +101,26 @@ export interface GameState {
     hitPos: { t: number; x: number; y: number; z: number },
     myId: string | null,
   ) => void;
-  handleRespawn: (
+  /**
+   * 統合 spawn/respawn action。新規 player (init / snapshot) も既存 player の
+   * respawn も同じ経路を通り、必ず以下を行う:
+   *   1. phaseSpace + worldLine を spawn 位置 (静止) で再生成
+   *   2. respawnLog に entry 追加 (invincibility 起点)
+   *   3. pendingSpawnEvents に entry 追加 (過去光円錐到達で spawn ring 発火)
+   *   4. LH なら lighthouseSpawnTime を更新
+   *   5. 自機なら myDeathEvent を null にリセット
+   * 「既存」「新規」の差は phaseSpace/worldLine の作り方ではなく、保存する識別情報
+   * (color / displayName / ownerId) の出所のみ。spawn ring の出方は player 種別に
+   * 関係なく統一 (旧 handleRespawn の self 即時 spawns / 他者 pendingSpawnEvents の
+   * 二経路を一本化)。Migration 経路 (= LH の owner 差し替えだけで spawn 不要) は
+   * 呼び出し側で setPlayers 直更新する。
+   */
+  handleSpawn: (
     playerId: string,
     position: { t: number; x: number; y: number; z: number },
     myId: string | null,
-    getPlayerColor: (id: string) => string,
+    color: string,
+    options?: { displayName?: string; ownerId?: string },
   ) => void;
   /**
    * Phase C1: 被弾処理。energy を damage 減算し、`< 0` なら handleKill を呼ぶ。
@@ -233,52 +258,73 @@ export const useGameStore = create<GameState>()((set, get) => ({
   },
 
   // -----------------------------------------------------------------------
-  // handleRespawn — absorbs RelativisticGame.tsx L212-263
+  // handleSpawn — 統合 spawn/respawn (旧 handleRespawn + RelativisticGame init
+  // + snapshot self-not-in-snapshot を一本化)
   // -----------------------------------------------------------------------
 
-  handleRespawn: (playerId, position, myId, getPlayerColor) => {
+  handleSpawn: (playerId, position, myId, color, options) => {
     const state = get();
 
-    // LH spawn time はゲームルール上 respawn とは別管理 (LH fire cooldown の起点)
     if (isLighthouse(playerId)) {
       state.lighthouseSpawnTime.set(playerId, Date.now());
     }
 
-    // Spawn effect
-    const spawningPlayer = state.players.get(playerId);
-    const color = spawningPlayer?.color ?? getPlayerColor(playerId);
     const now = Date.now();
 
-    // Stage C: authoritative event log entry (source of truth for
-    // deadPlayers derivation + invincibility timing)
+    // Spawn 位置・静止 (u=0) で phaseSpace + worldLine を再生成
+    const ps = createPhaseSpace(
+      createVector4(position.t, position.x, position.y, position.z),
+      vector3Zero(),
+    );
+    const newWorldLine = appendWorldLine(
+      createWorldLine(MAX_WORLDLINE_HISTORY),
+      ps,
+    );
+
+    const existing = state.players.get(playerId);
+    const player: RelativisticPlayer = existing
+      ? {
+          ...existing,
+          phaseSpace: ps,
+          worldLine: newWorldLine,
+          isDead: false,
+          energy: ENERGY_MAX,
+        }
+      : {
+          id: playerId,
+          ownerId: options?.ownerId ?? playerId,
+          phaseSpace: ps,
+          worldLine: newWorldLine,
+          color,
+          isDead: false,
+          displayName: options?.displayName,
+          energy: ENERGY_MAX,
+        };
+
+    const nextPlayers = new Map(state.players);
+    nextPlayers.set(playerId, player);
+
     const respawnLogEntry: RespawnEventRecord = {
       playerId,
       position,
       wallTime: now,
     };
+    const pendingSpawnEvent: PendingSpawnEvent = {
+      id: `spawn-${playerId}-${now}`,
+      playerId,
+      pos: position,
+      color: player.color,
+    };
 
-    if (playerId === myId) {
-      // Self spawn: immediate spawn effect
-      set({
-        players: applyRespawn(state.players, playerId, position),
-        myDeathEvent: null,
-        spawns: [
-          ...state.spawns,
-          { id: `spawn-${playerId}-${now}`, pos: position, color, startTime: now },
-        ],
-        respawnLog: [...state.respawnLog, respawnLogEntry],
-      });
-    } else {
-      // Other player: causal delay via pending events
-      set({
-        players: applyRespawn(state.players, playerId, position),
-        pendingSpawnEvents: [
-          ...state.pendingSpawnEvents,
-          { id: `spawn-${playerId}-${now}`, playerId, pos: position, color },
-        ].slice(-MAX_PENDING_SPAWN_EVENTS),
-        respawnLog: [...state.respawnLog, respawnLogEntry],
-      });
-    }
+    set({
+      players: nextPlayers,
+      respawnLog: [...state.respawnLog, respawnLogEntry],
+      pendingSpawnEvents: [
+        ...state.pendingSpawnEvents,
+        pendingSpawnEvent,
+      ].slice(-MAX_PENDING_SPAWN_EVENTS),
+      ...(playerId === myId ? { myDeathEvent: null } : {}),
+    });
   },
 
   // -----------------------------------------------------------------------

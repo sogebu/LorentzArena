@@ -154,7 +154,7 @@ export function useGameLoop({
       const currentMyDeathEvent = store.myDeathEvent;
       if (prevMyDeathEventRef.current !== null && currentMyDeathEvent === null) {
         // non-null → null: self-respawn just happened → reset camera refs.
-        // energy は applyRespawn が ENERGY_MAX にリセット済 (store 側で一元管理)。
+        // energy は handleSpawn が ENERGY_MAX にリセット済 (store 側で一元管理)。
         cameraYawRef.current = 0;
         cameraPitchRef.current = DEFAULT_CAMERA_PITCH;
       }
@@ -163,7 +163,7 @@ export function useGameLoop({
       prevMyDeathEventRef.current = currentMyDeathEvent;
 
       // Phase C1: tick 開始時に store から energy を読む (between-tick で
-      // handleDamage / applyRespawn が変更した最新値)。tick 内では local
+      // handleDamage / handleSpawn が変更した最新値)。tick 内では local
       // `energy` を通じて計算し、末尾で commit する。
       let energy = store.players.get(myId)?.energy ?? ENERGY_MAX;
 
@@ -558,7 +558,10 @@ export function useGameLoop({
                 playerId: victimId,
                 position: respawnPos,
               });
-              currentStore.handleRespawn(victimId, respawnPos, myId, getPlayerColor);
+              const existingColor =
+                currentStore.players.get(victimId)?.color ??
+                getPlayerColor(victimId);
+              currentStore.handleSpawn(victimId, respawnPos, myId, existingColor);
             }, RESPAWN_DELAY);
             respawnTimeoutsRef.current.add(timerId);
           }
@@ -578,7 +581,7 @@ export function useGameLoop({
       //   再取得するケース。旧 `useBeaconMigration` の LH setTimeout rebuild に依存していたが、
       //   同日の refactor で tick poll に一本化 (DESIGN.md §migration 権威は assumeHostRole に集約)
       //
-      // 冪等性: handleRespawn が respawnLog に entry 追加 → selectIsDead が false に落ちる →
+      // 冪等性: handleSpawn が respawnLog に entry 追加 → selectIsDead が false に落ちる →
       // 次 tick で poll が skip。dev build では assert で壊れていないか確認。
       {
         const pollState = useGameStore.getState();
@@ -609,15 +612,18 @@ export function useGameLoop({
               playerId: victimId,
               position: respawnPos,
             });
-            pollState.handleRespawn(victimId, respawnPos, myId, getPlayerColor);
+            const existingColor =
+              pollState.players.get(victimId)?.color ??
+              getPlayerColor(victimId);
+            pollState.handleSpawn(victimId, respawnPos, myId, existingColor);
 
             if (import.meta.env.DEV) {
               const after = useGameStore.getState();
               if (selectIsDead(after, victimId)) {
                 console.warn(
-                  "[respawn-poll] selectIsDead still true after handleRespawn for",
+                  "[respawn-poll] selectIsDead still true after handleSpawn for",
                   victimId,
-                  "— per-tick respawn spam likely. Check handleRespawn/gcLogs/selectIsDead.",
+                  "— per-tick respawn spam likely. Check handleSpawn/gcLogs/selectIsDead.",
                 );
               }
             }

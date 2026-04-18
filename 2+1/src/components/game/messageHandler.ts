@@ -104,7 +104,9 @@ export const createMessageHandler =
           playerId,
           position: respawnPos,
         });
-        store.handleRespawn(playerId, respawnPos, myId, getPlayerColor);
+        const existingColor =
+          store.players.get(playerId)?.color ?? getPlayerColor(playerId);
+        store.handleSpawn(playerId, respawnPos, myId, existingColor);
         return;
       }
 
@@ -260,11 +262,13 @@ export const createMessageHandler =
       );
     } else if (msg.type === "respawn") {
       // Stage D: respawn は owner 発信。host は他 peer の respawn を受信したら
-      // handleRespawn を実行 + registerHostRelay が relay を担当。
+      // handleSpawn を実行 + registerHostRelay が relay を担当。
       if (!isValidString(msg.playerId) || !isValidVector4(msg.position)) return;
       staleFrozenRef.current.delete(msg.playerId);
       lastUpdateTimeRef.current.set(msg.playerId, Date.now());
-      store.handleRespawn(msg.playerId, msg.position, myId, getPlayerColor);
+      const existingColor =
+        store.players.get(msg.playerId)?.color ?? getPlayerColor(msg.playerId);
+      store.handleSpawn(msg.playerId, msg.position, myId, existingColor);
     } else if (msg.type === "kill") {
       // Stage B: kill は誰からでも受理（host skip を撤去）。
       // host も自身が owner でない player の kill は messageHandler 経由で受信する。

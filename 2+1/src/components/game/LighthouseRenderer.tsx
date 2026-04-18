@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 import * as THREE from "three";
-import { selectInvincibleUntil, useGameStore } from "../../stores/game-store";
 import {
   DEBRIS_MAX_LAMBDA,
   LIGHTHOUSE_COLOR,
@@ -52,13 +51,9 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
   const trimColor = useMemo(() => new THREE.Color("hsl(190, 75%, 28%)"), []);
   const lampColor = useMemo(() => new THREE.Color("hsl(190, 100%, 92%)"), []);
 
-  const invUntil = selectInvincibleUntil(useGameStore.getState(), player.id);
-  const isInvincible = Date.now() < invUntil;
-  const pulse = isInvincible ? 0.65 + 0.35 * Math.sin(Date.now() * 0.012) : 1.0;
-
   const wp = player.phaseSpace.pos;
   // spawn / respawn 時刻 = worldLine の最初の event。死亡で worldLine は再生成されるため
-  // (killRespawn.ts applyRespawn) 復活後は history[0] が新しい復活時刻を指す。
+  // (game-store.ts handleSpawn) 復活後は history[0] が新しい復活時刻を指す。
   const spawnT = player.worldLine.history[0]?.pos.t ?? wp.t;
 
   // 底面の中心の anchor:
@@ -67,13 +62,15 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
   // - 生存中で過去光円錐が spawn 以降を覆う: 観測者の過去光円錐との交点 (静止 LH なので
   //           解析的に t_anchor = observer.t - |Δxy|、SpawnRenderer pillar と同じパターン)。
   // - 死亡中で観測者の過去光円錐がまだ死亡 event に届いていない: 引き続き past cone anchor
-  //           (=「観測者にはまだ生きて見える」段階、相対論的に正しい遅延)。
-  // - 死亡中で過去光円錐が死亡 event 以降を覆う: 死亡 event 位置 (wp.t) に anchor 固定。
-  //           観測者時刻進行で display Z が減少 = 撃破デブリと同期して過去に沈んでいく。
-  // - 死亡中で過去光円錐が deathT + DEBRIS_MAX_LAMBDA を超えた: デブリと同時に消失。
-  // 世界系表示 (observerPos null) では wp.t / 常に表示。
+  //           (=「観測者にはまだ生きて見える」段階、相対論的に正しい遅延)、alpha=1。
+  // - 死亡中で過去光円錐が死亡 event 以降を覆う: 死亡 event 位置 (wp.t) に anchor 固定 +
+  //           opacity を pastConeT - deathT を変数に DEBRIS_MAX_LAMBDA かけて 1→0 リニアフェード。
+  //           観測者時刻進行で display Z が減少 = 撃破デブリと同期して過去に沈みつつ薄れる。
+  // - 死亡中で過去光円錐が deathT + DEBRIS_MAX_LAMBDA を超えた: alpha=0 と同時に完全消失。
+  // 世界系表示 (observerPos null) では wp.t / 常に表示、alpha=1。
   let anchorT = wp.t;
   let visible = true;
+  let alpha = 1;
   if (observerPos) {
     const dx = wp.x - observerPos.x;
     const dy = wp.y - observerPos.y;
@@ -84,6 +81,8 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
         visible = false;
       } else {
         anchorT = Math.min(pastConeT, wp.t);
+        const elapsed = Math.max(0, pastConeT - wp.t);
+        alpha = 1 - elapsed / DEBRIS_MAX_LAMBDA;
       }
     } else if (pastConeT < spawnT) {
       visible = false;
@@ -91,114 +90,125 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
       anchorT = pastConeT;
     }
   }
-  if (!visible) return null;
   const anchorPos = { x: wp.x, y: wp.y, t: anchorT };
 
   // 現在世界時刻位置の球マーカー (C pattern: display 並進のみ、他プレイヤー sphere と同じ表現)。
-  // 死亡中は表示しない (塔 anchor で位置が伝わるため、死んだ LH に「今この瞬間の位置」概念は無い)。
+  // 塔の past-cone visibility とは独立: 生存中は常に表示 (リスポーン直後で塔がまだ
+  // 観測者の過去光円錐に入っていない期間でも「現在世界時刻」位置は即座に表示する)。
+  // 死亡中は非表示 (塔の沈み + フェードで位置が伝わるため)。
   const showSphere = !player.isDead;
   const dpNow = transformEventForDisplay(wp, observerPos, observerBoost);
   const sphereSize = PLAYER_MARKER_SIZE_OTHER;
 
   return (
     <>
+    {visible && (
     <group
       matrix={buildMeshMatrix(anchorPos, displayMatrix)}
       matrixAutoUpdate={false}
     >
       {/* Body: tapered cylinder, base at event */}
-      <mesh position={[0, 0, 0.50]} rotation={ROT_Y_TO_Z} geometry={G.body}>
+      <mesh renderOrder={-1} position={[0, 0, 0.50]} rotation={ROT_Y_TO_Z} geometry={G.body}>
         <meshStandardMaterial
           color={wallColor}
           emissive={mainColor}
-          emissiveIntensity={0.25 * pulse}
+          emissiveIntensity={0.25}
           roughness={0.55}
           metalness={0.05}
           transparent
-          opacity={0.95 * pulse}
+          depthWrite={false}
+          opacity={0.95 * alpha}
         />
       </mesh>
 
       {/* Two horizontal bands */}
-      <mesh position={[0, 0, 0.20]} rotation={ROT_Y_TO_Z} geometry={G.bodyBand}>
+      <mesh renderOrder={-1} position={[0, 0, 0.20]} rotation={ROT_Y_TO_Z} geometry={G.bodyBand}>
         <meshStandardMaterial
           color={trimColor}
           emissive={trimColor}
-          emissiveIntensity={0.4 * pulse}
+          emissiveIntensity={0.4}
           transparent
-          opacity={0.95 * pulse}
+          depthWrite={false}
+          opacity={0.95 * alpha}
         />
       </mesh>
-      <mesh position={[0, 0, 0.70]} rotation={ROT_Y_TO_Z} geometry={G.bodyBand}>
+      <mesh renderOrder={-1} position={[0, 0, 0.70]} rotation={ROT_Y_TO_Z} geometry={G.bodyBand}>
         <meshStandardMaterial
           color={trimColor}
           emissive={trimColor}
-          emissiveIntensity={0.4 * pulse}
+          emissiveIntensity={0.4}
           transparent
-          opacity={0.95 * pulse}
+          depthWrite={false}
+          opacity={0.95 * alpha}
         />
       </mesh>
 
       {/* Balcony torus (sits flat in xy plane, encircling lantern base) */}
-      <mesh position={[0, 0, 1.00]} geometry={G.balcony}>
+      <mesh renderOrder={-1} position={[0, 0, 1.00]} geometry={G.balcony}>
         <meshStandardMaterial
           color={trimColor}
           emissive={mainColor}
-          emissiveIntensity={0.4 * pulse}
+          emissiveIntensity={0.4}
           roughness={0.4}
           metalness={0.3}
           transparent
-          opacity={0.95 * pulse}
+          depthWrite={false}
+          opacity={0.95 * alpha}
         />
       </mesh>
 
       {/* Lantern room: open cylinder, semi-transparent so lamp is visible */}
-      <mesh position={[0, 0, 1.15]} rotation={ROT_Y_TO_Z} geometry={G.lantern}>
+      <mesh renderOrder={-1} position={[0, 0, 1.15]} rotation={ROT_Y_TO_Z} geometry={G.lantern}>
         <meshStandardMaterial
           color={mainColor}
           emissive={mainColor}
-          emissiveIntensity={0.7 * pulse}
+          emissiveIntensity={0.7}
           roughness={0.3}
           transparent
-          opacity={0.55 * pulse}
+          depthWrite={false}
+          opacity={0.55 * alpha}
           side={THREE.DoubleSide}
         />
       </mesh>
 
       {/* Lamp: bright emissive sphere */}
-      <mesh position={[0, 0, 1.15]} geometry={G.lamp}>
-        <meshBasicMaterial color={lampColor} transparent opacity={pulse} />
+      <mesh renderOrder={-1} position={[0, 0, 1.15]} geometry={G.lamp}>
+        <meshBasicMaterial color={lampColor} transparent depthWrite={false} opacity={alpha} />
       </mesh>
 
       {/* Roof cone */}
-      <mesh position={[0, 0, 1.41]} rotation={ROT_Y_TO_Z} geometry={G.roof}>
+      <mesh renderOrder={-1} position={[0, 0, 1.41]} rotation={ROT_Y_TO_Z} geometry={G.roof}>
         <meshStandardMaterial
           color={trimColor}
           emissive={mainColor}
-          emissiveIntensity={0.4 * pulse}
+          emissiveIntensity={0.4}
           roughness={0.5}
           metalness={0.2}
           transparent
-          opacity={0.95 * pulse}
+          depthWrite={false}
+          opacity={0.95 * alpha}
         />
       </mesh>
 
       {/* Spire */}
-      <mesh position={[0, 0, 1.57]} rotation={ROT_Y_TO_Z} geometry={G.spire}>
+      <mesh renderOrder={-1} position={[0, 0, 1.57]} rotation={ROT_Y_TO_Z} geometry={G.spire}>
         <meshStandardMaterial
           color={trimColor}
           emissive={mainColor}
-          emissiveIntensity={0.6 * pulse}
+          emissiveIntensity={0.6}
           transparent
-          opacity={pulse}
+          depthWrite={false}
+          opacity={alpha}
         />
       </mesh>
     </group>
+    )}
 
     {/* 現在世界時刻位置の球マーカー (C pattern)。死亡中は非表示。 */}
     {showSphere && (
       <group position={[dpNow.x, dpNow.y, dpNow.t]}>
         <mesh
+          renderOrder={-1}
           scale={[sphereSize, sphereSize, sphereSize]}
           geometry={sharedGeometries.playerSphere}
         >
@@ -209,17 +219,20 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
             roughness={0.3}
             metalness={0.1}
             transparent
-            opacity={PLAYER_MARKER_MAIN_OPACITY_OTHER * pulse}
+            depthWrite={false}
+            opacity={PLAYER_MARKER_MAIN_OPACITY_OTHER}
           />
         </mesh>
         <mesh
+          renderOrder={-1}
           scale={[sphereSize * 1.8, sphereSize * 1.8, sphereSize * 1.8]}
           geometry={sharedGeometries.playerSphere}
         >
           <meshBasicMaterial
             color={mainColor}
             transparent
-            opacity={PLAYER_MARKER_GLOW_OPACITY_OTHER * pulse}
+            depthWrite={false}
+            opacity={PLAYER_MARKER_GLOW_OPACITY_OTHER}
           />
         </mesh>
       </group>
