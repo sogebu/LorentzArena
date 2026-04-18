@@ -19,18 +19,12 @@ pnpm run analyze               # バンドルサイズ分析
 
 ### テスト (Vitest)
 
-`pnpm test` で 1 回実行、`pnpm test:watch` でウォッチモード。現時点のテスト:
-- `src/physics/worldLine.test.ts` — 光円錐交差 binary search の regression test (11 本)
-- `src/components/game/messageHandler.test.ts` — phaseSpace の migration gap 検知 (gap < 500ms append / gap ≥ 500ms で既存 WL を frozenWorldLines に push + 新 WL 生成 / gap ≥ 500ms で空 history なら frozen 無 / 初回受信の 4 本、2026-04-18 追加)
-- `src/components/game/snapshot.test.ts` — applySnapshot の migration path 分岐 (新規 join 時 unconditional replace / migration path で自機 state 保持 / 他 peer は pos.t 比較で新しい方採用の 4 本、2026-04-18 追加)
+`pnpm test` で 1 回実行、`pnpm test:watch` でウォッチモード。現有 test:
+- `src/physics/worldLine.test.ts` — 光円錐交差 binary search regression (11 本)
+- `src/components/game/messageHandler.test.ts` — phaseSpace migration gap 検知 (4 本、2026-04-18)
+- `src/components/game/snapshot.test.ts` — applySnapshot migration path 分岐 (4 本、2026-04-18)
 
-**物理コア (pure 関数) を触るときの規約**:
-1. 旧実装を `*Linear` 等の名前で export 維持 (deprecated だが regression 比較用)
-2. `*.test.ts` を先に書き、random input + エッジケースで旧実装と新実装の結果一致を regression test
-3. 全 test green 後に呼び出し元を新実装に切り替え
-4. feat branch + PR 相当の単位で main に merge、必要なら旧実装を削除 (git history 参照可能)
-
-物理交差計算のような**細かいロジックで bug が視覚異常として即出る部分**は、この TDD 的フローで安全に最適化できる。2026-04-17 の光円錐交差 O(log N) 化がこの運用の事例 (詳細: DESIGN.md §worldLine.history サイズ)。
+物理コア (pure 関数) の TDD 運用 (旧実装を `*Linear` で残し regression → 切替 → 削除) は DESIGN.md §worldLine.history サイズ + メタ原則 M15/M17 参照。
 
 ### テスト・デプロイの使い分け
 
@@ -48,14 +42,12 @@ deploy 後は、以下をユーザーに報告すること:
 
 ### ローカルプレビュー
 
-- **マルチプレイテスト**: 同じ URL を複数タブで開く。ルーム分離は `#room=<名前>` で可能
-- **GitHub Pages と ID 衝突回避**: 本番（sogebu.github.io）がルーム `default` を使っているので、localhost テスト時は `#room=test` 等の別ルーム名を使うこと。同じルーム名だと PeerJS ID `la-default` が取られて接続不能になる
-- **preview_start 使用時**: launch.json の `lorentz-arena` を使う。起動後は必ず localhost URL をリンクで出力する（`~/Claude/CLAUDE.md` 規約）。ポートが変わる場合があるのでサーバーログで確認
-- **preview ブラウザが PeerJS ID を奪う**: preview_start でページが開くと PeerJS ルーム ID (`la-{roomName}`) を取得してしまい、ユーザーのブラウザが接続できなくなる。マルチタブテストは `pnpm dev` をバックグラウンドで起動し、preview ブラウザでページを開かないこと
-- **HMR と module-level 定数**: `OFFSET = Date.now()/1000` のような module-level 定数を変更した場合、HMR で既存タブに反映されても、変更前に評価された値がキャッシュされることがある。定数変更後は**全タブを手動リロード**すること
-- **HMR の Provider 再マウント副作用**: `physics/` や `stores/` のような game state 経路上のファイルを編集した直後、HMR で **PeerProvider / zustand store が再マウントされ、接続状態・`myId`・`players` が START 前に戻る**ことがある。症状は「自機マーカー・光円錐・世界線・Speedometer HUD がすべて消える」「接続設定に ルーム名が出ない」。コードのバグと誤認しがち。ハードリロード (Cmd+Shift+R) + 再 START で復帰するなら HMR 副作用で、edit 自体のバグではない (DESIGN.md M15)。実際、2026-04-17 に `physics/worldLine.ts` の二分探索化試行で同症状が出て、B 案のバグに見えたが revert + リロードで正常復帰 → HMR 副作用と判定 (M15 事例ログ参照)
-- **preview_eval で store 覗きたい時の quirk**: `await import('/LorentzArena/src/stores/game-store.ts')` で zustand store を取得すると、走っている app のインスタンスとは **別の fresh インスタンス** が返ってくる (state が空)。Vite ESM の module registry がリクエスト経路で分かれるため。store 経由の debug は諦めて `document.body.innerText` や HUD の screenshot で状態確認するか、開発時だけ `window.__store = useGameStore` 等を追加して HMR させる
-- **single-tab preview でカバーできる範囲**: beacon holder 自己 death/respawn、LH kill/respawn、scoring UI、handleKill / selector の動作。**できない範囲**: snapshot の新規 join path、relay 経由の kill/respawn、client ↔ client、beacon migration。これらは multi-tab を開いてユーザーに検証依頼
+- **マルチプレイテスト + 室分離**: 同じ URL を複数タブで開く、`#room=<名前>` で分離。本番 (sogebu.github.io) がルーム `default` を使うため localhost テストは `#room=test` 等の別ルーム必須（同名だと PeerJS ID `la-default` が取られて接続不能）
+- **preview_start 使用時 + ID 奪取**: launch.json の `lorentz-arena` を使う。起動後は localhost URL をリンクで出力（`~/Claude/CLAUDE.md` 規約）。**preview ブラウザは PeerJS ID `la-{roomName}` を取得してしまう**ため、マルチタブテストには使わず `pnpm dev` バックグラウンド起動にすること
+- **HMR と module-level 定数**: `OFFSET = Date.now()/1000` のような module-level 定数変更後は**全タブを手動リロード**（HMR 反映後も評価済み値がキャッシュされることがある）
+- **HMR の Provider 再マウント副作用**: `physics/` や `stores/` を編集直後、HMR で **PeerProvider / zustand store が再マウントされ、接続状態・`myId`・`players` が START 前に戻る**ことがある。症状は「自機マーカー・光円錐・世界線・Speedometer HUD が全消え」。コードのバグと誤認しがち — ハードリロード (Cmd+Shift+R) + 再 START で復帰するなら HMR 副作用 (DESIGN.md メタ原則 M15)
+- **preview_eval で store 覗きたい時の quirk**: `await import('.../game-store.ts')` すると走行中 app とは別の fresh インスタンスが返る (Vite ESM registry がリクエスト経路で分かれる)。debug は HUD screenshot か `window.__store = useGameStore` を HMR で挿す
+- **single-tab preview でカバーできる範囲**: beacon holder 自己 death/respawn、LH kill/respawn、scoring UI、handleKill / selector。**できない範囲**: snapshot の新規 join path、relay 経由の kill/respawn、client ↔ client、beacon migration (multi-tab をユーザーに検証依頼)
 
 ### ネットワーク設定
 
@@ -109,19 +101,13 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 - `WsRelayManager.ts` — WebSocket Relay フォールバック
 - `PeerProvider.tsx` — 自動接続 + ホストマイグレーション
 
-自動接続フロー: START を押すと PeerProvider がマウントされ接続開始。`#room=name` で部屋分離。最初に START を押した人（= 最初に `la-{roomName}` ビーコンを取得した人）がホスト。全員ランダム ID でゲーム接続し、`la-{roomName}` はビーコン（発見専用、redirect 送信）のみに使用。
+自動接続フロー: START を押すと PeerProvider がマウント → 接続開始。`#room=name` で部屋分離。最初に `la-{roomName}` ビーコンを取得した人がホスト。全員ランダム ID でゲーム接続し、`la-{roomName}` は発見専用 (redirect 送信)。
 
-プレイヤー初期化: ホストは START 直後に自己初期化（`OFFSET = Date.now()/1000` で座標時間 t ≈ 0 から開始）。新規 join client は beacon holder から `snapshot` メッセージで `hostTime` を受け取り、その coord-time にスポーン（Authority 解体 Stage F-1 で `syncTime` 廃止、snapshot に統合済み）。
+プレイヤー初期化: ホストは START 直後に自己初期化 (`OFFSET = Date.now()/1000` で座標時間 t ≈ 0 から開始)。新規 join client は beacon holder から `snapshot` で `hostTime` を受け取りスポーン (Authority 解体 Stage F-1 で `syncTime` 廃止、snapshot に統合)。
 
-ホストマイグレーション: beacon holder が切断すると最古参クライアントが自動昇格。ハートビート方式（1 秒間隔 `ping`、2.5 秒タイムアウト、Stage G 以降）で即時検知。Authority 解体 Stage D 以降、人間の respawn timer は各 owner がローカルに持ち続けるので migration で再構築不要。2026-04-18 に `useBeaconMigration` hook + `isMigrating` flag を削除し、host 昇格の副作用 (LH owner 書き換え) は `PeerProvider.assumeHostRole` inline に集約した (DESIGN.md §migration 権威は assumeHostRole に集約)。LH 死亡中の respawn 再 schedule も同日に tick poll 化で不要化。`hostMigration` メッセージは Stage H で完全削除済み。
+ホストマイグレーション: beacon holder 切断で最古参クライアントが自動昇格。ハートビート方式 (1s ping / 2.5s timeout、Stage G)。人間の respawn timer は owner がローカル保持で再構築不要。2026-04-18 に `useBeaconMigration` hook + `isMigrating` flag を削除、LH owner 書き換えは `PeerProvider.assumeHostRole` inline に集約し、LH 死亡中の respawn 再 schedule は tick poll 化で不要化 (DESIGN.md §migration 権威は assumeHostRole に集約)。`hostMigration` メッセージは Stage H で完全削除済み。
 
-ビーコンパターン: `la-{roomName}` は常にビーコン（発見専用）。初期ホストは Phase 1 でビーコンを取得し `beaconRef` に保持、マイグレーション後のホストはビーコン effect で取得。新クライアントがビーコンに接続すると `{ type: "redirect", hostId }` で本当のホスト（ランダム ID）にリダイレクト。既存のゲーム接続には影響しない。
-
-マイグレーションのフォールバック: 選出ホストが 10 秒応答しない場合、ビーコン経由で発見を試みる。ビーコンも 8 秒応答なければソロホスト化。peerOrderRef が空の場合もビーコン優先。新規クライアントの redirect 先がオフラインなら最大 3 回リトライ。
-
-ビーコンベースのホスト降格: peerOrderRef のずれで 2 ノードが同時にホスト化した場合（dual-host）、ビーコン PeerJS ID の一意性で解決。ビーコン取得に 3 回失敗したホストは、ビーコン経由で本物のホストを発見 → 自分のクライアントに redirect を broadcast → 自分はクライアントに降格。`roleVersion` state で全 role 依存 effect を再評価。
-
-設計判断は DESIGN.md § Authority 解体 / § ネットワーク参照。
+ビーコンパターン: `la-{roomName}` は常に発見専用。新クライアントがビーコンに接続すると `{ type: "redirect", hostId }` で本当のホスト (ランダム ID) にリダイレクト。既存のゲーム接続には影響しない。dual-host 解消・ビーコン fallback (10s / 8s)・降格経路・`roleVersion` による effect 再評価 は DESIGN.md § Authority 解体 / § ネットワーク 参照。
 
 ### ゲーム (`src/components/`)
 
@@ -140,7 +126,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `game/laserPhysics.ts` | レーザー当たり判定 + 光円錐交差 |
 | `game/debris.ts` | デブリ生成 + 光円錐交差 |
 | `game/killRespawn.ts` | `applyKill`/`applyRespawn` 純粋関数（全 peer 共通、players Map を返す） |
-| `game/respawnTime.ts` | `computeSpawnCoordTime(players, excludeId?)`（excludeId 除外した全プレイヤー最大 t。自機の self-respawn では excludeId=myId を渡して ghost thrust 自由化に伴う自己参照暴走を避ける。LH は含む。初回/リスポーン/新 joiner 共通。詳細: DESIGN.md §物理「スポーン座標時刻」）、`createRespawnPosition`（座標時間 + ランダム空間位置） |
+| `game/respawnTime.ts` | `computeSpawnCoordTime(players, excludeId?)` (初回/リスポーン/新 joiner 共通、LH 含む)、`createRespawnPosition`。excludeId の役割・ghost thrust 自由化との関係は DESIGN.md §物理「スポーン座標時刻」 |
 | `game/lighthouse.ts` | Lighthouse AI（`createLighthouse` ファクトリ、`isLighthouse` 判定、`computeInterceptDirection` 相対論的偏差射撃） |
 | `game/gameLoop.ts` | ゲームループ内の純関数群（カメラ制御、プレイヤー物理、Lighthouse AI、当たり判定、ゴースト移動、因果律ガード、レーザー発射） |
 | `game/causalEvents.ts` | 因果律遅延イベント処理（キル通知・スポーンエフェクトの過去光円錐チェック） |
@@ -150,8 +136,8 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `game/SpawnRenderer.tsx` | スポーンエフェクト描画（アニメーション付きリング+ピラー） |
 | `game/DebrisRenderer.tsx` | デブリ世界線描画（InstancedMesh シリンダー + 光円錐交差マーカー、per-instance 時間 fade） |
 | `game/ArenaRenderer.tsx` | アリーナ円柱描画（4 geometry: surface / 垂直線 / 過去光円錐交線 / 未来光円錐交線、共有 BufferAttribute で in-place update、per-vertex 時間 fade） |
-| `game/StardustRenderer.tsx` | 時空星屑 (案 17) 描画。N=`STARDUST_COUNT` 個の 4D event を world 座標で pre-generated、`THREE.Points` + D pattern (`matrix = displayMatrix`)。観測者が box 外 (半幅 `STARDUST_*_HALF_RANGE`) に出ると反対側へ wrap-around (periodic boundary)、境界は time fade で不可視。光行差・Lorentz 変換は per-vertex で自動。詳細: DESIGN.md §描画「時空星屑」 |
-| `game/timeFadeShader.ts` | 時間的距離 opacity fade (Lorentzian) の onBeforeCompile shader inject utility。Mesh*/Line*/Points の全 D pattern material に適用。`FRAGMENT_APPLY_KEYS` fallback 方式 (Mesh/Line は `dithering_fragment` / PointsMaterial は `premultiplied_alpha_fragment`、three r181 時点で PointsMaterial が dithering を持たないため)。InstancedMesh は `USE_INSTANCING` 分岐で対応。詳細: DESIGN.md §描画「時間的距離 opacity fade」 |
+| `game/StardustRenderer.tsx` | 時空星屑 (案 17) 描画。N=`STARDUST_COUNT` 個の 4D event を world 座標で pre-generated、`THREE.Points` + D pattern。観測者が box 外に出ると periodic wrap、境界は time fade で不可視。詳細: DESIGN.md §描画「時空星屑」 |
+| `game/timeFadeShader.ts` | 時間的距離 opacity fade (Lorentzian) の onBeforeCompile inject utility。Mesh*/Line*/Points の全 D pattern material + InstancedMesh に適用。詳細: DESIGN.md §描画「時間的距離 opacity fade」 |
 | `game/messageHandler.ts` | ネットワークメッセージ処理（ファクトリ関数、バリデーション付き） |
 | `game/HUD.tsx` | HUD オーケストレーター（子コンポーネント配置） |
 | `game/hud/ControlPanel.tsx` | 左上パネル（操作説明、トグルスイッチ、FPS、build、スコアボード） |
@@ -172,7 +158,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `useSnapshotRetry.ts` | 新規 join client が snapshot 未受信 (players.get(myId) 未定義) で 2 秒経過したら `snapshotRequest` を beacon holder に送信、最大 3 回。host push (connections diff) の race フォールバック |
 | `useGameLoop.ts` | ゲームループ本体（setInterval ライフサイクル + 全フェーズの dispatch） |
 
-**D pattern の描画**: scene の物理オブジェクト (world line、light cone、ring 系マーカー、cone 接平面三角形、debris、laser batch) は「world 座標で geometry + `mesh.matrix = displayMatrix × T(worldEventPos) × [rotation]`」で per-vertex Lorentz 変換。`DisplayFrameContext` が `displayMatrix` を配信、`buildMeshMatrix` helper で mesh 合成。観測者静止系/世界系どちらでも同一経路、3+1 化時は boost matrix を差し替えるだけ。詳細は DESIGN.md § 描画「D pattern」。**例外** (C pattern / position-based): 球ジオメトリ (player marker, intersection sphere + core, kill sphere, debris particle) は per-vertex Lorentz で γ 楕円化を避けるため display 並進のみ。照準矢印は 2+1 固有のため D pattern 化スコープ外。
+**D pattern の描画**: 物理オブジェクト (world line / light cone / ring / cone 接平面 / debris / laser batch) は「world 座標 geometry + `mesh.matrix = displayMatrix × T(worldEventPos) × [rotation]`」で per-vertex Lorentz 変換 (`DisplayFrameContext` + `buildMeshMatrix` helper)。観測者静止系/世界系で同一経路、3+1 化時は boost matrix を差し替えるだけ。**例外 (C pattern)**: 球ジオメトリ (player marker, intersection sphere, kill sphere, debris particle) は γ 楕円化回避のため display 並進のみ。照準矢印は 2+1 固有で D pattern 化スコープ外。詳細は DESIGN.md § 描画「D pattern」。
 
 主要機能:
 - PC: W/S: 前進/後退、A/D: 横移動、矢印: カメラ回転、Space: レーザー発射
@@ -193,9 +179,9 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 - プレイヤー色は `colorForJoinOrder(index)` が主（接続順 × 黄金角）、peerList 未受信時は `colorForPlayerId(id)` にフォールバック。ネットワーク同期不要の純関数方式。詳細は DESIGN.md § 描画「色割り当て」
 - 因果律の守護者: 他プレイヤーの未来光円錐内で操作凍結。死亡プレイヤー・灯台は除外。灯台は別方式: 誰かの過去光円錐に落ちたら最も過去の生存プレイヤーの座標時間にジャンプ
 - 光円錐描画: DoubleSide 半透明サーフェス（`LIGHT_CONE_SURFACE_OPACITY`）+ ワイヤーフレーム（`LIGHT_CONE_WIRE_OPACITY`）の 2 層構造で未来/過去光円錐を表示
-- アリーナ円柱 (`ArenaRenderer`): world-frame 静止、中心 `(ARENA_CENTER_X, ARENA_CENTER_Y)` 半径 `ARENA_RADIUS` の半透明円柱で戦闘領域の視覚ガイドを提示。物理判定なし（drifter 封じ込めは thrust energy で既済、視覚的境界として補完）。D pattern で per-vertex Lorentz 変換し、rest frame では光行差で楕円歪みを表現。**時間方向は「光円錐交線」と「下限半幅」の max で広げる**: 各 θ で `(x(θ), y(θ))` から観測者への空間距離 `ρ(θ)` を計算し、円柱本体 (surface / 垂直線 / 上端 rim) の時間方向半幅 = `max(ρ(θ), ARENA_MIN_HALF_HEIGHT)`。ρ が小さい θ (観測者に近い円柱上の点) では固定半幅 = `LIGHT_CONE_HEIGHT` でガードし円柱が極端に狭くならないようにし、ρ が大きい (観測者が円柱から遠い) θ では光円錐交点まで伸ばす。**過去光円錐 × 円柱交線 (pastCone) は独立 position attribute で下限 H なしで描画**: 全 θ で `pos.t − ρ(θ)` をそのまま辿る LineLoop、ρ < H の θ では円柱下端 (= `pos.t − H`) より未来側に入り、観測者に近い θ では pastCone が円柱内部に位置する。物理的意味 (円柱側面無限延長上で今まさに光が届いている事象の集合) を円柱本体の時間方向ガードと独立に保持する。**頂点 layout**: clamped 2 attribute × N (surface / 垂直線 / 上端 rim が共有) + unclamped 1 attribute × N (pastCone 専用)。geometry は初回 1 回作成、毎 frame `useFrame` で両 attribute を in-place 更新 + `needsUpdate=true` (allocation ゼロ、GPU upload 2 回/frame、DESIGN.md §メタ原則 M17)。`frustumCulled={false}` で in-place update 時の boundingSphere 問題を回避。過去光円錐交線は濃く (1.0)、上端 rim (旧 futureCone) は控えめ (0.3)。詳細: DESIGN.md §描画「アリーナ円柱」
-- Exhaust (推進ジェット、自機のみ v0): 自機球の反推力方向に 2 層 cone (外=`EXHAUST_OUTER_COLOR` 明るい青、内=`EXHAUST_INNER_COLOR` 冷たい白、`MeshBasicMaterial` + `THREE.AdditiveBlending` + `toneMapped=false` で青白プラズマ発光)。プレイヤー色依存は廃止、識別は sphere / worldline に任せる。**v0 は C pattern (rest-frame 固定)**、`transformEventForDisplay` 経由で自機球と同じ display 座標に並進のみ、共変 α^μ を phaseSpace に載せる段階 (他機対応) で D pattern + Lorentz 収縮に昇格予定。magnitude は描画層で EMA smoothing (attack 60ms / release 180ms) して PC binary 入力の点滅を解消、方向は smoothing しない。energy 枯渇で `thrustAcceleration=0` になり自動非表示。物理モデルの 3 ステップ (①rest frame で与える / ②world frame に boost して broadcast / ③観測者 rest frame に戻して表示) のうち v0 は ① のみ実装、②③ は他機対応時。詳細: DESIGN.md §描画「Exhaust」
-- 時間的距離 opacity fade (Lorentzian、per-vertex shader): `fade = r²/(r² + Δt²)`、`r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT = 20`。`applyTimeFadeShader` を `onBeforeCompile` で全 D pattern material に inject、各 vertex の world 座標を `modelMatrix × position` で display frame に変換した z 成分から per-vertex fade を計算、`gl_FragColor.a` に乗算。適用対象: 世界線 tube (生存・凍結)・デブリ (InstancedMesh、`USE_INSTANCING` 分岐)・自己光円錐 4 mesh・アリーナ円柱 4 mesh・レーザー batch。観測者時刻近傍が濃く、±LCH で半透明、±2×LCH で 0.2、±3×LCH で 0.1 と緩やかに減衰 (時間距離の 2 乗反比例、物理の逆 2 乗法則と同型)。**生存世界線も tail vertex は display z < 0 で fade される** (per-mesh v0 時代と異なる、per-vertex の自然な挙動)。詳細: DESIGN.md §描画「時間的距離 opacity fade」
+- アリーナ円柱 (`ArenaRenderer`): world-frame 静止、中心 `(ARENA_CENTER_X, ARENA_CENTER_Y)` 半径 `ARENA_RADIUS` の半透明円柱で戦闘領域の視覚ガイド (物理判定なし)。D pattern で per-vertex Lorentz 変換、時間方向半幅 = `max(ρ(θ), ARENA_MIN_HALF_HEIGHT)` (ρ 大で光円錐交点まで伸び、ρ 小では固定半幅でガード)。過去光円錐 × 円柱交線 (pastCone) は下限なしで独立 position attribute に描画。毎 frame in-place 更新 (DESIGN.md §メタ原則 M17)。詳細: DESIGN.md §描画「アリーナ円柱」
+- Exhaust (推進ジェット、自機のみ v0、C pattern): 自機球の反推力方向に 2 層 cone (青外 + 白内、additive で青白プラズマ)。magnitude は EMA smoothing (60/180ms) で点滅解消、方向は非 smoothing。energy 枯渇で自動非表示。他機対応 (D pattern + Lorentz 収縮、phaseSpace に共変 α^μ 同梱) は未実装。詳細: DESIGN.md §描画「Exhaust」
+- 時間的距離 opacity fade (Lorentzian、per-vertex shader): `fade = r²/(r² + Δt²)`、`r = TIME_FADE_SCALE = LCH = 20`。`applyTimeFadeShader` を `onBeforeCompile` で全 D pattern material に inject。適用: 世界線 tube (生存/凍結)・デブリ・自己光円錐・アリーナ円柱・レーザー batch。観測者時刻 ±LCH で半透明、±2×LCH で 0.2、±3×LCH で 0.1 の緩やか減衰。詳細: DESIGN.md §描画「時間的距離 opacity fade」
 
 ### Store 構造 (`src/stores/game-store.ts`、Stage C 以降)
 
@@ -272,7 +258,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `MAX_FROZEN_WORLDLINES` | 20 | 凍結世界線の保持上限 |
 | `MAX_DEBRIS` | 20 | デブリの保持上限 |
 | `EXPLOSION_PARTICLE_COUNT` | 30 | デブリパーティクル数 |
-| `MAX_WORLDLINE_HISTORY` | 1000 | 世界線のサンプル数上限。5000 から削減 (SceneContent useMemo と game loop の交差計算が毎フレーム O(N) で history 走査 → 長時間プレイで FPS 低下、1000 に下げて視覚妥協と FPS 改善のバランス取り)。中期対策: 交差計算を O(log N) 化すれば 5000 に戻せる |
+| `MAX_WORLDLINE_HISTORY` | 1000 | 世界線サンプル数上限。FPS balance で 5000 → 1000 に削減 (交差 O(log N) 化で 5000 復帰可、SESSION.md パフォ残課題参照) |
 | `MAX_KILL_LOG` | 1000 | kill event log の安全 cap (通常は GC で届かない) |
 | `MAX_RESPAWN_LOG` | 500 | respawn event log の安全 cap |
 | `PLAYER_ACCELERATION` | 0.8 c/s | プレイヤー加速度 |
@@ -284,27 +270,27 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `PLAYER_MARKER_SIZE_OTHER` | 0.2 | 他機マーカーサイズ |
 | `ARENA_CENTER_X/Y` | SPAWN_RANGE/2 = 5 | アリーナ円柱の中心（= spawn 一様分布の中心） |
 | `ARENA_RADIUS` | 20 | アリーナ円柱半径（= LASER_RANGE × 2） |
-| `ARENA_MIN_HALF_HEIGHT` | `= LIGHT_CONE_HEIGHT` = 20 | 円柱の時間方向半幅下限。各 θ で半幅 = `max(ρ(θ), ARENA_MIN_HALF_HEIGHT)`。ρ が小さい θ (観測者が円柱に近い) では固定半幅でガード、ρ が大きい θ (円柱から遠い) では光円錐交点まで伸ばす。旧 `ARENA_HEIGHT = LIGHT_CONE_HEIGHT × 2` の半幅相当、観測者が円柱中心にいる既存ケース (全 θ で ρ = R = LCH) ではちょうど ±LCH 描画される。過去光円錐交線 (`pastCone`) は独立に下限なしで描画するため、この定数は円柱本体 (surface / 垂直線 / 上端 rim) の range のみ決める |
+| `ARENA_MIN_HALF_HEIGHT` | `= LIGHT_CONE_HEIGHT` = 20 | 円柱時間方向半幅下限。`max(ρ(θ), ARENA_MIN_HALF_HEIGHT)` のガード (pastCone は下限なし、独立描画)。DESIGN.md §描画「アリーナ円柱」 |
 | `ARENA_RADIAL_SEGMENTS` | 128 | 円柱側面の周方向分割数（surface / 垂直線 / 上端 rim / 過去光円錐交線で共有、光行差表現のため細かく） |
 | `ARENA_COLOR` | `hsl(180,40%,70%)` | アリーナ円柱の色 (暫定シアン、surface / 垂直線 / 交線同色)。プレイヤー色や LH 色と干渉しない色相帯。パステル化時に再検討 |
 | `ARENA_SURFACE_OPACITY` | 0.1 | 円柱側面 surface の透明度 (= 光円錐 surface と同値) |
 | `ARENA_VERTICAL_LINE_OPACITY` | 0.05 | 時間方向に伸びる垂直線 (ARENA_RADIAL_SEGMENTS 本) の透明度 (= 光円錐 wireframe と同値)。CylinderGeometry + wireframe だと三角形の対角線も出てジグザグになるため、LineSegments で純粋な縦線のみ描画 |
 | `ARENA_PAST_CONE_OPACITY` | 1.0 | 過去光円錐交線の透明度。下限 H で clamp されず `pos.t − ρ(θ)` をそのまま独立 position attribute で描く物理的に意味のある線 (「今まさに光が届いている円柱上の事象」) |
 | `ARENA_FUTURE_CONE_OPACITY` | 0.3 | 円柱「上端 rim」(= `pos.t + max(ρ, HALF_HEIGHT)`) の透明度。ρ > HALF_HEIGHT の θ では未来光円錐交線と一致、ρ < HALF_HEIGHT の θ では固定半幅 H による rim。pastCone の 1.0 より控えめ (既に起きた event vs まだ起きていない event の情報量差) |
-| `STARDUST_COUNT` | 20000 | 時空星屑の spark 総数 (案 17)。段階増量: 1500 → 4000 → 6000 (2026-04-17 夜) → 10000 → 12000 → 15000 → 20000 (2026-04-18、size 0.06→0.04 で小さくした分密度を上げて前方流入感を強化) |
+| `STARDUST_COUNT` | 20000 | 時空星屑 spark 総数 (案 17)。size 縮小と連動で段階増量、調整履歴は git log |
 | `STARDUST_SPATIAL_HALF_RANGE` | 60 | x, y の ±範囲 (world 単位)。observer boost で display z にミックスされても大半が view 内 |
 | `STARDUST_TIME_HALF_RANGE` | `TIME_FADE_SCALE × 3` = 60 | t の ±範囲。fade ≈ 0.1 の境界で自然消失 |
-| `STARDUST_SIZE` | 0.04 | point size (world 単位、sizeAttenuation)。0.06 → 0.04 に縮小 (2026-04-18、粒感を細かくしつつ COUNT を 6000→20000 に増やすことで前方流入感を維持) |
+| `STARDUST_SIZE` | 0.04 | point size (world 単位、sizeAttenuation) |
 | `STARDUST_COLOR` | `hsl(42, 55%, 80%)` | 暖色 amber。LH `hsl(220,70%,75%)` の淡青と視覚混同を避けるため彩度上げ (初期 15% → 55%) |
-| `STARDUST_OPACITY` | 0.5 | base opacity (per-vertex time fade で乗算)。前景干渉を避け 0.9 → 0.5 に |
+| `STARDUST_OPACITY` | 0.5 | base opacity (per-vertex time fade で乗算) |
 | `LIGHT_CONE_HEIGHT` | 20 | 描画上の円錐サイズ（c=1 で radius=height） |
 | `LIGHT_CONE_SURFACE_OPACITY` | 0.1 | 光円錐サーフェスの透明度 |
 | `LIGHT_CONE_WIRE_OPACITY` | 0.05 | 光円錐ワイヤーフレームの透明度 |
-| `TIME_FADE_SCALE` | `= LIGHT_CONE_HEIGHT` = 20 | 時間的距離 opacity fade の Lorentzian scale。`fade = r²/(r² + Δt²)` の r。per-vertex shader (`timeFadeShader.ts`) で全 D pattern material に適用。LCH を変更すると自動追従 |
+| `TIME_FADE_SCALE` | `= LCH` = 20 | 時間的距離 fade の Lorentzian scale `r` (`fade = r²/(r² + Δt²)`)。LCH と連動 |
 | `PLAYER_WORLDLINE_OPACITY` | 0.65 | 人間プレイヤーの世界線チューブ透明度 |
 | `LIGHTHOUSE_WORLDLINE_OPACITY` | 0.4 | 灯台の世界線チューブ透明度 |
-| `LASER_WORLDLINE_OPACITY` | 0.2 | レーザー世界線の透明度 (0.3 → 0.2 に下げて控えめ化、2026-04-17 夜) |
-| `GC_PAST_LCH_MULTIPLIER` | 5 | Temporal GC 閾値 (= 5×LCH = 100)。laser / frozen WL / debris の最未来点が earliestPlayerT − 5×LCH 未満で削除。time fade ≈ 0.04 の不可視域を刈る |
+| `LASER_WORLDLINE_OPACITY` | 0.2 | レーザー世界線の透明度 |
+| `GC_PAST_LCH_MULTIPLIER` | 5 | Temporal GC 閾値 (= 5×LCH = 100)、time fade ≈ 0.04 の不可視域を刈る。laser / frozen WL / debris が earliestPlayerT − 5×LCH より過去で削除 |
 | `DEBRIS_MAX_LAMBDA` | 2.5 | デブリ 1 粒子の coord time 方向の長さ。`DebrisRenderer` の segment 生成と Temporal GC の両方で参照 |
 | `EXHAUST_BASE_LENGTH` | 0.8 | 推進ジェット cone の最大長 (`smoothedMag=1` のとき) |
 | `EXHAUST_BASE_RADIUS` | 0.15 | 推進ジェット cone 底面半径 (固定) |
@@ -329,7 +315,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 |---|---|---|
 | `DOUBLE_TAP_INTERVAL` | 300 ms | ダブルタップ判定の最大間隔 |
 | `DOUBLE_TAP_DISTANCE` | 30 px | ダブルタップ判定の最大距離 |
-| `SWIPE_SENSITIVITY` | 0.008 rad/px | 横スワイプ → yaw 回転の感度。`pitchDelta` 生成には使うが `processCamera` 内で pitch には反映しない (ghost 物理統合後の衝突回避、2026-04-17 以降) |
+| `SWIPE_SENSITIVITY` | 0.008 rad/px | 横スワイプ → yaw 回転の感度。pitch には反映しない (ghost 物理統合後の衝突回避) |
 | `THRUST_SENSITIVITY_Y` | 0.015 /px | 縦変位 → thrust の感度（67px で最大推力）。生死問わず適用 (死亡中は ghost phaseSpace が動く) |
 
 | エネルギーパラメータ（`constants.ts`） | 値 | 説明 |
@@ -351,7 +337,7 @@ HUD: `energy < 0.001` で "FUEL" 赤ラベル + バー点滅 (`fuel-empty-pulse`
 | `HEARTBEAT_INTERVAL_MS` | 30s | WebSocket ping 送信間隔（サーバー→クライアント） |
 | `HEARTBEAT_TIMEOUT_MS` | 10s | WebSocket pong 応答タイムアウト |
 
-注: 上記は **relay server の WebSocket レベル heartbeat**。ゲームクライアントの beacon holder 切断検知は別の仕組み（`PeerProvider` の `ping` メッセージ: Stage G 以降 1 秒間隔 / 2.5 秒タイムアウト、visibility 復帰時に lastPingRef reset で false positive 回避）。
+注: 上記は **relay server の WebSocket レベル heartbeat**。ゲームクライアントの beacon holder 切断検知は `PeerProvider` の `ping` (1s / 2.5s) で別経路。
 
 ### ビルド設定
 
