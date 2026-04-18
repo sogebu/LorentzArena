@@ -100,24 +100,14 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       );
     }
 
-    // Lighthouse: migration 経路では既に players Map に存在し ownerId 差し替えだけ
-    // (spawn エフェクトを撃ち直さない)。初回 boot では handleSpawn で作成。
+    // Lighthouse: 初回 boot では handleSpawn で新規作成。migration 経路では既に
+    // players Map に存在し、LH ownerId の host への差し替えは assumeHostRole が
+    // 同期で完了させているため、ここでは何もしない (existingLh があれば skip)。
     const lighthouseId = `${LIGHTHOUSE_ID_PREFIX}0`;
     const existingLh = store.players.get(lighthouseId);
+    stale.staleFrozenRef.current.delete(lighthouseId);
 
-    if (existingLh) {
-      if (existingLh.ownerId !== myId) {
-        store.setPlayers((prev) => {
-          const lh = prev.get(lighthouseId);
-          if (!lh) return prev;
-          const next = new Map(prev);
-          next.set(lighthouseId, { ...lh, ownerId: myId });
-          return next;
-        });
-      }
-      stale.staleFrozenRef.current.delete(lighthouseId);
-    } else {
-      stale.staleFrozenRef.current.delete(lighthouseId);
+    if (!existingLh) {
       const t = Date.now() / 1000 - OFFSET;
       store.handleSpawn(
         lighthouseId,

@@ -718,16 +718,25 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     });
 
     // Assume the host role: clear old state, set as host, register handlers,
-    // rewrite Lighthouse ownership to self, and notify React via roleVersion
-    // so role-dependent effects re-evaluate. This bundles the invariant:
-    // setAsHost() must always be paired with setRoleVersion() + LH ownership
-    // takeover (so the new host's useGameLoop owner poll picks up LH respawn).
+    // rewrite Lighthouse ownership to self, normalize peerOrderRef (drop self),
+    // and notify React via roleVersion so role-dependent effects re-evaluate.
+    // This is the SINGLE source of truth for LH ownership takeover — the
+    // RelativisticGame init effect intentionally does not duplicate it. The
+    // synchronous setPlayers here closes the LH-silent window: the next RAF
+    // tick of useGameLoop sees lh.ownerId === myId immediately.
     const assumeHostRole = () => {
       peerManager.clearBeaconHolder();
       peerManager.setAsBeaconHolder();
       registerStandardHandlers(peerManager);
       const newHostId = peerManager.id();
       if (newHostId) {
+        // Host's peerOrder is canonically the non-self peers, but we may have
+        // inherited a list including self from the previous host's last ping.
+        // Filter eagerly so the first ping we send out has correct shape (the
+        // connections useEffect will replace it on next React tick anyway).
+        peerOrderRef.current = peerOrderRef.current.filter(
+          (id) => id !== newHostId,
+        );
         const store = useGameStore.getState();
         store.setPlayers((prev) => {
           let changed = false;
