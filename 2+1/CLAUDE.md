@@ -292,15 +292,22 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `LASER_WORLDLINE_OPACITY` | 0.2 | レーザー世界線の透明度 |
 | `GC_PAST_LCH_MULTIPLIER` | 5 | Temporal GC 閾値 (= 5×LCH = 100)、time fade ≈ 0.04 の不可視域を刈る。laser / frozen WL / debris が earliestPlayerT − 5×LCH より過去で削除 |
 | `DEBRIS_MAX_LAMBDA` | 2.5 | デブリ 1 粒子の coord time 方向の長さ。`DebrisRenderer` の segment 生成と Temporal GC の両方で参照 |
-| `EXHAUST_BASE_LENGTH` | 0.8 | 推進ジェット cone の最大長 (`smoothedMag=1` のとき) |
-| `EXHAUST_BASE_RADIUS` | 0.15 | 推進ジェット cone 底面半径 (固定) |
-| `EXHAUST_OFFSET` | 0.3 | 自機球表面から cone 底面までのすき間 |
-| `EXHAUST_MAX_OPACITY` | 0.45 | cone opacity 上限 (smoothedMag に比例)。プラズマ噴射らしい透明感 |
+| `EXHAUST_BASE_LENGTH` | 1.2 | 推進ジェット cone の最大長 (`smoothedMag=1` のとき) |
+| `EXHAUST_BASE_RADIUS` | 0.22 | 推進ジェット cone 底面最大半径 |
+| `EXHAUST_RADIUS_MIN_SCALE` | 0.5 | radius を smoothed magnitude 連動させる下限倍率 (0.5×〜1.0×)。mobile 連続 thrust で視覚フィードバック明示 |
+| `EXHAUST_OFFSET` | 0.3 | 自機球表面から cone 底面までのすき間 (矢印の base もここ) |
+| `EXHAUST_MAX_OPACITY` | 0.6 | cone opacity 上限 (smoothedMag に比例)。プラズマ噴射らしい透明感 |
 | `EXHAUST_OUTER_COLOR` | `hsl(210, 85%, 60%)` | 外側 cone 色 (明るい青、全機共通。識別性は sphere / worldline 側) |
 | `EXHAUST_INNER_COLOR` | `hsl(210, 70%, 92%)` | 内側 core cone 色 (冷たい白、外側と additive で青白プラズマ) |
 | `EXHAUST_ATTACK_TIME` | 60 ms | magnitude EMA の立ち上がり時定数 (PC binary 入力の点滅防止、方向は smoothing しない) |
 | `EXHAUST_RELEASE_TIME` | 180 ms | 同じ EMA の減衰時定数 (キー離し後の余韻) |
-| `EXHAUST_VISIBILITY_THRESHOLD` | 0.01 | smoothed magnitude がこれ未満で cone 非表示 |
+| `EXHAUST_VISIBILITY_THRESHOLD` | 0.01 | smoothed magnitude がこれ未満で cone / 矢印 非表示 |
+| `ARROW_BASE_LENGTH` | 2.4 | 加速度矢印 (flat 2D ShapeGeometry) の全長最大値 |
+| `ARROW_BASE_WIDTH` | 0.95 | 加速度矢印の最大幅。geometry unit 幅 0.7 をこの値でスケール |
+| `ARROW_BASE_OFFSET` | 0.9 | 球表面から矢印 tail までのすき間。`EXHAUST_OFFSET = 0.3` より大きく取り、噴射炎と矢印の視覚分離を強める |
+| `ARROW_COLOR` | `hsl(45, 85%, 70%)` | 矢印色 amber。exhaust 青白と補色、重なっても識別可 |
+| `ARROW_MAX_OPACITY` | 0.55 | 矢印 opacity 上限。flat + DoubleSide で視認性重視 |
+| `LIGHT_CONE_COLOR` | `hsl(200, 35%, 85%)` | 自機光円錐 surface/wire 色 (固定、プレイヤー色非依存)。アリーナ円柱 hue 180° と 20° 差、パステル化時再調整 |
 | `GAME_LOOP_INTERVAL` | 8 ms | `setInterval`（タブ非アクティブ対応） |
 | `CAUSAL_FREEZE_HYSTERESIS` | 2.0 | 因果律凍結の振動防止閾値 |
 

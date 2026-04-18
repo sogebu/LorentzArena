@@ -21,6 +21,7 @@ import {
   AIM_ARROW_BASE_OPACITY,
   AIM_ARROW_OPACITY_STEP,
   ARROW_BASE_LENGTH,
+  ARROW_BASE_OFFSET,
   ARROW_BASE_WIDTH,
   ARROW_COLOR,
   ARROW_MAX_OPACITY,
@@ -310,11 +311,12 @@ const AccelerationArrow = ({
     );
 
     // geometry: y ∈ [-0.5, 1.0] の arrow shape (tail が y=-0.5、tip が y=+1.0)
-    // scale Y = totalLength、scale X = totalWidth。base 位置は sphere 表面から EXHAUST_OFFSET 先
-    // geometry tail の y=-0.5 をその位置に合わせるには、中心を +offset + 0.5×scaleY に置く
+    // scale Y = totalLength、scale X = totalWidth。base 位置は sphere 表面から
+    // ARROW_BASE_OFFSET 先 (exhaust より離して視覚分離)。
+    // geometry tail の y=-0.5 をその位置に合わせるには、中心を offset + 0.5×scaleY に置く
     const totalLength = ARROW_BASE_LENGTH * smoothed;
     const totalWidth = ARROW_BASE_WIDTH * smoothed;
-    const centerOffset = EXHAUST_OFFSET + 0.5 * totalLength;
+    const centerOffset = ARROW_BASE_OFFSET + 0.5 * totalLength;
 
     mesh.position.set(
       dp.x + dirX * centerOffset,

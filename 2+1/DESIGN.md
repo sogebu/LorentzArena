@@ -935,6 +935,56 @@ D pattern は維持: 全 geometry は world 座標で vertex を持ち、`matrix
 
 **将来拡張**: (a) 他機対応 (step 2-3): phaseSpace に `alpha: Vector4` 追加、発信者 `Λ(u_own)` boost、受信側 `Λ(u_obs)^{-1}` で戻す → D pattern + 共変 α 昇格で Lorentz 収縮・光行差自然。世界線 sample に α^μ 同梱で位置・4-velocity と frame 統一 (1st jet bundle 視点)。(b) 内側コアの色グラデーション (Planck 放射 metaphor)。
 
+### 加速度矢印 (AccelerationArrow、2026-04-18)
+
+**動機**: Exhaust は「反推力」として船体の後方に噴射される → 前進中はカメラと反対側に出て球体で occluded、後退中は手前に出るが方向の識別は難しい。「今どちらに加速しようとしているか」 = 入力意図を**船体の前方 (加速度方向)** に出す必要がある。ユーザー要望 #1 (前進/後退の区別) / #4 (加速度ベクトル矢印)。
+
+**形状: flat 2D ShapeGeometry (xy 平面) に決定**
+
+検討した代替:
+
+1. **3D cone (ConeGeometry)** — 初版。加速度方向と視線方向が揃うと「cone の底面を正面から見る」状態になり、単なる円盤 (blob) に見えて矢印性を失う (実機確認済)。2+1 のカメラは船体上空から斜め見下ろしが基本だが、自機の加速度は必ず xy 平面内にあるため、カメラの見込み方向が加速度にパラレルな瞬間が頻発。**却下**。
+2. **3D arrow (shaft + arrowhead 立体)** — cone よりはマシだが同じ視線整列問題あり、geometry / vertex count も無駄。
+3. **flat 2D arrow in xy 平面 (採用)** — `THREE.Shape` で shaft + head を 1 枚の平面 path として定義、`ShapeGeometry` にする。xy 平面上に「寝かせて」描画、任意視点 (斜め見下ろし) で常に arrow shape が見える。`side: THREE.DoubleSide` で真上から見ても裏面も可視。
+
+加速度は 2+1 では常に xy 平面内にあるため、矢印も xy 平面に埋め込むのが物理的に自然 (3+1 への拡張時は別解が必要)。
+
+**geometry**: [`threeCache.ts`](src/components/game/threeCache.ts) `sharedGeometries.accelerationArrowFlat`。単位 shape は `y ∈ [-0.5, 1.0]` の矢印:
+
+- tip: `(0, 1)`
+- head 左右下: `(±0.35, 0.55)` — 頭の幅 0.7
+- shaft 左右上: `(±0.14, 0.55)` — 軸の幅 0.28
+- tail 左右下: `(±0.14, -0.5)`
+
+`mesh.scale.set(ARROW_BASE_WIDTH * smoothed, ARROW_BASE_LENGTH * smoothed, 1)` で幅/長さを独立スケール → `ARROW_BASE_WIDTH = 0.95` で実幅は `0.7 × 0.95 ≈ 0.66`、`ARROW_BASE_LENGTH = 2.4` で実長は `1.5 × 2.4 = 3.6` (magnitude=1 時)。
+
+**C pattern (Exhaust と同じ採用理由)**: v0 は自機のみ。mesh は display 座標で player から直接生成 (`transformEventForDisplay(player.phaseSpace.pos, observerPos, observerBoost)` で自機 dp を得る)。他機表示 (D pattern 昇格) は exhaust と同じく phaseSpace に共変 α^μ 同梱が前提、未実装。
+
+**配置**: 矢印 tail (geometry `y = -0.5` 相当) を sphere 表面から `ARROW_BASE_OFFSET = 0.9` 先に配置。`centerOffset = ARROW_BASE_OFFSET + 0.5 × totalLength` → mesh center を加速度方向に offset。Quaternion `setFromUnitVectors((0,1,0), (dirX, dirY, 0))` で +y を加速度方向に回転。
+
+**ARROW_BASE_OFFSET の設計判断**: 当初は `EXHAUST_OFFSET = 0.3` と共通 (矢印 = exhaust の反対方向なので根元同士で球を挟む非対称) だったが、前進時に「噴射炎の反対に同じような炎」と誤認する報告 → `ARROW_BASE_OFFSET` を別定数にして 0.9 まで離した。exhaust は物理現象として球体に近接、矢印は UI 要素として球体から一歩離れる、という役割分離を見た目で強調。
+
+**色**: `ARROW_COLOR = hsl(45, 85%, 70%)` amber。exhaust 青白 (`hsl(210, 85%, 60%)`) と補色関係で、重なっても識別可能。プレイヤー色とも干渉しにくい hue。
+
+**material**: `MeshBasicMaterial` + `transparent` + `depthWrite: false` (後続 additive と同様の描画順不感化) + `toneMapped: false` (色を指定通り出す) + `side: THREE.DoubleSide`。**非 additive** を意図的選択: 矢印は「指示」であり「発光」ではない、濃度の乗算ではなく色そのものを見せたい。
+
+**EMA smoothing**: Exhaust と**同じ関数** (attack 60ms / release 180ms) を**別 ref** で独立保持 (`smoothedMagRef`)。共有 ref にしても挙動は同じだが、2 コンポーネントが同じ useFrame 内で順序依存を持たないよう分離 (どちらが先に tick しても独立に収束)。
+
+**visibility threshold**: `smoothed < EXHAUST_VISIBILITY_THRESHOLD (0.01)` で非表示。Exhaust と同閾値で「input が有意に入っていない」状態を共有判定。energy 枯渇で `thrustAccelRef` が 0 ベクトルになれば矢印も自動で消える (特別分岐不要)。
+
+**役割分離のまとめ**:
+
+| 要素 | 役割 | 方向 | 視覚言語 |
+|---|---|---|---|
+| Exhaust cone | 反推力プラズマ噴射 (物理現象) | 船体の後方 = 加速度の反対 | 青白 additive、球に密着 |
+| AccelerationArrow | 加速度方向の指示 (UI 意図) | 船体の前方 = 加速度と同じ | Amber flat、球から離れる |
+
+**除外したケース**:
+- 他機の矢印表示: heading ≠ 加速度方向 (pitch/yaw 入力次第で任意に独立)、phaseSpace の共変 α 同期と heading-from-controls の両方が要る → 設計が exhaust よりも複雑、Phase A のスコープ外 (SESSION.md §次にやること「進行方向可視化 分岐 A」に合流予定)
+- 3D 化 (pitch で上下に振れる立体矢印): 2+1 では pitch はカメラのみで物理には影響しないため不要
+
+**参考 commit**: 2026-04-18 (Phase A2)。パラメータ調整履歴 (length 0.8→1.6→1.2, arrow 1.2→2.4→ "きもーち小さく" 保留) は git log を参照。
+
 ### 時間的距離 opacity fade (Lorentzian、2026-04-17)
 
 **動機**: 凍結世界線・デブリは event 時刻が固定されているので、観測者の世界系時刻 `t_obs` が進むにつれて相対的に「過去へ遠ざかる」。現状は opacity 一定なので、遠い過去の event も常に同じ濃さで描画され、観測者の「今」の情報密度が相対的に薄まる + 昔の凍結世界線が画面に残り続けて視覚的ノイズ化。

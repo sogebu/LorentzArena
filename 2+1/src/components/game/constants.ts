@@ -124,6 +124,10 @@ export const EXHAUST_VISIBILITY_THRESHOLD = 0.01; // smoothed magnitude < これ
 // EMA smoothed magnitude を exhaust と共有。
 export const ARROW_BASE_LENGTH = 2.4; // 矢印の全長最大値 (magnitude=1)。視認性重視で exhaust より長い
 export const ARROW_BASE_WIDTH = 0.95; // 矢印の最大幅 (magnitude=1)、geometry の 0.7 unit 幅をスケール
+// 球表面から矢印 tail (geometry y=-0.5) までの空隙。exhaust (EXHAUST_OFFSET=0.3) より
+// 大きく取ることで、前進中に噴射炎 (船の後方) と矢印 (船の前方) の根元が離れ、
+// 「これは噴射炎じゃなく別物」として視覚分離が強くなる。
+export const ARROW_BASE_OFFSET = 0.9;
 // exhaust の青白と補色関係の amber、重なっても識別可能
 export const ARROW_COLOR = "hsl(45, 85%, 70%)";
 export const ARROW_MAX_OPACITY = 0.55; // flat shape + DoubleSide で視認性重視
