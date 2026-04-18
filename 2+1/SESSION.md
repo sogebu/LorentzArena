@@ -4,9 +4,17 @@
 
 対戦可能。**`537a1f4` デプロイ済み** (build `2026/04/18 14:11:06 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
+Phase B (B1〜B4 + preview tweaks) はローカルで完了、lint/tsc/test 通過 (28 tests)。deploy 中。
+
 ## 完了済みリファクタ
 
 各項目の判断根拠は DESIGN.md の対応節を参照。
+
+**2026-04-18 (Phase B — 13-item UX パッケージ中盤、ローカル完了・未 deploy)**:
+- B1: 自機光円錐をアリーナ円柱境界まで延伸。固定 `ConeGeometry` → `LightConeRenderer` (世界座標 BufferGeometry + 2 共有 BufferAttribute で future/past 共用、per-frame in-place update、apex-fan triangle index)。各方位 θ で `cylinderHitDistance` により ρ(θ) を解き、観測者が円柱外を向く方向は `LIGHT_CONE_HEIGHT` フォールバック。`sharedGeometries.lightCone` 削除。Vitest 9 本で判別式 3 regime カバー (内側 / 外側 pointing-at / 外側 miss)
+- B2: LH / stardust の色再設計 (A 案)。`LIGHTHOUSE_COLOR` `hsl(220,70%,75%)` → `hsl(190,65%,60%)` (teal/cyan)、`STARDUST_COLOR` `hsl(42,55%,80%)` → `hsl(330,55%,80%)` (rose-pink)。寒色⇔暖色のコントラストを彩度と明度の差で強化し、time fade で彩度落ちしても識別できるようにした
+- B3: モバイル初回チュートリアル。`TutorialOverlay.tsx` (localStorage key `la-tutorial-shown` で 1 回限り、`isTouchDevice` gate、4 秒自動 dismiss + タップ dismiss、z-index 1000 の semi-transparent full-screen `<button>`)。i18n キー 5 本追加 (`tutorial.title/.swipeHorizontal/.swipeVertical/.fire/.dismissHint`)。既存 `hud.controls.touch.fire` を「ダブルタップ+ホールド連射」に明示
+- B4: ハイスコア重複保存の解消。`sessionId = crypto.randomUUID()` を `useHighScoreSaver` で生成、`highScores.ts` / turn-worker `LeaderboardEntry` schema に追加。server 側 `handlePostLeaderboard` は同 sessionId の既存 entry を filter (LH は `{sessionId}-{lh_id}` で衝突回避)。`visibilitychange` を pagehide と併用して iOS Safari のバックグラウンド遷移を捕捉、fore 復帰時は `savedRef` を reset して再保存を許可
 
 **2026-04-18 (Phase A — 13-item UX パッケージ前半)**:
 - A1: タブ離席 stale input 解消 (useKeyboardInput / touchInput で visibilitychange/blur/pagehide reset、useGameLoop で dt > 0.2s skip ガード)。残留していた「タブ復帰後も加速継続」を根絶 — SESSION.md 既知課題「モバイル: 指離しても加速継続」も合わせて解消
@@ -74,14 +82,9 @@
 
 ## 次にやること
 
-### Phase B (13-item UX パッケージ中盤、別セッション)
+### Phase B 直後 (このセッションで着手)
 
-全項目の判断根拠・ファイル一覧は plan file: `/Users/odakin/.claude/plans/refactored-sparking-quill.md`
-
-- **B1 光円錐を円柱境界まで延伸 (#6)** — 各方位角 θ でアリーナ円柱との交点 `ρ(θ)` まで延伸。固定 `ConeGeometry` を廃棄し BufferGeometry で毎 frame in-place update (M17)。過去/未来光円錐とも適用、観測者がアリーナ外の場合は θ 範囲を限定 (判別式 < 0 で skip)。Vitest で ρ(θ) regression
-- **B2 LH + 星屑色の再設計 (#10)** — 現状 LH `hsl(220,70%,75%)` と 星屑 `hsl(42,55%,80%)` がユーザー体感で識別困難。A 案: LH を teal/cyan (`hsl(190,65%,60%)`) + 星屑を rose-pink (`hsl(330,55%,80%)`)、B 案: 星屑をさらに高彩度 amber。開始時に A/B スクリーンショット比較後決定
-- **B3 ダブルタップ+長押し hint + 3秒 mobile tutorial overlay (#5 部分)** — i18n のダブルタップ表記を "ダブルタップ → そのまま指を離さずホールドで連射" に修正、初回起動のみ 3秒半透明 overlay (localStorage flag `la-tutorial-shown` で gate、mobile のみ)。フルチュートリアルは別セッション
-- **B4 ハイスコア重複バグ (#12)** — `turn-worker/src/index.ts:120-156` の `handlePostLeaderboard` に dedup なしで重複 entry 生成。修正: (a) server 側で同 name の 10秒以内 submit を idempotent 化、(b) client で `crypto.randomUUID()` sessionId 付与 localStorage 固定で (name, sessionId) replace、(c) `useHighScoreSaver.ts` に visibilitychange 追加 (pagehide と併用、iOS Safari 対策)
+- **localhost 確認 → commit + deploy** — ユーザーが `http://localhost:5173/LorentzArena/` で Phase B (円柱境界まで伸びる光円錐 / 青緑 LH + ピンク星屑 / mobile tutorial / ハイスコア dedup) を確認 → OK で commit + `pnpm run deploy`。build 値 + 本番 URL を報告
 
 ### Phase C (別セッション、C1 と C2 独立)
 

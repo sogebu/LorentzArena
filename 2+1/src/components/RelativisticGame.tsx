@@ -19,6 +19,7 @@ import {
   SPAWN_RANGE,
 } from "./game/constants";
 import { HUD } from "./game/HUD";
+import { TutorialOverlay } from "./game/TutorialOverlay";
 import {
   createLighthouse,
   isLighthouse,
@@ -374,6 +375,10 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
           />
         </Canvas>
       )}
+
+      {/* モバイル初回チュートリアル (localStorage でブラウザ毎 1 回のみ)。
+          touch 非対応端末では render されない。z-index: 1000 で HUD 上に overlay。 */}
+      <TutorialOverlay />
     </div>
   );
 };

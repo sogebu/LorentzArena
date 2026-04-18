@@ -6,6 +6,7 @@ export type HighScoreEntry = {
   kills: number;
   date: string; // ISO date string
   duration: number; // seconds
+  sessionId?: string; // groups submits from the same play session so repeat saves dedup
 };
 
 export const loadHighScores = (): HighScoreEntry[] => {
@@ -30,7 +31,10 @@ export const loadHighScores = (): HighScoreEntry[] => {
 
 export const saveHighScore = (entry: HighScoreEntry): void => {
   try {
-    const existing = loadHighScores();
+    let existing = loadHighScores();
+    if (entry.sessionId) {
+      existing = existing.filter((e) => e.sessionId !== entry.sessionId);
+    }
     existing.push(entry);
     existing.sort((a, b) => b.kills - a.kills);
     const trimmed = existing.slice(0, MAX_ENTRIES);

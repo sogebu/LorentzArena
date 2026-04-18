@@ -17,6 +17,7 @@ type LeaderboardEntry = {
   kills: number;
   date: string;
   duration: number;
+  sessionId?: string;
 };
 
 const MAX_LEADERBOARD_ENTRIES = 50;
@@ -113,7 +114,11 @@ const isValidEntry = (e: unknown): e is LeaderboardEntry => {
     o.kills > 0 &&
     typeof o.date === "string" &&
     typeof o.duration === "number" &&
-    o.duration > 0
+    o.duration > 0 &&
+    (o.sessionId === undefined ||
+      (typeof o.sessionId === "string" &&
+        o.sessionId.length >= 1 &&
+        o.sessionId.length <= 128))
   );
 };
 
@@ -137,19 +142,32 @@ const handlePostLeaderboard = async (
   const entries =
     (await env.LEADERBOARD.get<LeaderboardEntry[]>(KV_KEY, "json")) ?? [];
 
-  // Check if score qualifies for top N
-  if (
-    entries.length >= MAX_LEADERBOARD_ENTRIES &&
-    entry.kills <= entries[entries.length - 1].kills
-  ) {
-    // Score doesn't make the cut — save a KV write
+  // Dedup: a repeat submit from the same play session replaces the previous one.
+  // Otherwise (e.g. mobile pagehide + visibilitychange both firing) a single game
+  // would generate multiple leaderboard rows.
+  const filtered = entry.sessionId
+    ? entries.filter((e) => e.sessionId !== entry.sessionId)
+    : entries;
+  const dedupRemoved = filtered.length !== entries.length;
+
+  // Check if score qualifies for top N (measured against the dedup'd list).
+  const qualifies =
+    filtered.length < MAX_LEADERBOARD_ENTRIES ||
+    entry.kills > filtered[filtered.length - 1].kills;
+
+  if (!qualifies) {
+    if (dedupRemoved) {
+      // The new submit supersedes an old entry that did qualify — persist the
+      // removal so the superseded entry doesn't linger on the board.
+      await env.LEADERBOARD.put(KV_KEY, JSON.stringify(filtered));
+    }
     return jsonResponse({ accepted: false }, 200, origin);
   }
 
   // Insert, sort, trim
-  entries.push(entry);
-  entries.sort((a, b) => b.kills - a.kills);
-  const trimmed = entries.slice(0, MAX_LEADERBOARD_ENTRIES);
+  filtered.push(entry);
+  filtered.sort((a, b) => b.kills - a.kills);
+  const trimmed = filtered.slice(0, MAX_LEADERBOARD_ENTRIES);
   await env.LEADERBOARD.put(KV_KEY, JSON.stringify(trimmed));
 
   return jsonResponse({ accepted: true }, 200, origin);

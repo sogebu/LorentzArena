@@ -7,7 +7,13 @@ export const ja = {
   "hud.controls.fire": "Space: レーザー発射",
   "hud.controls.touch.heading": "スワイプ ←→: 方向転換",
   "hud.controls.touch.thrust": "スワイプ ↑: 前進 ↓: 後退",
-  "hud.controls.touch.fire": "ダブルタップ: レーザー発射",
+  "hud.controls.touch.fire": "ダブルタップ+ホールドで連射",
+  // Tutorial overlay (mobile only, shown once per browser)
+  "tutorial.title": "操作方法",
+  "tutorial.swipeHorizontal": "左右スワイプ：方向転換",
+  "tutorial.swipeVertical": "上下スワイプ：前進・後退",
+  "tutorial.fire": "ダブルタップ+ホールド：連射",
+  "tutorial.dismissHint": "画面をタップして閉じる",
   // HUD - toggles
   "hud.restFrame": "静止系",
   "hud.worldFrame": "世界系",

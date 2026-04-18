@@ -36,15 +36,29 @@ export const colorForPlayerId = (id: string): string => {
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 };
 
-// プレイヤーの色からレーザーの色を生成（より明るく、彩度を上げる）
+import {
+  LASER_LIGHTNESS_BOOST,
+  LASER_LIGHTNESS_MAX,
+  LASER_SATURATION_BOOST,
+} from "./constants";
+
+// プレイヤー色からレーザー色を生成。彩度嵩上げ + 明度ちょい上げで「発光体」
+// らしくするが、明度を上げすぎると teal や紫が淡色に潰れて「どの色のレーザー
+// だか分からない」ので、LASER_*_BOOST 定数で鮮やかさと明度のバランスを調整可能。
 export const getLaserColor = (playerColor: string): string => {
   // HSL形式をパース: hsl(hue, saturation%, lightness%)
   const match = playerColor.match(/hsl\((\d+),\s*(\d+)%,\s*(\d+)%\)/);
   if (!match) return playerColor;
 
   const hue = Number.parseInt(match[1], 10);
-  const saturation = Math.min(100, Number.parseInt(match[2], 10) + 10); // 彩度を上げる
-  const lightness = Math.min(90, Number.parseInt(match[3], 10) + 25); // 明度を上げて明るく
+  const saturation = Math.min(
+    100,
+    Number.parseInt(match[2], 10) + LASER_SATURATION_BOOST,
+  );
+  const lightness = Math.min(
+    LASER_LIGHTNESS_MAX,
+    Number.parseInt(match[3], 10) + LASER_LIGHTNESS_BOOST,
+  );
 
   return `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 };

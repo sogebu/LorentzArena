@@ -48,6 +48,16 @@ export const SPAWN_RANGE = 10;
 // レーザー連射間隔（ミリ秒）
 export const LASER_COOLDOWN = 100;
 
+// レーザー色の生成パラメータ (`getLaserColor` で参照)。プレイヤー色から
+// saturation/lightness を嵩上げして「発光体」らしい色にする。旧値は
+// sat+10 / light+25 / light_max 90 だったが、明度を上げすぎると淡色に収束
+// して LH (teal) のレーザーが「青く見えない」問題が出たため、彩度優先に
+// 振り直し (sat+15 / light+10、明度上限も 85 に抑える)。全プレイヤー共通で
+// 変わるので、LH だけでなく人間プレイヤーのレーザーも鮮やかになる。
+export const LASER_SATURATION_BOOST = 15;
+export const LASER_LIGHTNESS_BOOST = 10;
+export const LASER_LIGHTNESS_MAX = 85;
+
 // レーザー + スラスト共用エネルギー
 export const ENERGY_MAX = 1.0;
 export const ENERGY_PER_SHOT = 1.0 / 30; // 30 発で枯渇（≈3 秒連射）
@@ -82,7 +92,12 @@ export const EXPLOSION_PARTICLE_COUNT = 30;
 export const LIGHTHOUSE_ID_PREFIX = "lighthouse-";
 export const LIGHTHOUSE_FIRE_INTERVAL = 2000; // ms
 export const LIGHTHOUSE_SPAWN_GRACE = 5000; // ms — don't fire for this long after spawn
-export const LIGHTHOUSE_COLOR = "hsl(220, 70%, 75%)"; // 薄い青
+// LH sphere + worldline 色。teal 系で stardust `hsl(48, 85%, 65%)` (濃い黄) と
+// 寒色⇔暖色の対比。旧 `hsl(220, 70%, 75%)` は淡青で stardust 旧 amber と
+// time fade 後近接する問題があったため Phase B2 で彩度上げ明度下げ。レーザー変換は
+// `getLaserColor` の調整 (sat +15 / light +10) 後 `hsl(190, 80%, 70%)` になり teal 感が残る。
+// arena `hsl(180, 40%, 70%)` とは hue 10° 差だが、彩度 65% vs 40%、明度 60% vs 70% で区別。
+export const LIGHTHOUSE_COLOR = "hsl(190, 65%, 60%)";
 // 照準ジッタ (rad)。N(0, σ²) を 3σ で clamp。距離 D での横ズレ RMS ≈ σ·D。
 // σ=0.3 で射程 10 では 3σ 時に最大 tan(0.9)·10 ≈ 12.6 マス外す (実質どこへでも)。
 export const LIGHTHOUSE_AIM_JITTER_SIGMA = 0.3;
@@ -194,9 +209,13 @@ export const STARDUST_SPATIAL_HALF_RANGE = 60;
 export const STARDUST_TIME_HALF_RANGE = TIME_FADE_SCALE * 3;
 // Point size (world 単位、sizeAttenuation で perspective 縮小)
 export const STARDUST_SIZE = 0.04;
-// 暖色 amber (彩度上げて LH の light blue `hsl(220, 70%, 75%)` との視覚混同を回避)。
-// arena cyan / exhaust blue / LH blue 全て寒色側なので、暖色方向で明確に分離。
-export const STARDUST_COLOR = "hsl(42, 55%, 80%)";
+// 黄色寄り。LH `hsl(190, 65%, 60%)` teal との寒色⇔暖色コントラストを維持しつつ、
+// 「星屑」の素直な暖色選択 (2026-04-18 Phase B2 追調整: rose-pink → yellow)。
+// 旧 amber `hsl(42, 55%, 80%)` を彩度上げ明度下げで再チューン、time fade で
+// 淡色化しても「黄色っぽさ」が残るようにした。`colorForJoinOrder` (黄金角循環)
+// で黄色系プレイヤー色が出る可能性は rose-pink 時より上がるが、stardust は
+// time fade で遠方ほど薄まるため実害は小さい。
+export const STARDUST_COLOR = "hsl(48, 85%, 65%)";
 // Base opacity。per-vertex time fade shader で乗算される (境界で ~0 まで減衰)。
 export const STARDUST_OPACITY = 0.5;
 
@@ -206,9 +225,11 @@ export const STARDUST_OPACITY = 0.5;
 // flash 幅 σ (coord time 単位)。σ が小さいほど瞬間的 (パチッと)、大きいと緩やか。
 export const STARDUST_FLASH_SIGMA = 0.1;
 // 過去光円錐 flash 強さ (alpha 乗算係数、peak 時 `1 + BOOST` 倍)。0 で無効。
-export const STARDUST_FLASH_PAST_BOOST = 2.0;
+// 2026-04-18: 2.0 → 1.6、「気持ち弱く」の微調整 (past/future の比率 2:1 維持)。
+export const STARDUST_FLASH_PAST_BOOST = 1.6;
 // 未来光円錐 flash 強さ。過去より控えめ。
-export const STARDUST_FLASH_FUTURE_BOOST = 1.0;
+// 2026-04-18: 1.0 → 0.8 (past と同率 20% 減)。
+export const STARDUST_FLASH_FUTURE_BOOST = 0.8;
 
 // --- Worldline / laser opacity ---
 export const PLAYER_WORLDLINE_OPACITY = 0.65;

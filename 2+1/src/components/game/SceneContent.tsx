@@ -13,6 +13,7 @@ import { selectInvincibleUntil, useGameStore } from "../../stores/game-store";
 import { ArenaRenderer } from "./ArenaRenderer";
 import { DebrisRenderer } from "./DebrisRenderer";
 import { LaserBatchRenderer } from "./LaserBatchRenderer";
+import { LightConeRenderer } from "./LightConeRenderer";
 import { isLighthouse } from "./lighthouse";
 import { SpawnRenderer } from "./SpawnRenderer";
 import { StardustRenderer } from "./StardustRenderer";
@@ -42,10 +43,6 @@ import {
   FUTURE_CONE_WORLDLINE_SPHERE_OPACITY,
   KILL_NOTIFICATION_RING_OPACITY,
   KILL_NOTIFICATION_SPHERE_OPACITY,
-  LIGHT_CONE_COLOR,
-  LIGHT_CONE_HEIGHT,
-  LIGHT_CONE_SURFACE_OPACITY,
-  LIGHT_CONE_WIRE_OPACITY,
   LIGHTHOUSE_WORLDLINE_OPACITY,
   PAST_CONE_WORLDLINE_RING_OPACITY,
   PLAYER_ACCELERATION,
@@ -66,7 +63,6 @@ import {
   getThreeColor,
   sharedGeometries,
 } from "./threeCache";
-import { applyTimeFadeShader } from "./timeFadeShader";
 import type { Laser } from "./types";
 
 /**
@@ -624,81 +620,10 @@ export const SceneContent = ({
         </>
       )}
 
-      {/* 自分の光円錐のみ描画。各プレイヤーは自分の光円錐しか見ないため固定色 (プレイヤー色非依存)。 */}
-      {playerList
-        .filter((p) => p.id === myId)
-        .map((player) => {
-          const wp = player.phaseSpace.pos; // world
-          const color = getThreeColor(LIGHT_CONE_COLOR);
-          // group は world event へ並進、中の mesh は (cone offset) × R_x(±π/2) を scale/position/rotation で表現
-          return (
-            <group
-              key={`lightcone-${player.id}`}
-              matrix={buildMeshMatrix(wp, displayMatrix)}
-              matrixAutoUpdate={false}
-            >
-              {/* Future cone: surface + wireframe。per-vertex 時間 fade で apex (観測者の今)
-                  が濃く、base (±LCH の円盤) が薄くなる。 */}
-              <mesh
-                position={[0, 0, LIGHT_CONE_HEIGHT / 2]}
-                rotation={[-Math.PI / 2, 0.0, 0.0]}
-                geometry={sharedGeometries.lightCone}
-              >
-                <meshBasicMaterial
-                  color={color}
-                  transparent
-                  opacity={LIGHT_CONE_SURFACE_OPACITY}
-                  side={THREE.DoubleSide}
-                  depthWrite={false}
-                  onBeforeCompile={applyTimeFadeShader}
-                />
-              </mesh>
-              <mesh
-                position={[0, 0, LIGHT_CONE_HEIGHT / 2]}
-                rotation={[-Math.PI / 2, 0.0, 0.0]}
-                geometry={sharedGeometries.lightCone}
-              >
-                <meshBasicMaterial
-                  color={color}
-                  transparent
-                  opacity={LIGHT_CONE_WIRE_OPACITY}
-                  wireframe
-                  depthWrite={false}
-                  onBeforeCompile={applyTimeFadeShader}
-                />
-              </mesh>
-              {/* Past cone: surface + wireframe */}
-              <mesh
-                position={[0, 0, -LIGHT_CONE_HEIGHT / 2]}
-                rotation={[Math.PI / 2, 0.0, 0.0]}
-                geometry={sharedGeometries.lightCone}
-              >
-                <meshBasicMaterial
-                  color={color}
-                  transparent
-                  opacity={LIGHT_CONE_SURFACE_OPACITY}
-                  side={THREE.DoubleSide}
-                  depthWrite={false}
-                  onBeforeCompile={applyTimeFadeShader}
-                />
-              </mesh>
-              <mesh
-                position={[0, 0, -LIGHT_CONE_HEIGHT / 2]}
-                rotation={[Math.PI / 2, 0.0, 0.0]}
-                geometry={sharedGeometries.lightCone}
-              >
-                <meshBasicMaterial
-                  color={color}
-                  transparent
-                  opacity={LIGHT_CONE_WIRE_OPACITY}
-                  wireframe
-                  depthWrite={false}
-                  onBeforeCompile={applyTimeFadeShader}
-                />
-              </mesh>
-            </group>
-          );
-        })}
+      {/* 自機光円錐 (プレイヤーごとに自分のみ描画、固定色)。rim は ARENA_RADIUS の円柱側面
+          まで延伸 (ρ(θ) 依存)、ray が円柱を外す方向は LIGHT_CONE_HEIGHT にフォールバック。
+          geometry / in-place update / shader 適用の詳細は LightConeRenderer 内 JSDoc 参照。 */}
+      {myPlayer && <LightConeRenderer observerPos={myPlayer.phaseSpace.pos} />}
 
       {/* 世界線の過去光円錐交差マーカー（球+コア=位置のみ / リング=D pattern） */}
       {worldLineIntersections.map(({ playerId, color: colorText, pos }) => {
@@ -738,7 +663,7 @@ export const SceneContent = ({
             geometry={sharedGeometries.laserIntersectionTriangle}
             matrix={m}
             matrixAutoUpdate={false}
-            scale={[1.5, 1.5, 1.5]}
+            scale={[2, 2, 2]}
           >
             <meshBasicMaterial color={c} side={THREE.DoubleSide} />
           </mesh>
@@ -758,7 +683,7 @@ export const SceneContent = ({
             matrix={m}
             matrixAutoUpdate={false}
           >
-            <mesh geometry={sharedGeometries.laserIntersectionTriangle} scale={[1.2, 1.2, 1.2]}>
+            <mesh geometry={sharedGeometries.laserIntersectionTriangle} scale={[2, 2, 2]}>
               <meshBasicMaterial color={c} transparent opacity={FUTURE_CONE_LASER_TRIANGLE_OPACITY} side={THREE.DoubleSide} depthWrite={false} />
             </mesh>
           </group>

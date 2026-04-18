@@ -9,7 +9,13 @@ export const en: Record<TranslationKey, string> = {
   "hud.controls.fire": "Space: Fire laser",
   "hud.controls.touch.heading": "Swipe ←→: Turn",
   "hud.controls.touch.thrust": "Swipe ↑: Forward ↓: Backward",
-  "hud.controls.touch.fire": "Double-tap: Fire",
+  "hud.controls.touch.fire": "Double-tap and hold to fire rapidly",
+  // Tutorial overlay (mobile only, shown once per browser)
+  "tutorial.title": "Controls",
+  "tutorial.swipeHorizontal": "Horizontal swipe: Turn",
+  "tutorial.swipeVertical": "Vertical swipe: Forward / Back",
+  "tutorial.fire": "Double-tap + hold: Rapid fire",
+  "tutorial.dismissHint": "Tap anywhere to dismiss",
   // HUD - toggles
   "hud.restFrame": "Rest frame",
   "hud.worldFrame": "World frame",

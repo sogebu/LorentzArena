@@ -281,7 +281,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `STARDUST_SPATIAL_HALF_RANGE` | 60 | x, y の ±範囲 (world 単位)。observer boost で display z にミックスされても大半が view 内 |
 | `STARDUST_TIME_HALF_RANGE` | `TIME_FADE_SCALE × 3` = 60 | t の ±範囲。fade ≈ 0.1 の境界で自然消失 |
 | `STARDUST_SIZE` | 0.04 | point size (world 単位、sizeAttenuation) |
-| `STARDUST_COLOR` | `hsl(42, 55%, 80%)` | 暖色 amber。LH `hsl(220,70%,75%)` の淡青と視覚混同を避けるため彩度上げ (初期 15% → 55%) |
+| `STARDUST_COLOR` | `hsl(48, 85%, 65%)` | 黄色寄り。LH `hsl(190,65%,60%)` teal と暖色⇔寒色コントラスト。旧 amber `hsl(42,55%,80%)` を彩度上げ明度下げで再チューン (旧は LH 旧 `hsl(220,70%,75%)` 淡青と time fade 後近接。rose-pink を経由して 2026-04-18 Phase B2 追調整で黄色に戻した) |
 | `STARDUST_OPACITY` | 0.5 | base opacity (per-vertex time fade で乗算) |
 | `LIGHT_CONE_HEIGHT` | 20 | 描画上の円錐サイズ（c=1 で radius=height） |
 | `LIGHT_CONE_SURFACE_OPACITY` | 0.1 | 光円錐サーフェスの透明度 |

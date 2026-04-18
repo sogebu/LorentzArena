@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { DEBRIS_MARKER_OPACITY, LIGHT_CONE_HEIGHT } from "./constants";
+import { DEBRIS_MARKER_OPACITY } from "./constants";
 
 // Color キャッシュ
 const colorCache = new Map<string, THREE.Color>();
@@ -31,7 +31,6 @@ export const sharedGeometries = {
     shape.closePath();
     return new THREE.ShapeGeometry(shape);
   })(),
-  lightCone: new THREE.ConeGeometry(LIGHT_CONE_HEIGHT, LIGHT_CONE_HEIGHT, 32, 1, true),
   explosionParticle: new THREE.SphereGeometry(0.5, 6, 6), // スケールで size 調整
   // Spawn effect
   spawnRing: new THREE.TorusGeometry(0.5, 0.03, 8, 24), // スケールで ringRadius 調整
