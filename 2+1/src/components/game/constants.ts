@@ -231,8 +231,12 @@ export const ARENA_CENTER_X = SPAWN_RANGE / 2;
 export const ARENA_CENTER_Y = SPAWN_RANGE / 2;
 // 半径: LASER_RANGE (=10) の 2 倍、光円錐 HEIGHT と同じスケール感。
 export const ARENA_RADIUS = 20;
-// 円柱の時間方向レンジは観測者の因果コーン (過去・未来光円錐) で動的に切り出される
-// ため、固定の ARENA_HEIGHT 定数は不要 (ArenaRenderer で observer.t ± ρ(θ) を直接計算)。
+// 円柱の時間方向「半幅」下限: 観測者の光円錐との交線 (= ρ(θ)) と max を取り、半幅 =
+// max(ρ, ARENA_MIN_HALF_HEIGHT)。ρ が小さい θ (観測者に近い円柱上の点) では固定半幅
+// でガードし円柱が極端に狭くならないようにし、ρ が大きい (観測者が円柱から遠い) θ では
+// 光円錐 ∩ 円柱 の交点まで伸ばす。旧 ARENA_HEIGHT = LIGHT_CONE_HEIGHT × 2 の半幅相当で、
+// 観測者が円柱中心にいる既存ケース (全 θ で ρ = R = LCH) ではちょうど ±LCH 描画される。
+export const ARENA_MIN_HALF_HEIGHT = LIGHT_CONE_HEIGHT;
 export const ARENA_RADIAL_SEGMENTS = 128;
 // 暫定色 (シアン, 仮想空間境界のメタファー)。パステル化時に再検討。
 // プレイヤー色 (HSL 黄金角分散) と Lighthouse (hsl(220,70%,75%)) の色相帯を避ける
@@ -240,9 +244,11 @@ export const ARENA_COLOR = "hsl(180, 40%, 70%)";
 export const ARENA_SURFACE_OPACITY = 0.1;
 // 時間方向に伸びる垂直線 ARENA_RADIAL_SEGMENTS 本の opacity (対角線のない純粋な縦線)
 export const ARENA_VERTICAL_LINE_OPACITY = 0.05;
-// 過去光円錐 × 円柱交線 LineLoop の透明度。サンプル数は surface と共有するため
-// `ARENA_RADIAL_SEGMENTS` と同じ (shared position attribute で surface/ 交線 の頂点ズレ回避)。
+// 過去光円錐 × 円柱交線 LineLoop の透明度。clamp されず `pos.t - ρ(θ)` をそのまま
+// 描く独立 position attribute を持つ (円柱上端/下端 rim とは別の線)。
+// 「今まさに光が届いている円柱上の事象の集合」として意味を保持するため濃く描く。
 export const ARENA_PAST_CONE_OPACITY = 1.0;
-// 未来光円錐 × 円柱交線 (上端) の透明度。過去光円錐より控えめ (既に起きた event vs
-// まだ起きていない event の情報量差を視覚で反映)。
+// 円柱「上端 rim」(= 位置 pos.t + max(ρ, HALF_HEIGHT)) の透明度。ρ > HALF_HEIGHT
+// の θ では未来光円錐交線と一致し、ρ < HALF_HEIGHT の θ では固定半幅 H による rim。
+// pastCone の 1.0 より控えめ (既に起きた event vs まだ起きていない event の情報量差)。
 export const ARENA_FUTURE_CONE_OPACITY = 0.3;

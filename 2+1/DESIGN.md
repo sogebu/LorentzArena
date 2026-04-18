@@ -987,27 +987,29 @@ cutoff = earliestPlayerT − LIGHT_CONE_HEIGHT × GC_PAST_LCH_MULTIPLIER   // = 
 
 D pattern は維持: 全 geometry は world 座標で vertex を持ち、`matrix=displayMatrix` で per-vertex Lorentz 変換。rest frame では光行差で円 → 楕円に歪む。
 
-**4 geometry は shared BufferAttribute + in-place update** (M17 の一般則を適用): surface / 垂直線 / 過去光円錐交線 / 未来光円錐交線の 4 geometry が**同じ position Float32Array** を共有し、各 geometry は `setIndex` だけが異なる:
-- surface: triangle strip の index (N × 2 triangle)
-- 垂直線: `(上 vertex, 下 vertex)` の pair index (N pair の LineSegments)
-- pastCone: 下 vertex の輪 index (N 頂点 LineLoop)
-- futureCone: 上 vertex の輪 index (N 頂点 LineLoop)
+**2026-04-18 改: 半幅下限ガード + 過去光円錐交線の独立描画**: 観測者が円柱に近い θ (= ρ が小さい θ) では交線のみで切ると円柱が時間方向に極端に狭くなり、視覚的に円柱の存在感が失われる。これを避けるため円柱本体 (surface / 垂直線 / 上端 rim) の時間方向半幅を `half(θ) = max(ρ(θ), ARENA_MIN_HALF_HEIGHT)` に変更 (= 2026-04-17 の「交線で切る」を「下限 H で底上げ」に一般化、ユーザー指示「max(最大値, 交線)」)。`ARENA_MIN_HALF_HEIGHT = LIGHT_CONE_HEIGHT = 20` (= 旧 `ARENA_HEIGHT = LIGHT_CONE_HEIGHT × 2` の半幅相当、観測者が円柱中心にいる基本ケース全 θ で ρ = R = LCH で ±LCH 描画)。ρ が大きい遠い θ では従来通り光円錐交点 (`pos.t ± ρ`) まで伸び、観測者から遠い円柱部分は大きく、近い部分は最低でも ±H に底上げされる。time fade が Lorentzian r=LCH で |dt| ≤ LCH なら fade ≥ 0.5、`±2×LCH` で fade ≈ 0.2 なので、遠い θ で t が大きく離れても自然に薄くなる。
 
-`N = ARENA_RADIAL_SEGMENTS = 128` の頂点 (上・下の pair × N) を初回 1 回だけ allocation、以後 `useFrame` で positions を **in-place 更新 + `positionAttr.needsUpdate = true`**。共有 attribute なので needsUpdate 1 回で 4 geometry 全部に反映、GPU upload も 1 回/frame。
+ガード適用後は円柱上端 rim (旧 `futureCone`) の意味が ρ < H の θ で「未来光円錐交線」ではなくなる (単なる固定半幅 H の上端 rim)。そのため **過去光円錐 × 円柱交線 (`pastCone`) は下限ガードから独立させた別 position attribute で描画**: 全 θ で `pos.t − ρ(θ)` をそのまま辿る LineLoop。ρ < H の θ では円柱下端 (= `pos.t − H`) より未来側に入り、観測者に近い θ では pastCone が円柱内部に位置するが、物理的意味 (観測者の過去光円錐と円柱側面無限延長の交線 = 今まさに光が届いている円柱上の事象の集合) は円柱の人工的な下限ガードと独立に成立するので自然な描画。未来側に対称な「未来光円錐 × 円柱交線」は独立描画しない (物理的情報量が過去側と非対称、ユーザー判断 2026-04-18: 「独立に書くのは過去光円錐交線だけ、他はぜんぶ薄くてよい」)。`ARENA_FUTURE_CONE_OPACITY = 0.3` は上端 rim の意味 (ρ > H の θ で未来光円錐交線 / ρ < H の θ で単なる rim) の中間的重要度を反映、pastCone (1.0) の明確な物理的意味より控えめ。
 
-**頂点共有の効能**: surface の下辺と pastCone loop、surface の上辺と futureCone loop が**完全に同じ頂点を通る**ので、密度差による線ズレが発生しない。旧実装では surface 64 頂点 / cone loop 128 頂点と密度が違い、直線補間の曲線近似が微妙に食い違って線が数ピクセルずれていた。shared attribute で原理的に解消。
+**position attribute × 2 + 4 geometry は in-place update** (M17 の一般則を適用):
+- **clamped 共有 attribute** (`Float32Array` 長 N×2×3): surface / 垂直線 / 上端 rim (旧 futureCone) が共有。各 θ に対して `[上 vertex (i*2+0), 下 vertex (i*2+1)]`、t 座標は `pos.t ± max(ρ, ARENA_MIN_HALF_HEIGHT)`
+- **unclamped pastCone 専用 attribute** (`Float32Array` 長 N×3): pastCone 専用。各 θ に対して 1 vertex、t = `pos.t − ρ(θ)` (下限ガードなし)
+
+各 geometry は `setIndex` だけが異なる: surface (triangle strip 2×N)、垂直線 (LineSegments pair ×N)、上端 rim (LineLoop 上 vertex)、pastCone (LineLoop 独立 attribute)。初回 1 回だけ allocation、以後 `useFrame` で 2 attribute の positions を **in-place 更新 + `needsUpdate = true`**。GPU upload は 2 回/frame (共有 clamped + 独立 pastCone)。
+
+**2026-04-17 版からの差分の要点**: 「頂点完全共有で線ズレ解消」の効能は surface ↔ 垂直線 ↔ 上端 rim 間では維持されるが、pastCone だけは独立 attribute になる。ただし pastCone は下限ガードと物理的意味がズレる (ρ < H で下端と pastCone の t が離れる) ので、元々「surface 下辺と完全一致」を保つ理由が消える。独立化でコストは N×3 float の追加 allocation (軽微) と GPU upload 1 回/frame 増。
 
 **frustumCulled=false**: in-place update では BufferGeometry の `boundingSphere` が初回 positions (0 埋め) のまま再計算されず、three.js の frustum culling が「画面外判定」で描画スキップし Arena が見えなくなる (本番で実測)。観測者中心で必ず画面内にあるので culling 無効化で回避。M17 の trap 1 事例。
 
 **採用しなかった代替**:
-- 固定 `ARENA_HEIGHT` + observer.t 中心 window: overdraw 問題 / 「観測者外側から円柱全体が画面を覆う」を招く
+- 固定 `ARENA_HEIGHT` + observer.t 中心 window: overdraw 問題 / 「観測者外側から円柱全体が画面を覆う」を招く (2026-04-17 放棄)
 - 線だけ因果コーンで clip、surface は ±H/2 固定: 下端・上端で線と surface がズレて違和感
 - CylinderGeometry を使い続けて scale だけ動的変更: scale は均一なので θ 方向の非対称性 (= 観測者中心ずれ時の ρ(θ) 依存) が表現できない
 - 毎 tick 新 BufferGeometry 再生成: Float32Array / BufferAttribute / BufferGeometry object を 125 Hz で 4 個 allocate、GC 圧 + GPU buffer leak 懸念で FPS 低下 (M17 アンチパターン)
-
-**FutureConeLoop の透明度を控えめにする**: 過去光円錐交線 (下地平線) は `ARENA_PAST_CONE_OPACITY = 1.0` で強調、未来光円錐交線 (上地平線) は `ARENA_FUTURE_CONE_OPACITY = 0.3` で控えめ。既に起きた event (過去光円錐境界で観測者が実際に見ている周縁) と、まだ起きていない event (未来光円錐境界で観測者が今後届く先) という**情報量の非対称**を視覚で反映。
-
-**過去光円錐 × 円柱 交線 (PastConeLoop)**: 観測者 (xo, yo, to) から見て、円柱上の各点 (cx + R cos θ, cy + R sin θ, t(θ)) が過去光円錐 t = to − √((x−xo)² + (y−yo)²) を満たす closed curve。surface の下 vertex と同じ position attribute を共有するので surface 下辺と完全一致。**各プレイヤーが自分の過去光円錐との交線を独立に描画** (`observerPos` は自機): 「今まさに光が届いている円柱の周縁」を明示し、world 静止円柱本体が薄く描画されていることを認知的に補完する。
+- **2026-04-18 下限ガード案**:
+  - pastCone も下限ガード側に含めて attribute 共有維持: 物理的意味 (光円錐と円柱の交線) が ρ < H で破綻、`futureCone` と対称に「下端 rim line」に格下げされる。今まさに光が届いている事象の明示という役割を失うので却下
+  - pastCone を ρ ≥ H の θ のみ描画 (closed loop でなく部分弧): LineLoop→ LineSegments + visible mask の複雑化に見合う利得なし、また ρ < H でも物理的に「円柱側面無限延長上」の交線は定義される (下限 H は視覚的な都合)
+  - 未来側も pastCone と同じく独立 `futureCone` 線として残す: 過去/未来の情報量非対称 (観測者の目に今届いている事象 vs 未だ届かない事象) を視覚に反映しない。ユーザー判断で pastCone のみを「独立で意味のある線」として残す
 
 **anchor 思想の対比**: spawn pillar は「点 + null cone anchor」、アリーナは「時間方向に延びた空間構造 + observer.t 中心 window + 交線ハイライト」。M13 (時空 anchor は表現したいもので選ぶ) の 2 つ目の適用例。時間的に拡張された幾何は「固定 anchor 1 点」では足らず、「window + 今の周縁」の 2 層が要る。
 
@@ -1088,7 +1090,7 @@ opacity = baseOpacity × fade
 | 凍結世界線 tube (`WorldLineRenderer`) | 死亡時刻前後の history range | 各 vertex が死亡時刻からの Δt で fade。時間経過で全体薄く、古い死亡から消える |
 | デブリ (`DebrisRenderer` InstancedMesh) | 各 instance: death event ~ + maxLambda の segment | `USE_INSTANCING` 分岐で各 instance 独立に per-vertex fade |
 | 自己光円錐 4 mesh (`SceneContent`) | cone vertex: apex = observer.t、base = observer.t ± LCH | apex (観測者の今) 濃く、±LCH の base 薄く |
-| アリーナ円柱 4 mesh (`ArenaRenderer`) | 各 θ で 2 vertex: observer.t ± ρ(θ), ρ(θ) ≤ LCH | 中腹 (= observer.t 近傍頂点) 濃く、上下端 (光円錐交点) 薄く |
+| アリーナ円柱 4 mesh (`ArenaRenderer`) | 共有 attribute 上下端: observer.t ± max(ρ(θ), H), pastCone: observer.t − ρ(θ) | 中腹 (= observer.t 近傍頂点) 濃く、ρ 大の θ で光円錐交点まで伸びた端点は自動的に薄く |
 | レーザー batch (`LaserBatchRenderer` LineSegments) | 各 laser の 2 vertex: emission.t, emission.t + range | emission 濃く、range 先端薄く |
 
 **対象外 (fade 不要 or 効果なし)**:
