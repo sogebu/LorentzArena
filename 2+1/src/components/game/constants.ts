@@ -42,7 +42,7 @@ export const DEBRIS_MAX_LAMBDA = 2.5;
 // 当たり判定の半径
 export const HIT_RADIUS = 0.25;
 // 灯台専用の当たり判定半径 (塔底面の円柱半径 0.40 と同値、見た目に合わせて広め)
-export const LIGHTHOUSE_HIT_RADIUS = 0.4;
+export const LIGHTHOUSE_HIT_RADIUS = 0.2;
 
 // スポーン範囲（x, y）
 export const SPAWN_RANGE = 10;
@@ -276,7 +276,7 @@ export const DEBRIS_WORLDLINE_OPACITY = 0.1;
 export const DEBRIS_MARKER_OPACITY = 0.7;
 
 // --- Player marker sizes ---
-export const PLAYER_MARKER_SIZE_SELF = 0.42;
+export const PLAYER_MARKER_SIZE_SELF = 0.21;
 export const PLAYER_MARKER_SIZE_OTHER = 0.2;
 
 // --- Player marker opacity (C pattern、時間 fade 非対象、pulse で無敵点滅) ---

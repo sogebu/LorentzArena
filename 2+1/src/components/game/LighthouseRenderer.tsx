@@ -111,7 +111,7 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
       matrix={buildMeshMatrix(anchorPos, displayMatrix)}
       matrixAutoUpdate={false}
     >
-    <group position={[0, 0, -LIGHTHOUSE_SINK]}>
+    <group position={[0, 0, -LIGHTHOUSE_SINK * 0.5]} scale={0.5}>
       {/* Body: tapered cylinder, base at event */}
       <mesh renderOrder={-1} position={[0, 0, 0.50]} rotation={ROT_Y_TO_Z} geometry={G.body}>
         <meshStandardMaterial
