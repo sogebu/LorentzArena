@@ -8,7 +8,7 @@ import {
   createWorldLine,
 } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
-import { MAX_WORLDLINE_HISTORY } from "./constants";
+import { ENERGY_MAX, MAX_WORLDLINE_HISTORY } from "./constants";
 import { applySnapshot, type buildSnapshot } from "./snapshot";
 import type { RelativisticPlayer } from "./types";
 
@@ -34,6 +34,7 @@ function makePlayer(
     ),
     color,
     isDead: false,
+    energy: ENERGY_MAX,
   };
 }
 

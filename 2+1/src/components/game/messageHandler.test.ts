@@ -8,7 +8,7 @@ import {
   createWorldLine,
 } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
-import { MAX_WORLDLINE_HISTORY, WORLDLINE_GAP_THRESHOLD_MS } from "./constants";
+import { ENERGY_MAX, MAX_WORLDLINE_HISTORY, WORLDLINE_GAP_THRESHOLD_MS } from "./constants";
 import {
   createMessageHandler,
   type MessageHandlerDeps,
@@ -35,6 +35,7 @@ function makePlayer(
     ),
     color,
     isDead: false,
+    energy: ENERGY_MAX,
   };
 }
 

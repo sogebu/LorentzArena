@@ -1,6 +1,7 @@
 import { appendWorldLine, createPhaseSpace, createWorldLine } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
 import {
+  ENERGY_MAX,
   LIGHTHOUSE_COLOR,
   MAX_FROZEN_WORLDLINES,
   MAX_LASERS,
@@ -167,6 +168,7 @@ export const createMessageHandler =
           color,
           isDead: false,
           displayName,
+          energy: existing?.energy ?? ENERGY_MAX,
         });
         return next;
       });
@@ -229,6 +231,24 @@ export const createMessageHandler =
       if (isLighthouse(msg.playerId)) {
         store.lighthouseLastFireTime.set(msg.playerId, Date.now());
       }
+    } else if (msg.type === "hit") {
+      // Phase C1: 被弾イベント (target-authoritative)。victim の owner が発信。
+      // 受信側は handleDamage で energy 減算 + (致命なら) handleKill を連鎖させる。
+      // kill イベント自体は別途 `kill` message で届く (victim owner が broadcast)。
+      if (
+        !isValidString(msg.victimId) ||
+        !isValidString(msg.killerId) ||
+        !isValidVector4(msg.hitPos) ||
+        !isFiniteNumber(msg.damage) ||
+        msg.damage < 0 ||
+        msg.damage > 10
+      )
+        return;
+      // 自分が owner の victim (自機 or 自分所有 LH) は local の hit detection
+      // で既に処理済み。relay 経由の自己 echo は無視。
+      const victim = store.players.get(msg.victimId);
+      if (victim?.ownerId === myId) return;
+      store.handleDamage(msg.victimId, msg.killerId, msg.hitPos, msg.damage, myId);
     } else if (msg.type === "respawn") {
       // Stage D: respawn は owner 発信。host は他 peer の respawn を受信したら
       // handleRespawn を実行 + registerHostRelay が relay を担当。

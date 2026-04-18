@@ -8,7 +8,7 @@ import {
   type Vector3,
   type Vector4,
 } from "../../physics";
-import { LIGHTHOUSE_COLOR, LIGHTHOUSE_ID_PREFIX, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
+import { ENERGY_MAX, LIGHTHOUSE_COLOR, LIGHTHOUSE_ID_PREFIX, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
 import type { RelativisticPlayer } from "./types";
 
 /** Check if a player ID belongs to a Lighthouse NPC. */
@@ -48,6 +48,7 @@ export const createLighthouse = (
     worldLine: wl,
     color: LIGHTHOUSE_COLOR,
     isDead: false,
+    energy: ENERGY_MAX,
   };
 };
 

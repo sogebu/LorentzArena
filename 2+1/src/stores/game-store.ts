@@ -4,9 +4,11 @@ import {
   INVINCIBILITY_DURATION,
   MAX_DEBRIS,
   MAX_FROZEN_WORLDLINES,
+  MAX_HIT_LOG,
   MAX_KILL_LOG,
   MAX_PENDING_SPAWN_EVENTS,
   MAX_RESPAWN_LOG,
+  POST_HIT_IFRAME_MS,
 } from "../components/game/constants";
 import { generateExplosionParticles } from "../components/game/debris";
 import { applyKill, applyRespawn } from "../components/game/killRespawn";
@@ -15,6 +17,7 @@ import type {
   DeathEvent,
   DebrisRecord,
   FrozenWorldLine,
+  HitEventRecord,
   KillEventRecord,
   KillNotification3D,
   Laser,
@@ -62,6 +65,11 @@ export interface GameState {
    */
   killLog: KillEventRecord[];
   respawnLog: RespawnEventRecord[];
+  /**
+   * Phase C1: 被弾 event log。selectPostHitUntil (i-frame 起点) + UI HIT flash
+   * の trigger に使う。lethal / non-lethal 問わず append、tail slice で cap。
+   */
+  hitLog: HitEventRecord[];
 
   // --- Actions: state setters ---
   setPlayers: (updater: PlayersUpdater) => void;
@@ -86,6 +94,21 @@ export interface GameState {
     myId: string | null,
     getPlayerColor: (id: string) => string,
   ) => void;
+  /**
+   * Phase C1: 被弾処理。energy を damage 減算し、`< 0` なら handleKill を呼ぶ。
+   * post-hit i-frame / respawn 無敵 / 既死の場合は no-op。
+   * owner 側 (victim === myId、または LH owner) だけが呼ぶべきだが、本体は呼び
+   * 出し側がフィルタ済みという前提で素直に実行する。
+   */
+  handleDamage: (
+    victimId: string,
+    killerId: string,
+    hitPos: { t: number; x: number; y: number; z: number },
+    damage: number,
+    myId: string | null,
+  ) => void;
+  /** Phase C1: energy のみ set (自機 fire/thrust 消費 + 自然回復の tick で使う)。 */
+  setPlayerEnergy: (playerId: string, energy: number) => void;
 
   // --- Actions: small helpers ---
   removePlayer: (playerId: string) => void;
@@ -117,6 +140,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   lighthouseLastFireTime: new Map(),
   killLog: [],
   respawnLog: [],
+  hitLog: [],
 
   // -----------------------------------------------------------------------
   // State setters
@@ -252,6 +276,63 @@ export const useGameStore = create<GameState>()((set, get) => ({
   },
 
   // -----------------------------------------------------------------------
+  // handleDamage (Phase C1) — energy 減算 + 致命判定
+  // -----------------------------------------------------------------------
+
+  handleDamage: (victimId, killerId, hitPos, damage, myId) => {
+    const state = get();
+    const victim = state.players.get(victimId);
+    if (!victim) return;
+    // 既死: 何もしない (kill 発生後にリレー遅延で届く hit 対策)
+    if (selectIsDead(state, victimId)) return;
+    const now = Date.now();
+    // respawn 無敵中: damage 無視 (kill も発生させない)
+    if (selectInvincibleUntil(state, victimId) > now) return;
+    // Post-hit i-frame: 直近 hit から POST_HIT_IFRAME_MS 未満は完全 no-op。
+    // hitLog にも append しない (さもないと i-frame が連打で無限延長、UI も
+    // latest wallTime を読んで flash が消えなくなる)。
+    if (selectPostHitUntil(state, victimId) > now) return;
+
+    const newEnergy = victim.energy - damage;
+    const isLethal = newEnergy < 0;
+
+    const hitEntry: HitEventRecord = {
+      victimId,
+      killerId,
+      hitPos,
+      damage,
+      wallTime: now,
+    };
+    const nextHitLog = [...state.hitLog, hitEntry].slice(-MAX_HIT_LOG);
+
+    // Non-lethal: energy を更新、hitLog に append。kill は出さない。
+    if (!isLethal) {
+      const nextPlayers = new Map(state.players);
+      nextPlayers.set(victimId, { ...victim, energy: newEnergy });
+      set({ players: nextPlayers, hitLog: nextHitLog });
+      return;
+    }
+
+    // Lethal: hitLog は先に commit、その後 handleKill へ委譲。
+    // energy の clamp は applyKill 内で扱わないため、明示的に 0 にしておく
+    // (respawn で ENERGY_MAX にリセットされるので見た目以外の影響はない)。
+    const nextPlayers = new Map(state.players);
+    nextPlayers.set(victimId, { ...victim, energy: 0 });
+    set({ players: nextPlayers, hitLog: nextHitLog });
+    get().handleKill(victimId, killerId, hitPos, myId);
+  },
+
+  setPlayerEnergy: (playerId, energy) =>
+    set((state) => {
+      const p = state.players.get(playerId);
+      if (!p) return state;
+      if (p.energy === energy) return state;
+      const next = new Map(state.players);
+      next.set(playerId, { ...p, energy });
+      return { players: next };
+    }),
+
+  // -----------------------------------------------------------------------
   // Small helpers
   // -----------------------------------------------------------------------
 
@@ -282,7 +363,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
 // Selectors (Stage C: event log を source of truth に)
 // ---------------------------------------------------------------------------
 
-type LogState = Pick<GameState, "killLog" | "respawnLog">;
+type LogState = Pick<GameState, "killLog" | "respawnLog" | "hitLog">;
 
 /** 各プレイヤーの latest kill wallTime。victimId ごとに最大値。 */
 const latestKillTime = (state: LogState): Map<string, number> => {
@@ -347,6 +428,20 @@ export const selectInvincibleIds = (state: LogState, now: number): Set<string> =
 /** UI 反映待ちの kill events (firedForUi === false)。過去光円錐到達判定で消化される。 */
 export const selectPendingKillEvents = (state: LogState): KillEventRecord[] =>
   state.killLog.filter((e) => !e.firedForUi);
+
+/**
+ * Phase C1: 被弾 i-frame 終了 wallTime。hitLog の victimId 最新 wallTime +
+ * POST_HIT_IFRAME_MS。hit 履歴が無ければ 0 (= never)。
+ * handleDamage が同 frame 複数 hit を 1 発扱いにするために使う。
+ */
+export const selectPostHitUntil = (state: LogState, victimId: string): number => {
+  let latest = 0;
+  for (const e of state.hitLog) {
+    if (e.victimId !== victimId) continue;
+    if (e.wallTime > latest) latest = e.wallTime;
+  }
+  return latest === 0 ? 0 : latest + POST_HIT_IFRAME_MS;
+};
 
 // ---------------------------------------------------------------------------
 // GC (Stage C-4)

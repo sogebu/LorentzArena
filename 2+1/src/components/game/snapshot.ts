@@ -7,7 +7,7 @@ import {
   type PhaseSpace,
 } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
-import { MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
+import { ENERGY_MAX, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
 import { computeSpawnCoordTime } from "./respawnTime";
 import type { RelativisticPlayer } from "./types";
 
@@ -31,6 +31,7 @@ export const buildSnapshot = (myId: string) => {
     color: string;
     displayName?: string;
     isDead: boolean;
+    energy: number;
     phaseSpace: {
       pos: { t: number; x: number; y: number; z: number };
       u: { x: number; y: number; z: number };
@@ -52,6 +53,7 @@ export const buildSnapshot = (myId: string) => {
       color: p.color,
       displayName: p.displayName,
       isDead: p.isDead,
+      energy: p.energy,
       phaseSpace: {
         pos: { t: p.phaseSpace.pos.t, x: p.phaseSpace.pos.x, y: p.phaseSpace.pos.y, z: p.phaseSpace.pos.z },
         u: { x: p.phaseSpace.u.x, y: p.phaseSpace.u.y, z: p.phaseSpace.u.z },
@@ -139,6 +141,7 @@ export const applySnapshot = (
       color: sp.color,
       isDead: sp.isDead,
       displayName: sp.displayName,
+      energy: typeof sp.energy === "number" ? sp.energy : ENERGY_MAX,
     });
     lastUpdateTimeRef.current.set(sp.id, Date.now());
   }
@@ -179,6 +182,7 @@ export const applySnapshot = (
       worldLine: wl,
       color: getPlayerColor(myId),
       isDead: false,
+      energy: ENERGY_MAX,
     });
   }
 

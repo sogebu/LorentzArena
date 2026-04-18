@@ -8,6 +8,7 @@ import {
   ENERGY_RECOVERY_RATE,
   GAME_LOOP_INTERVAL,
   GC_PAST_LCH_MULTIPLIER,
+  HIT_DAMAGE,
   LASER_RANGE,
   LIGHT_CONE_HEIGHT,
   MAX_LASERS,
@@ -111,7 +112,9 @@ export function useGameLoop({
   const causalFrozenRef = useRef<boolean>(false);
   const lastLaserTimeRef = useRef<number>(0);
   const fpsRef = useRef({ frameCount: 0, lastTime: performance.now() });
-  const energyRef = useRef(ENERGY_MAX);
+  // Phase C1: energy は store.players[myId].energy に移行。handleDamage と
+  // 共有プールになるため、ローカル ref は持たない (between-tick でのみ store が
+  // 変更されるので tick 開始時に読んで末尾に commit する方式)。
 
   // Track myDeathEvent transitions (for camera/energy reset on respawn)
   const prevMyDeathEventRef = useRef<unknown>(null);
@@ -148,14 +151,19 @@ export function useGameLoop({
       // --- Detect myDeathEvent transitions for local ref resets ---
       const currentMyDeathEvent = store.myDeathEvent;
       if (prevMyDeathEventRef.current !== null && currentMyDeathEvent === null) {
-        // non-null → null: self-respawn just happened → reset local refs
+        // non-null → null: self-respawn just happened → reset camera refs.
+        // energy は applyRespawn が ENERGY_MAX にリセット済 (store 側で一元管理)。
         cameraYawRef.current = 0;
         cameraPitchRef.current = DEFAULT_CAMERA_PITCH;
-        energyRef.current = ENERGY_MAX;
       }
       // null → non-null: self-death。ghost phaseSpace は handleKill 内で
       // 死亡時 phaseSpace から初期化されているため、ここでの特別リセットは不要。
       prevMyDeathEventRef.current = currentMyDeathEvent;
+
+      // Phase C1: tick 開始時に store から energy を読む (between-tick で
+      // handleDamage / applyRespawn が変更した最新値)。tick 内では local
+      // `energy` を通じて計算し、末尾で commit する。
+      let energy = store.players.get(myId)?.energy ?? ENERGY_MAX;
 
       // --- Cleanup ---
       store.setSpawns((prev) => {
@@ -259,14 +267,14 @@ export function useGameLoop({
           myId,
           cameraYawRef.current,
           currentTime,
-          energyRef.current,
+          energy,
           lastLaserTimeRef.current,
           wantsFire,
         );
 
         if (laserResult.laser) {
           lastLaserTimeRef.current = currentTime;
-          energyRef.current = laserResult.newEnergy;
+          energy = laserResult.newEnergy;
 
           store.setLasers((prev) => {
             const updated = [...prev, laserResult.laser as Laser];
@@ -280,7 +288,7 @@ export function useGameLoop({
       }
 
       // Energy recovery は physics (thrust 消費) 後に回す。ここでは setIsFiring だけ先に反映。
-      setIsFiring(wantsFire && energyRef.current >= ENERGY_PER_SHOT);
+      setIsFiring(wantsFire && energy >= ENERGY_PER_SHOT);
 
       // S-5: stale 検知は死亡中も走らせる（他プレイヤーの stale を検知するため）
       stale.checkStale(currentTime, store.players, myId);
@@ -317,12 +325,9 @@ export function useGameLoop({
               cameraYawRef.current,
               dTau,
               otherPositions,
-              energyRef.current,
+              energy,
             );
-            energyRef.current = Math.max(
-              0,
-              energyRef.current - physics.thrustEnergyConsumed,
-            );
+            energy = Math.max(0, energy - physics.thrustEnergyConsumed);
             thrustRequestedThisTick = physics.thrustRequested;
             thrustAccelerationThisTick = physics.thrustAcceleration;
 
@@ -361,12 +366,9 @@ export function useGameLoop({
               cameraYawRef.current,
               dTau,
               otherPositions,
-              energyRef.current,
+              energy,
             );
-            energyRef.current = Math.max(
-              0,
-              energyRef.current - physics.thrustEnergyConsumed,
-            );
+            energy = Math.max(0, energy - physics.thrustEnergyConsumed);
             thrustRequestedThisTick = physics.thrustRequested;
             thrustAccelerationThisTick = physics.thrustAcceleration;
 
@@ -400,12 +402,17 @@ export function useGameLoop({
       // リセットされるので、ここでの回復は不要 (加算する意味がない)。
       const freshIsDead = useGameStore.getState().players.get(myId)?.isDead ?? true;
       if (!wantsFire && !thrustRequestedThisTick && !freshIsDead) {
-        energyRef.current = Math.min(
-          ENERGY_MAX,
-          energyRef.current + ENERGY_RECOVERY_RATE * dTau,
-        );
+        energy = Math.min(ENERGY_MAX, energy + ENERGY_RECOVERY_RATE * dTau);
       }
-      setEnergy(energyRef.current);
+
+      // Phase C1: 末尾で energy を store に commit。handleDamage は between-tick
+      // のみ発火するので、この書き込みが damage を上書きする心配は無い。
+      const storeNow = useGameStore.getState();
+      const meNow = storeNow.players.get(myId);
+      if (meNow && meNow.energy !== energy) {
+        storeNow.setPlayerEnergy(myId, energy);
+      }
+      setEnergy(energy);
 
       // 自機 thrust 加速度を ref に反映 (exhaust 描画用)。
       thrustAccelRef.current = thrustAccelerationThisTick;
@@ -501,16 +508,32 @@ export function useGameLoop({
           freshForHit.processedLasers.clear();
         }
 
-        if (hitResult.kills.length > 0) {
+        if (hitResult.hits.length > 0) {
           for (const id of hitResult.hitLaserIds) {
             freshForHit.processedLasers.add(id);
           }
 
-          for (const { victimId, killerId, hitPos } of hitResult.kills) {
-            stale.staleFrozenRef.current.delete(victimId); // S-2: kill で stale クリア（二重 respawn 防止）
-            // target 自身が kill を broadcast（host: 全員へ、client: host 経由で relay）
+          for (const { victimId, killerId, hitPos } of hitResult.hits) {
+            // Phase C1: damage を先に適用 (i-frame / 既死 / 無敵 は handleDamage
+            // が内部で弾く)。致命なら handleDamage 内で handleKill が呼ばれる。
+            sendToNetwork({
+              type: "hit" as const,
+              victimId,
+              killerId,
+              hitPos,
+              damage: HIT_DAMAGE,
+            });
+            useGameStore
+              .getState()
+              .handleDamage(victimId, killerId, hitPos, HIT_DAMAGE, myId);
+
+            // 致命判定: handleDamage 後 selectIsDead で確認。lethal なら
+            // S-2 stale クリア + kill event broadcast + LH respawn timer。
+            const afterStore = useGameStore.getState();
+            if (!selectIsDead(afterStore, victimId)) continue;
+
+            stale.staleFrozenRef.current.delete(victimId);
             sendToNetwork({ type: "kill" as const, victimId, killerId, hitPos });
-            useGameStore.getState().handleKill(victimId, killerId, hitPos, myId);
 
             // 自機の respawn は owner poll (下の block) で駆動 (killLog.wallTime ベース)。
             // setTimeout 方式は useEffect cleanup ([peerManager, myId] 差し替え) で消失し、

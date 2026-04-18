@@ -5,7 +5,7 @@ import {
   createWorldLine,
   vector3Zero,
 } from "../../physics";
-import { MAX_WORLDLINE_HISTORY } from "./constants";
+import { ENERGY_MAX, MAX_WORLDLINE_HISTORY } from "./constants";
 import type { RelativisticPlayer } from "./types";
 
 /**
@@ -45,6 +45,7 @@ export const applyRespawn = (
     phaseSpace: ps,
     worldLine: newWorldLine,
     isDead: false,
+    energy: ENERGY_MAX,
   });
   return next;
 };

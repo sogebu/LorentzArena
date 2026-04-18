@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useGameStore } from "../../../stores/game-store";
 import { RESPAWN_DELAY } from "../constants";
 import type { DeathEvent } from "../types";
 import { hslToComponents } from "./utils";
@@ -38,6 +39,7 @@ const RespawnCountdown = () => {
 };
 
 type OverlaysProps = {
+  myId: string | null;
   isDead: boolean;
   deathFlash: boolean;
   killGlow: boolean;
@@ -47,7 +49,49 @@ type OverlaysProps = {
   myDeathEvent?: DeathEvent | null;
 };
 
+/**
+ * Phase C1: 自機が被弾したとき 1 回だけオレンジのフラッシュを出す。
+ * hitLog の自機 victim 件数を subscribe し、増加時に 300ms だけ表示。
+ * 増加検知は stale-closure を避けるため useRef で。
+ */
+const HitFlash = ({ myId }: { myId: string | null }) => {
+  const hitLog = useGameStore((s) => s.hitLog);
+  const [flash, setFlash] = useState(false);
+  const prevCountRef = useRef(0);
+
+  useEffect(() => {
+    if (!myId) return;
+    let count = 0;
+    for (const e of hitLog) {
+      if (e.victimId === myId && e.damage > 0) count++;
+    }
+    if (count > prevCountRef.current) {
+      setFlash(true);
+      const t = setTimeout(() => setFlash(false), 300);
+      prevCountRef.current = count;
+      return () => clearTimeout(t);
+    }
+    prevCountRef.current = count;
+  }, [hitLog, myId]);
+
+  if (!flash) return null;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        inset: 0,
+        zIndex: 201,
+        pointerEvents: "none",
+        boxShadow:
+          "inset 0 0 100px rgba(255,140,0,0.55), inset 0 0 40px rgba(255,180,40,0.4)",
+        animation: "hit-flash-fade 0.3s ease-out forwards",
+      }}
+    />
+  );
+};
+
 export const Overlays = ({
+  myId,
   isDead,
   deathFlash,
   killGlow,
@@ -77,6 +121,9 @@ export const Overlays = ({
           }}
         />
       )}
+
+      {/* 被弾フラッシュ (Phase C1) */}
+      <HitFlash myId={myId} />
 
       {/* 死亡フラッシュ */}
       {deathFlash && (
@@ -204,6 +251,10 @@ export const Overlays = ({
         @keyframes fuel-empty-pulse {
           0%, 100% { opacity: 0.4; }
           50% { opacity: 1; }
+        }
+        @keyframes hit-flash-fade {
+          0% { opacity: 1; }
+          100% { opacity: 0; }
         }
       `}</style>
     </>

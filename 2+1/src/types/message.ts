@@ -60,6 +60,21 @@ export type Message =
     }
   | {
       /**
+       * Phase C1 damage event. Target-authoritative: only the victim's owner
+       * (target self for humans, beacon holder for LH) broadcasts. Lethal hits
+       * still emit a separate `kill` message after handleDamage detects death.
+       *
+       * JP: 被弾イベント。victim の owner が発信 (人間は自分、LH はビーコン保持者)。
+       * 致命的 hit (energy < 0) のときは別途 `kill` も続けて送信される。
+       */
+      type: "hit";
+      victimId: string;
+      killerId: string;
+      hitPos: { t: number; x: number; y: number; z: number };
+      damage: number;
+    }
+  | {
+      /**
        * Respawn command from host.
        * JP: ホストからのリスポーン指示。
        */
@@ -142,6 +157,12 @@ export type Message =
         color: string;
         displayName?: string;
         isDead: boolean;
+        /**
+         * Phase C1 (damage model): 被弾時に減算される共有プール。
+         * 初期値 ENERGY_MAX=1.0、fire/thrust/damage で消費。LH は damage のみ消費 (回復なし)。
+         * 旧バージョンとの互換のため optional (受信側は未定義時 ENERGY_MAX でフォールバック)。
+         */
+        energy?: number;
         phaseSpace: {
           pos: { t: number; x: number; y: number; z: number };
           u: { x: number; y: number; z: number };

@@ -116,6 +116,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         color: initialColor,
         isDead: false,
         displayName,
+        energy: ENERGY_MAX,
       });
       return next;
     });

@@ -66,6 +66,15 @@ export const ENERGY_PER_SHOT = 1.0 / 30; // 30 発で枯渇（≈3 秒連射）
 export const THRUST_ENERGY_RATE = 1.0 / 9;
 export const ENERGY_RECOVERY_RATE = 1.0 / 6; // 6 秒で 0→満タン（撃/推どちらもしていないときのみ回復）
 
+// Damage model (Phase C1):
+// 被弾 1 発で energy を HIT_DAMAGE (= 0.5) 消費。energy < 0 で死 (境界 0 は生存)。
+// MAX = 1.0 の半分なので、energy 満タンなら 2 発目で死、fire 連射 / thrust 直後なら即死もあり得る。
+export const HIT_DAMAGE = ENERGY_MAX / 2;
+// 被弾後 500ms は追加 damage を無視 (同 frame 複数 laser hit 事故防止)。
+// respawn 無敵 (INVINCIBILITY_DURATION 5s) とは別系統: こちらは damage 数値のみ 0 クランプ、
+// kill event そのものは発生しうる (ただし energy が減っていないので実質起きない)。
+export const POST_HIT_IFRAME_MS = 500;
+
 // phaseSpace 受信の wall-time gap がこの閾値を超えた場合、受信側は該当プレイヤーの
 // 既存 worldLine を frozenWorldLines に凍結し、新しい worldLine を 1 点から始める。
 // 目的: ホストマイグレーションの heartbeat timeout (2500ms) や長時間 tab background
@@ -171,6 +180,9 @@ export const MAX_PENDING_SPAWN_EVENTS = 50;
 // 届かない。届いたら protection として古いものから切り詰め。
 export const MAX_KILL_LOG = 1000;
 export const MAX_RESPAWN_LOG = 500;
+// Phase C1: hitLog cap (i-frame 判定 + UI flash trigger)。
+// 通常 i-frame は 500ms なので過去数 s 分あれば十分。GC は不要 (tail slice のみ)。
+export const MAX_HIT_LOG = 200;
 
 // --- Light cone rendering ---
 export const LIGHT_CONE_HEIGHT = 20;

@@ -67,6 +67,7 @@ export const HUD = ({
       )}
 
       <Overlays
+        myId={myId}
         isDead={myPlayer?.isDead ?? false}
         deathFlash={deathFlash}
         killGlow={killGlow}

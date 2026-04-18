@@ -69,6 +69,20 @@ export type RespawnEventRecord = {
   readonly wallTime: number;
 };
 
+/**
+ * Phase C1: 被弾イベント。lethal / non-lethal を問わず append される。
+ * - post-hit i-frame (POST_HIT_IFRAME_MS) の起点 (`selectPostHitUntil`)
+ * - UI HIT flash / energy pulse の trigger (hitLog を subscribe)
+ * `damage`: 実際に適用された damage 量 (i-frame で 0 クランプされた場合は 0)。
+ */
+export type HitEventRecord = {
+  readonly victimId: string;
+  readonly killerId: string;
+  readonly hitPos: { t: number; x: number; y: number; z: number };
+  readonly damage: number;
+  readonly wallTime: number;
+};
+
 export type RelativisticPlayer = {
   id: string;
   /**
@@ -86,6 +100,13 @@ export type RelativisticPlayer = {
   color: string;
   isDead: boolean;
   displayName?: string;
+  /**
+   * Damage-based death model (Phase C1): fire/thrust/damage 共有プール。
+   * - humans: fire / thrust で消費 + damage 0.5 で減算、自然回復 ENERGY_RECOVERY_RATE。
+   * - LH: damage 0.5 減算のみ。fire は timer-based なので非消費、**回復なし**。
+   * `< 0` で死 (energy 0 は境界値、生存)。respawn で ENERGY_MAX にリセット。
+   */
+  energy: number;
 };
 
 export type Laser = {

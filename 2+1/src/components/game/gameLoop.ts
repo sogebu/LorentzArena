@@ -258,7 +258,7 @@ export function processLighthouseAI(
 // --- Hit Detection ---
 
 export interface HitDetectionResult {
-  kills: Array<{
+  hits: Array<{
     victimId: string;
     killerId: string;
     hitPos: { t: number; x: number; y: number; z: number };
@@ -267,13 +267,17 @@ export interface HitDetectionResult {
 }
 
 /**
- * Target-authoritative hit detection (Stage B).
+ * Target-authoritative hit detection (Stage B + Phase C1).
  *
  * 各 peer は「自分が owner の player 達」についてのみ hit を判定する。
  * - 人間ピア: 自分自身（ownerId === myId === id）
  * - beacon holder (= 現 host): 自分 + Lighthouse（LH.ownerId = host myId）
  *
- * プラン `plans/2026-04-14-authority-dissolution.md` Stage B 手順 1,4。
+ * Phase C1: kill 直行ではなく hit events を返す。致命判定 (energy < 0) は
+ * handleDamage で行う。同 laser が 1 player に複数 hit する事故は防ぐ
+ * (最初の 1 発で break) が、同 frame に別 laser で同 player を複数 hit
+ * する場合は全て emit され、handleDamage 側の i-frame で実 damage が
+ * 0 クランプされる。
  */
 export function processHitDetection(
   players: Map<string, RelativisticPlayer>,
@@ -283,7 +287,7 @@ export function processHitDetection(
   deadIds: Set<string>,
   invincibleIds: Set<string>,
 ): HitDetectionResult {
-  const kills: HitDetectionResult["kills"] = [];
+  const hits: HitDetectionResult["hits"] = [];
   const hitLaserIds: string[] = [];
 
   // Owner が自分のプレイヤーだけを候補に。
@@ -296,9 +300,11 @@ export function processHitDetection(
       minOwnedT = player.phaseSpace.pos.t;
     }
   }
-  if (ownedPlayers.length === 0) return { kills, hitLaserIds };
+  if (ownedPlayers.length === 0) return { hits, hitLaserIds };
 
-  const killedThisFrame = new Set<string>();
+  // 同 frame での重複 hit を防ぐ (一人の victim に複数 laser が当たっても 1 発のみ
+  // emit)。cross-frame の重複は handleDamage 側の post-hit i-frame で弾く。
+  const hitThisFrame = new Set<string>();
   for (const laser of lasers) {
     if (processedIds.has(laser.id)) continue;
 
@@ -310,20 +316,20 @@ export function processHitDetection(
 
     for (const [playerId, player] of ownedPlayers) {
       if (playerId === laser.playerId) continue;
-      if (killedThisFrame.has(playerId)) continue;
+      if (hitThisFrame.has(playerId)) continue;
       if (deadIds.has(playerId)) continue;
       if (invincibleIds.has(playerId)) continue;
       const hitPos = findLaserHitPosition(laser, player.worldLine, HIT_RADIUS);
       if (hitPos) {
-        kills.push({ victimId: playerId, killerId: laser.playerId, hitPos });
+        hits.push({ victimId: playerId, killerId: laser.playerId, hitPos });
         hitLaserIds.push(laser.id);
-        killedThisFrame.add(playerId);
+        hitThisFrame.add(playerId);
         break;
       }
     }
   }
 
-  return { kills, hitLaserIds };
+  return { hits, hitLaserIds };
 }
 
 // --- Causality Guard ---
