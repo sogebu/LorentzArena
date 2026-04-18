@@ -61,10 +61,6 @@
 
 ## 次にやること
 
-### Phase B 直後 (このセッションで着手)
-
-- **localhost 確認 → commit + deploy** — ユーザーが `http://localhost:5173/LorentzArena/` で Phase B (円柱境界まで伸びる光円錐 / 青緑 LH + ピンク星屑 / mobile tutorial / ハイスコア dedup) を確認 → OK で commit + `pnpm run deploy`。build 値 + 本番 URL を報告
-
 ### Phase C (別セッション、C1 と C2 独立)
 
 - **C1 Damage-based death (#7)** — hit=即死 → hit で energy -0.5 (ENERGY_MAX の半分)、energy<0 で死。C1 着手時に AskUserQuestion で 5 決定確認: (1) 既存 energy pool 共有 vs 独立 HP (推奨: 共有 (a))、(2) 他機 energy 同期 (推奨: しない (x)、被弾パルス cue のみ)、(3) LH も energy (推奨: (p) LH にも 1.0 プール、2発で死)、(4) 500ms post-hit i-frame (推奨: 導入)、(5) self-hit skip (推奨: `laser.playerId !== victimId`)。全エッジケース 17 件分析済 (plan file §C1 edge case matrix)
