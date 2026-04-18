@@ -248,7 +248,7 @@ export const STARDUST_SIZE = 0.04;
 // 淡色化しても「黄色っぽさ」が残るようにした。`colorForJoinOrder` (黄金角循環)
 // で黄色系プレイヤー色が出る可能性は rose-pink 時より上がるが、stardust は
 // time fade で遠方ほど薄まるため実害は小さい。
-export const STARDUST_COLOR = "hsl(48, 85%, 65%)";
+export const STARDUST_COLOR = "hsl(51, 100%, 50%)";
 // Base opacity。per-vertex time fade shader で乗算される (境界で ~0 まで減衰)。
 export const STARDUST_OPACITY = 0.5;
 
@@ -258,11 +258,11 @@ export const STARDUST_OPACITY = 0.5;
 // flash 幅 σ (coord time 単位)。σ が小さいほど瞬間的 (パチッと)、大きいと緩やか。
 export const STARDUST_FLASH_SIGMA = 0.1;
 // 過去光円錐 flash 強さ (alpha 乗算係数、peak 時 `1 + BOOST` 倍)。0 で無効。
-// 2026-04-18: 2.0 → 1.6、「気持ち弱く」の微調整 (past/future の比率 2:1 維持)。
-export const STARDUST_FLASH_PAST_BOOST = 1.6;
+// 2026-04-18: 2.0 → 1.6 → 1.5。微減で「気持ち弱く」。
+export const STARDUST_FLASH_PAST_BOOST = 1.5;
 // 未来光円錐 flash 強さ。過去より控えめ。
-// 2026-04-18: 1.0 → 0.8 (past と同率 20% 減)。
-export const STARDUST_FLASH_FUTURE_BOOST = 0.8;
+// 2026-04-18: 1.0 → 0.8 → 0.5。past の 1/3 に引き下げ、未来 event の情報量の少なさを強く反映。
+export const STARDUST_FLASH_FUTURE_BOOST = 0.5;
 
 // --- Worldline / laser opacity ---
 export const PLAYER_WORLDLINE_OPACITY = 0.65;
