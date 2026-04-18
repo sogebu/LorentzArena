@@ -150,7 +150,7 @@ export const ControlPanel = ({
             transformOrigin: "top left",
           }}
         >
-          <div style={{ fontWeight: "bold", marginBottom: "2px" }}>Kill</div>
+          <div style={{ fontWeight: "bold", marginBottom: "2px" }}>{t("hud.kills")}</div>
           {sortedScores.map(([id, kills]) => (
             <div
               key={id}
@@ -158,7 +158,12 @@ export const ControlPanel = ({
                 color: players.get(id)?.color ?? getPlayerColor(id),
               }}
             >
-              {id === myId ? t("hud.you") : isLighthouse(id) ? t("hud.lighthouse") : players.get(id)?.displayName ?? id.slice(0, 6)}: {kills}
+              {id === myId
+                ? players.get(myId)?.displayName ?? t("hud.you")
+                : isLighthouse(id)
+                  ? t("hud.lighthouse")
+                  : players.get(id)?.displayName ?? id.slice(0, 6)}
+              : {kills}
             </div>
           ))}
         </div>

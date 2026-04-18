@@ -33,7 +33,7 @@ export const Speedometer = ({
       }}
     >
       {/* エネルギーゲージ */}
-      {/* 枯渇時 (energy < ε): "FUEL" ラベル表示。低燃料 (< 0.2): バー赤化。
+      {/* 枯渇時 (energy < ε): ENERGY ラベル表示。低エネルギー (< 0.2): バー赤化。
           枯渇時はバー + ラベル共に点滅 (pulse) して強調。 */}
       <div
         style={{
@@ -57,7 +57,7 @@ export const Speedometer = ({
             outline:
               energy < 0.001 ? "1px solid rgba(255, 80, 80, 0.9)" : "none",
             animation:
-              energy < 0.001 ? "fuel-empty-pulse 0.7s ease-in-out infinite" : "none",
+              energy < 0.001 ? "energy-empty-pulse 0.7s ease-in-out infinite" : "none",
           }}
         >
           <div
@@ -81,11 +81,11 @@ export const Speedometer = ({
               fontWeight: "bold",
               color: "rgba(255, 80, 80, 1)",
               letterSpacing: "1px",
-              animation: "fuel-empty-pulse 0.7s ease-in-out infinite",
+              animation: "energy-empty-pulse 0.7s ease-in-out infinite",
               pointerEvents: "none",
             }}
           >
-            FUEL
+            {t("hud.energy")}
           </div>
         )}
       </div>

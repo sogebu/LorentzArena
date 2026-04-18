@@ -257,7 +257,7 @@ export const Overlays = ({
           15% { opacity: 1; }
           100% { opacity: 0; }
         }
-        @keyframes fuel-empty-pulse {
+        @keyframes energy-empty-pulse {
           0%, 100% { opacity: 0.4; }
           50% { opacity: 1; }
         }

@@ -4,7 +4,7 @@ export const ja = {
   "hud.controls.forward": "W/S: 前進/後退  A/D: 左右移動",
   "hud.controls.cameraH": "←/→: カメラ水平回転",
   "hud.controls.cameraV": "↑/↓: カメラ上下回転",
-  "hud.controls.fire": "Space: レーザー発射",
+  "hud.controls.fire": "スペースキー: レーザー発射",
   "hud.controls.touch.heading": "スワイプ ←→: 方向転換",
   "hud.controls.touch.thrust": "スワイプ ↑: 前進 ↓: 後退",
   "hud.controls.touch.fire": "ダブルタップ+ホールドで連射",
@@ -24,7 +24,9 @@ export const ja = {
   "hud.gamma": "ガンマ因子",
   "hud.properTime": "固有時間",
   "hud.position": "位置",
+  "hud.energy": "エネルギー",
   // HUD - scoreboard
+  "hud.kills": "撃破数",
   "hud.you": "自機",
   "hud.lighthouse": "灯台",
   // HUD - overlays (in-game state text)

@@ -106,7 +106,7 @@ Lighthouse (静止 AI) が誰かの過去光円錐内に落ちたら、最も過
 
 **Thrust 不足時の挙動**: energy == 0 で thrust 停止、friction (FRICTION_COEFFICIENT=0.5) で自然減速。τ ≈ 2s。終端速度近く (≈c) から停止まで coast 距離 ~2 マス。`R_HORIZON` 仮置 30 に対して到達不能 → B (燃料) だけで drifter を封じられる。A (地平) は一旦不要と判断、当面 defer。
 
-**UI 強調**: `energy < 0.001` で "FUEL" 赤ラベル + バー点滅 (`fuel-empty-pulse` 0.7s cycle)。`energy < 0.2` で赤色化 (従来継続)。枯渇瞬間のフラッシュは過剰と判断し採用せず。
+**UI 強調**: `energy < 0.001` で `hud.energy` 赤ラベル (ja: 「エネルギー」/ en: `ENERGY`) + バー点滅 (`energy-empty-pulse` 0.7s cycle)。`energy < 0.2` で赤色化 (従来継続)。枯渇瞬間のフラッシュは過剰と判断し採用せず。
 
 ### 初回スポーン = リスポーン統一
 

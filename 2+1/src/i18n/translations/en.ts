@@ -26,7 +26,9 @@ export const en: Record<TranslationKey, string> = {
   "hud.gamma": "Gamma",
   "hud.properTime": "Proper time",
   "hud.position": "Position",
+  "hud.energy": "ENERGY",
   // HUD - scoreboard
+  "hud.kills": "Kills",
   "hud.you": "You",
   "hud.lighthouse": "Lighthouse",
   // HUD - overlays (in-game state text)
