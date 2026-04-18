@@ -5,6 +5,8 @@ import { LIGHTHOUSE_DISPLAY_NAME } from "./game/lighthouse";
 import { getTopScores, type HighScoreEntry } from "../services/highScores";
 import { fetchLeaderboard } from "../services/leaderboard";
 
+declare const __BUILD_TIME__: string;
+
 type LobbyProps = {
   displayName: string;
   setDisplayName: (name: string) => void;
@@ -196,6 +198,19 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
           ))}
         </div>
       )}
+      {/* Build version (bottom-right, mirrors HUD ControlPanel) */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: "12px",
+          right: "16px",
+          fontSize: "11px",
+          opacity: 0.4,
+        }}
+      >
+        {t("hud.build")}: {__BUILD_TIME__} JST
+      </div>
+
       {/* Global leaderboard */}
       {globalScores.length > 0 && (
         <div

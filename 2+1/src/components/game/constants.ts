@@ -109,7 +109,7 @@ export const EXPLOSION_PARTICLE_COUNT = 30;
 // baseU として使う (`generateHitParticles`、design/physics.md §被弾デブリ)。
 // lethal hit では hit + explosion の 2 層が降る (handleDamage → handleKill)。
 export const HIT_DEBRIS_PARTICLE_COUNT = 15;
-export const HIT_DEBRIS_KICK = 0.3;
+export const HIT_DEBRIS_KICK = 0.8;
 // opacity は explosion の半分 (DEBRIS_WORLDLINE_OPACITY=0.1 / DEBRIS_MARKER_OPACITY=0.7 に対して 0.05 / 0.35)
 export const HIT_DEBRIS_WORLDLINE_OPACITY = 0.05;
 export const HIT_DEBRIS_MARKER_OPACITY = 0.35;
