@@ -20,6 +20,10 @@ import { WorldLineRenderer } from "./WorldLineRenderer";
 import {
   AIM_ARROW_BASE_OPACITY,
   AIM_ARROW_OPACITY_STEP,
+  ARROW_BASE_LENGTH,
+  ARROW_BASE_WIDTH,
+  ARROW_COLOR,
+  ARROW_MAX_OPACITY,
   CAMERA_DISTANCE_ORTHOGRAPHIC,
   CAMERA_DISTANCE_PERSPECTIVE,
   EXHAUST_ATTACK_TIME,
@@ -29,6 +33,7 @@ import {
   EXHAUST_MAX_OPACITY,
   EXHAUST_OFFSET,
   EXHAUST_OUTER_COLOR,
+  EXHAUST_RADIUS_MIN_SCALE,
   EXHAUST_RELEASE_TIME,
   EXHAUST_VISIBILITY_THRESHOLD,
   FUTURE_CONE_LASER_TRIANGLE_OPACITY,
@@ -36,6 +41,7 @@ import {
   FUTURE_CONE_WORLDLINE_SPHERE_OPACITY,
   KILL_NOTIFICATION_RING_OPACITY,
   KILL_NOTIFICATION_SPHERE_OPACITY,
+  LIGHT_CONE_COLOR,
   LIGHT_CONE_HEIGHT,
   LIGHT_CONE_SURFACE_OPACITY,
   LIGHT_CONE_WIRE_OPACITY,
@@ -189,7 +195,12 @@ const ExhaustCone = ({
     );
 
     const length = EXHAUST_BASE_LENGTH * smoothed;
-    const radius = EXHAUST_BASE_RADIUS;
+    // radius も smoothed に連動。低 thrust で針状にならないよう 0.5× 下限でガード。
+    // mobile の連続 thrust で「細い → 太い」の変化が視認できる。
+    const radiusScale =
+      EXHAUST_RADIUS_MIN_SCALE +
+      (1 - EXHAUST_RADIUS_MIN_SCALE) * smoothed;
+    const radius = EXHAUST_BASE_RADIUS * radiusScale;
     const offset = EXHAUST_OFFSET + length / 2;
 
     // 外側 cone: 自機位置 + offset × dir (cone 中心)
@@ -233,6 +244,100 @@ const ExhaustCone = ({
         />
       </mesh>
     </>
+  );
+};
+
+/**
+ * 加速度矢印 (自機のみ、C pattern)。xy 平面上の flat 2D 矢印 (ShapeGeometry)。
+ * 加速度方向 (exhaust の逆) に sphere 表面から前方へ伸びる。flat で描画するため
+ * 任意視点から常に「矢印」として認識できる (cone だけだと視線方向に潰れて blob になる)。
+ * smoothed magnitude で length/width/opacity が連動。ユーザー要望 #1, #4。
+ */
+const AccelerationArrow = ({
+  player,
+  thrustAccelRef,
+  observerPos,
+  observerBoost,
+}: {
+  player: {
+    phaseSpace: { pos: { x: number; y: number; t: number } };
+  };
+  thrustAccelRef: React.RefObject<Vector3>;
+  observerPos: Vector4 | null;
+  observerBoost: ReturnType<typeof lorentzBoost> | null;
+}) => {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const matRef = useRef<THREE.MeshBasicMaterial>(null);
+  const smoothedMagRef = useRef(0);
+  const color = getThreeColor(ARROW_COLOR);
+
+  const tmpQuat = useMemo(() => new THREE.Quaternion(), []);
+  const vecY = useMemo(() => new THREE.Vector3(0, 1, 0), []);
+  const vecDir = useMemo(() => new THREE.Vector3(), []);
+
+  useFrame((_, delta) => {
+    const mesh = meshRef.current;
+    const mat = matRef.current;
+    if (!mesh || !mat) return;
+
+    const accel = thrustAccelRef.current;
+    const norm = Math.hypot(accel.x, accel.y);
+    const rawTarget = Math.min(1, norm / PLAYER_ACCELERATION);
+
+    const current = smoothedMagRef.current;
+    const tauMs = rawTarget > current ? EXHAUST_ATTACK_TIME : EXHAUST_RELEASE_TIME;
+    const rate = 1 - Math.exp(-(delta * 1000) / tauMs);
+    const smoothed = current + (rawTarget - current) * rate;
+    smoothedMagRef.current = smoothed;
+
+    if (smoothed < EXHAUST_VISIBILITY_THRESHOLD || norm < 1e-6) {
+      mesh.visible = false;
+      return;
+    }
+    mesh.visible = true;
+
+    // 加速度方向 = +accel を xy 平面上で正規化 (exhaust の反対側)
+    const dirX = accel.x / norm;
+    const dirY = accel.y / norm;
+    vecDir.set(dirX, dirY, 0);
+    // geometry は +y 方向を向いた矢印。setFromUnitVectors で z 軸回りの回転 (xy 平面内)
+    tmpQuat.setFromUnitVectors(vecY, vecDir);
+
+    const dp = transformEventForDisplay(
+      player.phaseSpace.pos,
+      observerPos,
+      observerBoost,
+    );
+
+    // geometry: y ∈ [-0.5, 1.0] の arrow shape (tail が y=-0.5、tip が y=+1.0)
+    // scale Y = totalLength、scale X = totalWidth。base 位置は sphere 表面から EXHAUST_OFFSET 先
+    // geometry tail の y=-0.5 をその位置に合わせるには、中心を +offset + 0.5×scaleY に置く
+    const totalLength = ARROW_BASE_LENGTH * smoothed;
+    const totalWidth = ARROW_BASE_WIDTH * smoothed;
+    const centerOffset = EXHAUST_OFFSET + 0.5 * totalLength;
+
+    mesh.position.set(
+      dp.x + dirX * centerOffset,
+      dp.y + dirY * centerOffset,
+      dp.t,
+    );
+    mesh.quaternion.copy(tmpQuat);
+    mesh.scale.set(totalWidth, totalLength, 1);
+
+    mat.opacity = smoothed * ARROW_MAX_OPACITY;
+  });
+
+  return (
+    <mesh ref={meshRef} geometry={sharedGeometries.accelerationArrowFlat}>
+      <meshBasicMaterial
+        ref={matRef}
+        color={color}
+        transparent
+        depthWrite={false}
+        toneMapped={false}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
   );
 };
 
@@ -501,20 +606,28 @@ export const SceneContent = ({
           v0 はステップ 1 (自機の rest-frame 加速度を直接表示) のみ。他機対応 (broadcast +
           観測者 rest-frame に戻す) は phaseSpace に α^μ を乗せる段階で実装予定。 */}
       {myPlayer && !myPlayer.isDead && (
-        <ExhaustCone
-          player={myPlayer}
-          thrustAccelRef={thrustAccelRef}
-          observerPos={observerPos}
-          observerBoost={observerBoost}
-        />
+        <>
+          <ExhaustCone
+            player={myPlayer}
+            thrustAccelRef={thrustAccelRef}
+            observerPos={observerPos}
+            observerBoost={observerBoost}
+          />
+          <AccelerationArrow
+            player={myPlayer}
+            thrustAccelRef={thrustAccelRef}
+            observerPos={observerPos}
+            observerBoost={observerBoost}
+          />
+        </>
       )}
 
-      {/* 自分の光円錐のみ描画 */}
+      {/* 自分の光円錐のみ描画。各プレイヤーは自分の光円錐しか見ないため固定色 (プレイヤー色非依存)。 */}
       {playerList
         .filter((p) => p.id === myId)
         .map((player) => {
           const wp = player.phaseSpace.pos; // world
-          const color = getThreeColor(player.color);
+          const color = getThreeColor(LIGHT_CONE_COLOR);
           // group は world event へ並進、中の mesh は (cone offset) × R_x(±π/2) を scale/position/rotation で表現
           return (
             <group

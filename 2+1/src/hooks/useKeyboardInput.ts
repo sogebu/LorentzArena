@@ -36,12 +36,27 @@ export function useKeyboardInput() {
       keysPressed.current.delete(normalizeKey(e.key));
     };
 
+    // タブ離席時に押下中キーが stale で残り、復帰後に勝手に加速を続ける問題を防ぐ。
+    // visibilitychange / blur / pagehide のどれかが発火すれば reset。
+    const clearKeys = () => {
+      keysPressed.current.clear();
+    };
+    const handleVisibilityChange = () => {
+      if (document.hidden) clearKeys();
+    };
+
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", clearKeys);
+    window.addEventListener("pagehide", clearKeys);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", clearKeys);
+      window.removeEventListener("pagehide", clearKeys);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 

@@ -97,10 +97,14 @@ export const FRICTION_COEFFICIENT = 0.5; // 速度に比例する減速
 // --- Exhaust (推進ジェット、視覚のみ) ---
 // 自機 rest frame での thrust 加速度方向の反対側に cone を描画。
 // v0 は自機のみ、他機対応は phaseSpace に α^μ を乗せたら同じ描画経路で拡張予定。
-export const EXHAUST_BASE_LENGTH = 0.8; // cone の最大長 (magnitude=1 のとき)
-export const EXHAUST_BASE_RADIUS = 0.15; // cone 底面半径 (固定)
+// 後退中 (カメラ前方に exhaust) でも球体で隠れないよう 2x サイズ化 (2026-04-18)。
+export const EXHAUST_BASE_LENGTH = 1.2; // cone の最大長 (magnitude=1 のとき)
+export const EXHAUST_BASE_RADIUS = 0.22; // cone 底面最大半径 (magnitude=1 のとき)
+// 低 thrust で完全な針状にならないための radius の下限倍率 (0.5×〜1.0× に連動)。
+// mobile の連続 thrust で視覚フィードバックを明示する目的。
+export const EXHAUST_RADIUS_MIN_SCALE = 0.5;
 export const EXHAUST_OFFSET = 0.3; // 球表面から cone 底面までのすき間
-export const EXHAUST_MAX_OPACITY = 0.45; // 透明度高めでプラズマ噴射らしく
+export const EXHAUST_MAX_OPACITY = 0.6; // 視認性向上 (additive で飽和しない程度)
 // プレイヤー識別は sphere / worldline で担保されているので、exhaust は
 // 全機共通の青系プラズマ色に統一。additive blending で重なると青白く光る。
 export const EXHAUST_OUTER_COLOR = "hsl(210, 85%, 60%)"; // 明るい青 (外炎)
@@ -110,6 +114,19 @@ export const EXHAUST_INNER_COLOR = "hsl(210, 70%, 92%)"; // 冷たい白 (コア
 export const EXHAUST_ATTACK_TIME = 60; // ms: 0 → 1 の追従時定数
 export const EXHAUST_RELEASE_TIME = 180; // ms: 1 → 0 の追従時定数 (余韻)
 export const EXHAUST_VISIBILITY_THRESHOLD = 0.01; // smoothed magnitude < これ で非表示
+
+// --- Acceleration arrow (入力意図の可視化、自機のみ、視覚のみ) ---
+// exhaust は「反推力噴射」として物理的に船の後方に出るため、後退時に船体で
+// 隠れて前進/後退が見分けにくい。矢印は加速度方向 (= exhaust の逆) に xy 平面上の
+// flat 2D 矢印で出して「どこに向かって加速しているか」を明示する。
+// flat (xy 平面) にすることで任意視点から「矢印」として常に認識できる (cone 頭だけ
+// だと視線方向に揃うと潰れて blob になる、という問題を回避)。
+// EMA smoothed magnitude を exhaust と共有。
+export const ARROW_BASE_LENGTH = 2.4; // 矢印の全長最大値 (magnitude=1)。視認性重視で exhaust より長い
+export const ARROW_BASE_WIDTH = 0.95; // 矢印の最大幅 (magnitude=1)、geometry の 0.7 unit 幅をスケール
+// exhaust の青白と補色関係の amber、重なっても識別可能
+export const ARROW_COLOR = "hsl(45, 85%, 70%)";
+export const ARROW_MAX_OPACITY = 0.55; // flat shape + DoubleSide で視認性重視
 
 // --- Camera ---
 export const CAMERA_YAW_SPEED = 0.8; // rad/s
@@ -140,6 +157,10 @@ export const MAX_RESPAWN_LOG = 500;
 export const LIGHT_CONE_HEIGHT = 20;
 export const LIGHT_CONE_SURFACE_OPACITY = 0.1;
 export const LIGHT_CONE_WIRE_OPACITY = 0.05;
+// 各プレイヤーは自分の光円錐しか見えない設計なので固定色で OK。
+// アリーナ `hsl(180,40%,70%)` と hue 20° 差の薄い空色 neutral。
+// 彩度低めで背景寄り、パステル化時に再調整前提。
+export const LIGHT_CONE_COLOR = "hsl(200, 35%, 85%)";
 
 // --- Time-distance opacity fade (Lorentzian, 2026-04-17) ---
 // fade = r² / (r² + Δt²)、r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT。

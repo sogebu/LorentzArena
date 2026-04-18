@@ -150,6 +150,20 @@ export const useTouchInput = (): React.RefObject<TouchInputState> => {
       state.firing = false;
     };
 
+    // iOS Safari では handleTouchEnd / touchcancel が未発火で state が stale に
+    // 残る経路がある (home indicator 近傍 / 複数指残留 / gesture 横取り)。
+    // visibilitychange / pagehide / blur で強制 reset して「アプリ復帰後も thrust 残留」を防ぐ。
+    const forceReset = () => {
+      touchRef.current = null;
+      state.yawDelta = 0;
+      state.pitchDelta = 0;
+      state.thrust = 0;
+      state.firing = false;
+    };
+    const handleVisibilityChange = () => {
+      if (document.hidden) forceReset();
+    };
+
     document.addEventListener("touchstart", handleTouchStart, {
       passive: false,
     });
@@ -160,12 +174,18 @@ export const useTouchInput = (): React.RefObject<TouchInputState> => {
     document.addEventListener("touchcancel", handleTouchEnd, {
       passive: false,
     });
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pagehide", forceReset);
+    window.addEventListener("blur", forceReset);
 
     return () => {
       document.removeEventListener("touchstart", handleTouchStart);
       document.removeEventListener("touchmove", handleTouchMove);
       document.removeEventListener("touchend", handleTouchEnd);
       document.removeEventListener("touchcancel", handleTouchEnd);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pagehide", forceReset);
+      window.removeEventListener("blur", forceReset);
     };
   }, []);
 

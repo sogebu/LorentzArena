@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { usePeer } from "../hooks/usePeer";
+import { isTouchDevice } from "./game/hud/utils";
 
 const AUTO_MINIMIZE_MS = 5000;
 
@@ -20,9 +21,11 @@ const Connect = () => {
   } = usePeer();
   const { t } = useI18n();
   const [isMinimized, setIsMinimized] = useState(false);
-  // マウント後 AUTO_MINIMIZE_MS で自動最小化。ユーザーが 1 回でも手動操作したら以降発動しない。
+  // マウント後 AUTO_MINIMIZE_MS で自動最小化。mobile 限定: PC はパネル常時展開。
+  // ユーザーが 1 回でも手動操作したら以降発動しない。
   const userInteractedRef = useRef(false);
   useEffect(() => {
+    if (!isTouchDevice) return;
     const timer = setTimeout(() => {
       if (!userInteractedRef.current) setIsMinimized(true);
     }, AUTO_MINIMIZE_MS);

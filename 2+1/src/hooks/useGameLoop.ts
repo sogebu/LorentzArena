@@ -139,6 +139,9 @@ export function useGameLoop({
       const currentTime = Date.now();
       const dTau = (currentTime - lastTimeRef.current) / 1000;
       lastTimeRef.current = currentTime;
+      // Visibility 遷移直後や setInterval 一時停止の復帰で稀に elevated dt が
+      // 混入する場合の防御。> 200 ms のティックは 1 フレーム捨てる (input/physics skip)。
+      if (dTau > 0.2) return;
 
       const store = useGameStore.getState();
 

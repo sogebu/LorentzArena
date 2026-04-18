@@ -51,6 +51,21 @@ export const sharedGeometries = {
   // Exhaust cone: local +y 方向を軸に、底面が y=-0.5、頂点が y=+0.5 にある単位 cone。
   // scale(r, length, r) で実寸調整、rotation で反推力方向へ向ける。
   exhaustCone: new THREE.ConeGeometry(1, 1, 12, 1, true),
+  // Acceleration arrow: xy 平面上の flat 2D 矢印 (頭 + 軸)。unit 長 1・最大幅 0.5。
+  // 方向は +y 方向で生成、rotation で加速度方向へ向ける。flat で描画するため
+  // 任意視点から「矢印」として常に認識できる (cone 頭だけだと視線方向で潰れる)。
+  accelerationArrowFlat: (() => {
+    const shape = new THREE.Shape();
+    shape.moveTo(0, 1);          // tip (+y)
+    shape.lineTo(0.35, 0.55);    // 頭右下
+    shape.lineTo(0.14, 0.55);    // 軸右上
+    shape.lineTo(0.14, -0.5);    // 軸右下 (tail)
+    shape.lineTo(-0.14, -0.5);   // 軸左下
+    shape.lineTo(-0.14, 0.55);   // 軸左上
+    shape.lineTo(-0.35, 0.55);   // 頭左下
+    shape.closePath();
+    return new THREE.ShapeGeometry(shape);
+  })(),
   // Arena 用の固定 cylinder geometry は不要 (ArenaRenderer が observer 因果コーンで
   // 動的に triangle strip を生成する)。
 };
