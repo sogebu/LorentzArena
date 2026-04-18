@@ -183,6 +183,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
 
     // Freeze world line
     const frozen: FrozenWorldLine = {
+      playerId: victimId,
       worldLine: victim.worldLine,
       color: victim.color,
     };
@@ -458,6 +459,8 @@ export const selectPendingKillEvents = (state: LogState): KillEventRecord[] =>
  * handleDamage が同 frame 複数 hit を 1 発扱いにするために使う。
  */
 export const selectPostHitUntil = (state: LogState, victimId: string): number => {
+  // 灯台は post-hit i-frame なし (毎発有効、爽快感優先)。
+  if (isLighthouse(victimId)) return 0;
   let latest = 0;
   for (const e of state.hitLog) {
     if (e.victimId !== victimId) continue;

@@ -14,6 +14,7 @@ import { ArenaRenderer } from "./ArenaRenderer";
 import { DebrisRenderer } from "./DebrisRenderer";
 import { LaserBatchRenderer } from "./LaserBatchRenderer";
 import { LightConeRenderer } from "./LightConeRenderer";
+import { LighthouseRenderer } from "./LighthouseRenderer";
 import { isLighthouse } from "./lighthouse";
 import { SpawnRenderer } from "./SpawnRenderer";
 import { StardustRenderer } from "./StardustRenderer";
@@ -414,7 +415,9 @@ export const SceneContent = ({
     camera.up.set(0, 0, 1);
   });
 
-  // 世界線の過去光円錐交差（他プレイヤーの現在の worldLine + 凍結世界線）
+  // 世界線の過去光円錐交差（他プレイヤーの現在の worldLine + 凍結世界線）。
+  // Lighthouse は LighthouseRenderer が塔の底面を過去光円錐交点に anchor 済なので
+  // 球+リングマーカーは冗長 (重なって rendering される) → 除外。
   const worldLineIntersections = useMemo(() => {
     if (!myPlayer || !myId) return [];
 
@@ -423,6 +426,7 @@ export const SceneContent = ({
     // 他プレイヤーの現在の worldLine を検索
     for (const player of playerList) {
       if (player.id === myId) continue;
+      if (isLighthouse(player.id)) continue;
       const intersection = pastLightConeIntersectionWorldLine(
         player.worldLine,
         myPlayer.phaseSpace.pos,
@@ -436,9 +440,10 @@ export const SceneContent = ({
       }
     }
 
-    // 凍結世界線も検索
+    // 凍結世界線も検索 (灯台は LighthouseRenderer の塔で代替するので除外)
     for (let fi = 0; fi < frozenWorldLines.length; fi++) {
       const fw = frozenWorldLines[fi];
+      if (isLighthouse(fw.playerId)) continue;
       const intersection = pastLightConeIntersectionWorldLine(
         fw.worldLine,
         myPlayer.phaseSpace.pos,
@@ -553,9 +558,14 @@ export const SceneContent = ({
         />
       ))}
 
-      {/* 各プレイヤーのマーカー（死亡中の自分のみ非表示） */}
+      {/* 各プレイヤーのマーカー（死亡中の自分のみ非表示）。
+          Lighthouse は専用の塔モデル (LighthouseRenderer)、人間プレイヤーは sphere。 */}
       {playerList.map((player) => {
         if (player.id === myId && player.isDead) return null;
+
+        if (isLighthouse(player.id)) {
+          return <LighthouseRenderer key={`player-${player.id}`} player={player} />;
+        }
 
         const wp = player.phaseSpace.pos; // world
         const isMe = player.id === myId;

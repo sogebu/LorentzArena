@@ -126,6 +126,7 @@ export const createMessageHandler =
           existingPlayer.worldLine.history.length > 0
         ) {
           const frozen: FrozenWorldLine = {
+            playerId,
             worldLine: existingPlayer.worldLine,
             color: existingPlayer.color,
           };

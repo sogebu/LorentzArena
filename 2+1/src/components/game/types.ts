@@ -18,6 +18,7 @@ export type DebrisRecord = {
 
 // 世界に残された凍結世界線（死んだプレイヤーの痕跡）
 export type FrozenWorldLine = {
+  readonly playerId: string;
   readonly worldLine: WorldLine;
   readonly color: string;
 };

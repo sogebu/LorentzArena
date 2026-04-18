@@ -41,6 +41,8 @@ export const DEBRIS_MAX_LAMBDA = 2.5;
 
 // 当たり判定の半径
 export const HIT_RADIUS = 0.25;
+// 灯台専用の当たり判定半径 (塔底面の円柱半径 0.40 と同値、見た目に合わせて広め)
+export const LIGHTHOUSE_HIT_RADIUS = 0.4;
 
 // スポーン範囲（x, y）
 export const SPAWN_RANGE = 10;
@@ -67,6 +69,9 @@ export const THRUST_ENERGY_RATE = 1.0 / 9;
 export const ENERGY_RECOVERY_RATE = 1.0 / 6; // 6 秒で 0→満タン（撃/推どちらもしていないときのみ回復）
 
 // Damage model (Phase C1):
+// 灯台専用の被弾ダメージ。LH は無敵 / 回復なし、1.0 → -0.2 で 6 発死。
+export const LIGHTHOUSE_HIT_DAMAGE = 0.2;
+
 // 被弾 1 発で energy を HIT_DAMAGE (= 0.5) 消費。energy < 0 で死 (境界 0 は生存)。
 // MAX = 1.0 の半分なので、energy 満タンなら 2 発目で死、fire 連射 / thrust 直後なら即死もあり得る。
 export const HIT_DAMAGE = ENERGY_MAX / 2;
@@ -108,9 +113,8 @@ export const HIT_DEBRIS_KICK = 0.3;
 // opacity は explosion の半分 (DEBRIS_WORLDLINE_OPACITY=0.1 / DEBRIS_MARKER_OPACITY=0.7 に対して 0.05 / 0.35)
 export const HIT_DEBRIS_WORLDLINE_OPACITY = 0.05;
 export const HIT_DEBRIS_MARKER_OPACITY = 0.35;
-// hit デブリの世界線長さ (= maxLambda) は explosion (2.5) より短く。
-// 2026-04-18 odakin 第 4 次指定で「もうちょっと短く」。
-export const HIT_DEBRIS_MAX_LAMBDA = 1.2;
+// hit デブリの世界線長さ (= maxLambda)。
+export const HIT_DEBRIS_MAX_LAMBDA = 2.5;
 
 // Lighthouse（AI 固定砲台）
 export const LIGHTHOUSE_ID_PREFIX = "lighthouse-";

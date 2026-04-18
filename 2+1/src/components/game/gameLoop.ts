@@ -25,6 +25,7 @@ import {
   LASER_RANGE,
   LIGHTHOUSE_AIM_JITTER_SIGMA,
   LIGHTHOUSE_FIRE_INTERVAL,
+  LIGHTHOUSE_HIT_RADIUS,
   LIGHTHOUSE_SPAWN_GRACE,
   PLAYER_ACCELERATION,
   THRUST_ENERGY_RATE,
@@ -321,7 +322,8 @@ export function processHitDetection(
       if (hitThisFrame.has(playerId)) continue;
       if (deadIds.has(playerId)) continue;
       if (invincibleIds.has(playerId)) continue;
-      const hitPos = findLaserHitPosition(laser, player.worldLine, HIT_RADIUS);
+      const radius = isLighthouse(playerId) ? LIGHTHOUSE_HIT_RADIUS : HIT_RADIUS;
+      const hitPos = findLaserHitPosition(laser, player.worldLine, radius);
       if (hitPos) {
         hits.push({
           victimId: playerId,
