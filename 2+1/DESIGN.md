@@ -71,14 +71,14 @@ DESIGN.md は domain ごとに分割。本ファイルは **index + アーキ ov
 
 **場所**: `RelativisticGame.tsx:227-266` (特に `:229` の `prevConnectionIdsRef` 宣言と `:236-244` の比較ループ)
 
-**現状**:
+**現状** (Authority 解体後、`getIsHost()` は `getIsBeaconHolder()` に改名):
 ```ts
 const prevConnectionIdsRef = useRef<Set<string>>(new Set());
 useEffect(() => {
-  if (peerManager?.getIsHost()) {
+  if (peerManager?.getIsBeaconHolder()) {
     for (const conn of connections) {
       if (conn.open && !prevConnectionIdsRef.current.has(conn.id)) {
-        peerManager.sendTo(conn.id, { type: "snapshot", ... });
+        peerManager.sendTo(conn.id, buildSnapshot(myId));
       }
     }
   }
@@ -98,7 +98,7 @@ useEffect(() => {
   useEffect(() => {
     if (!peerManager) return;
     return peerManager.onNewPeerOpen((peerId) => {
-      if (peerManager.getIsHost()) {
+      if (peerManager.getIsBeaconHolder()) {
         // snapshot 送信
       }
     });

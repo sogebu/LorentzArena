@@ -9,7 +9,8 @@
 ```bash
 pnpm install && pnpm dev       # PeerJS モード（http://localhost:5173/LorentzArena/）
 pnpm dev:wsrelay               # WS Relay モード（relay-server 同時起動）
-pnpm run build                 # tsc + vite build
+pnpm run build                 # vite build のみ (typecheck は別 script、DESIGN.md §build と typecheck の分離)
+pnpm run typecheck             # tsc -b (deploy pipeline 非ブロック、明示実行)
 pnpm run deploy                # GitHub Pages デプロイ (build + gh-pages branch push)
 pnpm run lint                  # Biome linter
 pnpm run format                # Biome formatter
@@ -74,7 +75,7 @@ session 冒頭の orientation 用。各項目の詳細は [`docs/architecture.md
 - **物理**: c = 1、ファクトリパターン、`src/physics/` に純関数群 (vector / matrix / mechanics / worldLine、交差計算は binary search O(log N+K))
 - **ネットワーク**: PeerJS/WebRTC + WS Relay fallback。beacon pattern (`la-{roomName}` で host discovery + redirect、ハートビート 1s/2.5s)。**Authority 解体 Stage A〜H 完了**: target-authoritative (phaseSpace/laser/kill/respawn は owner 発信)、beacon holder は relay hub + LH owner 兼任 + snapshot 送信
 - **State**: zustand `game-store.ts`、event log (`killLog` / `respawnLog`) が source of truth、selectors で derive (`selectIsDead` / `selectInvincibleUntil` 等)
-- **Message**: 9 type (`phaseSpace / laser / kill / respawn / snapshot / intro / peerList / ping / redirect`)。canonical 型は `src/types/message.ts`、validation + handler は `src/components/game/messageHandler.ts`
+- **Message**: discriminated union、canonical は `src/types/message.ts` (phaseSpace / peerList / laser / kill / hit / respawn / ping / intro / redirect / snapshot / snapshotRequest)。validation + handler は `src/components/game/messageHandler.ts`
 - **ゲームパラメータ**: `src/components/game/constants.ts` が canonical (値 + JSDoc + section コメント分類)。CLAUDE.md / docs 側に table 重複を置かず、code が single source of truth
 
 ## ビルド設定

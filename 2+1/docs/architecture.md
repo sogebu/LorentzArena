@@ -59,7 +59,8 @@
 | `game/debris.ts` | デブリ生成 + 光円錐交差 |
 | `game/killRespawn.ts` | `applyKill`/`applyRespawn` 純粋関数 (全 peer 共通、players Map を返す) |
 | `game/respawnTime.ts` | `computeSpawnCoordTime(players, excludeId?)` (初回/リスポーン/新 joiner 共通、LH 含む)、`createRespawnPosition`。excludeId の役割は DESIGN.md §物理「スポーン座標時刻」 |
-| `game/lighthouse.ts` | Lighthouse AI (`createLighthouse` ファクトリ、`isLighthouse` 判定、`computeInterceptDirection` 相対論的偏差射撃) |
+| `game/lighthouse.ts` | Lighthouse AI + 表示名定数 (`createLighthouse` ファクトリ、`isLighthouse` 判定、`computeInterceptDirection` 相対論的偏差射撃、`LIGHTHOUSE_DISPLAY_NAME`) |
+| `game/LighthouseRenderer.tsx` | 灯台 3D 塔モデル (body/band/balcony/lantern/lamp/roof/spire の procedural ジオメトリ、past-cone anchor で観測者から光伝播遅延込みで見え、`LIGHTHOUSE_SINK` で足元を視覚的に地面に埋める)。死亡時は past cone が death event に届くまで past cone anchor 維持 → 届いた瞬間から debris と同期で過去に沈みつつ 1→0 フェード |
 | `game/gameLoop.ts` | ゲームループ内の純関数群 (カメラ制御、プレイヤー物理、Lighthouse AI、当たり判定、ゴースト移動、因果律ガード、レーザー発射) |
 | `game/causalEvents.ts` | 因果律遅延イベント処理 (キル通知・スポーンエフェクトの過去光円錐チェック) |
 | `game/SceneContent.tsx` | 3D シーンオーケストレーター (交差計算 + カメラ制御 + 子コンポーネント配置) |
