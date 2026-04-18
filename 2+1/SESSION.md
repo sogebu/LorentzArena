@@ -4,6 +4,8 @@
 
 対戦可能。**`c32c203` デプロイ済み** (build `2026/04/18 20:22:30 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
+2026-04-18 夜 (視覚調整): **レーザー × 光円錐マーカー scale** 過去 `2 → 3` / 未来 `2 → 1.5` (過去を目立たせ、未来は控えめに)。**星屑 `STARDUST_COUNT 20000 → 40000`** (密度倍化)。**灯台を高さ ~10% (0.16) 下に沈めた** (`LIGHTHOUSE_SINK` 定数、inner group で視覚シフトのみ、past-cone 判定は anchorPos そのままで非干渉)。
+
 2026-04-18 夜 (typecheck 13 errors 解消): Authority 解体期ドリフトで pre-existing だった型不整合を全消去 (13 → 0)。変更: (a) `PeerProvider.tsx` の `NetworkManager = PeerManager<Message> | WsRelayManager<Message>` を **export** し共有型化、(b) `useSnapshotRetry` / `useGameLoop` の local inline shape (旧 `getIsHost`/`getHostId` や `sendTo(msg: unknown)` 由来の非互換) を `NetworkManager | null` + `sendToNetwork(msg: Message)` に統一、(c) `WsRelayManager` に parity 用 `disconnectPeer` (local conns map delete + notify、server 側 membership 不変) を追加、(d) `PeerProvider` の `useRef<Timer>()` 引数なしを `useRef<Timer | undefined>(undefined)` に、beacon holder effect に `if (!myId) return` 追加、(e) `RelativisticGame.tsx` の `peerManager?.getIsBeaconHolder()` narrow 破綻を optional chaining 内直 guard 化。**挙動変化なし** (型のみ、test 38/38、build 通過、WS Relay の disconnectPeer 経路は peerjs transport 下でのみ到達)。defer 中の un-defer トリガー「typecheck を CI/build に再統合したい」の地ならし完了。
 
 2026-04-18 夜 (UX 統一): **hit デブリ size + kick を爆発と同値に**。`HIT_DEBRIS_KICK: 0.3 → 0.8`、`generateHitParticles` size: `0.1+r*0.2 → 0.2+r*0.4` (= explosion)。設計コンセプトを「爆発の半分」→「広さ・粒は爆発と同じ、個数 + opacity だけ半分にして density 控えめ」に再定義。5 軸 (count / opacity / size / kick / max_lambda) のうち size + kick + max_lambda が explosion 同値、半分残は count (15 vs 30) と opacity (0.05/0.35 vs 0.1/0.7) のみ。**Lobby に build 表示** 追加 (`__BUILD_TIME__`、右下 11px / opacity 0.4、ControlPanel と同 pattern)。詳細: design/physics.md §被弾デブリ。

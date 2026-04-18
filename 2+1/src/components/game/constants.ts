@@ -233,7 +233,7 @@ export const TIME_FADE_SCALE = LIGHT_CONE_HEIGHT;
 // = 視覚ポッピング) は **採用しない**。
 //
 // 詳細: EXPLORING.md §進行方向・向きの認知支援 §追加案「案 17」
-export const STARDUST_COUNT = 20000;
+export const STARDUST_COUNT = 40000;
 // 空間方向の ±範囲 (world 単位)。observer boost で display frame に mix されても
 // 大半が視認 window 内に残るよう、TIME_HALF_RANGE と同程度に取る。
 export const STARDUST_SPATIAL_HALF_RANGE = 60;

@@ -43,6 +43,10 @@ const G = {
 // 起こすため X 軸まわり π/2 回転。Torus は default で xy 平面 (法線 +Z) なので回転不要。
 const ROT_Y_TO_Z: [number, number, number] = [Math.PI / 2, 0, 0];
 
+// 塔全体高さ ~1.62 の約 10% を event 位置より下に沈めて「地面に埋まった土台」表現。
+// anchorPos (past-cone 判定) はそのまま、視覚シフトのみ inner group で適用。
+const LIGHTHOUSE_SINK = 0.16;
+
 export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) => {
   const { displayMatrix, observerPos, observerBoost } = useDisplayFrame();
 
@@ -107,6 +111,7 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
       matrix={buildMeshMatrix(anchorPos, displayMatrix)}
       matrixAutoUpdate={false}
     >
+    <group position={[0, 0, -LIGHTHOUSE_SINK]}>
       {/* Body: tapered cylinder, base at event */}
       <mesh renderOrder={-1} position={[0, 0, 0.50]} rotation={ROT_Y_TO_Z} geometry={G.body}>
         <meshStandardMaterial
@@ -201,6 +206,7 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
           opacity={alpha}
         />
       </mesh>
+    </group>
     </group>
     )}
 
