@@ -143,10 +143,14 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       const myPlayer = store.players.get(myId);
       if (myPlayer) {
         for (const conn of connections) {
-          if (conn.open && !prevConnectionIdsRef.current.has(conn.id)) {
-            // Stage F: syncTime 単独ではなく snapshot 一式を送る
-            peerManager.sendTo(conn.id, buildSnapshot(myId));
-          }
+          if (!conn.open) continue;
+          if (prevConnectionIdsRef.current.has(conn.id)) continue;
+          // Stage F: 既存 peer (= store に entry がある) は event log から
+          // self-maintained。migration 経路で元 client 同士が初接続する場合も
+          // ここで弾くことで「既存 peer は snapshot を受け取らない」設計を保つ。
+          // 真の new joiner は player entry を未保持 → has=false → 送信。
+          if (store.players.has(conn.id)) continue;
+          peerManager.sendTo(conn.id, buildSnapshot(myId));
         }
       }
     }
