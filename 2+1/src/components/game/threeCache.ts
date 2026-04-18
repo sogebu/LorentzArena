@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { DEBRIS_MARKER_OPACITY } from "./constants";
+import { DEBRIS_MARKER_OPACITY, HIT_DEBRIS_MARKER_OPACITY } from "./constants";
 
 // Color キャッシュ
 const colorCache = new Map<string, THREE.Color>();
@@ -83,6 +83,24 @@ export const getDebrisMaterial = (
       opacity: DEBRIS_MARKER_OPACITY,
     });
     debrisMaterialCache.set(key, mat);
+  }
+  return mat;
+};
+
+// Phase C1: hit デブリ用 marker material (opacity 半分)。
+const hitDebrisMaterialCache = new Map<string, THREE.MeshBasicMaterial>();
+export const getHitDebrisMaterial = (
+  color: THREE.Color,
+): THREE.MeshBasicMaterial => {
+  const key = color.getHexString();
+  let mat = hitDebrisMaterialCache.get(key);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: HIT_DEBRIS_MARKER_OPACITY,
+    });
+    hitDebrisMaterialCache.set(key, mat);
   }
   return mat;
 };

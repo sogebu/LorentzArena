@@ -163,10 +163,14 @@ respawn 時:
 **パラメータ**:
 - `HIT_DEBRIS_PARTICLE_COUNT = 15` (explosion 30 の半分 — 「爆発の半分」コンセプト)
 - `HIT_DEBRIS_KICK = 0.3` (explosion 0.8 に対し狭い cone。「半分未満」)
-- size: `0.2 + 0.4 * random` (explosion と同値 — 「煙」の見た目は死亡時と同じ。2026-04-18 odakin 指定で size 半減を取り下げ)
+- size: `0.1 + 0.2 * random` (explosion `0.2 + 0.4*r` の半分)
+- opacity: `HIT_DEBRIS_WORLDLINE_OPACITY = 0.05` / `HIT_DEBRIS_MARKER_OPACITY = 0.35` (explosion の 0.1 / 0.7 の半分)
+- 世界線長さ: `HIT_DEBRIS_MAX_LAMBDA = 1.2` (explosion 2.5 より短い。2026-04-18 odakin 第 4 次指定「もうちょっと短く」)
 - 色: **撃った人 (killer) の色** (2026-04-18 odakin 指定、第 2 次改訂)。killer が `players` Map に不在 (切断・ID 不整合) の fallback は victim 色 (少なくとも描画が可視になる保険)。「被弾は誰に撃たれたかが重要な情報」という視覚意味論 — explosion が死者側の記念碑なのに対し、hit は攻撃側のパルスとして読ませる
 
 **lethal hit は 2 層 (hit + explosion)**: 致命 hit でも hit デブリ (killer 色) を生成し、その上に `handleKill` が explosion デブリ (victim 色) を重ねる (追加順 `hit → explosion`)。単発 hit でも同じ流れなので「かすった」と「墜ちた」の視覚差は「explosion が来るか/来ないか」で出る (2 層目の有無)。
+
+**renderer 実装注意**: `DebrisRenderer.tsx` は hit と explosion を別 InstancedMesh に分離 (MeshBasicMaterial の opacity は per-instance 制御不可能な uniform 一律値のため)。両 mesh は同じ `debrisCylinderGeo` と shader (`applyTimeFadeShader`) を共有、material の `opacity` 値だけ違う。marker (球) は個別 `<mesh>` なので `getHitDebrisMaterial(color)` に切り替えるだけで per-record opacity が出せる。GC 閾値 (`deathPos.t + max_lambda >= cutoff` in `useGameLoop.ts`) も type 分岐で hit の短い lambda を使う。
 
 **なぜ proper-velocity sum / Lorentz boost 合成ではないか**: Lorentz boost 合成は laser null vector (光速) を含む合成で degenerate。時空ベクトル和 `k+u` の空間成分は null + timelike でも well-defined、proper velocity 空間で再解釈するだけで `|v|<1` 自動保証 + 単位整合 (explosion と同じソルバーに流せる)。物理的厳密性より「laser 方向と victim 運動の自然な中間」という視覚効果優先の判断。
 

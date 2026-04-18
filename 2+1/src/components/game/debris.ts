@@ -77,8 +77,10 @@ export const generateHitParticles = (victimU: Vector3, laserDir: Vector3) => {
       dx,
       dy,
       speed,
-      // size は explosion と同値 (「煙」の見た目は死亡時と同じ。2026-04-18 odakin 指定)。
-      size: 0.2 + Math.random() * 0.4,
+      // size は explosion (0.2 + random*0.4) の半分。opacity も半分
+      // (HIT_DEBRIS_*_OPACITY)。「爆発の半分」コンセプトに準拠
+      // (2026-04-18 odakin 第 3 次指定)。
+      size: 0.1 + Math.random() * 0.2,
     });
   }
   return particles;

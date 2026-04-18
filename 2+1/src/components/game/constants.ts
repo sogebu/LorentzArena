@@ -97,13 +97,20 @@ export const MAX_WORLDLINE_HISTORY = 1000;
 // 爆発パーティクル数
 export const EXPLOSION_PARTICLE_COUNT = 30;
 
-// Phase C1: 被弾デブリ (non-lethal hit) 用パラメータ。爆発デブリの「半分」コンセプト:
-// 個数 半分、kick (scatter 幅) 半分未満 (狭いコーン)、size 半分。色は victim と同色
-// (dim させない — 2026-04-18 odakin 指定)。
+// Phase C1: 被弾デブリ (hit、lethal/non-lethal 両方) 用パラメータ。
+// 「爆発の半分」コンセプト: 個数・kick・size・opacity すべて半分。
+// 色は **撃った人 (killer)** の色 (2026-04-18 odakin 指定、第 2 次改訂)。
 // 生成方向: レーザー 4-vec (null) + victim 4-velocity の時空和の spatial 部分を
-// baseU として使う (`generateHitParticles`)。
+// baseU として使う (`generateHitParticles`、design/physics.md §被弾デブリ)。
+// lethal hit では hit + explosion の 2 層が降る (handleDamage → handleKill)。
 export const HIT_DEBRIS_PARTICLE_COUNT = 15;
 export const HIT_DEBRIS_KICK = 0.3;
+// opacity は explosion の半分 (DEBRIS_WORLDLINE_OPACITY=0.1 / DEBRIS_MARKER_OPACITY=0.7 に対して 0.05 / 0.35)
+export const HIT_DEBRIS_WORLDLINE_OPACITY = 0.05;
+export const HIT_DEBRIS_MARKER_OPACITY = 0.35;
+// hit デブリの世界線長さ (= maxLambda) は explosion (2.5) より短く。
+// 2026-04-18 odakin 第 4 次指定で「もうちょっと短く」。
+export const HIT_DEBRIS_MAX_LAMBDA = 1.2;
 
 // Lighthouse（AI 固定砲台）
 export const LIGHTHOUSE_ID_PREFIX = "lighthouse-";

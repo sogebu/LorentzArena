@@ -9,6 +9,7 @@ import {
   GAME_LOOP_INTERVAL,
   GC_PAST_LCH_MULTIPLIER,
   HIT_DAMAGE,
+  HIT_DEBRIS_MAX_LAMBDA,
   LASER_RANGE,
   LIGHT_CONE_HEIGHT,
   MAX_LASERS,
@@ -665,12 +666,13 @@ export function useGameLoop({
               gcState.setFrozenWorldLines(() => kept);
             }
           }
-          // debris: 最未来点 = deathPos.t + DEBRIS_MAX_LAMBDA
+          // debris: 最未来点 = deathPos.t + (hit なら HIT_DEBRIS_MAX_LAMBDA、explosion なら DEBRIS_MAX_LAMBDA)
           const debris = gcState.debrisRecords;
           if (debris.length > 0) {
-            const kept = debris.filter(
-              (d) => d.deathPos.t + DEBRIS_MAX_LAMBDA >= cutoff,
-            );
+            const kept = debris.filter((d) => {
+              const lambda = d.type === "hit" ? HIT_DEBRIS_MAX_LAMBDA : DEBRIS_MAX_LAMBDA;
+              return d.deathPos.t + lambda >= cutoff;
+            });
             if (kept.length !== debris.length) {
               gcState.setDebrisRecords(() => kept);
             }
