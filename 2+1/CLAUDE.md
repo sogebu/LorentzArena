@@ -21,7 +21,7 @@ pnpm run analyze               # バンドルサイズ分析
 
 ## テスト (Vitest)
 
-現有 test: `worldLine.test.ts` (光円錐交差 binary search regression 11 本)、`messageHandler.test.ts` (phaseSpace migration gap 4 本)、`snapshot.test.ts` (applySnapshot migration path 4 本)、`LightConeRenderer.test.ts` (判別式 3 regime)。
+現有 test: `worldLine.test.ts` (光円錐交差 binary search regression 11 本)、`messageHandler.test.ts` (phaseSpace migration gap 4 本)、`snapshot.test.ts` (applySnapshot migration path 4 本 + buildSnapshot LH ownerId rewrite 1 本)、`LightConeRenderer.test.ts` (判別式 3 regime)。
 
 物理コア (pure 関数) の TDD 運用 (旧実装 `*Linear` 残存 → test 先行 → 新実装切替) は DESIGN.md §worldLine.history サイズ + メタ原則 M15/M17。
 

@@ -39,6 +39,10 @@
 
 **ホストマイグレーション**: beacon holder 切断で最古参クライアントが自動昇格。ハートビート方式 (1s ping / 2.5s timeout、Stage G)。人間の respawn timer は owner がローカル保持で再構築不要。2026-04-18 に `useBeaconMigration` hook + `isMigrating` flag を削除、LH owner 書き換えは `PeerProvider.assumeHostRole` inline に集約し、LH 死亡中の respawn 再 schedule は tick poll 化で不要化 (DESIGN.md §migration 権威は assumeHostRole に集約)。`hostMigration` メッセージは Stage H で完全削除済。
 
+`assumeHostRole` の責任 (single source of truth): (a) `clearBeaconHolder` + `setAsBeaconHolder`、(b) `registerStandardHandlers`、(c) **LH ownerId を newHostId に rewrite** (sync `setPlayers` で次 RAF tick の useGameLoop が `lh.ownerId === myId` を即読む → LH 沈黙窓ゼロ)、(d) **`peerOrderRef.current` から自分を filter** (旧 host の最後の ping から自分含むリストを継承するため、host の peerOrder = 非自分 peers の不変条件を eager に維持)、(e) `setRoleVersion` bump で role-dependent effects 再評価。`RelativisticGame` の init effect は LH ownership 操作をしない (二重実装回避、2026-04-19)。
+
+**ping の peerOrder piggyback** (2026-04-19): host は ping (1s 周期) に自身視点の `peerOrder` (= 非自分 connected peers、insert 順) を毎回相乗り、client が `peerOrderRef.current` を adopt。これにより peerList の connection-change 駆動 broadcast に依存せず ≤1s 精度で同期、migration 直後の election (`candidates[0]` = 最古 client) が全 client で同一リストに対して走る。filter `id !== oldHostId` で旧 host を除外、新 host は filter で `id !== newHostId` で自分を除外することで election と invariant が両立。
+
 **ビーコンパターン**: `la-{roomName}` は常に発見専用。新クライアントがビーコンに接続すると `{ type: "redirect", hostId }` で本物のホスト (ランダム ID) にリダイレクト。既存のゲーム接続には影響しない。dual-host 解消・ビーコン fallback (10s / 8s)・降格経路・`roleVersion` による effect 再評価は DESIGN.md § Authority 解体 / § ネットワーク 参照。
 
 ## ゲーム (`src/components/`)
@@ -159,10 +163,10 @@ Canonical 型定義は **`src/types/message.ts`**、validation と handler は `
 | `laser` | owner | beacon holder relay | レーザー発射イベント |
 | `kill` | target (= owner) | beacon holder relay | 自己死亡申告 (hitPos 付き) |
 | `respawn` | owner | beacon holder relay | 自分の復活 (位置含む) |
-| `snapshot` | beacon holder → new joiner | 直接 | 新規 join 用 state 一式 (players / killLog / respawnLog / scores / displayNames / hostTime for OFFSET) |
+| `snapshot` | beacon holder → new joiner | 直接 | 新規 join 用 state 一式 (players / killLog / respawnLog / scores / displayNames / hostTime for OFFSET)。LH ownerId は caller (= 現 beacon holder) に常時 rewrite。**真の new joiner にのみ送信** (`store.players.has(targetId)` で既存 peer を弾く、2026-04-19) |
 | `intro` | 本人 | beacon holder relay | プレイヤー表示名通知 (接続時に 1 回送信) |
 | `peerList` | beacon holder → all | 直接 | 接続ピア一覧 + joinRegistry 全履歴 (接続変化時に proactive 送信) |
-| `ping` | beacon holder → all | 直接 | ハートビート (1s 間隔、2.5s タイムアウト) |
+| `ping` | beacon holder → all | 直接 | ハートビート (1s 間隔、2.5s タイムアウト)。`peerOrder` (host 視点の非自分 connected peers、insert 順) を毎回相乗りし client の election base を ≤1s 精度で同期 (2026-04-19) |
 | `redirect` | beacon → client | 直接 | beacon migration 後の beacon holder ID リダイレクト |
 
 **削除済み**: `score` (Stage C-1、全 peer が `killLog` から独立集計)、`syncTime` / `hostMigration` (Stage H、`snapshot` 1 本に統合)

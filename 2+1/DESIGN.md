@@ -71,15 +71,16 @@ DESIGN.md は domain ごとに分割。本ファイルは **index + アーキ ov
 
 **場所**: `RelativisticGame.tsx:227-266` (特に `:229` の `prevConnectionIdsRef` 宣言と `:236-244` の比較ループ)
 
-**現状** (Authority 解体後、`getIsHost()` は `getIsBeaconHolder()` に改名):
+**現状** (Authority 解体後、2026-04-19 で `store.players.has` 既存 peer ガード追加):
 ```ts
 const prevConnectionIdsRef = useRef<Set<string>>(new Set());
 useEffect(() => {
   if (peerManager?.getIsBeaconHolder()) {
     for (const conn of connections) {
-      if (conn.open && !prevConnectionIdsRef.current.has(conn.id)) {
-        peerManager.sendTo(conn.id, buildSnapshot(myId));
-      }
+      if (!conn.open) continue;
+      if (prevConnectionIdsRef.current.has(conn.id)) continue;
+      if (store.players.has(conn.id)) continue; // migration 経路で再接続した既存 peer を弾く
+      peerManager.sendTo(conn.id, buildSnapshot(myId));
     }
   }
   prevConnectionIdsRef.current = new Set(connections.filter((c) => c.open).map((c) => c.id));
