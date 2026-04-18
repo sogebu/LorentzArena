@@ -149,8 +149,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
 
     const store = useGameStore.getState();
 
-    const isHost = peerManager?.getIsBeaconHolder();
-    if (isHost) {
+    if (peerManager?.getIsBeaconHolder()) {
       const myPlayer = store.players.get(myId);
       if (myPlayer) {
         for (const conn of connections) {

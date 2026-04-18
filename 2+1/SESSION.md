@@ -4,6 +4,8 @@
 
 対戦可能。**`c32c203` デプロイ済み** (build `2026/04/18 20:22:30 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
+2026-04-18 夜 (typecheck 13 errors 解消): Authority 解体期ドリフトで pre-existing だった型不整合を全消去 (13 → 0)。変更: (a) `PeerProvider.tsx` の `NetworkManager = PeerManager<Message> | WsRelayManager<Message>` を **export** し共有型化、(b) `useSnapshotRetry` / `useGameLoop` の local inline shape (旧 `getIsHost`/`getHostId` や `sendTo(msg: unknown)` 由来の非互換) を `NetworkManager | null` + `sendToNetwork(msg: Message)` に統一、(c) `WsRelayManager` に parity 用 `disconnectPeer` (local conns map delete + notify、server 側 membership 不変) を追加、(d) `PeerProvider` の `useRef<Timer>()` 引数なしを `useRef<Timer | undefined>(undefined)` に、beacon holder effect に `if (!myId) return` 追加、(e) `RelativisticGame.tsx` の `peerManager?.getIsBeaconHolder()` narrow 破綻を optional chaining 内直 guard 化。**挙動変化なし** (型のみ、test 38/38、build 通過、WS Relay の disconnectPeer 経路は peerjs transport 下でのみ到達)。defer 中の un-defer トリガー「typecheck を CI/build に再統合したい」の地ならし完了。
+
 2026-04-18 夜 (UX 統一): **hit デブリ size + kick を爆発と同値に**。`HIT_DEBRIS_KICK: 0.3 → 0.8`、`generateHitParticles` size: `0.1+r*0.2 → 0.2+r*0.4` (= explosion)。設計コンセプトを「爆発の半分」→「広さ・粒は爆発と同じ、個数 + opacity だけ半分にして density 控えめ」に再定義。5 軸 (count / opacity / size / kick / max_lambda) のうち size + kick + max_lambda が explosion 同値、半分残は count (15 vs 30) と opacity (0.05/0.35 vs 0.1/0.7) のみ。**Lobby に build 表示** 追加 (`__BUILD_TIME__`、右下 11px / opacity 0.4、ControlPanel と同 pattern)。詳細: design/physics.md §被弾デブリ。
 
 2026-04-18 夜 (build infra): **tsconfig 復元 + build/typecheck 分離**。`0a6ef36` の root 遺物削除時に `2+1/tsconfig.json` の `references` が消えた `../tsconfig.*.json` を指したまま残り、`files: []` と合わさって `tsc -b` が silent no-op になっていた。`2+1/tsconfig.{app,node}.json` を新設し references を `./` に修正、`build` を `vite build` 単独に / `typecheck = tsc -b` を別 script に分離。これにより Authority 解体期から残っていた `peerManager` / `NetworkManager` / `PeerManager` 周辺の **pre-existing 13 errors** が露呈 (deploy には影響なし、`pnpm typecheck` 実行時のみ可視)。詳細: root DESIGN.md §build と typecheck の分離。
@@ -49,7 +51,7 @@
 - **アリーナ円柱の周期的境界条件 (トーラス化)**: un-defer トリガー = 壁閉じ込め物理希望 / トーラス体験向上検証 / ARENA_HEIGHT を LCH より広くしたくなった場合
 - **snapshot に frozenWorldLines / debrisRecords 同梱**: un-defer = リスポーン世界線連続観測時
 - **host migration の LH 時刻 anchor 見直し**: spawn 座標時刻統一と同じ族、現状定着待ち
-- **typecheck pre-existing 13 errors** (2026-04-18 夜 build infra で露呈): `src/contexts/PeerProvider.tsx` (8)、`src/components/RelativisticGame.tsx` (3)、`src/hooks/useGameLoop.ts` (2) 等の `peerManager` / `NetworkManager` / `PeerManager<Message>` 型不整合 (Authority 解体期のドリフト)。`pnpm typecheck` で再現、`pnpm build` (vite 単独) には影響なし。un-defer トリガー = `typecheck` を CI / `build` に再統合したくなったら / 他の peer 関連リファクタで触る時の地ならし
+- ~~**typecheck pre-existing 13 errors** (2026-04-18 夜 build infra で露呈)~~ → 2026-04-18 夜 解消済 (上記「現在のステータス」参照)
 
 ### パフォーマンス残課題
 

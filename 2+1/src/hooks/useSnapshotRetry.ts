@@ -1,12 +1,9 @@
 import { useEffect } from "react";
+import type { NetworkManager } from "../contexts/PeerProvider";
 import { useGameStore } from "../stores/game-store";
 
 interface UseSnapshotRetryArgs {
-  peerManager: {
-    getIsBeaconHolder: () => boolean;
-    getBeaconHolderId: () => string | undefined;
-    sendTo: (peerId: string, msg: unknown) => void;
-  } | null;
+  peerManager: NetworkManager | null;
   myId: string | null;
 }
 

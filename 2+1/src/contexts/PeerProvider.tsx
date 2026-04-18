@@ -27,7 +27,7 @@ import type { ConnectionStatus, Message } from "../types";
 
 type ActiveTransport = "peerjs" | "wsrelay";
 type NetworkStatus = PeerServerStatus | WsRelayStatus;
-type NetworkManager = PeerManager<Message> | WsRelayManager<Message>;
+export type NetworkManager = PeerManager<Message> | WsRelayManager<Message>;
 
 /**
  * Auto-connection phase for PeerJS mode.
@@ -598,7 +598,9 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   // This allows another peer to claim the beacon at la-{roomName}.
   // On tab return, reconnect via Phase 1 (beacon probe). Since Phase 1 uses
   // random IDs for game PM, the host's identity and color are preserved.
-  const tabHiddenTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const tabHiddenTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
   const wasDestroyedByHideRef = useRef(false);
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -907,6 +909,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     if (activeTransport !== "peerjs") return;
     if (!peerManager) return;
     if (!peerManager.getIsBeaconHolder()) return;
+    if (!myId) return;
     if (beaconRef.current) return; // Beacon already held (from Phase 1 or previous run)
     if (connectionPhase !== "connected") return;
 

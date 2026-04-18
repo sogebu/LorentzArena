@@ -33,6 +33,8 @@ import {
   firePendingSpawnEvents,
 } from "../components/game/causalEvents";
 import type { Laser, RelativisticPlayer } from "../components/game/types";
+import type { NetworkManager } from "../contexts/PeerProvider";
+import type { Message } from "../types/message";
 import type { useStaleDetection } from "./useStaleDetection";
 import type { useTouchInput } from "../components/game/touchInput";
 import {
@@ -45,15 +47,8 @@ import {
 
 // --- Types ---
 
-type PeerManager = {
-  getIsHost: () => boolean;
-  getHostId: () => string | null;
-  send: (msg: unknown) => void;
-  sendTo: (id: string, msg: unknown) => void;
-};
-
 export interface GameLoopDeps {
-  peerManager: PeerManager | null;
+  peerManager: NetworkManager | null;
   myId: string | null;
   getPlayerColor: (id: string) => string;
 
@@ -126,7 +121,7 @@ export function useGameLoop({
     if (!peerManager || !myId) return;
 
     /** Send a message to the network: host broadcasts, client sends to host. */
-    const sendToNetwork = (msg: unknown) => {
+    const sendToNetwork = (msg: Message) => {
       if (peerManager.getIsBeaconHolder()) {
         peerManager.send(msg);
       } else {

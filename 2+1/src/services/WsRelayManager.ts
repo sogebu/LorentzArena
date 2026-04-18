@@ -281,4 +281,12 @@ export class WsRelayManager<T> {
       .filter((c) => c.open)
       .map((c) => c.id);
   }
+
+  /** Parity with PeerManager: drop a peer from the local connection view.
+   *  WS relay has no per-peer channel to close — server membership is untouched. */
+  disconnectPeer(peerId: string) {
+    if (this.conns.delete(peerId)) {
+      this.notifyConnectionChange();
+    }
+  }
 }
