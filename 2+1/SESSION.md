@@ -2,7 +2,9 @@
 
 ## 現在のステータス
 
-対戦可能。**`4869051` デプロイ済み** (build `2026/04/18 17:49:21 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`f16fbc5` デプロイ済み** (build `2026/04/18 18:08:28 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+
+2026-04-18 夜: **i18n JA を全表示日本語化** (開始/自機/灯台/撃破/撃沈/射撃中/ビルド/ルーム) + **WS Relay 未配備 UI クリーンアップ** (本番 `VITE_WS_RELAY_URL` 未設定のため利用不可だった transport selector / 「WS Relay に切り替えてください」help 文言 / autoFallback 通知を非表示化、コード本体は将来 deploy 用に残置)。設計改善: `LIGHTHOUSE_DISPLAY_NAME` 定数を `lighthouse.ts` に追加し data 層 / render 層を分離、`KillNotification3D` に `victimId` 追加して `Overlays.tsx` を `isLighthouse(id)` 判定に統一 (旧: 文字列マジック `=== "Lighthouse"`)。Connect.tsx の「ルーム "..."」ハードコード解消 (EN モードでも JP が出ていた両言語破綻)。
 
 2026-04-18 夕: **Phase C1 damage model** 着地。hit 即死 → energy pool 被弾共有 (`HIT_DAMAGE=0.5`、`energy<0` で死、2 発で死) + `POST_HIT_IFRAME_MS=500ms` post-hit i-frame (人間 + LH)、hit デブリ (scatter 中心 = 時空 4 元ベクトル和 `k^μ_null + u^μ_victim` の空間成分、**撃った人の色**)、lethal 時は hit (撃った人色) + explosion (死んだ人色) の **2 層**、`debrisRecords[]` 単一 array に `type: "explosion" | "hit"` タグで統合。詳細: design/physics.md §被弾デブリ、design/state-ui.md §Phase C1 damage。
 
