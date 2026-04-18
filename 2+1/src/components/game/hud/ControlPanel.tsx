@@ -137,7 +137,7 @@ export const ControlPanel = ({
         FPS: {fps}
       </div>
       <div style={{ marginTop: "2px", fontSize: "13px", opacity: 0.6 }}>
-        build: {__BUILD_TIME__} JST
+        {t("hud.build")}: {__BUILD_TIME__} JST
       </div>
       {Object.keys(scores).length > 0 && (
         <div
@@ -158,7 +158,7 @@ export const ControlPanel = ({
                 color: players.get(id)?.color ?? getPlayerColor(id),
               }}
             >
-              {id === myId ? t("hud.you") : isLighthouse(id) ? "Lighthouse" : players.get(id)?.displayName ?? id.slice(0, 6)}: {kills}
+              {id === myId ? t("hud.you") : isLighthouse(id) ? t("hud.lighthouse") : players.get(id)?.displayName ?? id.slice(0, 6)}: {kills}
             </div>
           ))}
         </div>

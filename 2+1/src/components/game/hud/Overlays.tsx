@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { useI18n } from "../../../i18n";
 import { useGameStore } from "../../../stores/game-store";
 import { RESPAWN_DELAY } from "../constants";
+import { isLighthouse } from "../lighthouse";
 import type { DeathEvent } from "../types";
 import { hslToComponents } from "./utils";
 
 const RespawnCountdown = () => {
+  const { t } = useI18n();
   const [remaining, setRemaining] = useState(RESPAWN_DELAY / 1000);
   useEffect(() => {
     const start = Date.now();
@@ -29,7 +32,7 @@ const RespawnCountdown = () => {
       }}
     >
       <div style={{ fontSize: "36px", fontWeight: "bold", color: "#ff4444" }}>
-        DEAD
+        {t("hud.dead")}
       </div>
       <div style={{ fontSize: "24px", color: "white", marginTop: "8px" }}>
         {remaining}
@@ -45,7 +48,7 @@ type OverlaysProps = {
   killGlow: boolean;
   isFiring: boolean;
   myLaserColor: string;
-  killNotification: { victimName: string; color: string } | null;
+  killNotification: { victimId: string; victimName: string; color: string } | null;
   myDeathEvent?: DeathEvent | null;
 };
 
@@ -101,6 +104,12 @@ export const Overlays = ({
   myDeathEvent,
 }: OverlaysProps) => {
   const laserHsl = hslToComponents(myLaserColor);
+  const { t } = useI18n();
+  const displayVictimName = killNotification
+    ? isLighthouse(killNotification.victimId)
+      ? t("hud.lighthouse")
+      : killNotification.victimName
+    : null;
 
   return (
     <>
@@ -183,7 +192,7 @@ export const Overlays = ({
               animation: "firing-blink 100ms step-end infinite",
             }}
           >
-            FIRING
+            {t("hud.firing")}
           </div>
         </>
       )}
@@ -213,7 +222,7 @@ export const Overlays = ({
                 "0 0 20px rgba(255,215,0,0.8), 0 0 40px rgba(255,215,0,0.4)",
             }}
           >
-            KILL
+            {t("hud.kill")}
           </div>
           <div
             style={{
@@ -222,7 +231,7 @@ export const Overlays = ({
               opacity: 0.9,
             }}
           >
-            {killNotification.victimName}
+            {displayVictimName}
           </div>
         </div>
       )}

@@ -11,6 +11,13 @@ import {
 import { ENERGY_MAX, LIGHTHOUSE_COLOR, LIGHTHOUSE_ID_PREFIX, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
 import type { RelativisticPlayer } from "./types";
 
+/**
+ * Canonical English display name for a Lighthouse NPC. Used as the locale-
+ * independent value persisted to leaderboards and snapshotted into kill
+ * events; render layers translate this via i18n (`hud.lighthouse`).
+ */
+export const LIGHTHOUSE_DISPLAY_NAME = "Lighthouse";
+
 /** Check if a player ID belongs to a Lighthouse NPC. */
 export const isLighthouse = (id: string): boolean =>
   id.startsWith(LIGHTHOUSE_ID_PREFIX);

@@ -4,6 +4,7 @@ import type { KillEventRecord, PendingSpawnEvent, SpawnEffect } from "./types";
 export interface KillEventEffects {
   deathFlash: boolean;
   killNotification: {
+    victimId: string;
     victimName: string;
     color: string;
     hitPos: { t: number; x: number; y: number; z: number };
@@ -45,6 +46,7 @@ export function firePendingKillEvents(
       }
       if (ev.killerId === myId && ev.victimId !== myId) {
         killNotification = {
+          victimId: ev.victimId,
           victimName: ev.victimName,
           color: ev.victimColor,
           hitPos: ev.hitPos,

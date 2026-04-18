@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useI18n, type Lang } from "../i18n";
 
+import { LIGHTHOUSE_DISPLAY_NAME } from "./game/lighthouse";
 import { getTopScores, type HighScoreEntry } from "../services/highScores";
 import { fetchLeaderboard } from "../services/leaderboard";
 
@@ -20,6 +21,9 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
 
   const highScores = useMemo(() => getTopScores(5), []);
   const [globalScores, setGlobalScores] = useState<HighScoreEntry[]>([]);
+
+  const displayEntryName = (name: string): string =>
+    name === LIGHTHOUSE_DISPLAY_NAME ? t("hud.lighthouse") : name;
 
   useEffect(() => {
     const leaderboardUrl = import.meta.env.VITE_LEADERBOARD_URL;
@@ -183,7 +187,7 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
               }}
             >
               <span>
-                {i + 1}. {entry.name}
+                {i + 1}. {displayEntryName(entry.name)}
               </span>
               <span>
                 {entry.kills} {t("lobby.kills")} / {Math.floor(entry.duration / 60)}:{String(Math.floor(entry.duration) % 60).padStart(2, "0")}
@@ -216,7 +220,7 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
               }}
             >
               <span>
-                {i + 1}. {entry.name}
+                {i + 1}. {displayEntryName(entry.name)}
               </span>
               <span>
                 {entry.kills} {t("lobby.kills")} / {Math.floor(entry.duration / 60)}:{String(Math.floor(entry.duration) % 60).padStart(2, "0")}

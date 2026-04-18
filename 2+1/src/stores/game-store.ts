@@ -15,7 +15,7 @@ import {
   generateHitParticles,
 } from "../components/game/debris";
 import { applyKill, applyRespawn } from "../components/game/killRespawn";
-import { isLighthouse } from "../components/game/lighthouse";
+import { isLighthouse, LIGHTHOUSE_DISPLAY_NAME } from "../components/game/lighthouse";
 import type {
   DeathEvent,
   DebrisRecord,
@@ -197,7 +197,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
     };
 
     const victimName = isLighthouse(victimId)
-      ? "Lighthouse"
+      ? LIGHTHOUSE_DISPLAY_NAME
       : (victim.displayName ?? victimId.slice(0, 6));
 
     // Stage C: authoritative event log entry (now source of truth for

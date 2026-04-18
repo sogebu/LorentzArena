@@ -28,6 +28,12 @@ export const en: Record<TranslationKey, string> = {
   "hud.position": "Position",
   // HUD - scoreboard
   "hud.you": "You",
+  "hud.lighthouse": "Lighthouse",
+  // HUD - overlays (in-game state text)
+  "hud.firing": "FIRING",
+  "hud.kill": "KILL",
+  "hud.dead": "DEAD",
+  "hud.build": "build",
   // Connect panel
   "connect.title": "Connection",
   "connect.minimize": "Minimize",
@@ -45,9 +51,9 @@ export const en: Record<TranslationKey, string> = {
   "connect.phase.host": "Host",
   "connect.phase.client": "Client",
   "connect.phase.manual": "Manual connection mode",
+  "connect.room": "Room",
   "connect.networkHelp":
-    "WebRTC may be blocked on school/corporate networks. Try switching to WS Relay mode.",
-  "connect.autoFallback": "PeerJS failed. Auto-switched to WS Relay.",
+    "WebRTC may be blocked on school/corporate networks, preventing connection.",
   "connect.peers": "Connected peers",
   "connect.peerOpen": "open",
   "connect.peerClosed": "connecting/failed",

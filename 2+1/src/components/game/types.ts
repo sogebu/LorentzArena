@@ -146,6 +146,7 @@ export type WorldLineRendererProps = {
 };
 
 export type KillNotification3D = {
+  victimId: string;
   victimName: string;
   color: string;
   hitPos: { t: number; x: number; y: number; z: number };

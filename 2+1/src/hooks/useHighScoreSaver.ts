@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { saveHighScore } from "../services/highScores";
 import { submitScore } from "../services/leaderboard";
-import { isLighthouse } from "../components/game/lighthouse";
+import { isLighthouse, LIGHTHOUSE_DISPLAY_NAME } from "../components/game/lighthouse";
 import { useGameStore } from "../stores/game-store";
 
 const makeSessionId = (): string => {
@@ -53,7 +53,7 @@ export function useHighScoreSaver(
         for (const [id, kills] of Object.entries(scores)) {
           if (isLighthouse(id) && kills > 0) {
             const entry = {
-              name: "Lighthouse",
+              name: LIGHTHOUSE_DISPLAY_NAME,
               kills,
               date: now,
               duration,

@@ -13,12 +13,12 @@ const Connect = () => {
     networkingEnv,
     activeTransport,
     availableTransports,
-    autoFallbackTriggered,
     connectionPhase,
     roomName,
     isHost,
     setActiveTransport,
   } = usePeer();
+  const showTransportSelector = availableTransports.length > 1;
   const { t } = useI18n();
   const [isMinimized, setIsMinimized] = useState(false);
   // マウント後 AUTO_MINIMIZE_MS で自動最小化。mobile 限定: PC はパネル常時展開。
@@ -55,8 +55,8 @@ const Connect = () => {
         return `${t("connect.transport")}: "${roomName}"${t("connect.phase.connectingClient")}`;
       case "connected":
         return isHost
-          ? `ルーム "${roomName}" — ${t("connect.phase.host")}`
-          : `ルーム "${roomName}" — ${t("connect.phase.client")}`;
+          ? `${t("connect.room")} "${roomName}" — ${t("connect.phase.host")}`
+          : `${t("connect.room")} "${roomName}" — ${t("connect.phase.client")}`;
       case "manual":
         return t("connect.phase.manual");
     }
@@ -126,17 +126,6 @@ const Connect = () => {
                 </p>
               )}
 
-            {autoFallbackTriggered && (
-              <p
-                style={{
-                  margin: "6px 0 0",
-                  fontSize: "0.8em",
-                  opacity: 0.9,
-                }}
-              >
-                {t("connect.autoFallback")}
-              </p>
-            )}
           </div>
 
           {connections.length > 0 && (
@@ -168,23 +157,20 @@ const Connect = () => {
               <div>ICE transport: {networkingEnv.iceTransportPolicy}</div>
               <div>Preferred transport: {networkingEnv.preferredTransport}</div>
               <div>WS relay URL: {networkingEnv.wsRelayUrl}</div>
-              <div style={{ marginTop: "8px" }}>
-                <span>{t("connect.transport")}: </span>
-                <select
-                  value={activeTransport}
-                  onChange={(e) =>
-                    setActiveTransport(e.target.value as "peerjs" | "wsrelay")
-                  }
-                >
-                  <option value="peerjs">PeerJS (WebRTC)</option>
-                  <option
-                    value="wsrelay"
-                    disabled={!availableTransports.includes("wsrelay")}
+              {showTransportSelector && (
+                <div style={{ marginTop: "8px" }}>
+                  <span>{t("connect.transport")}: </span>
+                  <select
+                    value={activeTransport}
+                    onChange={(e) =>
+                      setActiveTransport(e.target.value as "peerjs" | "wsrelay")
+                    }
                   >
-                    WS Relay
-                  </option>
-                </select>
-              </div>
+                    <option value="peerjs">PeerJS (WebRTC)</option>
+                    <option value="wsrelay">WS Relay</option>
+                  </select>
+                </div>
+              )}
             </div>
           </details>
         </>
