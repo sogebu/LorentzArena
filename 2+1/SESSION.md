@@ -2,9 +2,9 @@
 
 ## 現在のステータス
 
-対戦可能。**`0028cef` デプロイ済み** (build `2026/04/18 17:31:38 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`0ad52e6` デプロイ済み** (build `2026/04/18 17:43:24 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
-2026-04-18 夕: **Phase C1 damage model** 着地。hit 即死 → energy pool 被弾共有 (`HIT_DAMAGE=0.5`、`energy<0` で死、2 発で死) + `POST_HIT_IFRAME_MS=500ms` post-hit i-frame (人間 + LH)、非致命 hit の被弾煙 (scatter 中心 = 時空 4 元ベクトル和 `k^μ_null + u^μ_victim` の空間成分)、`debrisRecords[]` 単一 array に `type: "explosion" | "hit"` タグで統合。詳細: design/physics.md §被弾デブリ、design/state-ui.md §Phase C1 damage。
+2026-04-18 夕: **Phase C1 damage model** 着地。hit 即死 → energy pool 被弾共有 (`HIT_DAMAGE=0.5`、`energy<0` で死、2 発で死) + `POST_HIT_IFRAME_MS=500ms` post-hit i-frame (人間 + LH)、hit デブリ (scatter 中心 = 時空 4 元ベクトル和 `k^μ_null + u^μ_victim` の空間成分、**撃った人の色**)、lethal 時は hit (撃った人色) + explosion (死んだ人色) の **2 層**、`debrisRecords[]` 単一 array に `type: "explosion" | "hit"` タグで統合。詳細: design/physics.md §被弾デブリ、design/state-ui.md §Phase C1 damage。
 
 2026-04-18 昼: Brave Shields が `navigator.sendBeacon` (Request Type=ping) を block してグローバル HS が silent drop される問題を修正 (`fetch({keepalive:true})` に切替)。Brave 実機で保存確認済。詳細: design/meta-principles.md M19。
 
