@@ -756,6 +756,10 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
           peerManager.setBeaconHolderId(realHostId);
           peerManager.connect(realHostId);
           peerManager.offMessage("beacon_fallback");
+          // Re-run heartbeat effect so the timer and migrationTriggeredRef
+          // reset for the new host. Without this the watchdog stays dead and
+          // a stale redirect leaves us stuck as client with a ghost peer.
+          setRoleVersion((v) => v + 1);
         }
       });
 
@@ -806,7 +810,22 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       const newHostId = candidates[0]; // first in join order = oldest client
 
       if (!newHostId) {
-        // No candidates — try beacon before falling back to solo host
+        // If we have no open peer connections besides the dead host/beacon,
+        // we're alone — no elected peer to wait for and beacon fallback would
+        // only chase stale redirects. Go solo directly. Otherwise the beacon
+        // is still our best shot at discovering a real host outside
+        // peerOrderRef.
+        const openConns = peerManager
+          .getConnectedPeerIds()
+          .filter((id) => id !== oldHostId && id !== roomPeerId);
+        if (openConns.length === 0) {
+          // eslint-disable-next-line no-console
+          console.log(
+            "[PeerProvider] No candidates and no other peers — becoming solo host",
+          );
+          becomeSoloHost();
+          return;
+        }
         attemptBeaconFallback();
         return;
       }
@@ -995,8 +1014,23 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
           beaconFailCount++;
           if (!cancelled) {
             if (beaconFailCount >= MAX_BEACON_RETRIES) {
-              // Another host holds the beacon — demote self
-              demoteToClient();
+              // If no peers are connected, the beacon is likely stale from a
+              // dead previous host rather than contended with a live one.
+              // Demoting to client would only connect us to a ghost. Stay
+              // solo and keep retrying with a longer backoff until the
+              // beacon is released or a real peer appears.
+              const openPeers = peerManager.getConnectedPeerIds();
+              if (openPeers.length === 0) {
+                // eslint-disable-next-line no-console
+                console.log(
+                  "[PeerProvider] Beacon unavailable but no peers connected — staying as solo host, long backoff retry",
+                );
+                beaconFailCount = 0;
+                retryTimer = setTimeout(tryBeacon, 10000);
+              } else {
+                // A live host actually holds the beacon — demote self
+                demoteToClient();
+              }
             } else {
               retryTimer = setTimeout(tryBeacon, 3000);
             }

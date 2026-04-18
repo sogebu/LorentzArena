@@ -23,6 +23,7 @@
 - **isMigrating 固着バグ修正** (2026-04-18): `useBeaconMigration` が `peerManager.getIsBeaconHolder() === false` で早期 return するとき、`completeMigration()` を呼ばない実装だった → `isMigrating` が永久に true のまま残る。発火経路: (a) 新 host 選出直後に `demoteToClient` (dual-host 解決) が割り込む / (b) 新 host 選出直後に `game_redirect` を受けて client 降格 / (c) 新 host 選出 → 即 tab hide → HOST_HIDDEN_GRACE 後 Phase 1 で client 復帰。stuck すると `RelativisticGame` の snapshot gate (`getIsBeaconHolder && !isMigrating`, line 218) が永久に閉じ、もし後で再度 beacon holder に戻っても新 joiner に `snapshot` (= 初期 state) を送信できない → 新規参加者が state を受け取れない functional bug。修正: 早期 return 時に `completeMigration()` を呼ぶ (migration 仕事が自分のスコープ外だと確定したら flag を落とす semantic)
 - **isMigrating refactor: derived/不要化 + snapshot retry** (2026-04-18): 上の「固着バグ修正」で露呈した「外部 hook が flag reset を担う」anti-pattern を根治。`isMigrating` は state として削除、`useBeaconMigration` hook も削除。仕事の内訳: (1) 旧 respawn timer 全 clear は tick poll 化で不要、(2) killLog から残り時間計算は poll がやる、(3) LH ownership 書き換えは `assumeHostRole` に inline (host 昇格は必ずここを通る), (4) 新 respawn timer の setTimeout 再発行は poll があるので不要。`RelativisticGame` の snapshot gate は `peerManager?.getIsBeaconHolder()` のみにシンプル化。+ **pull-based snapshot retry** (`useSnapshotRetry`): host 側 push (connections diff 送信) が race で届かなかった場合、client が `players.get(myId)` 未受信を検知して 2s 間隔で `snapshotRequest` を送信、host が handler で snapshot 返信 (最大 3 回)。push 経路は保険付き belt-and-suspenders で併存。DESIGN.md §migration 権威は assumeHostRole に集約 / §snapshot 受信は pull retry でフォールバック
 - **migration gap で世界線ジャンプ修正** (2026-04-18): 2-tab ローカルで migration 後に他機の世界線 tube が直線で橋渡しされる現象を修正。原因は `messageHandler.phaseSpace` が migration の ~2.5s relay gap 両端を隣接 sample として `appendWorldLine` し、`CatmullRomCurve3(centripetal)` が Hermite 補間で直線橋を生成 → TubeGeometry で描画。Fix B: `lastCoordTimeRef.wallTime` 差分が `WORLDLINE_GAP_THRESHOLD_MS = 500` 超なら既存 worldLine を `frozenWorldLines` に凍結し、新 WL を 1 点から開始 (CatmullRom 橋の発生源ごと除去)。既存 kill→respawn の凍結経路を再利用、`MAX_FROZEN_WORLDLINES = 20` cap 共有。Fix A (defensive): `applySnapshot` の migration path (= 既存 `players.has(myId)`) で自機 state は local 優先、他 peer は `pos.t` 比較で新しい方を採用。ICE restart 等で conn.id が付け替わる corner case の保険。vitest 8 本追加。DESIGN.md §migration gap による worldLine ジャンプ
+- **alone 判定で ghost host stuck 修正** (2026-04-18): 2-tab local テストで全 peer 切断後、残った tab が client ロールのまま「接続中の相手: 9 文字 random ID (接続中)」が残留して固着するバグを修正。3 経路共通の原因は「ghost host に redirect → heartbeat 監視が再起動しない」。(1) `attemptBeaconFallback` の beacon_fallback redirect handler で `setRoleVersion` を bump 忘れ → heartbeat effect の deps が動かず timer 再起動せず watchdog 死ぬ問題を修正。(2) heartbeat timeout で `!newHostId` の時、無条件に beacon fallback へ行く実装を、`peerManager.getConnectedPeerIds().filter(id !== oldHostId && id !== roomPeerId)` が 0 件なら `becomeSoloHost()` に直行するよう変更 (alone なら solo 昇格が唯一正解、stale beacon の redirect に巻き込まれない)。(3) `tryBeacon` の `MAX_BEACON_RETRIES` 到達時も、`getConnectedPeerIds()` が空なら `demoteToClient` せず 10s backoff で retry (ghost host への demote を回避、beacon が release されるまで solo で待つ)。DESIGN.md §alone 時の solo host 昇格と ghost host stuck 回避
 
 - **2026-04-15**: D pattern (world 座標 + 頂点単位 Lorentz)、球は C pattern 維持、spawn pillar 過去光円錐 anchor、Lighthouse 調整 (射撃間隔 / spawn grace / 無敵 / 照準ジッタ)、レーザー × 光円錐 交点マーカーの接平面三角形化、opacity 定数集約。M13/M14/M15 追加。DESIGN.md 時系列→topic 別再編。`plans/2026-04-15-design-reorg.md`
 - **2026-04-14**: Authority 解体 Stage A〜E、handleKill 二重キル防止、sendBeacon CORS 修正 (`text/plain`)、制約ネットワーク検証 (Cloudflare TURN)
@@ -54,11 +55,11 @@
 - **他候補**: メッセージ順序逆転、参照共有漏れ、描画層合成、host migration race (詳細分析は plans/ に必要時起票)
 - **未調査**: 何 peer 構成で・どの peer 視点で出るか。host migration 直前直後に集中する示唆あり
 
-### ホストマイグレーション時の位置飛び（Stage F-H 完了後に要確認）
+### ~~ホストマイグレーション時の位置飛び（Stage F-H 完了後に要確認）~~ **2026-04-18 解消**
 
-- 灯台の位置が飛び、世界線が折れ線になる。旧ホストの位置も飛んでいた可能性
-- 推定原因: 旧 beacon holder 切断→新昇格の間にタイムギャップが生じ、新 owner が最後の phaseSpace から再開すると座標時間の不連続で世界線にジャンプ。Stage D-3 で LH の上書き問題は修正済みだが、migration 中の phaseSpace 発信途絶による不連続は残る
-- 現状: Stage F-H 完了後に再現テスト未実施。実機で要確認
+- 旧症状: 灯台の位置が飛び、世界線が折れ線になる。旧ホストの位置も飛んでいた可能性
+- 根本原因 (2026-04-18 特定): migration 中の ~2.5s relay gap 復旧後に `messageHandler.phaseSpace` が `appendWorldLine` で gap 両端を隣接 sample 扱い → `CatmullRomCurve3(centripetal)` が直線橋を Hermite 補間 → TubeGeometry で描画
+- 解決: `WORLDLINE_GAP_THRESHOLD_MS = 500ms` 超の gap で既存 worldLine を `frozenWorldLines` に凍結、新 WL を 1 点から開始 (DESIGN.md §migration gap による worldLine ジャンプ)。LH も同じ経路で適用される (LH の phaseSpace も beacon holder 経由 relay のため)
 
 ### モバイルバグ (2026-04-17 報告、要修正)
 

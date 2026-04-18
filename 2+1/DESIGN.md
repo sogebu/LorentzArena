@@ -1321,6 +1321,26 @@ stale 除外
 
 `frozenWorldLines` は当初 kill→respawn 専用だったが、migration gap fix でも再利用する判断。`FrozenWorldLine = {worldLine, color}` に death metadata が無いので、kill 由来でも gap 由来でも型整合。`SceneContent` / `WorldLineRenderer` 側は既に `frozenWorldLines` を描画しており追加実装不要。長時間プレイで migration が頻発すると kill 由来の frozen WL が押し出されるリスクはあるが、cap 20 は潤沢で実害想定なし。
 
+### alone 時の solo host 昇格と ghost host stuck 回避 (2026-04-18)
+
+**問題**: 2-tab local テストで全 peer (beacon holder + 他 client) が切断されると、残った tab が **client ロールのまま固着** し、「接続中の相手」欄に random 9 文字のゴースト peer ID が `(接続中)` 表示で残留する。本来は「全 peer が消えたら自分だけが残るので host に自動昇格」すべき。
+
+**3 つの発火経路** (いずれも「ghost host に redirect → heartbeat 監視が再起動しない」で共通):
+
+1. **heartbeat timeout → `attemptBeaconFallback` → stale beacon redirect**: beacon が dead 前 host の redirect handler を保持したまま PeerJS server 側に残留していると、beacon fallback 経路で新しい connection が開く → beacon は stale `localId` で `redirect` メッセージを送る → 受信側は `peerManager.setBeaconHolderId(staleId)` + `peerManager.connect(staleId)` して client 状態に戻る。しかし **`setRoleVersion` が bump されないため heartbeat effect が re-run されず、`migrationTriggeredRef` が true のまま timer も clear 済み**。ghost host が ping を送ることは永久にないのに、watchdog が死んでいるので検知できない。
+2. **heartbeat timeout で `candidates` が空 → 無条件に `attemptBeaconFallback`**: peerOrderRef が空なのに他 peer が存在する corner case (stale peerOrderRef) のためのフォールバックだが、**「本当に alone」ケースと区別せずに常に beacon を叩く**ため、stale beacon redirect 経由で経路 1 に流れ込む。
+3. **`tryBeacon` が `MAX_BEACON_RETRIES` 連続失敗 → `demoteToClient` 無条件発火**: 新 host が beacon 取得を試みる間に dead 前 host の beacon entry が PeerJS server 側で未 cleanup だと `unavailable-id` が 3 連続し、demote される。demotion の discoveryPm は beacon redirect で stale `realHostId` を取得 → `peerManager.connect(staleId)` → ghost host stuck。
+
+**修正**: 3 経路すべてに「alone 判定」を入れて ghost chase を未然に断つ + 経路 1 には追加で watchdog 再起動を仕込む:
+
+- **経路 1 fix (`attemptBeaconFallback` redirect handler, `PeerProvider.tsx` 現 ~L755)**: `peerManager.connect(realHostId)` 後に `setRoleVersion((v) => v + 1)` を追加。これで heartbeat effect が re-run → `lastPingRef` / `migrationTriggeredRef` が reset → 新 host からの ping 待ち、来なければ再 migrate 可能。
+- **経路 2 fix (heartbeat timeout handler, `!newHostId` 分岐)**: `peerManager.getConnectedPeerIds().filter((id) => id !== oldHostId && id !== roomPeerId)` で oldHost / beacon 以外の open 接続数を測る。0 なら `becomeSoloHost()` に直行し、beacon fallback をスキップ。非 0 (= stale peerOrderRef + 他 peer 存在) の時のみ従来の beacon fallback に進む。
+- **経路 3 fix (`tryBeacon` の `MAX_BEACON_RETRIES` 分岐)**: `peerManager.getConnectedPeerIds()` が空なら `demoteToClient` せず、`beaconFailCount` を 0 に reset して長めの backoff (10s) で retry を続ける。beacon が PeerJS server 側で release されるか、real peer が join してくれば次の retry で正常取得できる。
+
+**設計原則**: **migration 経路で「client role へ遷移させる」副作用を置く時、新 host への ping 監視が再起動する仕掛け (= `setRoleVersion` bump) を必ずセットで入れる。** `clearBeaconHolder` + `setBeaconHolderId(newHost)` + `connect(newHost)` の 3 つだけでは React state 変化が起きず、heartbeat effect の deps が動かないので watchdog が眠ったままになる。`demoteToClient` / `game_redirect` 経路は元々 `setRoleVersion` 済みで安全、`attemptBeaconFallback` redirect 経路だけ漏れていた。
+
+**関連原則**: **「alone (他 peer なし) は solo host の必要条件」**。 beacon fallback / demoteToClient は「real host が別にいる」前提の経路なので、alone 判定 (= `getConnectedPeerIds()` が空) が取れた時点で分岐を断ち切るのが正しい。この判定を入れないと、PeerJS server の stale entry TTL が切れるまで ghost host を追い続けるループになる。
+
 ---
 
 ## § UI / 入力

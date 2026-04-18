@@ -19,7 +19,10 @@ pnpm run analyze               # バンドルサイズ分析
 
 ### テスト (Vitest)
 
-`pnpm test` で 1 回実行、`pnpm test:watch` でウォッチモード。現時点のテストは `src/physics/worldLine.test.ts` のみ (光円錐交差 binary search の regression test)。
+`pnpm test` で 1 回実行、`pnpm test:watch` でウォッチモード。現時点のテスト:
+- `src/physics/worldLine.test.ts` — 光円錐交差 binary search の regression test (11 本)
+- `src/components/game/messageHandler.test.ts` — phaseSpace の migration gap 検知 (gap < 500ms append / gap ≥ 500ms で既存 WL を frozenWorldLines に push + 新 WL 生成 / gap ≥ 500ms で空 history なら frozen 無 / 初回受信の 4 本、2026-04-18 追加)
+- `src/components/game/snapshot.test.ts` — applySnapshot の migration path 分岐 (新規 join 時 unconditional replace / migration path で自機 state 保持 / 他 peer は pos.t 比較で新しい方採用の 4 本、2026-04-18 追加)
 
 **物理コア (pure 関数) を触るときの規約**:
 1. 旧実装を `*Linear` 等の名前で export 維持 (deprecated だが regression 比較用)
