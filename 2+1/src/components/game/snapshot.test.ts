@@ -54,6 +54,7 @@ function makeSnapshot(
       color: p.color ?? "#fff",
       displayName: undefined,
       isDead: false,
+      energy: ENERGY_MAX,
       phaseSpace: {
         pos: { t: p.posT, x: p.posX ?? 0, y: 0, z: 0 },
         u: { x: 0, y: 0, z: 0 },

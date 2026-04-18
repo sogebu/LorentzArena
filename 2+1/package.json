@@ -1,12 +1,13 @@
 {
-  "name": "1plus1",
+  "name": "2plus1",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "dev:wsrelay": "bash ./scripts/dev-wsrelay.sh",
-    "build": "tsc -b && vite build",
+    "build": "vite build",
+    "typecheck": "tsc -b",
     "preview": "vite preview",
     "relay:install": "npm --prefix relay-server install",
     "relay:dev": "npm --prefix relay-server run start",

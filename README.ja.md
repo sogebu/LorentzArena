@@ -31,7 +31,7 @@ cd 2+1 && pnpm install && pnpm dev
 ## What's where
 
 - **[2+1/](2+1/)** — メインゲーム (現在も開発中)。2+1 次元時空 (x, y, t)、`three.js` + `@react-three/fiber`
-- **ルートアプリ** — 初期の 1+1 次元プロトタイプ (x, t)。現在はメンテナンスしていない
+- **[1+1/](1+1/)** — 初期の 1+1 次元プロトタイプ (x, t)。現在はメンテナンスしていない
 - **[docs/ARCHITECTURE.ja.md](docs/ARCHITECTURE.ja.md)** — コードベースの 30,000ft ナラティブ
 - **[docs/NETWORKING.ja.md](docs/NETWORKING.ja.md)** — P2P vs WS relay、TURN 設定、制限ネットワーク下のトラブル対処
 - **[2+1/DESIGN.md](2+1/DESIGN.md)** — 設計判断の根拠

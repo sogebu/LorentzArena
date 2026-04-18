@@ -136,7 +136,7 @@ const ExhaustCone = ({
   observerBoost,
 }: {
   player: {
-    phaseSpace: { pos: { x: number; y: number; t: number } };
+    phaseSpace: { pos: Vector4 };
   };
   thrustAccelRef: React.RefObject<Vector3>;
   observerPos: Vector4 | null;
@@ -258,7 +258,7 @@ const AccelerationArrow = ({
   observerBoost,
 }: {
   player: {
-    phaseSpace: { pos: { x: number; y: number; t: number } };
+    phaseSpace: { pos: Vector4 };
   };
   thrustAccelRef: React.RefObject<Vector3>;
   observerPos: Vector4 | null;

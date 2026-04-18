@@ -7,6 +7,7 @@
     "deploy": "pnpm --dir 2+1 run deploy",
     "test": "pnpm --dir 2+1 run test",
     "lint": "pnpm --dir 2+1 run lint",
-    "format": "pnpm --dir 2+1 run format"
+    "format": "pnpm --dir 2+1 run format",
+    "typecheck": "pnpm --dir 2+1 run typecheck"
   }
 }

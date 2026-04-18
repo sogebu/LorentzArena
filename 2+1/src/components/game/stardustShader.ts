@@ -16,7 +16,9 @@ import {
  * tfDisplayPos.xyz をそのまま使える。world frame では `displayMatrix = I` で絶対座標に
  * なるため flash は正しく出ないが、通常プレイは rest frame なので許容 (簡素化優先)。
  */
-export const applyStardustShader = (shader: THREE.Shader): void => {
+export const applyStardustShader = (
+  shader: THREE.WebGLProgramParametersWithUniforms,
+): void => {
   shader.uniforms.uTimeFadeScale = { value: TIME_FADE_SCALE };
   shader.uniforms.uFlashSigma = { value: STARDUST_FLASH_SIGMA };
   shader.uniforms.uPastBoost = { value: STARDUST_FLASH_PAST_BOOST };

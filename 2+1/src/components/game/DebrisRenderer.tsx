@@ -18,7 +18,7 @@ import {
   sharedGeometries,
 } from "./threeCache";
 import { applyTimeFadeShader } from "./timeFadeShader";
-import type { SceneContentProps } from "./types";
+import type { DebrisRecord } from "./types";
 
 // デブリ描画用の共有リソース（太いシリンダーで描画）
 const debrisCylinderGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 4, 1);
@@ -38,7 +38,7 @@ export const DebrisRenderer = ({
   debrisRecords,
   myPlayer,
 }: {
-  debrisRecords: SceneContentProps["debrisRecords"];
+  debrisRecords: readonly DebrisRecord[];
   myPlayer: { phaseSpace: { pos: Vector4 }; color: string };
 }) => {
   const { displayMatrix, observerPos, observerBoost } = useDisplayFrame();

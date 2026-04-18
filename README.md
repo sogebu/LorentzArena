@@ -31,7 +31,7 @@ Full development guide: [2+1/CLAUDE.md](2+1/CLAUDE.md).
 ## What's where
 
 - **[2+1/](2+1/)** — the main game (actively developed). 2+1D spacetime (x, y, t), `three.js` + `@react-three/fiber`
-- **Root app** — legacy 1+1D prototype (x, t). No longer maintained
+- **[1+1/](1+1/)** — legacy 1+1D prototype (x, t). No longer maintained
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — 30,000ft narrative of the codebase
 - **[docs/NETWORKING.md](docs/NETWORKING.md)** — P2P vs WS relay, TURN setup, restrictive-network troubleshooting
 - **[2+1/DESIGN.md](2+1/DESIGN.md)** — design decisions with rationale

@@ -29,7 +29,9 @@ import { TIME_FADE_SCALE } from "./constants";
  * Usage:
  *   <meshStandardMaterial ... onBeforeCompile={applyTimeFadeShader} />
  */
-export const applyTimeFadeShader = (shader: THREE.Shader): void => {
+export const applyTimeFadeShader = (
+  shader: THREE.WebGLProgramParametersWithUniforms,
+): void => {
   shader.uniforms.uTimeFadeScale = { value: TIME_FADE_SCALE };
   shader.vertexShader = injectVertex(shader.vertexShader);
   shader.fragmentShader = injectFragment(shader.fragmentShader);
