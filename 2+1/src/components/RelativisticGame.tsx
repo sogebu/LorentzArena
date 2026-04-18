@@ -42,6 +42,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const [isFiring, setIsFiring] = useState(false);
   const [showInRestFrame, setShowInRestFrame] = useState(true);
   const [useOrthographic, setUseOrthographic] = useState(false);
+  const [showRadar, setShowRadar] = useState(true);
   const [fps, setFps] = useState(0);
   const [energy, setEnergy] = useState(ENERGY_MAX);
 
@@ -256,6 +257,9 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         setShowInRestFrame={setShowInRestFrame}
         useOrthographic={useOrthographic}
         setUseOrthographic={setUseOrthographic}
+        showRadar={showRadar}
+        setShowRadar={setShowRadar}
+        cameraYawRef={cameraYawRef}
         energy={energy}
         isFiring={isFiring}
         myLaserColor={

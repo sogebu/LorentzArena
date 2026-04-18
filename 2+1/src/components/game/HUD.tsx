@@ -2,6 +2,7 @@ import { useI18n } from "../../i18n";
 import { useGameStore } from "../../stores/game-store";
 import { ControlPanel } from "./hud/ControlPanel";
 import { Overlays } from "./hud/Overlays";
+import { Radar } from "./hud/Radar";
 import { Speedometer } from "./hud/Speedometer";
 
 type HUDProps = {
@@ -11,6 +12,9 @@ type HUDProps = {
   setShowInRestFrame: (v: boolean) => void;
   useOrthographic: boolean;
   setUseOrthographic: (v: boolean) => void;
+  showRadar: boolean;
+  setShowRadar: (v: boolean) => void;
+  cameraYawRef: React.RefObject<number>;
   energy: number;
   isFiring: boolean;
   myLaserColor: string;
@@ -25,6 +29,9 @@ export const HUD = ({
   setShowInRestFrame,
   useOrthographic,
   setUseOrthographic,
+  showRadar,
+  setShowRadar,
+  cameraYawRef,
   energy,
   isFiring,
   myLaserColor,
@@ -53,9 +60,13 @@ export const HUD = ({
         setShowInRestFrame={setShowInRestFrame}
         useOrthographic={useOrthographic}
         setUseOrthographic={setUseOrthographic}
+        showRadar={showRadar}
+        setShowRadar={setShowRadar}
         killGlow={killGlow}
         getPlayerColor={getPlayerColor}
       />
+
+      {showRadar && <Radar myId={myId} cameraYawRef={cameraYawRef} />}
 
       {myPlayer && (
         <Speedometer

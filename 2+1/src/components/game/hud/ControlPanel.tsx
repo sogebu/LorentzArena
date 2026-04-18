@@ -70,6 +70,8 @@ type ControlPanelProps = {
   setShowInRestFrame: (v: boolean) => void;
   useOrthographic: boolean;
   setUseOrthographic: (v: boolean) => void;
+  showRadar: boolean;
+  setShowRadar: (v: boolean) => void;
   killGlow: boolean;
   getPlayerColor: (peerId: string) => string;
 };
@@ -83,6 +85,8 @@ export const ControlPanel = ({
   setShowInRestFrame,
   useOrthographic,
   setUseOrthographic,
+  showRadar,
+  setShowRadar,
   killGlow,
   getPlayerColor,
 }: ControlPanelProps) => {
@@ -130,6 +134,12 @@ export const ControlPanel = ({
         onChange={setUseOrthographic}
         labelLeft={t("hud.orthographic")}
         labelRight={t("hud.perspective")}
+      />
+      <ToggleSwitch
+        checked={showRadar}
+        onChange={setShowRadar}
+        labelLeft={t("hud.radar")}
+        labelRight={t("hud.noRadar")}
       />
       <div
         style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
