@@ -4,24 +4,28 @@ Claude Code 作業マニュアル。全リポ共通の規約は `CONVENTIONS.md`
 
 ## プロジェクト構成
 
-2つの独立したフロントエンドアプリで構成:
+2つの独立したフロントエンドアプリで構成（**メインは 2+1**）:
 
 | ディレクトリ | 内容 | 時空次元 | CLAUDE.md |
 |---|---|---|---|
-| `/` (root) | 1+1 時空図レンダラー (x-t) | 1+1 | このファイル |
 | `/2+1/` | 2+1 時空図アリーナ (x-y-t)、three.js + R3F | 2+1 | `2+1/CLAUDE.md` |
+| `/1+1/` | 1+1 時空図レンダラー (x-t)、legacy | 1+1 | （なし、ソースのみ） |
 
-GitHub Pages デプロイは `2+1/` が本番（`cd 2+1 && pnpm run deploy`）。
+GitHub Pages デプロイは `2+1/` が本番。リポルートの `package.json` は薄い wrapper で、`pnpm run deploy` 等を `2+1/` に委譲する。
 デプロイ後は必ずリンクを出力すること: https://sogebu.github.io/LorentzArena/
 
-**2+1 の作業は `2+1/CLAUDE.md` を参照。** このファイルはリポ全体の概観と 1+1 アプリ用。
+**作業の主戦場は `2+1/CLAUDE.md`。** このファイルはリポ全体の概観。
 
-## コマンド（ルート / 1+1）
+## コマンド（ルート wrapper → 2+1 に委譲）
 
 ```bash
-pnpm install && pnpm dev       # 開発サーバー
-pnpm run build                 # ビルド
+pnpm dev                       # 2+1 の dev サーバー
+pnpm run build                 # 2+1 ビルド
+pnpm run deploy                # 2+1 を GitHub Pages へ
+pnpm run test                  # 2+1 の Vitest
 ```
+
+1+1 を触る時は `cd 1+1 && pnpm install && pnpm dev`。
 
 ## 参照ドキュメント
 
