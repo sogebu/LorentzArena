@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createPhaseSpace, type PhaseSpace } from "./mechanics";
-import { createVector3, createVector4, type Vector4 } from "./vector";
+import { createVector3, createVector4 } from "./vector";
 import {
   appendWorldLine,
   createWorldLine,
