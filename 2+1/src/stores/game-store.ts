@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { getVelocity4 } from "../physics";
+import { getVelocity4, type Vector3 } from "../physics";
 import {
   INVINCIBILITY_DURATION,
   MAX_DEBRIS,
@@ -10,7 +10,10 @@ import {
   MAX_RESPAWN_LOG,
   POST_HIT_IFRAME_MS,
 } from "../components/game/constants";
-import { generateExplosionParticles } from "../components/game/debris";
+import {
+  generateExplosionParticles,
+  generateHitParticles,
+} from "../components/game/debris";
 import { applyKill, applyRespawn } from "../components/game/killRespawn";
 import { isLighthouse } from "../components/game/lighthouse";
 import type {
@@ -105,6 +108,7 @@ export interface GameState {
     killerId: string,
     hitPos: { t: number; x: number; y: number; z: number },
     damage: number,
+    laserDir: Vector3,
     myId: string | null,
   ) => void;
   /** Phase C1: energy のみ set (自機 fire/thrust 消費 + 自然回復の tick で使う)。 */
@@ -189,6 +193,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
       deathPos: hitPos,
       particles: explosionParticles,
       color: victim.color,
+      type: "explosion",
     };
 
     const victimName = isLighthouse(victimId)
@@ -279,7 +284,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   // handleDamage (Phase C1) — energy 減算 + 致命判定
   // -----------------------------------------------------------------------
 
-  handleDamage: (victimId, killerId, hitPos, damage, myId) => {
+  handleDamage: (victimId, killerId, hitPos, damage, laserDir, myId) => {
     const state = get();
     const victim = state.players.get(victimId);
     if (!victim) return;
@@ -305,11 +310,22 @@ export const useGameStore = create<GameState>()((set, get) => ({
     };
     const nextHitLog = [...state.hitLog, hitEntry].slice(-MAX_HIT_LOG);
 
-    // Non-lethal: energy を更新、hitLog に append。kill は出さない。
+    // Non-lethal: energy を更新、hitLog に append、hit debris を生成。kill は出さない。
     if (!isLethal) {
+      const hitParticles = generateHitParticles(victim.phaseSpace.u, laserDir);
+      const hitDebris: DebrisRecord = {
+        deathPos: hitPos,
+        particles: hitParticles,
+        color: victim.color,
+        type: "hit",
+      };
       const nextPlayers = new Map(state.players);
       nextPlayers.set(victimId, { ...victim, energy: newEnergy });
-      set({ players: nextPlayers, hitLog: nextHitLog });
+      set({
+        players: nextPlayers,
+        hitLog: nextHitLog,
+        debrisRecords: [...state.debrisRecords, hitDebris].slice(-MAX_DEBRIS),
+      });
       return;
     }
 

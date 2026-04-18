@@ -513,7 +513,7 @@ export function useGameLoop({
             freshForHit.processedLasers.add(id);
           }
 
-          for (const { victimId, killerId, hitPos } of hitResult.hits) {
+          for (const { victimId, killerId, hitPos, laserDir } of hitResult.hits) {
             // Phase C1: damage を先に適用 (i-frame / 既死 / 無敵 は handleDamage
             // が内部で弾く)。致命なら handleDamage 内で handleKill が呼ばれる。
             sendToNetwork({
@@ -522,10 +522,11 @@ export function useGameLoop({
               killerId,
               hitPos,
               damage: HIT_DAMAGE,
+              laserDir,
             });
             useGameStore
               .getState()
-              .handleDamage(victimId, killerId, hitPos, HIT_DAMAGE, myId);
+              .handleDamage(victimId, killerId, hitPos, HIT_DAMAGE, laserDir, myId);
 
             // 致命判定: handleDamage 後 selectIsDead で確認。lethal なら
             // S-2 stale クリア + kill event broadcast + LH respawn timer。

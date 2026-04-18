@@ -4,7 +4,11 @@ import {
   type Vector3,
   type Vector4,
 } from "../../physics";
-import { EXPLOSION_PARTICLE_COUNT } from "./constants";
+import {
+  EXPLOSION_PARTICLE_COUNT,
+  HIT_DEBRIS_KICK,
+  HIT_DEBRIS_PARTICLE_COUNT,
+} from "./constants";
 
 /**
  * 爆発パーティクルの方向を生成（未来光円錐内をランダムに飛散）。
@@ -36,6 +40,44 @@ export const generateExplosionParticles = (victimU?: Vector3) => {
       dx,
       dy,
       speed,
+      size: 0.2 + Math.random() * 0.4,
+    });
+  }
+  return particles;
+};
+
+/**
+ * Phase C1: 非致命ヒットのデブリ方向生成。爆発 (`generateExplosionParticles`)
+ * の「半分」コンセプト: 個数・kick 幅・size を半分以下に。散らし中心は
+ * **時空ベクトル** k^μ + u^μ の空間成分 ( = laserDir + victimU ) を baseU と
+ * 解釈し、そこから固有速度空間で狭い cone 内にランダム摂動。
+ *   k^μ (null laser): (1, dx_L, dy_L, 0)
+ *   u^μ (victim): (γ, u_x, u_y, 0)
+ * spatial(k+u) = (dx_L + u_x, dy_L + u_y) を baseU として、ut=√(1+|u|²) で
+ * 3 速度 v = u/ut に落とす (自動的に |v|<1)。
+ */
+export const generateHitParticles = (victimU: Vector3, laserDir: Vector3) => {
+  const particles: { dx: number; dy: number; speed: number; size: number }[] =
+    [];
+
+  const baseUx = laserDir.x + victimU.x;
+  const baseUy = laserDir.y + victimU.y;
+
+  for (let i = 0; i < HIT_DEBRIS_PARTICLE_COUNT; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const kick = Math.random() * HIT_DEBRIS_KICK;
+    const ux = baseUx + Math.cos(angle) * kick;
+    const uy = baseUy + Math.sin(angle) * kick;
+    const ut = Math.sqrt(1 + ux * ux + uy * uy);
+    const dx = ux / ut;
+    const dy = uy / ut;
+    const speed = Math.sqrt(dx * dx + dy * dy);
+
+    particles.push({
+      dx,
+      dy,
+      speed,
+      // size は explosion と同値 (「煙」の見た目は死亡時と同じ。2026-04-18 odakin 指定)。
       size: 0.2 + Math.random() * 0.4,
     });
   }

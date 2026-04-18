@@ -241,14 +241,22 @@ export const createMessageHandler =
         !isValidVector4(msg.hitPos) ||
         !isFiniteNumber(msg.damage) ||
         msg.damage < 0 ||
-        msg.damage > 10
+        msg.damage > 10 ||
+        !isValidVector3(msg.laserDir)
       )
         return;
       // 自分が owner の victim (自機 or 自分所有 LH) は local の hit detection
       // で既に処理済み。relay 経由の自己 echo は無視。
       const victim = store.players.get(msg.victimId);
       if (victim?.ownerId === myId) return;
-      store.handleDamage(msg.victimId, msg.killerId, msg.hitPos, msg.damage, myId);
+      store.handleDamage(
+        msg.victimId,
+        msg.killerId,
+        msg.hitPos,
+        msg.damage,
+        msg.laserDir,
+        myId,
+      );
     } else if (msg.type === "respawn") {
       // Stage D: respawn は owner 発信。host は他 peer の respawn を受信したら
       // handleRespawn を実行 + registerHostRelay が relay を担当。

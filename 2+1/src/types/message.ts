@@ -72,6 +72,11 @@ export type Message =
       killerId: string;
       hitPos: { t: number; x: number; y: number; z: number };
       damage: number;
+      /**
+       * Laser direction 3-vector (unit, c=1). Used by receiver to build the
+       * hit-debris scatter axis via spacetime 4-vector sum with victim's u.
+       */
+      laserDir: { x: number; y: number; z: number };
     }
   | {
       /**

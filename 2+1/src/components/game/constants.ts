@@ -97,6 +97,14 @@ export const MAX_WORLDLINE_HISTORY = 1000;
 // 爆発パーティクル数
 export const EXPLOSION_PARTICLE_COUNT = 30;
 
+// Phase C1: 被弾デブリ (non-lethal hit) 用パラメータ。爆発デブリの「半分」コンセプト:
+// 個数 半分、kick (scatter 幅) 半分未満 (狭いコーン)、size 半分。色は victim と同色
+// (dim させない — 2026-04-18 odakin 指定)。
+// 生成方向: レーザー 4-vec (null) + victim 4-velocity の時空和の spatial 部分を
+// baseU として使う (`generateHitParticles`)。
+export const HIT_DEBRIS_PARTICLE_COUNT = 15;
+export const HIT_DEBRIS_KICK = 0.3;
+
 // Lighthouse（AI 固定砲台）
 export const LIGHTHOUSE_ID_PREFIX = "lighthouse-";
 export const LIGHTHOUSE_FIRE_INTERVAL = 2000; // ms

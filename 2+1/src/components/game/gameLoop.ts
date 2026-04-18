@@ -262,6 +262,8 @@ export interface HitDetectionResult {
     victimId: string;
     killerId: string;
     hitPos: { t: number; x: number; y: number; z: number };
+    /** Laser 3-direction (unit, c=1)。hit debris 散らし方向の計算用。 */
+    laserDir: { x: number; y: number; z: number };
   }>;
   hitLaserIds: string[];
 }
@@ -321,7 +323,12 @@ export function processHitDetection(
       if (invincibleIds.has(playerId)) continue;
       const hitPos = findLaserHitPosition(laser, player.worldLine, HIT_RADIUS);
       if (hitPos) {
-        hits.push({ victimId: playerId, killerId: laser.playerId, hitPos });
+        hits.push({
+          victimId: playerId,
+          killerId: laser.playerId,
+          hitPos,
+          laserDir: laser.direction,
+        });
         hitLaserIds.push(laser.id);
         hitThisFrame.add(playerId);
         break;

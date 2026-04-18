@@ -5,11 +5,15 @@ import type {
   WorldLine,
 } from "../../physics";
 
-// 死亡時の爆散デブリ（等速直線運動、永続データ）
+// 死亡時の爆散デブリ (`explosion`) + Phase C1 被弾時の小デブリ (`hit`)。
+// 等速直線運動、永続データ、同じ `debrisRecords[]` 配列で共存。renderer は type を
+// 参照しないので、個数・size・color の調整は生成器 (`generateExplosionParticles` /
+// `generateHitParticles`) 側で完結させる (tag は GC や snapshot 等の識別用途)。
 export type DebrisRecord = {
   readonly deathPos: { t: number; x: number; y: number; z: number };
   readonly particles: ReadonlyArray<{ dx: number; dy: number; size: number }>;
   readonly color: string;
+  readonly type: "explosion" | "hit";
 };
 
 // 世界に残された凍結世界線（死んだプレイヤーの痕跡）
