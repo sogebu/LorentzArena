@@ -1252,20 +1252,74 @@ stale 除外
 
 **過去類似バグ**: 上記「myDeathEvent は ref で持つ」も同じ class (useEffect cleanup が respawn timer を殺す)。あの時は `[myDeathEvent]` が deps に入って kill のたびに cleanup だったので、deps から外す (ref 化) ことで解決した。今回は kill とは独立 (= deps から外しようがない) な peerManager swap で cleanup が起きるため、setTimeout 自体を state-based poll に置換する必要があった。教訓: **不安定な component の lifecycle に依存する scheduling (setTimeout/setInterval) は code smell、可能なら state-derived polling に切り替える**。
 
-### isMigrating は scope 外経路でも明示的に reset する (2026-04-18)
+### isMigrating は scope 外経路でも明示的に reset する (2026-04-18、後続で削除)
 
-**問題**: `setIsMigrating(true)` は heartbeat timeout で新 host に選出された時 ([PeerProvider.tsx:821](src/contexts/PeerProvider.tsx)) に呼ばれるが、reset は `useBeaconMigration` 内の `completeMigration()` だけが担う。当初 `useBeaconMigration` は `if (!peerManager.getIsBeaconHolder()) return;` で早期 return しており、**自分が beacon holder でない状態で effect が fire すると reset されず `isMigrating` が永久に true** のまま残る不具合があった。
+**問題**: `setIsMigrating(true)` は heartbeat timeout で新 host に選出された時に呼ばれるが、reset は `useBeaconMigration` 内の `completeMigration()` だけが担っていた。当初 `useBeaconMigration` は `if (!peerManager.getIsBeaconHolder()) return;` で早期 return しており、**自分が beacon holder でない状態で effect が fire すると reset されず `isMigrating` が永久に true** のまま残る不具合があった。
 
 **発火経路**:
 - (a) 選出直後に `demoteToClient` (dual-host 解決) が割り込んで beacon holder status を消す
 - (b) 選出直後に `game_redirect` を受けて client 降格する (関数 handler が clearBeaconHolder を呼ぶ)
 - (c) 選出 → 即 tab hide → HOST_HIDDEN_GRACE 経過で peerManager destroy → Phase 1 再接続で別 peer が beacon を先取していて client 復帰する
 
-**影響**: [RelativisticGame.tsx:218](src/components/RelativisticGame.tsx) の snapshot 送信 gate は `peerManager?.getIsBeaconHolder() && !isMigrating` なので、isMigrating stuck が続くと **後で再度 beacon holder になっても新 joiner に snapshot を送れない** → 新規参加者が players / scores / hostTime を受け取れない functional bug (UI 表示だけの問題ではない)。
+**影響**: `RelativisticGame` の snapshot 送信 gate は `peerManager?.getIsBeaconHolder() && !isMigrating` だったので、isMigrating stuck が続くと **後で再度 beacon holder になっても新 joiner に snapshot を送れない** → 新規参加者が players / scores / hostTime を受け取れない functional bug (UI 表示だけの問題ではない)。
 
-**解決**: `getIsBeaconHolder() === false` branch で `completeMigration()` を呼んでから return する。semantic: 「migration 仕事が自分のスコープ外だと確定したら flag を落とす」。`!peerManager` / `!myId` は transient (peerManager 再接続 / peer open 待ち) なので reset しない (新 peerManager 到達で effect が再 fire して再判定)。
+**暫定修正** (同日): `getIsBeaconHolder() === false` branch で `completeMigration()` を呼んでから return する。semantic: 「migration 仕事が自分のスコープ外だと確定したら flag を落とす」。`!peerManager` / `!myId` は transient (peerManager 再接続 / peer open 待ち) なので reset しない。
 
-**教訓**: **一方向に trip させる state flag (false → true) は、reset 経路を漏れなくカバーする責務を明文化する必要がある**。`isMigrating` は「1 箇所でセット → 1 箇所で reset」設計だったが、その reset 箇所が内部で早期 return しうる構造だと reset 漏れを生む。flag を reset する責務が多相的なら、早期 return する各 branch で明示的に reset するか、もしくは `isMigrating` 自体を derived state (peerManager role + roleVersion から計算) に置き換える方がロバスト。後者は将来課題。
+**根治** (「migration 権威は assumeHostRole に集約」の節、同日): 暫定修正は bug を塞いだだけで、「外部 hook が reset 責務を負う」anti-pattern は残っていた。次の節で `isMigrating` state + `useBeaconMigration` hook を削除し、LH ownership 書き換えを `assumeHostRole` inline に移動した。
+
+**教訓**: **一方向に trip させる state flag (false → true) は、reset 経路を漏れなくカバーする責務を明文化する必要がある**。`isMigrating` は「1 箇所でセット → 1 箇所で reset」設計だったが、その reset 箇所が内部で早期 return しうる構造だと reset 漏れを生む。flag を reset する責務が多相的なら早期 return branch で明示的に reset するか、そもそも flag を state にせず role transition の 1 関数に閉じ込める方がロバスト (根治の採用路線)。
+
+### migration 権威は assumeHostRole に集約 (2026-04-18)
+
+**背景**: 上の isMigrating 暫定修正で露呈したのは、「host 昇格の副作用」を `setIsMigrating(true)` という flag 経由で `useBeaconMigration` hook に通知し、hook 側が (1) 旧 respawn timer 全 clear、(2) killLog から死亡 owner の残り時間計算、(3) LH ownership 書き換え、(4) 新 respawn timer を setTimeout で再発行、(5) `completeMigration()` で flag reset、を実行する設計。仕事が多相で reset 責務が漏れやすく、さらに「host 昇格」という transition イベントを flag transient に載せる余分な間接が複雑さの温床だった。
+
+**解決**:
+- **`isMigrating` state + `completeMigration` + `useBeaconMigration` hook を全て削除**
+- **仕事の再配分**:
+  - (1) 旧 respawn timer 全 clear: tick poll 化 (同日の「owner respawn を tick poll 化」節) で timer 依存自体が消えたため不要
+  - (2) 残り時間計算 + (4) setTimeout 再発行: 同じく poll が `killLog.wallTime + RESPAWN_DELAY <= now` を毎 tick 判定するため不要
+  - (3) LH ownership 書き換え: `assumeHostRole()` inline に移動。host 昇格経路は `becomeSoloHost` / heartbeat timeout / beacon fallback のいずれも必ず `assumeHostRole()` を通る invariant を利用
+  - (5) flag reset: flag 自体が消えたので不要
+- `RelativisticGame` の snapshot gate は `peerManager?.getIsBeaconHolder()` のみ (migration 中と通常 host の区別が不要になった)
+- `respawnTimeoutsRef` は `RelativisticGame` に useRef で直接保持、`useGameLoop` に prop 渡し (以前は `useBeaconMigration` が所有して返却)
+
+**効果**:
+- state 数が 1 減、hook ファイル 1 削除、race-prone な「外部 hook reset」anti-pattern が消失
+- host 昇格の副作用が `assumeHostRole()` という 1 関数に閉じる (setAsBeaconHolder + handler 登録 + LH ownership rewrite + roleVersion++ が同期実行)
+- snapshot gate の条件が単純化し、意味が「host ならば送る」と読めるようになった
+
+**設計原則**: **「transition 直後の副作用」は transition 関数の内部で同期実行する。flag で外部 hook に通知する設計は責務の所在が曖昧になり、reset 経路漏れや race を招く**。今回の `assumeHostRole` がその inline 化の具体例。
+
+### snapshot 受信は pull retry でフォールバック (2026-04-18)
+
+**問題**: 新規 join client の初期 state 転送は `RelativisticGame` の connections diff 検出 → host が `peerManager.sendTo(newPeerId, buildSnapshot(myId))` で push する設計。しかし **client が `onMessage("relativistic", ...)` を登録する前に snapshot が届くと silently dropped** する race がある。validation の silent early-return と組み合わさると、client は「players は空、scores は空、自機も未スポーン」で永久に blank になる。
+
+**解決**: pull-based retry を追加。`useSnapshotRetry` hook が client 側で `players.has(myId)` を観測し、2 秒経っても false なら beacon holder に `snapshotRequest` を送信、最大 3 回まで retry。host 側は `messageHandler` に `snapshotRequest` handler を追加し (beacon holder のみ返答)、sender に fresh snapshot を sendTo で返す。
+
+**push を残す理由**: push の方が latency が低く (race なしなら即座)、pull retry は 2 秒遅延のフォールバック。両方持つ belt-and-suspenders で、race 頻度が低い通常ケースでは push が効き、稀な race では pull が拾う。`snapshotRequest` は relay しない (`isRelayable` に入れない) ので host-direct only。
+
+**設計原則**: **silently-failing 初期化路は、state の source-of-truth (= "初期化されていれば必ず成立する observable") を観測する retry 経路をセットで用意する**。今回は `players.has(myId)` が初期化済み signal。
+
+### migration gap による worldLine ジャンプ (2026-04-18)
+
+**問題**: 2-tab ローカルテストで host 切断 → beacon migration すると、新 host の画面で切断されなかった他機の世界線 tube が **大きな直線で橋渡しされる** 現象を確認。
+
+**原因**: migration 中、beacon holder の 2.5s heartbeat timeout で ~2.5〜2.7s の relay gap が発生し、その間は非自機プレイヤーの `phaseSpace` が届かない。gap 復旧後、最初に受信した `phaseSpace` を `messageHandler` が既存 worldLine に `appendWorldLine(existing_wl, new_ps)` で連結 → gap の両端を隣接 sample として扱う → `WorldLineRenderer` の `CatmullRomCurve3(points, false, "centripetal", 0.5)` が不連続性を検知せず Hermite 補間で直線橋を生成 → `TubeGeometry` が tube として描画。
+
+**Fix B (primary)**: `messageHandler.phaseSpace` に wall-time gap 検知を追加。`lastCoordTimeRef.wallTime` との差分が `WORLDLINE_GAP_THRESHOLD_MS = 500` ms 超なら:
+1. 既存 worldLine (history > 0) を `frozenWorldLines` に push (kill→respawn と同じ凍結経路、`MAX_FROZEN_WORLDLINES = 20` cap 共有)
+2. 新しい `WorldLine` を `createWorldLine(MAX_WORLDLINE_HISTORY)` で生成し、受信した phaseSpace を 1 点 append
+3. 結果、pre-gap tube は凍結履歴として存続、post-gap は新 tube として gap 後の座標から始まる。CatmullRom 直線橋の発生源ごと除去
+
+**閾値 500ms の根拠**: ping interval (1000ms) の半分。通常 relay (~125Hz, 8ms) からの safety margin 十分、migration (2500ms gap) / 長時間 tab background 復帰時に確実に発火、単発 network blip (100-200ms) では発火しない。
+
+**Fix A (defensive, snapshot.ts)**: `applySnapshot` で既に `players.has(myId)` なら migration path と判定し、(a) 自機 state は local 優先 (snapshot の自機エントリがあっても上書きしない)、(b) 他 peer は `pos.t` が local の方が新しければ local を採用。通常は既存 client に新 snapshot が届く経路は `prevConnectionIdsRef` が既存 conn.id を保持するため発生しないが、ICE restart / PeerJS 再接続で conn.id が付け替わる corner case の保険。
+
+**設計原則**: **視覚連続性が幾何補間で暗黙に保証される描画 (CatmullRom, TubeGeometry, sweep) は、data source 側の gap 検知で明示的に不連続性を導入しないと、補間器が「なめらかな嘘」を生成する**。今回は `frozenWorldLines` への切り出しが不連続性のマーカー。
+
+### 世界線凍結先の統一 (再利用)
+
+`frozenWorldLines` は当初 kill→respawn 専用だったが、migration gap fix でも再利用する判断。`FrozenWorldLine = {worldLine, color}` に death metadata が無いので、kill 由来でも gap 由来でも型整合。`SceneContent` / `WorldLineRenderer` 側は既に `frozenWorldLines` を描画しており追加実装不要。長時間プレイで migration が頻発すると kill 由来の frozen WL が押し出されるリスクはあるが、cap 20 は潤沢で実害想定なし。
 
 ---
 

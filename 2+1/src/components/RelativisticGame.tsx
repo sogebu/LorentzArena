@@ -30,7 +30,7 @@ import { useTouchInput } from "./game/touchInput";
 import { useStaleDetection } from "../hooks/useStaleDetection";
 import { useKeyboardInput } from "../hooks/useKeyboardInput";
 import { useHighScoreSaver } from "../hooks/useHighScoreSaver";
-import { useBeaconMigration } from "../hooks/useBeaconMigration";
+import { useSnapshotRetry } from "../hooks/useSnapshotRetry";
 import { useGameLoop } from "../hooks/useGameLoop";
 
 const RelativisticGame = ({ displayName }: { displayName: string }) => {
@@ -38,8 +38,6 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     peerManager,
     myId,
     connections,
-    isMigrating,
-    completeMigration,
     getPlayerColor,
     joinRegistryVersion,
   } = usePeer();
@@ -67,20 +65,26 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const stale = useStaleDetection();
   useHighScoreSaver(myId, displayName, peerManager);
 
-  const respawnTimeoutsRef = useBeaconMigration({
-    isMigrating,
-    peerManager,
-    myId,
-    connections,
-    getPlayerColor,
-    completeMigration,
-  });
+  // Timers for LH / non-self respawn (sub-tick precision). Kept here (not
+  // inside useGameLoop) because the ref survives [peerManager, myId] deps
+  // changes of the game loop effect — the cleanup clears pending timers but
+  // the ref itself persists across the component lifetime. Previously owned
+  // by useBeaconMigration (deleted 2026-04-18 along with isMigrating).
+  const respawnTimeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(
+    new Set(),
+  );
+
+  // 新規 join の pull-based snapshot retry. push (host-side diff 送信) が race
+  // で届かないケースの保険として、client 側で players.get(myId) が埋まるまで
+  // snapshotRequest を再送する。
+  useSnapshotRetry({ peerManager, myId });
 
   // 初期化: beacon holder のみプレイヤー作成。
   // それ以外の peer は snapshot 受信時に applySnapshot が host の座標時間でプレイヤーを作成。
   const isBeaconHolder = peerManager?.getIsBeaconHolder() ?? false;
   // biome-ignore lint/correctness/useExhaustiveDependencies: getPlayerColor is read at init time only
   useEffect(() => {
+    console.log("[init] myId=", myId, "isBeaconHolder=", isBeaconHolder);
     if (!myId) return;
     if (!isBeaconHolder) return; // 非 beacon holder は snapshot でプレイヤー作成
 
@@ -215,7 +219,8 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
 
     const store = useGameStore.getState();
 
-    if (peerManager?.getIsBeaconHolder() && !isMigrating) {
+    const isHost = peerManager?.getIsBeaconHolder();
+    if (isHost) {
       const myPlayer = store.players.get(myId);
       if (myPlayer) {
         for (const conn of connections) {
@@ -247,7 +252,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       stale.cleanupDisconnected(connectedIds);
       return next;
     });
-  }, [connections, myId, peerManager, isMigrating, stale]);
+  }, [connections, myId, peerManager, stale]);
 
   // joinRegistry 変化時に全プレイヤーの色を再計算
   useEffect(() => {

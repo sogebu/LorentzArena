@@ -19,8 +19,10 @@ import {
   colorForJoinOrder,
   colorForPlayerId,
 } from "../components/game/colors";
+import { isLighthouse } from "../components/game/lighthouse";
 import { PeerManager, type PeerServerStatus } from "../services/PeerManager";
 import { WsRelayManager, type WsRelayStatus } from "../services/WsRelayManager";
+import { useGameStore } from "../stores/game-store";
 import type { ConnectionStatus, Message } from "../types";
 
 type ActiveTransport = "peerjs" | "wsrelay";
@@ -58,11 +60,9 @@ interface PeerContextValue {
   connectionPhase: ConnectionPhase;
   roomName: string;
   isHost: boolean;
-  isMigrating: boolean;
   getPlayerColor: (peerId: string) => string;
   joinRegistryVersion: number;
   setActiveTransport: (transport: ActiveTransport) => void;
-  completeMigration: () => void;
 }
 
 export const PeerContext = createContext<PeerContextValue | null>(null);
@@ -264,7 +264,6 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     },
   );
   const [autoFallbackTriggered, setAutoFallbackTriggered] = useState(false);
-  const [isMigrating, setIsMigrating] = useState(false);
 
   // Incremented on all host/client role changes (migration, solo host, demotion).
   // Added to deps of effects that check getIsHost() to force re-evaluation.
@@ -280,10 +279,6 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   const joinRegistryRef = useRef<string[]>([]);
   // Version counter: incremented when joinRegistry changes, triggers color recalculation
   const [joinRegistryVersion, setJoinRegistryVersion] = useState(0);
-
-  const completeMigration = useCallback(() => {
-    setIsMigrating(false);
-  }, []);
 
   // Register both standard message handlers on a peer manager.
   // Called at 5 points: host init, client init, WS relay init, migration (new host), migration (solo fallback).
@@ -705,12 +700,29 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     });
 
     // Assume the host role: clear old state, set as host, register handlers,
-    // and notify React via roleVersion so role-dependent effects re-evaluate.
-    // This bundles the invariant: setAsHost() must always be paired with setRoleVersion().
+    // rewrite Lighthouse ownership to self, and notify React via roleVersion
+    // so role-dependent effects re-evaluate. This bundles the invariant:
+    // setAsHost() must always be paired with setRoleVersion() + LH ownership
+    // takeover (so the new host's useGameLoop owner poll picks up LH respawn).
     const assumeHostRole = () => {
       peerManager.clearBeaconHolder();
       peerManager.setAsBeaconHolder();
       registerStandardHandlers(peerManager);
+      const newHostId = peerManager.id();
+      if (newHostId) {
+        const store = useGameStore.getState();
+        store.setPlayers((prev) => {
+          let changed = false;
+          const next = new Map(prev);
+          for (const [id, player] of next) {
+            if (isLighthouse(id) && player.ownerId !== newHostId) {
+              next.set(id, { ...player, ownerId: newHostId });
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
+      }
       setRoleVersion((v) => v + 1);
     };
 
@@ -817,8 +829,6 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         } else if (activeTransport === "wsrelay") {
           (peerManager as WsRelayManager<Message>).promoteToBeaconHolder();
         }
-
-        setIsMigrating(true);
       } else {
         // I am NOT the new host — wait for new host to connect
         // eslint-disable-next-line no-console
@@ -1032,11 +1042,9 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         connectionPhase,
         roomName,
         isHost,
-        isMigrating,
         getPlayerColor,
         joinRegistryVersion,
         setActiveTransport,
-        completeMigration,
       }}
     >
       {children}

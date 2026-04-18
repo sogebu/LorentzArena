@@ -56,6 +56,15 @@ export const ENERGY_PER_SHOT = 1.0 / 30; // 30 発で枯渇（≈3 秒連射）
 export const THRUST_ENERGY_RATE = 1.0 / 9;
 export const ENERGY_RECOVERY_RATE = 1.0 / 6; // 6 秒で 0→満タン（撃/推どちらもしていないときのみ回復）
 
+// phaseSpace 受信の wall-time gap がこの閾値を超えた場合、受信側は該当プレイヤーの
+// 既存 worldLine を frozenWorldLines に凍結し、新しい worldLine を 1 点から始める。
+// 目的: ホストマイグレーションの heartbeat timeout (2500ms) や長時間 tab background
+// 復帰時に、CatmullRomCurve3 が gap 両端の phaseSpace を直線補間して tube に「橋」を
+// 生やすのを回避する。ping interval (1000ms) の半分、通常 relay (~125Hz, 8ms) との
+// safety margin は十分、単発 network blip (100-200ms) では発火しない。
+// 詳細: DESIGN.md § migration 「phaseSpace gap → worldLine 凍結」
+export const WORLDLINE_GAP_THRESHOLD_MS = 500;
+
 // 世界線の最大サンプル数。
 // 本来は 5000 だったが、長時間プレイで SceneContent.tsx の
 // `worldLineIntersections` / `laserIntersections` / `futureLightConeIntersections`

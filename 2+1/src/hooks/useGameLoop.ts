@@ -67,7 +67,8 @@ export interface GameLoopDeps {
    *  exhaust 描画用、毎 tick 更新。死亡中・frozen・非入力時はゼロベクトル。 */
   thrustAccelRef: MutableRefObject<Vector3>;
 
-  // Lifecycle (shared with useHostMigration)
+  // Owned by RelativisticGame (useRef). Used here for non-self (LH) respawn
+  // setTimeout that we add on hit detection and clear on effect teardown.
   respawnTimeoutsRef: RefObject<Set<ReturnType<typeof setTimeout>>>;
 
   // Input (refs, stable references)
@@ -543,8 +544,8 @@ export function useGameLoop({
       // - 自機: モバイル visibility hidden → HOST_HIDDEN_GRACE 経過で beacon holder 再構築、
       //   peerManager 差し替えで respawnTimeoutsRef.clear() される
       // - LH: solo 環境 (= 唯一の peer) で beacon holder が hidden→visible し Phase 1 経由で
-      //   再取得するケース。setIsMigrating を経由しないため useBeaconMigration の LH setTimeout
-      //   rebuild が動かず、LH 永続 DEAD に陥る
+      //   再取得するケース。旧 `useBeaconMigration` の LH setTimeout rebuild に依存していたが、
+      //   同日の refactor で tick poll に一本化 (DESIGN.md §migration 権威は assumeHostRole に集約)
       //
       // 冪等性: handleRespawn が respawnLog に entry 追加 → selectIsDead が false に落ちる →
       // 次 tick で poll が skip。dev build では assert で壊れていないか確認。

@@ -103,6 +103,12 @@ export const applySnapshot = (
   lastUpdateTimeRef: React.MutableRefObject<Map<string, number>>,
 ): void => {
   const store = useGameStore.getState();
+  // 既に自機 state がある = migration / snapshotRequest retry 経路。
+  // snapshot は「ホスト視点」の一式なので、relay gap 中に取り逃した phaseSpace
+  // が含まれず local より古い場合がある。この経路では (a) 自機 state は local
+  // を保持、(b) 他 peer は pos.t が新しい方を採用、の防御的 merge を行う。
+  // 新規 join (既存 state 無し) は従来通り unconditional replace。
+  const isMigrationPath = store.players.has(myId);
 
   // Rehydrate players (me を含む全員)
   const nextPlayers = new Map<string, RelativisticPlayer>();
@@ -135,6 +141,23 @@ export const applySnapshot = (
       displayName: sp.displayName,
     });
     lastUpdateTimeRef.current.set(sp.id, Date.now());
+  }
+
+  if (isMigrationPath) {
+    // 自機: local 優先 (snapshot の自機エントリがあっても上書きしない)
+    const existingMine = store.players.get(myId);
+    if (existingMine) nextPlayers.set(myId, existingMine);
+    // 他 peer: pos.t が local の方が新しければ local を採用
+    for (const [id, snapshotPlayer] of nextPlayers) {
+      if (id === myId) continue;
+      const local = store.players.get(id);
+      if (
+        local &&
+        local.phaseSpace.pos.t >= snapshotPlayer.phaseSpace.pos.t
+      ) {
+        nextPlayers.set(id, local);
+      }
+    }
   }
 
   // 自機が snapshot に含まれていない場合 (新規 join の一般ケース) は、

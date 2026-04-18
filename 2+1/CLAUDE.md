@@ -110,7 +110,7 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 
 プレイヤー初期化: ホストは START 直後に自己初期化（`OFFSET = Date.now()/1000` で座標時間 t ≈ 0 から開始）。新規 join client は beacon holder から `snapshot` メッセージで `hostTime` を受け取り、その coord-time にスポーン（Authority 解体 Stage F-1 で `syncTime` 廃止、snapshot に統合済み）。
 
-ホストマイグレーション: beacon holder が切断すると最古参クライアントが自動昇格。ハートビート方式（1 秒間隔 `ping`、2.5 秒タイムアウト、Stage G 以降）で即時検知。Authority 解体 Stage D 以降、人間の respawn timer は各 owner がローカルに持ち続けるので migration で再構築不要。`useBeaconMigration`（旧 `useHostMigration`）の仕事は Lighthouse owner 書き換え + LH 死亡中なら残り時間で respawn 再 schedule のみ。`hostMigration` メッセージは Stage H で完全削除済み。
+ホストマイグレーション: beacon holder が切断すると最古参クライアントが自動昇格。ハートビート方式（1 秒間隔 `ping`、2.5 秒タイムアウト、Stage G 以降）で即時検知。Authority 解体 Stage D 以降、人間の respawn timer は各 owner がローカルに持ち続けるので migration で再構築不要。2026-04-18 に `useBeaconMigration` hook + `isMigrating` flag を削除し、host 昇格の副作用 (LH owner 書き換え) は `PeerProvider.assumeHostRole` inline に集約した (DESIGN.md §migration 権威は assumeHostRole に集約)。LH 死亡中の respawn 再 schedule も同日に tick poll 化で不要化。`hostMigration` メッセージは Stage H で完全削除済み。
 
 ビーコンパターン: `la-{roomName}` は常にビーコン（発見専用）。初期ホストは Phase 1 でビーコンを取得し `beaconRef` に保持、マイグレーション後のホストはビーコン effect で取得。新クライアントがビーコンに接続すると `{ type: "redirect", hostId }` で本当のホスト（ランダム ID）にリダイレクト。既存のゲーム接続には影響しない。
 
@@ -165,7 +165,8 @@ ICE servers 優先順位: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERV
 | `useKeyboardInput.ts` | キーボード入力管理（WASD + 矢印 + Space の preventDefault + keysPressed ref） |
 | `useStaleDetection.ts` | stale プレイヤー検知（壁時計/座標時間進行率ベース）、add/delete/cleanup を一箇所に集約 |
 | `useHighScoreSaver.ts` | beforeunload でハイスコア/リーダーボード保存 |
-| `useBeaconMigration.ts` | beacon ownership handoff。Stage F-1 で hostMigration 送信撤去、仕事は LH owner 書き換え + LH respawn 再 schedule のみ。Stage F-2 で `useHostMigration` から改名 (`b5579fe` 相当) |
+| ~~`useBeaconMigration.ts`~~ | 2026-04-18 削除。LH owner 書き換えは `PeerProvider.assumeHostRole` inline に移動、LH respawn 再 schedule は tick poll 化で不要 (DESIGN.md §migration 権威は assumeHostRole に集約) |
+| `useSnapshotRetry.ts` | 新規 join client が snapshot 未受信 (players.get(myId) 未定義) で 2 秒経過したら `snapshotRequest` を beacon holder に送信、最大 3 回。host push (connections diff) の race フォールバック |
 | `useGameLoop.ts` | ゲームループ本体（setInterval ライフサイクル + 全フェーズの dispatch） |
 
 **D pattern の描画**: scene の物理オブジェクト (world line、light cone、ring 系マーカー、cone 接平面三角形、debris、laser batch) は「world 座標で geometry + `mesh.matrix = displayMatrix × T(worldEventPos) × [rotation]`」で per-vertex Lorentz 変換。`DisplayFrameContext` が `displayMatrix` を配信、`buildMeshMatrix` helper で mesh 合成。観測者静止系/世界系どちらでも同一経路、3+1 化時は boost matrix を差し替えるだけ。詳細は DESIGN.md § 描画「D pattern」。**例外** (C pattern / position-based): 球ジオメトリ (player marker, intersection sphere + core, kill sphere, debris particle) は per-vertex Lorentz で γ 楕円化を避けるため display 並進のみ。照準矢印は 2+1 固有のため D pattern 化スコープ外。

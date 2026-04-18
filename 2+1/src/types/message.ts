@@ -155,4 +155,17 @@ export type Message =
           u: { x: number; y: number; z: number };
         } | null;
       }>;
+    }
+  | {
+      /**
+       * Pull-based snapshot retry from a newly joined client.
+       * Sent when the client detects it has no state (players.get(myId) is
+       * undefined) a few seconds after connecting — likely the host's
+       * diff-triggered push lost a race (message handler registered late,
+       * packet dropped, etc). Host responds with a fresh snapshot.
+       *
+       * JP: 新規 join client が state 未受信のまま数秒経過したときの pull。
+       * host 側の push が race で落ちた場合の保険。host が snapshot で返答。
+       */
+      type: "snapshotRequest";
     };

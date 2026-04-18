@@ -1,10 +1,16 @@
 import { appendWorldLine, createPhaseSpace, createWorldLine } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
-import { LIGHTHOUSE_COLOR, MAX_LASERS, MAX_WORLDLINE_HISTORY } from "./constants";
+import {
+  LIGHTHOUSE_COLOR,
+  MAX_FROZEN_WORLDLINES,
+  MAX_LASERS,
+  MAX_WORLDLINE_HISTORY,
+  WORLDLINE_GAP_THRESHOLD_MS,
+} from "./constants";
 import { isLighthouse } from "./lighthouse";
 import { createRespawnPosition } from "./respawnTime";
-import { applySnapshot } from "./snapshot";
-import type { Laser, RelativisticPlayer } from "./types";
+import { applySnapshot, buildSnapshot } from "./snapshot";
+import type { FrozenWorldLine, Laser, RelativisticPlayer } from "./types";
 
 export type MessageHandlerDeps = {
   myId: string;
@@ -52,7 +58,7 @@ const isValidColor = (v: unknown): v is string =>
  */
 export const createMessageHandler =
   // biome-ignore lint/suspicious/noExplicitAny: Network messages require runtime validation
-  (deps: MessageHandlerDeps) => (_senderId: string, msg: any) => {
+  (deps: MessageHandlerDeps) => (senderId: string, msg: any) => {
     if (!msg || typeof msg !== "object" || typeof msg.type !== "string") return;
     const {
       myId,
@@ -63,6 +69,14 @@ export const createMessageHandler =
       staleFrozenRef,
     } = deps;
     const store = useGameStore.getState();
+
+    if (msg.type === "snapshotRequest") {
+      // 新規 join client からの pull retry。host だけが返答する。
+      if (!peerManager.getIsBeaconHolder()) return;
+      if (!isValidString(senderId)) return;
+      peerManager.sendTo(senderId, buildSnapshot(myId));
+      return;
+    }
 
     if (msg.type === "phaseSpace") {
       if (
@@ -93,9 +107,36 @@ export const createMessageHandler =
         return;
       }
 
-      lastUpdateTimeRef.current.set(playerId, Date.now());
+      // Gap 検出: 前回 phaseSpace 受信からの wall-time gap が閾値超なら、
+      // 既存 worldLine を frozenWorldLines に凍結し、新 WL を 1 点から始める。
+      // CatmullRomCurve3 が gap 両端を直線補間して tube に橋を生やすのを防ぐ。
+      // host migration (2.5s heartbeat) / tab background 復帰時に発火。
+      const prevCoord = lastCoordTimeRef.current.get(playerId);
+      const now = Date.now();
+      const shouldResetWorldLine =
+        prevCoord !== undefined &&
+        now - prevCoord.wallTime > WORLDLINE_GAP_THRESHOLD_MS;
+
+      if (shouldResetWorldLine) {
+        const existingPlayer = store.players.get(playerId);
+        if (
+          existingPlayer &&
+          !existingPlayer.isDead &&
+          existingPlayer.worldLine.history.length > 0
+        ) {
+          const frozen: FrozenWorldLine = {
+            worldLine: existingPlayer.worldLine,
+            color: existingPlayer.color,
+          };
+          store.setFrozenWorldLines((prev) =>
+            [...prev, frozen].slice(-MAX_FROZEN_WORLDLINES),
+          );
+        }
+      }
+
+      lastUpdateTimeRef.current.set(playerId, now);
       lastCoordTimeRef.current.set(playerId, {
-        wallTime: Date.now(),
+        wallTime: now,
         posT: msg.position.t,
       });
       store.setPlayers((prev: Map<string, RelativisticPlayer>) => {
@@ -106,13 +147,10 @@ export const createMessageHandler =
         if (existing?.isDead) return prev;
 
         const existingWorldLine = existing?.worldLine;
-        const worldLine = existingWorldLine
-          ? appendWorldLine(existingWorldLine, phaseSpace)
-          : (() => {
-              let wl = createWorldLine(MAX_WORLDLINE_HISTORY);
-              wl = appendWorldLine(wl, phaseSpace);
-              return wl;
-            })();
+        const worldLine =
+          shouldResetWorldLine || !existingWorldLine
+            ? appendWorldLine(createWorldLine(MAX_WORLDLINE_HISTORY), phaseSpace)
+            : appendWorldLine(existingWorldLine, phaseSpace);
 
         const color = existing?.color ?? (isLighthouse(playerId) ? LIGHTHOUSE_COLOR : getPlayerColor(playerId));
         const displayName = existing?.displayName ?? store.displayNames.get(playerId);
