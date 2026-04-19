@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**デプロイ済み** (build `2026/04/20 08:42:14 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`03bd0f0` デプロイ済み** (build `2026/04/20 08:42:14 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
 2026-04-20 (cannon / 機体 redesign + ライティング rig 共通化):
 - **砲本体 1/2 相似スケール**: BARREL radius 0.035→0.025 / length 2.3→2.5 (実質原初 5.0 からは半分)、
