@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**デプロイ済み** (build `2026/04/20 07:04:40 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`fed3908` デプロイ済み** (build `2026/04/20 07:04:40 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
 2026-04-20 朝 (敵世界線も inner-hide 対象に拡張):
 - `WorldLineRenderer` の hide center を旧「最終 vertex (= player の現在世界位置)」から
