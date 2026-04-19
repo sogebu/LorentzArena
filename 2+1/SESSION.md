@@ -4,6 +4,26 @@
 
 対戦可能。**`a5bedd7` デプロイ済み** (build `2026/04/19 18:03:14 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
+2026-04-19 夕 (自機 SelfShipRenderer 着地 + Direction A 設計合意): odakin との対話的設計で **自機を sphere → 八角プリズム + 4 diagonal RCS nozzle + 砲身** に置換。`SelfShipRenderer.tsx` 新設 + SceneContent.tsx 自機分岐。設計哲学は **deadpan SF** (シリアスな顔をしたジョーク、ゲーム仕様 8 方向 thrust + past-cone marker は下 45° 前方に literal 整合)。**4 diagonal nozzle** (角度 π/4, 3π/4, 5π/4, 7π/4) で WASD 単押し → 隣接 2 ノズル各 1/√2、2 つ同時押し → 単一ノズル 1.0 という綺麗な分解 (式: `intensity = max(0, -localThrust · outward)`)。ノズルは de Laval ベル型、外面 FrontSide / 内面 BackSide で 2 pass 描画 (内壁 dark)。砲は 2 段 telescoping (BARREL 0.05/5.0 + TIP 0.025/5.0) + breech + 3 補強リング + muzzle brake、前方下 45° literal 配置 (`SHIP_GUN_PITCH_DOWN_RAD = +π/4`)。AccelerationArrow / Aim arrow 存続、ExhaustCone は SelfShipRenderer 内 4 nozzle 個別 EMA smoothing で再構成 (旧コード SceneContent.tsx から削除、git history で復元可)。色は現状: hull dark navy / nozzle dark steel-blue / 砲 light silver-gray / exhaust blue+white。
+
+**Direction A & D 候補生存 (未実装、design doc)**: 形状方向再考で odakin から候補 4 案中 **A (観測ドローン LIGO meets Voyager)** と **D (asymmetric 爆撃機 belly turret)** が共に「いいね」候補生存。B (戦艦) / C (多眼) は脱落。
+
+**全候補に共通する確定事項** (どちらに進んでも適用、4 diagonal nozzle は **絶対 keep**):
+- ❌ 黄色三角の前方マーク (`SHIP_FORWARD_MARK_COLOR`、`markGeom`) 撤去 — hull 形状で前方を示す
+- ⬇️ 砲身を更に短く (現 5+5=10 → 半分以下に)
+- 🔧 hull–砲 接続部に **yoke/brace** 追加 (砲を支えてる感)
+- 🎨 色を **2 軸**: 構造色 (hull + 砲 + brace 共通) + 発光/アクセント色 のみに
+- 🔬 機能ストーリー reframe: 兵器 → **観測装置** (砲 = 主観測プローブ、tip に sensor head 球)
+- nozzle 4 隅配置 (π/4...7π/4) は **不変**
+
+**Direction A 個別**: hull = teardrop / 涙滴型 (前狭く後広い、明確な向き)、上面に antenna mast、後ろに counterweight (砲のバランス)、上面 sensor dome。「科学観測ドローン」感、story 整合最高。
+
+**Direction D 個別**: hull = 細長 fuselage (飛行機ぽい)、前面に cockpit 窓、砲は **腹部から literal に下方にぶら下がる turret** (= 「下 45°」が「下方銃座」として意味づけ可能)、後ろに tail fin。「下 45° の literal な意味付け」が最大の旨味、deadpan 度高い。
+
+最終決定はまだ。実装着手前に odakin に再確認すること。
+
+2026-04-19 昼 (視覚調整、4 値):
+
 2026-04-19 昼 (視覚調整、4 値): odakin とのインタラクティブ tuning で opacity / flash 4 値を再チューン。**(a) `PLAYER_WORLDLINE_OPACITY`: 0.65 → 0.4** (人間世界線を控えめに、LH 0.4 と同値になり階層フラット化)、**(b) `ARENA_PAST_CONE_OPACITY`: 1.0 → 0.5** (アリーナ円柱 × 過去光円錐交線を半分に)、**(c) `LIGHT_CONE_WIRE_OPACITY`: 0.05 → 0.02** (自機光円錐 wireframe を更に淡く)、**(d) `STARDUST_FLASH_FUTURE_BOOST`: 0.5 → 0.75** (未来光円錐通過時の星屑 flash peak を 1.5→1.75 倍、past 1.5 の 1/3 → 1/2 に引き上げ)。localhost HMR で逐次確認 → odakin OK で deploy。視覚のみの変更、挙動・テスト影響なし。
 
 2026-04-19 昼 (LH post-hit i-frame 共通化): **灯台にも 0.5s post-hit i-frame を適用**。`selectPostHitUntil` の `if (isLighthouse(victimId)) return 0` 短絡を撤廃 (game-store.ts:507)、人間 victim と同経路で `latest hit wallTime + POST_HIT_IFRAME_MS` を返すように。`LIGHTHOUSE_HIT_DAMAGE = 0.2` で 6 発死は不変、最短殺害時間が 5 × POST_HIT_IFRAME_MS = 2.5s に固定 (集中砲火即死の理不尽さ回避が動機、2026-04-18 夜 Phase C2 前哨で「無敵時間なし」だった設計判断を覆し)。`selectInvincibleUntil` (5s respawn 無敵) は依然 LH 短絡 (-Infinity) — そちらは LH に不要。同時整理: useGameLoop.ts:516 のコメント「11 発死、無敵時間なし」を「6 発死 (定数と整合)、post-hit i-frame は人間と共通」に修正、constants.ts の LIGHTHOUSE_HIT_DAMAGE / POST_HIT_IFRAME_MS JSDoc に共通化を反映。テスト 2 本追加 (39→41 件 all green): `selectPostHitUntil(LH)` が `latest+POST_HIT_IFRAME_MS` を返す / 第 2 発を即発火しても energy + hitLog 不変。typecheck clean。localhost 確認: odakin OK。

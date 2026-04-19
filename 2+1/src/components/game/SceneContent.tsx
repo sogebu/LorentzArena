@@ -16,29 +16,15 @@ import { LaserBatchRenderer } from "./LaserBatchRenderer";
 import { LightConeRenderer } from "./LightConeRenderer";
 import { LighthouseRenderer } from "./LighthouseRenderer";
 import { isLighthouse } from "./lighthouse";
+import { SelfShipRenderer } from "./SelfShipRenderer";
 import { SpawnRenderer } from "./SpawnRenderer";
 import { StardustRenderer } from "./StardustRenderer";
 import { WorldLineRenderer } from "./WorldLineRenderer";
 import {
   AIM_ARROW_BASE_OPACITY,
   AIM_ARROW_OPACITY_STEP,
-  ARROW_BASE_LENGTH,
-  ARROW_BASE_OFFSET,
-  ARROW_BASE_WIDTH,
-  ARROW_COLOR,
-  ARROW_MAX_OPACITY,
   CAMERA_DISTANCE_ORTHOGRAPHIC,
   CAMERA_DISTANCE_PERSPECTIVE,
-  EXHAUST_ATTACK_TIME,
-  EXHAUST_BASE_LENGTH,
-  EXHAUST_BASE_RADIUS,
-  EXHAUST_INNER_COLOR,
-  EXHAUST_MAX_OPACITY,
-  EXHAUST_OFFSET,
-  EXHAUST_OUTER_COLOR,
-  EXHAUST_RADIUS_MIN_SCALE,
-  EXHAUST_RELEASE_TIME,
-  EXHAUST_VISIBILITY_THRESHOLD,
   FUTURE_CONE_LASER_TRIANGLE_OPACITY,
   FUTURE_CONE_WORLDLINE_RING_OPACITY,
   FUTURE_CONE_WORLDLINE_SPHERE_OPACITY,
@@ -46,13 +32,9 @@ import {
   KILL_NOTIFICATION_SPHERE_OPACITY,
   LIGHTHOUSE_WORLDLINE_OPACITY,
   PAST_CONE_WORLDLINE_RING_OPACITY,
-  PLAYER_ACCELERATION,
   PLAYER_MARKER_GLOW_OPACITY_OTHER,
-  PLAYER_MARKER_GLOW_OPACITY_SELF,
   PLAYER_MARKER_MAIN_OPACITY_OTHER,
-  PLAYER_MARKER_MAIN_OPACITY_SELF,
   PLAYER_MARKER_SIZE_OTHER,
-  PLAYER_MARKER_SIZE_SELF,
 } from "./constants";
 import {
   buildDisplayMatrix,
@@ -107,236 +89,6 @@ const computeConeTangentWorldRotation = (
     uy, vy, ny, 0,
     ut, vt, nt, 0,
     0, 0, 0, 1,
-  );
-};
-
-/**
- * Exhaust cone: 自機の thrust 加速度の逆方向 (反推力) に cone を 2 層描画。
- *
- * - **v0: C pattern (rest-frame 固定)**。自機球と同じ display 座標系で並進のみ、
- *   displayMatrix の boost 効果は `transformEventForDisplay` で既に自機 position に
- *   適用済み (dp 経由)。自機 rest-frame view では自機が原点に来て、cone も rest-frame
- *   の -accel 方向にまっすぐ真後ろ。world-frame view では Lorentz 収縮なしの
- *   剛体 exhaust になる (視覚簡略化、物理精密版は D pattern + 共変 α へ上位化予定)。
- *   EXPLORING.md §進行方向・向きの認知支援 §「(3) exhaust の visual-only vs 物理放出」。
- * - **2 層 cone**: 外側=プレイヤー色 (広がった炎)、内側=白 (白熱コア、細め・短め)。
- *   MeshBasicMaterial + additive blending で「固体の三角錐」でなく「発光する炎」に。
- * - **magnitude EMA smoothing** (attack 60ms / release 180ms)。PC の binary 入力でも
- *   点滅せず、mobile の連続値でもほぼ即時。方向は smoothing しない (入力との対応保持)。
- * - energy 枯渇時は `thrustAccel` がゼロになるので自動非表示。
- *
- * 詳細は DESIGN.md §描画「exhaust」。
- */
-const INNER_CORE_SCALE = 0.45; // 内側 core cone の radius / length 共通倍率
-
-const ExhaustCone = ({
-  player,
-  thrustAccelRef,
-  observerPos,
-  observerBoost,
-}: {
-  player: {
-    phaseSpace: { pos: Vector4 };
-  };
-  thrustAccelRef: React.RefObject<Vector3>;
-  observerPos: Vector4 | null;
-  observerBoost: ReturnType<typeof lorentzBoost> | null;
-}) => {
-  const outerRef = useRef<THREE.Mesh>(null);
-  const innerRef = useRef<THREE.Mesh>(null);
-  const outerMatRef = useRef<THREE.MeshBasicMaterial>(null);
-  const innerMatRef = useRef<THREE.MeshBasicMaterial>(null);
-  const smoothedMagRef = useRef(0);
-  const outerColor = getThreeColor(EXHAUST_OUTER_COLOR);
-  const innerColor = getThreeColor(EXHAUST_INNER_COLOR);
-
-  const tmpQuat = useMemo(() => new THREE.Quaternion(), []);
-  const vecY = useMemo(() => new THREE.Vector3(0, 1, 0), []);
-  const vecDir = useMemo(() => new THREE.Vector3(), []);
-
-  useFrame((_, delta) => {
-    const outer = outerRef.current;
-    const inner = innerRef.current;
-    const outerMat = outerMatRef.current;
-    const innerMat = innerMatRef.current;
-    if (!outer || !inner || !outerMat || !innerMat) return;
-
-    const accel = thrustAccelRef.current;
-    const norm = Math.hypot(accel.x, accel.y);
-    const rawTarget = Math.min(1, norm / PLAYER_ACCELERATION);
-
-    const current = smoothedMagRef.current;
-    const tauMs = rawTarget > current ? EXHAUST_ATTACK_TIME : EXHAUST_RELEASE_TIME;
-    const rate = 1 - Math.exp(-(delta * 1000) / tauMs);
-    const smoothed = current + (rawTarget - current) * rate;
-    smoothedMagRef.current = smoothed;
-
-    if (smoothed < EXHAUST_VISIBILITY_THRESHOLD || norm < 1e-6) {
-      outer.visible = false;
-      inner.visible = false;
-      return;
-    }
-    outer.visible = true;
-    inner.visible = true;
-
-    // 反推力方向 = rest-frame -accel を正規化 (display 座標と同じ basis で使用)
-    const dirX = -accel.x / norm;
-    const dirY = -accel.y / norm;
-    vecDir.set(dirX, dirY, 0);
-    tmpQuat.setFromUnitVectors(vecY, vecDir);
-
-    // 自機の display 座標 (rest-frame view なら原点、world-frame view なら world pos)
-    const dp = transformEventForDisplay(
-      player.phaseSpace.pos,
-      observerPos,
-      observerBoost,
-    );
-
-    const length = EXHAUST_BASE_LENGTH * smoothed;
-    // radius も smoothed に連動。低 thrust で針状にならないよう 0.5× 下限でガード。
-    // mobile の連続 thrust で「細い → 太い」の変化が視認できる。
-    const radiusScale =
-      EXHAUST_RADIUS_MIN_SCALE +
-      (1 - EXHAUST_RADIUS_MIN_SCALE) * smoothed;
-    const radius = EXHAUST_BASE_RADIUS * radiusScale;
-    const offset = EXHAUST_OFFSET + length / 2;
-
-    // 外側 cone: 自機位置 + offset × dir (cone 中心)
-    outer.position.set(dp.x + dirX * offset, dp.y + dirY * offset, dp.t);
-    outer.quaternion.copy(tmpQuat);
-    outer.scale.set(radius, length, radius);
-
-    // 内側 core cone: 同じ向き、短くて細く (白熱コア)。base が外側 cone と同じ位置で
-    // 先端も外側に包まれるよう length を短縮、base offset で揃える。
-    const innerLength = length * INNER_CORE_SCALE;
-    const innerRadius = radius * INNER_CORE_SCALE;
-    const innerOffset = EXHAUST_OFFSET + innerLength / 2;
-    inner.position.set(dp.x + dirX * innerOffset, dp.y + dirY * innerOffset, dp.t);
-    inner.quaternion.copy(tmpQuat);
-    inner.scale.set(innerRadius, innerLength, innerRadius);
-
-    outerMat.opacity = smoothed * EXHAUST_MAX_OPACITY;
-    innerMat.opacity = smoothed * EXHAUST_MAX_OPACITY;
-  });
-
-  return (
-    <>
-      <mesh ref={outerRef} geometry={sharedGeometries.exhaustCone}>
-        <meshBasicMaterial
-          ref={outerMatRef}
-          color={outerColor}
-          transparent
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-          toneMapped={false}
-        />
-      </mesh>
-      <mesh ref={innerRef} geometry={sharedGeometries.exhaustCone}>
-        <meshBasicMaterial
-          ref={innerMatRef}
-          color={innerColor}
-          transparent
-          depthWrite={false}
-          blending={THREE.AdditiveBlending}
-          toneMapped={false}
-        />
-      </mesh>
-    </>
-  );
-};
-
-/**
- * 加速度矢印 (自機のみ、C pattern)。xy 平面上の flat 2D 矢印 (ShapeGeometry)。
- * 加速度方向 (exhaust の逆) に sphere 表面から前方へ伸びる。flat で描画するため
- * 任意視点から常に「矢印」として認識できる (cone だけだと視線方向に潰れて blob になる)。
- * smoothed magnitude で length/width/opacity が連動。ユーザー要望 #1, #4。
- */
-const AccelerationArrow = ({
-  player,
-  thrustAccelRef,
-  observerPos,
-  observerBoost,
-}: {
-  player: {
-    phaseSpace: { pos: Vector4 };
-  };
-  thrustAccelRef: React.RefObject<Vector3>;
-  observerPos: Vector4 | null;
-  observerBoost: ReturnType<typeof lorentzBoost> | null;
-}) => {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const matRef = useRef<THREE.MeshBasicMaterial>(null);
-  const smoothedMagRef = useRef(0);
-  const color = getThreeColor(ARROW_COLOR);
-
-  const tmpQuat = useMemo(() => new THREE.Quaternion(), []);
-  const vecY = useMemo(() => new THREE.Vector3(0, 1, 0), []);
-  const vecDir = useMemo(() => new THREE.Vector3(), []);
-
-  useFrame((_, delta) => {
-    const mesh = meshRef.current;
-    const mat = matRef.current;
-    if (!mesh || !mat) return;
-
-    const accel = thrustAccelRef.current;
-    const norm = Math.hypot(accel.x, accel.y);
-    const rawTarget = Math.min(1, norm / PLAYER_ACCELERATION);
-
-    const current = smoothedMagRef.current;
-    const tauMs = rawTarget > current ? EXHAUST_ATTACK_TIME : EXHAUST_RELEASE_TIME;
-    const rate = 1 - Math.exp(-(delta * 1000) / tauMs);
-    const smoothed = current + (rawTarget - current) * rate;
-    smoothedMagRef.current = smoothed;
-
-    if (smoothed < EXHAUST_VISIBILITY_THRESHOLD || norm < 1e-6) {
-      mesh.visible = false;
-      return;
-    }
-    mesh.visible = true;
-
-    // 加速度方向 = +accel を xy 平面上で正規化 (exhaust の反対側)
-    const dirX = accel.x / norm;
-    const dirY = accel.y / norm;
-    vecDir.set(dirX, dirY, 0);
-    // geometry は +y 方向を向いた矢印。setFromUnitVectors で z 軸回りの回転 (xy 平面内)
-    tmpQuat.setFromUnitVectors(vecY, vecDir);
-
-    const dp = transformEventForDisplay(
-      player.phaseSpace.pos,
-      observerPos,
-      observerBoost,
-    );
-
-    // geometry: y ∈ [-0.5, 1.0] の arrow shape (tail が y=-0.5、tip が y=+1.0)
-    // scale Y = totalLength、scale X = totalWidth。base 位置は sphere 表面から
-    // ARROW_BASE_OFFSET 先 (exhaust より離して視覚分離)。
-    // geometry tail の y=-0.5 をその位置に合わせるには、中心を offset + 0.5×scaleY に置く
-    const totalLength = ARROW_BASE_LENGTH * smoothed;
-    const totalWidth = ARROW_BASE_WIDTH * smoothed;
-    const centerOffset = ARROW_BASE_OFFSET + 0.5 * totalLength;
-
-    mesh.position.set(
-      dp.x + dirX * centerOffset,
-      dp.y + dirY * centerOffset,
-      dp.t,
-    );
-    mesh.quaternion.copy(tmpQuat);
-    mesh.scale.set(totalWidth, totalLength, 1);
-
-    mat.opacity = smoothed * ARROW_MAX_OPACITY;
-  });
-
-  return (
-    <mesh ref={meshRef} geometry={sharedGeometries.accelerationArrowFlat}>
-      <meshBasicMaterial
-        ref={matRef}
-        color={color}
-        transparent
-        depthWrite={false}
-        toneMapped={false}
-        side={THREE.DoubleSide}
-      />
-    </mesh>
   );
 };
 
@@ -559,7 +311,9 @@ export const SceneContent = ({
       ))}
 
       {/* 各プレイヤーのマーカー（死亡中の自分のみ非表示）。
-          Lighthouse は専用の塔モデル (LighthouseRenderer)、人間プレイヤーは sphere。 */}
+          Lighthouse: 専用の塔モデル (LighthouseRenderer)。
+          自機 (人間): SelfShipRenderer (八角 hull + 8 RCS + 下 45° 大砲、deadpan SF)。
+          他機 (人間): 従来の sphere + glow halo (差別化)。 */}
       {playerList.map((player) => {
         if (player.id === myId && player.isDead) return null;
 
@@ -567,17 +321,31 @@ export const SceneContent = ({
           return <LighthouseRenderer key={`player-${player.id}`} player={player} />;
         }
 
-        const wp = player.phaseSpace.pos; // world
         const isMe = player.id === myId;
+
+        if (isMe) {
+          return (
+            <SelfShipRenderer
+              key={`player-${player.id}`}
+              player={player}
+              thrustAccelRef={thrustAccelRef}
+              cameraYawRef={cameraYawRef}
+              observerPos={observerPos}
+              observerBoost={observerBoost}
+            />
+          );
+        }
+
+        const wp = player.phaseSpace.pos; // world
         const color = getThreeColor(player.color);
-        const size = isMe ? PLAYER_MARKER_SIZE_SELF : PLAYER_MARKER_SIZE_OTHER;
+        const size = PLAYER_MARKER_SIZE_OTHER;
         const invUntil = selectInvincibleUntil(useGameStore.getState(), player.id);
         const isInvincible = Date.now() < invUntil;
         // Pulse: opacity oscillates 0.3–1.0 at 2Hz during invincibility
         const pulse = isInvincible ? 0.65 + 0.35 * Math.sin(Date.now() * 0.012) : 1.0;
 
         // 球は volumetric なので per-vertex Lorentz を掛けない (γ 楕円化を避ける)。
-        // display 座標へ並進だけ。isMe は display origin に来る。
+        // display 座標へ並進だけ。
         const dp = transformEventForDisplay(wp, observerPos, observerBoost);
         return (
           <group key={`player-${player.id}`} position={[dp.x, dp.y, dp.t]}>
@@ -588,11 +356,11 @@ export const SceneContent = ({
               <meshStandardMaterial
                 color={color}
                 emissive={color}
-                emissiveIntensity={isMe ? 1.0 : 0.4}
+                emissiveIntensity={0.4}
                 roughness={0.3}
                 metalness={0.1}
                 transparent
-                opacity={(isMe ? PLAYER_MARKER_MAIN_OPACITY_SELF : PLAYER_MARKER_MAIN_OPACITY_OTHER) * pulse}
+                opacity={PLAYER_MARKER_MAIN_OPACITY_OTHER * pulse}
               />
             </mesh>
             <mesh
@@ -602,33 +370,17 @@ export const SceneContent = ({
               <meshBasicMaterial
                 color={color}
                 transparent
-                opacity={(isMe ? PLAYER_MARKER_GLOW_OPACITY_SELF : PLAYER_MARKER_GLOW_OPACITY_OTHER) * pulse}
+                opacity={PLAYER_MARKER_GLOW_OPACITY_OTHER * pulse}
               />
             </mesh>
           </group>
         );
       })}
 
-      {/* 自機 exhaust (rest-frame で反推力方向に 2 層 cone、自機のみ、C pattern)。
-          プレイヤー色ではなく全機共通の青プラズマ色。識別性は sphere / worldline で担保。
-          v0 はステップ 1 (自機の rest-frame 加速度を直接表示) のみ。他機対応 (broadcast +
-          観測者 rest-frame に戻す) は phaseSpace に α^μ を乗せる段階で実装予定。 */}
-      {myPlayer && !myPlayer.isDead && (
-        <>
-          <ExhaustCone
-            player={myPlayer}
-            thrustAccelRef={thrustAccelRef}
-            observerPos={observerPos}
-            observerBoost={observerBoost}
-          />
-          <AccelerationArrow
-            player={myPlayer}
-            thrustAccelRef={thrustAccelRef}
-            observerPos={observerPos}
-            observerBoost={observerBoost}
-          />
-        </>
-      )}
+      {/* 自機 exhaust + acceleration arrow は SelfShipRenderer の 8 RCS nozzle に
+          吸収・廃止 (2026-04-19、deadpan SF design)。コンポーネント定義
+          (ExhaustCone / AccelerationArrow) は将来的に他機 exhaust v2 (broadcast α^μ)
+          で再利用される可能性があり一時的に残置。 */}
 
       {/* 自機光円錐 (プレイヤーごとに自分のみ描画、固定色)。rim は ARENA_RADIUS の円柱側面
           まで延伸 (ρ(θ) 依存)、ray が円柱を外す方向は LIGHT_CONE_HEIGHT にフォールバック。
@@ -673,9 +425,20 @@ export const SceneContent = ({
             geometry={sharedGeometries.laserIntersectionTriangle}
             matrix={m}
             matrixAutoUpdate={false}
-            scale={[3, 3, 3]}
+            // 2026-04-19: 旧 [3,3,3] (chunky 三角) を [6,1,1] に変更。geometry の +x が
+            // laser 接平面射影方向なので x scale = laser 方向の長さ、y scale = 横幅。
+            // x を伸ばし y を細くすることで「ビーム」感を出す。
+            scale={[6, 1, 1]}
           >
-            <meshBasicMaterial color={c} side={THREE.DoubleSide} />
+            {/* toneMapped=false で色を明るく出す + additive で背景に光が乗る (ビーム感) */}
+            <meshBasicMaterial
+              color={c}
+              side={THREE.DoubleSide}
+              toneMapped={false}
+              transparent
+              blending={THREE.AdditiveBlending}
+              depthWrite={false}
+            />
           </mesh>
         );
       })}

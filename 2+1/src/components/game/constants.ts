@@ -147,11 +147,10 @@ export const FRICTION_COEFFICIENT = 0.5; // 速度に比例する減速
 // v0 は自機のみ、他機対応は phaseSpace に α^μ を乗せたら同じ描画経路で拡張予定。
 // 後退中 (カメラ前方に exhaust) でも球体で隠れないよう 2x サイズ化 (2026-04-18)。
 export const EXHAUST_BASE_LENGTH = 1.2; // cone の最大長 (magnitude=1 のとき)
-export const EXHAUST_BASE_RADIUS = 0.22; // cone 底面最大半径 (magnitude=1 のとき)
-// 低 thrust で完全な針状にならないための radius の下限倍率 (0.5×〜1.0× に連動)。
-// mobile の連続 thrust で視覚フィードバックを明示する目的。
-export const EXHAUST_RADIUS_MIN_SCALE = 0.5;
-export const EXHAUST_OFFSET = 0.3; // 球表面から cone 底面までのすき間
+// 炎の wide base radius は SelfShipRenderer 側で `SHIP_NOZZLE_EXIT_RADIUS` を直使い
+// (= ノズル端と完全一致)。旧 EXHAUST_BASE_RADIUS / RADIUS_MIN_SCALE / OFFSET は
+// 旧 sphere 設計時の遺物として 2026-04-19 に削除済。length 系統と opacity / smoothing
+// 関連定数のみ生存。
 export const EXHAUST_MAX_OPACITY = 0.6; // 視認性向上 (additive で飽和しない程度)
 // プレイヤー識別は sphere / worldline で担保されているので、exhaust は
 // 全機共通の青系プラズマ色に統一。additive blending で重なると青白く光る。
@@ -270,7 +269,10 @@ export const STARDUST_FLASH_FUTURE_BOOST = 0.75;
 // --- Worldline / laser opacity ---
 export const PLAYER_WORLDLINE_OPACITY = 0.4;
 export const LIGHTHOUSE_WORLDLINE_OPACITY = 0.4;
-export const LASER_WORLDLINE_OPACITY = 0.2;
+// 2026-04-19: 0.2 だと self-ship の機体マスに対してビーム本体が薄く見えない →
+// 0.55 に bump で「光線」感強化 (per-vertex time fade で先端は自然に減衰するため
+// 全体厚塗りにはならない)。
+export const LASER_WORLDLINE_OPACITY = 0.55;
 
 // --- Debris opacity ---
 // InstancedMesh 全 instance 共通 (per-vertex 時間 fade が shader で乗算される)。
@@ -281,6 +283,91 @@ export const DEBRIS_MARKER_OPACITY = 0.7;
 // --- Player marker sizes ---
 export const PLAYER_MARKER_SIZE_SELF = 0.21;
 export const PLAYER_MARKER_SIZE_OTHER = 0.2;
+
+// --- Self ship (2026-04-19, deadpan SF design) ---
+// 自機を sphere から「八角プリズム + 周囲 8 RCS nozzle + 前方下 45° の大砲」に変更
+// (`SelfShipRenderer.tsx`)。デザイン哲学: シリアスな顔をしたジョーク。8 方向 thrust と
+// past-light-cone marker が下 45° に進む rendering 物理に literal 整合させると
+// 「8 nozzle + 下 45° 大砲」になる。他機は当面 sphere のまま (差別化として機能)。
+// 既存の glow halo / exhaust cone / acceleration arrow は自機分岐で廃止 (本機の
+// nozzle が同情報を表示)、aim arrow のみ存続。
+// 2026-04-19 size tune-up: 初版「せんべい」化 (radius 0.18 / height 0.06、比 1:3) を
+// radius 0.32 / height 0.16 (比 1:2、scale ~1.8×) に増強。机上比較で sphere 0.21 を
+// 大きく超え、八角プリズムが「機体」として認識される厚みに。
+export const SHIP_HULL_RADIUS = 0.32;
+export const SHIP_HULL_HEIGHT = 0.16;
+// Hull 色は **固定** (プレイヤー色を使わない)。deadpan 軍用機の dark steel-navy。
+// 自機識別は「機体形状そのもの」(他機 sphere との対比) + 観測者 = 自機 (rest frame で
+// 中央) で担保。プレイヤー色は world line / hit debris / aim arrow 等で別途出る。
+export const SHIP_HULL_COLOR = "hsl(210, 30%, 28%)";
+// emissive で self-lit (光源依存しすぎないように): 同色を低 intensity で。
+export const SHIP_HULL_EMISSIVE_COLOR = "hsl(210, 35%, 35%)";
+export const SHIP_HULL_EMISSIVE_INTENSITY = 0.45;
+// 8 RCS nozzle: 常時可視のハードウェア (gunmetal solid)。噴射炎は別途 1 本の
+// 大型 ExhaustCone (旧 spec、anti-thrust 方向の hull edge から発生) を SelfShipRenderer
+// 内に持つ。8 ノズルは「噴射の出口」decoration、実際の炎はその位置から出す設計。
+//
+// 形状: de Laval ベル型 (CylinderGeometry の top/bottom 半径を変える)。
+//   THROAT_RADIUS (内側、hull 接続) < EXIT_RADIUS (外側、噴射口、広がる)。
+//   初版は ConeGeometry を tip 外向きに置いて「トゲ」になっていた、2026-04-19 修正。
+//   2026-04-19 第 5 段: 「細長く + 本体から離す」report → LENGTH 0.22→0.35 (1.6×、
+//   throat 0.07→0.05 で taper 強調)、OUTWARD_OFFSET 0.01→0.10 で hull edge から
+//   visible な隙間。8 ノズル exit 間: 2·(HULL_R+OFFSET+LENGTH)·sin(π/8) ≈ 0.59 >
+//   2·EXIT_R = 0.44 で重なり解消。exit radius は 0.22 維持 (噴射炎との連続)。
+export const SHIP_NOZZLE_LENGTH = 0.35;
+export const SHIP_NOZZLE_THROAT_RADIUS = 0.05;
+export const SHIP_NOZZLE_EXIT_RADIUS = 0.22;
+export const SHIP_NOZZLE_OUTWARD_OFFSET = 0.10;
+// scene の lighting (ambient 0.5 + 固定 point light) は self-ship が動くので強度
+// 一定とは限らない → emissive で「自己発光」させて lighting 非依存に明るく確保。
+// 2026-04-19 第 11 段: 第 10 段で 28%/0.4 まで暗くしたら hull と同程度で見えなくなった
+// → hull と同等以上の visibility に引き上げ (38% / 0.7)。hue 220 維持で steel-blue。
+// 明度階層: 砲 75% > ノズル 38% ≈ hull 28-35% > 背景。
+export const SHIP_NOZZLE_HARDWARE_COLOR = "hsl(220, 25%, 38%)";
+export const SHIP_NOZZLE_EMISSIVE_COLOR = "hsl(220, 30%, 40%)";
+export const SHIP_NOZZLE_EMISSIVE_INTENSITY = 0.7;
+// 内側 (de Laval ベルの内壁): 影に沈んだ「奥」感を出すため hardware より濃く暗く。
+// 同 geometry を BackSide で 2 pass 描画して内壁だけこの色に。
+export const SHIP_NOZZLE_INNER_COLOR = "hsl(220, 35%, 12%)";
+export const SHIP_NOZZLE_INNER_EMISSIVE_COLOR = "hsl(220, 30%, 8%)";
+export const SHIP_NOZZLE_INNER_EMISSIVE_INTENSITY = 0.15;
+// 前方マーク (上面の小三角刻印、+x 方向 = 機首)
+export const SHIP_FORWARD_MARK_COLOR = "hsl(45, 100%, 65%)"; // 警告黄
+// 大砲 (前方下 45° に literal に突き出す、deadpan 主役)。2 段 barrel:
+//   - 主砲身 (BARREL_RADIUS / BARREL_LENGTH): hull から伸びる主体部
+//   - 砲口延長 (TIP_RADIUS / TIP_LENGTH): 主砲身の先端に取り付く細い延長部、
+//     先端に bore disk を持つ。実銃の銃身 + flash suppressor / 戦車主砲の
+//     muzzle brake 風で「砲身らしさ」が一目瞭然。
+// 2026-04-19 第 8 段: visibility 試験で 0.55 まで太らせた後、deadpan な細長砲に
+//   戻す指定 → BARREL_RADIUS 0.20 + 先端に更に細い TIP (radius 0.1) を追加。
+// 2 段 telescoping (sniper-style)。2026-04-19 第 13 段: 半径だけ 1/2 維持、長さは
+// 元に戻す → より長細い「対物ライフル」「ロングバレル艦砲」風。
+// 砲全長 hull edge から 10.0、tip xy/z ≈ ±7.3 (45° 方向)。
+export const SHIP_GUN_BARREL_RADIUS = 0.05;
+export const SHIP_GUN_BARREL_LENGTH = 5.0;
+export const SHIP_GUN_TIP_RADIUS = 0.025;
+export const SHIP_GUN_TIP_LENGTH = 5.0;
+// Breech (砲尾): hull edge から伸びる主砲身を包む chunky cylinder、「ここから砲が
+// 生えている」感を出す。Bofors / 戦車主砲の breech ハウジング風。
+export const SHIP_GUN_BREECH_RADIUS = 0.15;
+export const SHIP_GUN_BREECH_LENGTH = 1.0;
+// 補強リング (主砲身に 3 本、Bofors 40mm / 古典艦砲の reinforcement bands 風)
+export const SHIP_GUN_RING_RADIUS = 0.08;
+export const SHIP_GUN_RING_LENGTH = 0.15;
+export const SHIP_GUN_RING_COUNT = 3;
+// Muzzle brake (砲口、TIP 末端に取り付く軽い拡大部、flash hider / brake 風)
+export const SHIP_GUN_MUZZLE_BRAKE_RADIUS = 0.05;
+export const SHIP_GUN_MUZZLE_BRAKE_LENGTH = 0.4;
+// Three.js Y-axis rotation by +π/4: +X → (cos, 0, -sin) = (√2/2, 0, -√2/2)。
+// このシーンは Z up なので -Z = down → +π/4 で +X が下に倒れる (forward + down)。
+// 初版は -π/4 にしていて煙突のように上を向いていた、2026-04-19 に修正。
+export const SHIP_GUN_PITCH_DOWN_RAD = Math.PI / 4;
+// 砲身色: 2026-04-19 第 10 段「砲を明るく / ノズルを暗く」指定 → 明暗逆転。
+// 砲は light silver-gray (hue 0、neutral) で前面ハイライト、ノズルは暗い steel-blue
+// (下記参照) で後景化。色相は砲 hue 0 / ノズル hue 220 で完全分離維持。
+export const SHIP_GUN_COLOR = "hsl(0, 0%, 75%)";
+export const SHIP_GUN_EMISSIVE_COLOR = "hsl(0, 0%, 60%)";
+export const SHIP_GUN_EMISSIVE_INTENSITY = 1.1;
 
 // --- Player marker opacity (C pattern、時間 fade 非対象、pulse で無敵点滅) ---
 export const PLAYER_MARKER_MAIN_OPACITY_SELF = 1.0;
