@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**デプロイ済み** (build `2026/04/20 06:45:30 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`abb1cf4` デプロイ済み** (build `2026/04/20 06:45:30 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
 2026-04-20 朝 (死亡 past-cone エフェクト共通化 + 自機本体周辺 inner-hide + ghost 燃料制約撤去):
 
