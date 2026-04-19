@@ -3,6 +3,7 @@ import "./App.css";
 import Connect from "./components/Connect";
 import Lobby from "./components/Lobby";
 import RelativisticGame from "./components/RelativisticGame";
+import { ShipViewer } from "./components/ShipViewer";
 import { PeerProvider } from "./contexts/PeerProvider";
 import { useI18n, type Lang } from "./i18n";
 
@@ -12,6 +13,10 @@ const getRoomName = (): string => {
   const match = hash.match(/^#room=(.+)$/);
   return match ? match[1] : "default";
 };
+
+// `#viewer` で機体 design preview に切り替え。PeerProvider / GameStore 等は起動せず
+// ShipViewer 単独で動作 (ゲーム本体と完全独立)。
+const isViewerMode = (): boolean => window.location.hash.includes("viewer");
 
 const STORAGE_KEY_NAME = "la-playerName";
 
@@ -69,6 +74,7 @@ const LangPicker = () => {
 };
 
 const App = () => {
+  // hooks は早期 return より前に呼ぶ (React rules-of-hooks)
   const { langChosen } = useI18n();
   const roomName = getRoomName();
   const [gameStarted, setGameStarted] = useState(false);
@@ -78,6 +84,11 @@ const App = () => {
       catch { return ""; }
     },
   );
+
+  // Viewer mode: ゲーム/言語選択を bypass、ShipViewer 単独で起動
+  if (isViewerMode()) {
+    return <ShipViewer />;
+  }
 
   const handleStart = () => {
     const trimmed = displayName.trim();

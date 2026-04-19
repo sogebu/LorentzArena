@@ -16,9 +16,14 @@ import {
   EXHAUST_RELEASE_TIME,
   EXHAUST_VISIBILITY_THRESHOLD,
   PLAYER_ACCELERATION,
-  SHIP_FORWARD_MARK_COLOR,
+  SHIP_BRACKET_COLOR,
+  SHIP_BRACKET_EMISSIVE_COLOR,
+  SHIP_BRACKET_EMISSIVE_INTENSITY,
+  SHIP_CANNON_REAR_EXTENSION,
   SHIP_GUN_BARREL_LENGTH,
   SHIP_GUN_BARREL_RADIUS,
+  SHIP_GUN_BRACKET_HEIGHT,
+  SHIP_GUN_BRACKET_RADIUS,
   SHIP_GUN_BREECH_LENGTH,
   SHIP_GUN_BREECH_RADIUS,
   SHIP_GUN_COLOR,
@@ -32,6 +37,9 @@ import {
   SHIP_GUN_RING_RADIUS,
   SHIP_GUN_TIP_LENGTH,
   SHIP_GUN_TIP_RADIUS,
+  SHIP_HULL_SEGMENTS,
+  SHIP_HULL_X_SCALE,
+  SHIP_LIFT_Z,
   SHIP_HULL_COLOR,
   SHIP_HULL_EMISSIVE_COLOR,
   SHIP_HULL_EMISSIVE_INTENSITY,
@@ -45,6 +53,8 @@ import {
   SHIP_NOZZLE_INNER_EMISSIVE_COLOR,
   SHIP_NOZZLE_INNER_EMISSIVE_INTENSITY,
   SHIP_NOZZLE_LENGTH,
+  SHIP_NOZZLE_MOUNT_HULL_RADIUS,
+  SHIP_NOZZLE_MOUNT_THROAT_RADIUS,
   SHIP_NOZZLE_OUTWARD_OFFSET,
   SHIP_NOZZLE_THROAT_RADIUS,
 } from "./constants";
@@ -122,7 +132,8 @@ export const SelfShipRenderer = ({
   const nozzleInnerEmissiveColor = getThreeColor(SHIP_NOZZLE_INNER_EMISSIVE_COLOR);
   const gunColor = getThreeColor(SHIP_GUN_COLOR);
   const gunEmissiveColor = getThreeColor(SHIP_GUN_EMISSIVE_COLOR);
-  const markColor = getThreeColor(SHIP_FORWARD_MARK_COLOR);
+  const bracketColor = getThreeColor(SHIP_BRACKET_COLOR);
+  const bracketEmissiveColor = getThreeColor(SHIP_BRACKET_EMISSIVE_COLOR);
   const exhaustOuterColor = getThreeColor(EXHAUST_OUTER_COLOR);
   const exhaustInnerColor = getThreeColor(EXHAUST_INNER_COLOR);
   const arrowColor = getThreeColor(ARROW_COLOR);
@@ -146,24 +157,15 @@ export const SelfShipRenderer = ({
   );
 
   // 補強リング位置 (主砲身上に SHIP_GUN_RING_COUNT 本、等間隔)。
+  // 主砲身は cannon group 内で x ∈ [-REAR_EXT, BARREL_LENGTH - REAR_EXT] にある。
+  // ring を等間隔に配置するため frac で割る。
   const ringPositions = useMemo(() => {
     const arr: number[] = [];
     for (let i = 1; i <= SHIP_GUN_RING_COUNT; i++) {
       const frac = i / (SHIP_GUN_RING_COUNT + 1); // 1/4, 2/4, 3/4
-      arr.push(SHIP_HULL_RADIUS + SHIP_GUN_BARREL_LENGTH * frac);
+      arr.push(SHIP_GUN_BARREL_LENGTH * frac - SHIP_CANNON_REAR_EXTENSION);
     }
     return arr;
-  }, []);
-
-  // 前方マーク (上面三角): xy 平面上の Shape (tip=+x、底辺=-x 寄り)
-  const markGeom = useMemo(() => {
-    const r = SHIP_HULL_RADIUS;
-    const shape = new THREE.Shape();
-    shape.moveTo(r * 0.7, 0); // tip
-    shape.lineTo(r * 0.2, r * 0.18);
-    shape.lineTo(r * 0.2, -r * 0.18);
-    shape.lineTo(r * 0.7, 0);
-    return new THREE.ShapeGeometry(shape);
   }, []);
 
   useFrame((_, delta) => {
@@ -289,10 +291,17 @@ export const SelfShipRenderer = ({
 
   return (
     <group ref={groupRef}>
-      {/* Hull: 八角プリズム (CylinderGeometry segments=8)。default cylinder 軸 = +y を
-          z 軸に立てるため X 軸 90° 回転。固定 dark navy 色。 */}
-      <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[SHIP_HULL_RADIUS, SHIP_HULL_RADIUS, SHIP_HULL_HEIGHT, 8]} />
+      {/* === Lift wrapper: 全体を +SHIP_LIFT_Z 持ち上げて cannon mount を world origin に着地。
+            これで cannon 軸が origin (= 過去光円錐の交点 = laser 発射点) を通る。
+            exhausts / arrow も lift wrapper 内、座標系は lifted frame (z=0 は world z=+SHIP_LIFT_Z)。 */}
+      <group position={[0, 0, SHIP_LIFT_Z]}>
+      {/* Hull: 六角プリズム (CylinderGeometry segments=6) で +x に vertex (尖端)。
+          X 方向 scale 1.4 で elongate → 前後に細長い nose 付きシルエット。
+          default cylinder 軸 = +y を z 軸に立てるため X 軸 90° 回転、その後 X scale。 */}
+      <mesh rotation={[Math.PI / 2, 0, 0]} scale={[SHIP_HULL_X_SCALE, 1, 1]}>
+        <cylinderGeometry
+          args={[SHIP_HULL_RADIUS, SHIP_HULL_RADIUS, SHIP_HULL_HEIGHT, SHIP_HULL_SEGMENTS]}
+        />
         <meshStandardMaterial
           color={hullColor}
           emissive={hullEmissive}
@@ -300,11 +309,6 @@ export const SelfShipRenderer = ({
           roughness={0.55}
           metalness={0.4}
         />
-      </mesh>
-
-      {/* 前方マーク: 上面 (z = +HULL_HEIGHT/2) の +x 寄りに薄い三角刻印 */}
-      <mesh position={[0, 0, SHIP_HULL_HEIGHT / 2 + 0.001]} geometry={markGeom}>
-        <meshBasicMaterial color={markColor} side={THREE.DoubleSide} toneMapped={false} />
       </mesh>
 
       {/* 4 RCS nozzle hardware (常時可視、de Laval ベル型)。同 geometry を 2 pass 描画
@@ -365,22 +369,83 @@ export const SelfShipRenderer = ({
                 side={THREE.BackSide}
               />
             </mesh>
+            {/* Mount pylon: hull edge → nozzle throat を繋ぐ tapered cylinder。
+                +y (top, outward 側) = nozzle throat 接続 (細い)、-y (bottom, hull 側) = base (太い)。
+                group 原点は nozzle 中心、mount 中心は hull edge と throat の中点 →
+                y = -(OFFSET/2 + LENGTH/2) に placement。hull facet が内側を occlude して
+                「hull から emerge する mount」に見える。色は bracket と同じ (steel-blue) で
+                「取り付けパーツ」ファミリーに統一。 */}
+            <mesh
+              position={[
+                0,
+                -(SHIP_NOZZLE_OUTWARD_OFFSET / 2 + SHIP_NOZZLE_LENGTH / 2),
+                0,
+              ]}
+            >
+              <cylinderGeometry
+                args={[
+                  SHIP_NOZZLE_MOUNT_THROAT_RADIUS,
+                  SHIP_NOZZLE_MOUNT_HULL_RADIUS,
+                  SHIP_NOZZLE_OUTWARD_OFFSET,
+                  12,
+                ]}
+              />
+              <meshStandardMaterial
+                color={bracketColor}
+                emissive={bracketEmissiveColor}
+                emissiveIntensity={SHIP_BRACKET_EMISSIVE_INTENSITY}
+                roughness={0.6}
+                metalness={0.55}
+              />
+            </mesh>
           </group>
         );
       })}
 
-      {/* 大砲: 機首 (+x) から pitch +π/4 (= 下方向)、artillery らしい構成 (deadpan 軍用)。
-          - Breech (砲尾): hull edge にチャンクなハウジング、「ここから砲が生える」
-          - 主砲身: BARREL_LENGTH の長い細い cylinder
-          - 補強リング × N: 主砲身上に等間隔の reinforcement bands (Bofors / 古典艦砲風)
-          - TIP: 主砲身先端に更に細い延長
-          - Muzzle brake: TIP 末端のチャンクな砲口デバイス
-          色は dark gunmetal (hue 0、ノズルの hue 220 と完全分離)。
-          cylinder default 軸 = +y を +x に向けるため各 mesh で z 軸 -π/2 回転。 */}
-      <group rotation={[0, SHIP_GUN_PITCH_DOWN_RAD, 0]}>
-        {/* Breech (砲尾、hull edge を覆うチャンクなハウジング) */}
+      {/* === 砲: belly mount で hull 底面から bracket 経由でぶら下げ ===
+          1. Bracket: hull 底面 (z=-HULL_H/2) から垂直に -z 方向に伸びる短い cylinder。
+          2. その bracket 末端を mount point として cannon group を配置。
+          3. cannon group は +π/4 回転で +x → forward+down 方向に向ける。
+          4. cannon 各 segment は group 内で x=0 から始まる (HULL_R offset なし)。
+          結果: 砲は hull 真下にぶら下がり、そこから forward+down 45° に伸びる
+          → 後方視点でも常に hull 下に砲身が見える。 */}
+
+      {/* Bracket (hull 底面 → cannon mount point の垂直支柱)。色は SHIP_BRACKET_* 系列
+          (steel-blue、nozzle 外面と同色) で hull/cannon (dark navy) と分離。 */}
+      <mesh
+        rotation={[Math.PI / 2, 0, 0]}
+        position={[
+          0,
+          0,
+          -SHIP_HULL_HEIGHT / 2 - SHIP_GUN_BRACKET_HEIGHT / 2,
+        ]}
+      >
+        <cylinderGeometry
+          args={[
+            SHIP_GUN_BRACKET_RADIUS,
+            SHIP_GUN_BRACKET_RADIUS,
+            SHIP_GUN_BRACKET_HEIGHT,
+            8,
+          ]}
+        />
+        <meshStandardMaterial
+          color={bracketColor}
+          emissive={bracketEmissiveColor}
+          emissiveIntensity={SHIP_BRACKET_EMISSIVE_INTENSITY}
+          roughness={0.65}
+          metalness={0.6}
+        />
+      </mesh>
+
+      {/* Cannon assembly group: bracket 末端を mount point として +π/4 down-forward */}
+      <group
+        position={[0, 0, -SHIP_HULL_HEIGHT / 2 - SHIP_GUN_BRACKET_HEIGHT]}
+        rotation={[0, SHIP_GUN_PITCH_DOWN_RAD, 0]}
+      >
+        {/* Breech (砲尾、cannon 根元のチャンクなハウジング)。REAR_EXTENSION で
+            breech 全体が cannon group origin (= bracket 接続点) より後方に shift。 */}
         <mesh
-          position={[SHIP_HULL_RADIUS + SHIP_GUN_BREECH_LENGTH / 2, 0, 0]}
+          position={[SHIP_GUN_BREECH_LENGTH / 2 - SHIP_CANNON_REAR_EXTENSION, 0, 0]}
           rotation={[0, 0, -Math.PI / 2]}
         >
           <cylinderGeometry
@@ -399,9 +464,9 @@ export const SelfShipRenderer = ({
             metalness={0.65}
           />
         </mesh>
-        {/* 主砲身 */}
+        {/* 主砲身 (同じく REAR_EXT で shift) */}
         <mesh
-          position={[SHIP_HULL_RADIUS + SHIP_GUN_BARREL_LENGTH / 2, 0, 0]}
+          position={[SHIP_GUN_BARREL_LENGTH / 2 - SHIP_CANNON_REAR_EXTENSION, 0, 0]}
           rotation={[0, 0, -Math.PI / 2]}
         >
           <cylinderGeometry
@@ -420,7 +485,7 @@ export const SelfShipRenderer = ({
             metalness={0.7}
           />
         </mesh>
-        {/* 補強リング × N (主砲身に等間隔 wrap) */}
+        {/* 補強リング × N (主砲身に等間隔 wrap)。色は cannon body と同じ (navy) に戻す。 */}
         {ringPositions.map((px, i) => (
           <mesh
             // biome-ignore lint/suspicious/noArrayIndexKey: ring 位置固定 + 順序不変
@@ -445,10 +510,10 @@ export const SelfShipRenderer = ({
             />
           </mesh>
         ))}
-        {/* TIP (主砲身 → 細い延長) */}
+        {/* TIP (主砲身 → 細い延長、REAR_EXT shift 適用) */}
         <mesh
           position={[
-            SHIP_HULL_RADIUS + SHIP_GUN_BARREL_LENGTH + SHIP_GUN_TIP_LENGTH / 2,
+            SHIP_GUN_BARREL_LENGTH + SHIP_GUN_TIP_LENGTH / 2 - SHIP_CANNON_REAR_EXTENSION,
             0,
             0,
           ]}
@@ -470,13 +535,13 @@ export const SelfShipRenderer = ({
             metalness={0.75}
           />
         </mesh>
-        {/* Muzzle brake (TIP 末端、砲口デバイス。TIP より少し太いチャンクで砲口を強調) */}
+        {/* Muzzle brake (TIP 末端、砲口デバイス、REAR_EXT shift 適用) */}
         <mesh
           position={[
-            SHIP_HULL_RADIUS +
-              SHIP_GUN_BARREL_LENGTH +
+            SHIP_GUN_BARREL_LENGTH +
               SHIP_GUN_TIP_LENGTH -
-              SHIP_GUN_MUZZLE_BRAKE_LENGTH / 2,
+              SHIP_GUN_MUZZLE_BRAKE_LENGTH / 2 -
+              SHIP_CANNON_REAR_EXTENSION,
             0,
             0,
           ]}
@@ -560,6 +625,7 @@ export const SelfShipRenderer = ({
           side={THREE.DoubleSide}
         />
       </mesh>
+      </group>{/* end lift wrapper */}
     </group>
   );
 };

@@ -2,7 +2,48 @@
 
 ## 現在のステータス
 
-対戦可能。**`a5bedd7` デプロイ済み** (build `2026/04/19 18:03:14 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**デプロイ済み** (build `2026/04/19 21:38:15 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+
+2026-04-19 夜 (自機デザイン着地 — belly-mounted 艦砲、Direction D 系): 長時間の対話的設計で
+自機を sphere → **六角プリズム + 4 隅 RCS nozzle + 底面 bracket + 懸架砲** に刷新。ship viewer
+scene (`#viewer` で hash 起動) を追加してゲーム外で 360° preview、色 / 形 / スケールを高速
+イテレート。最終形状:
+- **Hull**: 六角プリズム (CylinderGeometry segments=6)、+x に vertex (尖端) + X 方向 scale 1.4×
+  で elongate → 前後に細長い「nose 付き」シルエット、**形そのものが前方を示す** (黄色三角や
+  cockpit dome は不採用)
+- **4 RCS Nozzle** (π/4, 3π/4, 5π/4, 7π/4 = 4 隅): de Laval ベル型 (top=EXIT 太い / bottom=THROAT 細い)、
+  外面 FrontSide / 内面 BackSide で 2 pass 描画、tapered mount pylon で hull edge に接合。
+  独立噴射炎: WASD 単押し → 隣接 2 ノズル各 1/√2、W+A 等 → 単一 ノズル 1.0 の RCS 合成
+- **砲 (belly-mounted、+π/4 down-forward)**: hull 底面から垂直 bracket (細い radius 0.04、高さ 0.55)
+  で懸架。**bracket は breech 中点に attach** (REAR_EXT = BREECH_LENGTH/2) で砲尾懸架感。構成:
+  breech + 主砲身 (長) + 3 補強リング + TIP (短) + muzzle brake。長さは全部 1/2 (total 5)、
+  TIP は更に 2/3 に短縮。**全体を lift Z = HULL_H/2 + BRACKET_H で持ち上げ → cannon 軸が world
+  origin (= 過去光円錐交点 = レーザー発射点) を通過**、fire 時レーザーと cannon が完全整合
+- **色 palette (3 層)**: (1) **Navy** hsl(210,30%,28%) — hull + cannon 全体、主体 / (2) **Steel-blue**
+  hsl(220,25%,38%) — bracket + pylon + nozzle 外面、取り付け hardware / (3) **Dark mid** hsl(220,30%,26%) —
+  nozzle 内壁、接合陰。hue 210 vs 220 の subtle 差で hull と hardware 分離
+- **ShipViewer** (`src/components/ShipViewer.tsx`、`#viewer` 起動): 単独 preview scene、
+  OrbitControls (three.js jsm 直 import、drei は AVG false-positive 回避)、thrust 9 方向ボタン、
+  auto-rotate / grid / BG 切替。ゲーム本体 (PeerProvider / GameStore / 光円錐) 一切起動せず。
+  App.tsx に hash 判定分岐
+- **laser 視覚調整**: 過去光円錐 gnomon marker scale `[3,3,3] → [6,1,1]` で beam 感、additive
+  blending、`LASER_WORLDLINE_OPACITY 0.2 → 0.55`
+- **AVG 誤検知事件**: `@react-three/drei` bundle が JS:Prontexi-Z (Trojan) と誤検知されて
+  Vite optimize 後に削除 → 真っ白事故。ShipViewer の OrbitControls を three 本体の jsm から
+  直 import に切替で回避 (drei 依存完全撤去)。記録のみ
+- **廃棄した Direction H** (観測ドローン / 望遠鏡): odakin の feedback「ダサい」「形わからん」で
+  一度退化、pre-H 状態に git restore して Direction D (belly-turret) 系に分岐して着地
+
+重要定数 (constants.ts):
+- `SHIP_HULL_*` (R=0.32, H=0.16, SEGMENTS=6, X_SCALE=1.4)
+- `SHIP_NOZZLE_*` (LENGTH=0.35, THROAT=0.05, EXIT=0.22, OUTWARD_OFFSET=0.10)、MOUNT (HULL=0.08, THROAT=0.06)
+- `SHIP_GUN_*` (BARREL 0.05×2.5, TIP 0.025×1.67, BREECH 0.15×0.5, RING 0.08×0.15×3、BRAKE 0.05×0.2)
+- `SHIP_GUN_BRACKET_*` (RADIUS=0.04, HEIGHT=0.55)
+- `SHIP_CANNON_REAR_EXTENSION = SHIP_GUN_BREECH_LENGTH / 2` (breech 中点懸架)
+- `SHIP_LIFT_Z = HULL_H/2 + BRACKET_H` (= 0.63、cannon 軸を origin に)
+
+次の design 課題 (後回し候補): 他機も同じ ship 形に揃えるか (現状 sphere のまま)、damage で hull
+色が player 色に染まる処理、等。
 
 2026-04-19 夕 (自機 SelfShipRenderer 着地 + Direction A 設計合意): odakin との対話的設計で **自機を sphere → 八角プリズム + 4 diagonal RCS nozzle + 砲身** に置換。`SelfShipRenderer.tsx` 新設 + SceneContent.tsx 自機分岐。設計哲学は **deadpan SF** (シリアスな顔をしたジョーク、ゲーム仕様 8 方向 thrust + past-cone marker は下 45° 前方に literal 整合)。**4 diagonal nozzle** (角度 π/4, 3π/4, 5π/4, 7π/4) で WASD 単押し → 隣接 2 ノズル各 1/√2、2 つ同時押し → 単一ノズル 1.0 という綺麗な分解 (式: `intensity = max(0, -localThrust · outward)`)。ノズルは de Laval ベル型、外面 FrontSide / 内面 BackSide で 2 pass 描画 (内壁 dark)。砲は 2 段 telescoping (BARREL 0.05/5.0 + TIP 0.025/5.0) + breech + 3 補強リング + muzzle brake、前方下 45° literal 配置 (`SHIP_GUN_PITCH_DOWN_RAD = +π/4`)。AccelerationArrow / Aim arrow 存続、ExhaustCone は SelfShipRenderer 内 4 nozzle 個別 EMA smoothing で再構成 (旧コード SceneContent.tsx から削除、git history で復元可)。色は現状: hull dark navy / nozzle dark steel-blue / 砲 light silver-gray / exhaust blue+white。
 

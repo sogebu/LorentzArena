@@ -318,6 +318,12 @@ export const SHIP_NOZZLE_LENGTH = 0.35;
 export const SHIP_NOZZLE_THROAT_RADIUS = 0.05;
 export const SHIP_NOZZLE_EXIT_RADIUS = 0.22;
 export const SHIP_NOZZLE_OUTWARD_OFFSET = 0.10;
+// Nozzle mount pylon: hull edge → nozzle throat を繋ぐ tapered cylinder (mount hardware)。
+// hull 側が太く (mount base)、nozzle 側が細く (throat に meet)、長さ = OUTWARD_OFFSET で
+// ぴったり gap を埋める。色は bracket と同系 (steel-blue) で「取り付けパーツ」扱い。
+// 2026-04-19 後半: 「hull 側もう少し細く」指定で 0.10 → 0.08 に。
+export const SHIP_NOZZLE_MOUNT_HULL_RADIUS = 0.08;
+export const SHIP_NOZZLE_MOUNT_THROAT_RADIUS = 0.06;
 // scene の lighting (ambient 0.5 + 固定 point light) は self-ship が動くので強度
 // 一定とは限らない → emissive で「自己発光」させて lighting 非依存に明るく確保。
 // 2026-04-19 第 11 段: 第 10 段で 28%/0.4 まで暗くしたら hull と同程度で見えなくなった
@@ -326,13 +332,18 @@ export const SHIP_NOZZLE_OUTWARD_OFFSET = 0.10;
 export const SHIP_NOZZLE_HARDWARE_COLOR = "hsl(220, 25%, 38%)";
 export const SHIP_NOZZLE_EMISSIVE_COLOR = "hsl(220, 30%, 40%)";
 export const SHIP_NOZZLE_EMISSIVE_INTENSITY = 0.7;
-// 内側 (de Laval ベルの内壁): 影に沈んだ「奥」感を出すため hardware より濃く暗く。
-// 同 geometry を BackSide で 2 pass 描画して内壁だけこの色に。
-export const SHIP_NOZZLE_INNER_COLOR = "hsl(220, 35%, 12%)";
-export const SHIP_NOZZLE_INNER_EMISSIVE_COLOR = "hsl(220, 30%, 8%)";
-export const SHIP_NOZZLE_INNER_EMISSIVE_INTENSITY = 0.15;
-// 前方マーク (上面の小三角刻印、+x 方向 = 機首)
-export const SHIP_FORWARD_MARK_COLOR = "hsl(45, 100%, 65%)"; // 警告黄
+// 内側 (de Laval ベルの内壁) + pylon 共通の「接合部・陰色」。
+// 2026-04-19 後半: 元は hsl(220, 35%, 12%) → 20% → さらに 26% まで明度 up
+// (「dark mid よりもうちょっと明るく」指定)。hull (28%) に近いが hue と彩度で分離。
+export const SHIP_NOZZLE_INNER_COLOR = "hsl(220, 30%, 26%)";
+export const SHIP_NOZZLE_INNER_EMISSIVE_COLOR = "hsl(220, 28%, 28%)";
+export const SHIP_NOZZLE_INNER_EMISSIVE_INTENSITY = 0.35;
+// (旧 SHIP_FORWARD_MARK_COLOR / SHIP_COCKPIT_* は撤去 — 前方は **hull 形状そのもの** で示す)
+// Hull は六角プリズム (cylinderGeometry segments=6) で +x に **vertex (尖端)** が来る。
+// X 方向に scale 1.4× で elongate → 前後に細長い「nose 付き」シルエット、左右対称。
+// 4 diagonal nozzle (π/4 角度) は不変、hexagon facet 上に乗る形。
+export const SHIP_HULL_SEGMENTS = 6;
+export const SHIP_HULL_X_SCALE = 1.4;
 // 大砲 (前方下 45° に literal に突き出す、deadpan 主役)。2 段 barrel:
 //   - 主砲身 (BARREL_RADIUS / BARREL_LENGTH): hull から伸びる主体部
 //   - 砲口延長 (TIP_RADIUS / TIP_LENGTH): 主砲身の先端に取り付く細い延長部、
@@ -340,34 +351,53 @@ export const SHIP_FORWARD_MARK_COLOR = "hsl(45, 100%, 65%)"; // 警告黄
 //     muzzle brake 風で「砲身らしさ」が一目瞭然。
 // 2026-04-19 第 8 段: visibility 試験で 0.55 まで太らせた後、deadpan な細長砲に
 //   戻す指定 → BARREL_RADIUS 0.20 + 先端に更に細い TIP (radius 0.1) を追加。
-// 2 段 telescoping (sniper-style)。2026-04-19 第 13 段: 半径だけ 1/2 維持、長さは
-// 元に戻す → より長細い「対物ライフル」「ロングバレル艦砲」風。
-// 砲全長 hull edge から 10.0、tip xy/z ≈ ±7.3 (45° 方向)。
+// 2026-04-19 後半: 「レーザー砲は長さだけ半分」指定で全 length 値を 1/2 に。
+// radius は不変 (BARREL 0.05 / TIP 0.025 / BREECH 0.15 / RING 0.08 / BRAKE 0.05)。
+// 全長 (breech 含む visible extent): 旧 10.0 → 5.0、tip xy/z ≈ ±2.65 (cannon group 原点から)。
 export const SHIP_GUN_BARREL_RADIUS = 0.05;
-export const SHIP_GUN_BARREL_LENGTH = 5.0;
+export const SHIP_GUN_BARREL_LENGTH = 2.5;
 export const SHIP_GUN_TIP_RADIUS = 0.025;
-export const SHIP_GUN_TIP_LENGTH = 5.0;
+// 2026-04-19 後半: 「TIP 長さ 2/3 に」指定で 2.5 → 1.67。
+export const SHIP_GUN_TIP_LENGTH = 1.67;
 // Breech (砲尾): hull edge から伸びる主砲身を包む chunky cylinder、「ここから砲が
 // 生えている」感を出す。Bofors / 戦車主砲の breech ハウジング風。
 export const SHIP_GUN_BREECH_RADIUS = 0.15;
-export const SHIP_GUN_BREECH_LENGTH = 1.0;
+export const SHIP_GUN_BREECH_LENGTH = 0.5;
 // 補強リング (主砲身に 3 本、Bofors 40mm / 古典艦砲の reinforcement bands 風)
 export const SHIP_GUN_RING_RADIUS = 0.08;
 export const SHIP_GUN_RING_LENGTH = 0.15;
 export const SHIP_GUN_RING_COUNT = 3;
 // Muzzle brake (砲口、TIP 末端に取り付く軽い拡大部、flash hider / brake 風)
 export const SHIP_GUN_MUZZLE_BRAKE_RADIUS = 0.05;
-export const SHIP_GUN_MUZZLE_BRAKE_LENGTH = 0.4;
+export const SHIP_GUN_MUZZLE_BRAKE_LENGTH = 0.2;
 // Three.js Y-axis rotation by +π/4: +X → (cos, 0, -sin) = (√2/2, 0, -√2/2)。
 // このシーンは Z up なので -Z = down → +π/4 で +X が下に倒れる (forward + down)。
 // 初版は -π/4 にしていて煙突のように上を向いていた、2026-04-19 に修正。
 export const SHIP_GUN_PITCH_DOWN_RAD = Math.PI / 4;
-// 砲身色: 2026-04-19 第 10 段「砲を明るく / ノズルを暗く」指定 → 明暗逆転。
-// 砲は light silver-gray (hue 0、neutral) で前面ハイライト、ノズルは暗い steel-blue
-// (下記参照) で後景化。色相は砲 hue 0 / ノズル hue 220 で完全分離維持。
-export const SHIP_GUN_COLOR = "hsl(0, 0%, 75%)";
-export const SHIP_GUN_EMISSIVE_COLOR = "hsl(0, 0%, 60%)";
-export const SHIP_GUN_EMISSIVE_INTENSITY = 1.1;
+// Belly mount (2026-04-19 後半): 砲を hull 前端 (+x) ではなく hull 底面から「ぶら下げる」。
+// 後方視点でも砲身が hull 下に常に見える (前端マウントだと hull 影に隠れて見えなかった)。
+// BRACKET = hull 底面と砲身根元を繋ぐ短い垂直支柱。砲身はその bracket 末端から +π/4
+// down-forward に伸びる。BRACKET_RADIUS は「半分の太さ」指定で 0.04 (= 0.08 → 0.04)。
+export const SHIP_GUN_BRACKET_RADIUS = 0.04;
+export const SHIP_GUN_BRACKET_HEIGHT = 0.55;
+// 砲全体を group 内で -x 方向に shift (= bracket が cannon 軸上のどこを掴むかを決める)。
+// REAR_EXTENSION = BREECH_LENGTH/2 で **bracket が一番後ろの太い breech 部の真ん中** を
+// 掴む見た目に (砲尾を懸架している感、real artillery の breech mount 風)。
+export const SHIP_CANNON_REAR_EXTENSION = SHIP_GUN_BREECH_LENGTH / 2;
+// 全体を持ち上げる量。HULL_HEIGHT/2 + BRACKET_HEIGHT = 0.63 で cannon mount point が
+// world origin (= 観測者の現在位置 = 過去光円錐の交点) に着地、cannon 軸が origin を通る。
+// → 発射されたレーザーが cannon 軸と完全に重なって見える。
+export const SHIP_LIFT_Z = 0.16 / 2 + 0.55; // = HULL_HEIGHT/2 + BRACKET_HEIGHT
+// 砲身色: 2026-04-19 後半「cannon だけ本体 (hull) と同色に、bracket は据え置き」指定。
+// SHIP_HULL_COLOR と同値で cannon = hull の延長として一体化、bracket は SHIP_BRACKET_*
+// (steel-blue、nozzle と同色) で「hull/cannon を支持してる別パーツ」として分離。
+export const SHIP_GUN_COLOR = "hsl(210, 30%, 28%)";
+export const SHIP_GUN_EMISSIVE_COLOR = "hsl(210, 35%, 35%)";
+export const SHIP_GUN_EMISSIVE_INTENSITY = 0.45;
+// Bracket 色 (cannon と分離、nozzle 外面と同色 = steel-blue)。
+export const SHIP_BRACKET_COLOR = "hsl(220, 25%, 38%)";
+export const SHIP_BRACKET_EMISSIVE_COLOR = "hsl(220, 30%, 40%)";
+export const SHIP_BRACKET_EMISSIVE_INTENSITY = 0.7;
 
 // --- Player marker opacity (C pattern、時間 fade 非対象、pulse で無敵点滅) ---
 export const PLAYER_MARKER_MAIN_OPACITY_SELF = 1.0;
