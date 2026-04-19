@@ -10,8 +10,10 @@ import {
   LIGHT_CONE_HEIGHT,
   LIGHT_CONE_SURFACE_OPACITY,
   LIGHT_CONE_WIRE_OPACITY,
+  SHIP_INNER_HIDE_RADIUS,
 } from "./constants";
 import { useDisplayFrame } from "./DisplayFrameContext";
+import { createInnerHideShader } from "./innerHideShader";
 import { getThreeColor } from "./threeCache";
 import { applyTimeFadeShader } from "./timeFadeShader";
 
@@ -89,6 +91,15 @@ export const LightConeRenderer = ({
   observerPosRef.current = observerPos;
 
   const color = useMemo(() => getThreeColor(LIGHT_CONE_COLOR), []);
+  // 自機本体・砲身周辺と被るのを抑制: display 原点から SHIP_INNER_HIDE_RADIUS 未満の
+  // vertex を alpha=0 に。timeFade と並列に shader chain。
+  const onShader = useMemo(() => {
+    const hide = createInnerHideShader(SHIP_INNER_HIDE_RADIUS);
+    return (s: THREE.WebGLProgramParametersWithUniforms) => {
+      applyTimeFadeShader(s);
+      hide(s);
+    };
+  }, []);
 
   // --- 4 geometry (future/past × surface/wire)、2 BufferAttribute を共有 ---
   const geo = useMemo(() => {
@@ -181,7 +192,7 @@ export const LightConeRenderer = ({
           opacity={LIGHT_CONE_SURFACE_OPACITY}
           side={THREE.DoubleSide}
           depthWrite={false}
-          onBeforeCompile={applyTimeFadeShader}
+          onBeforeCompile={onShader}
         />
       </mesh>
       <mesh
@@ -196,7 +207,7 @@ export const LightConeRenderer = ({
           opacity={LIGHT_CONE_WIRE_OPACITY}
           wireframe
           depthWrite={false}
-          onBeforeCompile={applyTimeFadeShader}
+          onBeforeCompile={onShader}
         />
       </mesh>
       {/* Past surface + wire */}
@@ -212,7 +223,7 @@ export const LightConeRenderer = ({
           opacity={LIGHT_CONE_SURFACE_OPACITY}
           side={THREE.DoubleSide}
           depthWrite={false}
-          onBeforeCompile={applyTimeFadeShader}
+          onBeforeCompile={onShader}
         />
       </mesh>
       <mesh
@@ -227,7 +238,7 @@ export const LightConeRenderer = ({
           opacity={LIGHT_CONE_WIRE_OPACITY}
           wireframe
           depthWrite={false}
-          onBeforeCompile={applyTimeFadeShader}
+          onBeforeCompile={onShader}
         />
       </mesh>
     </>

@@ -1,14 +1,15 @@
 import { useMemo } from "react";
 import * as THREE from "three";
 import {
-  DEBRIS_MAX_LAMBDA,
   LIGHTHOUSE_COLOR,
   PLAYER_MARKER_GLOW_OPACITY_OTHER,
   PLAYER_MARKER_MAIN_OPACITY_OTHER,
   PLAYER_MARKER_SIZE_OTHER,
 } from "./constants";
+import { DeathMarker } from "./DeathMarker";
 import { buildMeshMatrix, useDisplayFrame } from "./DisplayFrameContext";
 import { transformEventForDisplay } from "./displayTransform";
+import { computePastConeDisplayState } from "./pastConeDisplay";
 import { getThreeColor, sharedGeometries } from "./threeCache";
 import type { RelativisticPlayer } from "./types";
 
@@ -60,41 +61,14 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
   // (game-store.ts handleSpawn) 復活後は history[0] が新しい復活時刻を指す。
   const spawnT = player.worldLine.history[0]?.pos.t ?? wp.t;
 
-  // 底面の中心の anchor:
-  // - 生存中で観測者の過去光円錐がまだ spawn event に届いていない: 非表示 (リスポーン直後、
-  //           観測者から見れば「灯台はまだ復活していない」段階)。
-  // - 生存中で過去光円錐が spawn 以降を覆う: 観測者の過去光円錐との交点 (静止 LH なので
-  //           解析的に t_anchor = observer.t - |Δxy|、SpawnRenderer pillar と同じパターン)。
-  // - 死亡中で観測者の過去光円錐がまだ死亡 event に届いていない: 引き続き past cone anchor
-  //           (=「観測者にはまだ生きて見える」段階、相対論的に正しい遅延)、alpha=1。
-  // - 死亡中で過去光円錐が死亡 event 以降を覆う: 死亡 event 位置 (wp.t) に anchor 固定 +
-  //           opacity を pastConeT - deathT を変数に DEBRIS_MAX_LAMBDA かけて 1→0 リニアフェード。
-  //           観測者時刻進行で display Z が減少 = 撃破デブリと同期して過去に沈みつつ薄れる。
-  // - 死亡中で過去光円錐が deathT + DEBRIS_MAX_LAMBDA を超えた: alpha=0 と同時に完全消失。
-  // 世界系表示 (observerPos null) では wp.t / 常に表示、alpha=1。
-  let anchorT = wp.t;
-  let visible = true;
-  let alpha = 1;
-  if (observerPos) {
-    const dx = wp.x - observerPos.x;
-    const dy = wp.y - observerPos.y;
-    const rho = Math.sqrt(dx * dx + dy * dy);
-    const pastConeT = observerPos.t - rho;
-    if (player.isDead) {
-      if (pastConeT > wp.t + DEBRIS_MAX_LAMBDA) {
-        visible = false;
-      } else {
-        anchorT = Math.min(pastConeT, wp.t);
-        const elapsed = Math.max(0, pastConeT - wp.t);
-        alpha = 1 - elapsed / DEBRIS_MAX_LAMBDA;
-      }
-    } else if (pastConeT < spawnT) {
-      visible = false;
-    } else {
-      anchorT = pastConeT;
-    }
-  }
-  const anchorPos = { x: wp.x, y: wp.y, t: anchorT };
+  // Past-cone anchor / visibility / fade は `computePastConeDisplayState` で共通化
+  // (他プレイヤーの死亡 fade と同じロジック、詳細は utility の JSDoc 参照)。
+  const { anchorPos, visible, alpha, deathMarkerAlpha } = computePastConeDisplayState(
+    wp,
+    spawnT,
+    player.isDead,
+    observerPos,
+  );
 
   // 現在世界時刻位置の球マーカー (C pattern: display 並進のみ、他プレイヤー sphere と同じ表現)。
   // 塔の past-cone visibility とは独立: 生存中は常に表示 (リスポーン直後で塔がまだ
@@ -242,6 +216,11 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
           />
         </mesh>
       </group>
+    )}
+
+    {/* 死亡 marker (sphere + ring): LH も OtherPlayer と同様に扱う (死亡光子到達 fade)。 */}
+    {player.isDead && (
+      <DeathMarker deathEventPos={wp} alpha={deathMarkerAlpha} color={mainColor} />
     )}
     </>
   );

@@ -144,6 +144,11 @@ export type WorldLineRendererProps = {
   observerBoost: ReturnType<typeof lorentzBoost> | null;
   tubeRadius?: number;
   tubeOpacity?: number;
+  /**
+   * 自機本体周辺で世界線が砲身等と被るのを抑制する inner-hide 半径 (display 原点から
+   * この距離未満の vertex は alpha=0)。自機の世界線にだけ渡す。省略時は hide なし。
+   */
+  innerHideRadius?: number;
 };
 
 export type KillNotification3D = {

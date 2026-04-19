@@ -2,7 +2,41 @@
 
 ## 現在のステータス
 
-対戦可能。**`c6b4290` デプロイ済み** (build `2026/04/19 22:17:05 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**デプロイ済み** (build `2026/04/20 06:45:30 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+
+2026-04-20 朝 (死亡 past-cone エフェクト共通化 + 自機本体周辺 inner-hide + ghost 燃料制約撤去):
+
+**死亡 past-cone エフェクト共通化** (LH に準拠して全プレイヤーに展開):
+- 新 `pastConeDisplay.ts` の `computePastConeDisplayState(playerPos, spawnT, isDead, observerPos)`:
+  past-cone surface anchor + 死亡 fade を計算する pure 関数。`{anchorPos, visible, alpha,
+  deathMarkerAlpha}` を返す。LH / 他機 / 自機 共通の死亡エフェクトロジック。
+- 新 `DeathMarker.tsx` (sphere + ring): 共通コンポーネント。**sphere は world event 位置で
+  沈む** (`transformEventForDisplay(deathEventPos)`)、**ring は過去光円錐 surface anchor で
+  沈まない** (`anchorT = observer.t - ρ`、観測者進行で世界時刻が +Δt 足される / display.t
+  = -ρ で固定)。fade 1→0 を `DEBRIS_MAX_LAMBDA` で同期。
+- 新 `OtherPlayerRenderer.tsx`: 他プレイヤーの sphere + glow + 死亡 marker を担当。生存中は
+  current world pos の live sphere、死亡中は past-cone anchor + fade + DeathMarker。`deathEventOverride`
+  prop で self-dead のときの実 death event (= myDeathEvent.pos、ghost 追従の phaseSpace.pos
+  と区別) を受け取る。
+- LighthouseRenderer も同 utility / DeathMarker を使うよう refactor (旧 inline ロジック撤去)。
+- SceneContent: 旧 `killNotification` の 3D sphere+ring 描画 (killer===me の時だけ 1500ms)
+  を撤去、各 player renderer 内で全死亡に対し render するよう変更。store の killNotification
+  は HUD text 通知 (Overlays) のみ用途で残置。
+- 自機死亡時も SelfShipRenderer をスキップして OtherPlayerRenderer (with deathEventOverride)
+  を出すよう SceneContent の routing 整理。
+
+**自機本体周辺の inner-hide** (砲身等との視覚被り解消):
+- 新 `innerHideShader.ts` の `createInnerHideShader(R)`: per-vertex shader、`length(displayPos.xyz)
+  < R` の vertex を `alpha=0` に。`applyTimeFadeShader` と並列に onBeforeCompile chain 可
+  (varying / uniform 名衝突なし)。
+- `LightConeRenderer`: 常に inner hide 適用 (= self 専用)。
+- `WorldLineRenderer`: 新 prop `innerHideRadius?: number`、self の worldline にだけ渡す。
+- 半径は `SHIP_HULL_RADIUS × SHIP_INNER_HIDE_RADIUS_COEFFICIENT` で hull サイズ連動。係数 9
+  (= radius 2.88) 着地。
+
+**Ghost (自機死亡中) の燃料制約撤去** (useGameLoop ghost branch):
+- `processPlayerPhysics(ghostMe, ..., availableEnergy=Infinity)` でフル加速常時許可、
+  `energy -= thrustEnergyConsumed` 減算撤去 (死亡中 energy 消費の意味なし、respawn でリセット)。
 
 2026-04-19 深夜 (自機 barrel 微調整): `SHIP_GUN_BARREL_RADIUS` 0.05 → **0.035** (より細身の「対物ライフル」風)、`SHIP_GUN_BARREL_LENGTH` 2.5 → **2.3** で第 1 補強リングが breech に接触 (ring 位置は `BARREL_LENGTH * i/(N+1)` の比例なので barrel 短縮で ring が origin 寄りに動く)。他 radius / length は不変、色も palette 3 層維持。
 

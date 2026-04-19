@@ -315,6 +315,8 @@ export function useGameLoop({
             for (const [id, p] of fresh.players) {
               if (id !== myId) otherPositions.push(p.phaseSpace.pos);
             }
+            // Ghost は燃料制約なし: availableEnergy に Infinity を渡してフル加速を常に許可、
+            // 実 energy は consume しない (死亡中は energy 消費の game-play 意味が無いため)。
             const physics = processPlayerPhysics(
               ghostMe,
               keysPressed.current,
@@ -322,9 +324,8 @@ export function useGameLoop({
               cameraYawRef.current,
               dTau,
               otherPositions,
-              energy,
+              Number.POSITIVE_INFINITY,
             );
-            energy = Math.max(0, energy - physics.thrustEnergyConsumed);
             thrustRequestedThisTick = physics.thrustRequested;
             thrustAccelerationThisTick = physics.thrustAcceleration;
 

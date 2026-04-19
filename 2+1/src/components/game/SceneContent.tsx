@@ -2,20 +2,20 @@ import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import {
-  createVector4,
   futureLightConeIntersectionWorldLine,
   lorentzBoost,
   pastLightConeIntersectionWorldLine,
   type Vector3,
   type Vector4,
 } from "../../physics";
-import { selectInvincibleUntil, useGameStore } from "../../stores/game-store";
+import { useGameStore } from "../../stores/game-store";
 import { ArenaRenderer } from "./ArenaRenderer";
 import { DebrisRenderer } from "./DebrisRenderer";
 import { LaserBatchRenderer } from "./LaserBatchRenderer";
 import { LightConeRenderer } from "./LightConeRenderer";
 import { LighthouseRenderer } from "./LighthouseRenderer";
 import { isLighthouse } from "./lighthouse";
+import { OtherPlayerRenderer } from "./OtherPlayerRenderer";
 import { SelfShipRenderer } from "./SelfShipRenderer";
 import { SpawnRenderer } from "./SpawnRenderer";
 import { StardustRenderer } from "./StardustRenderer";
@@ -28,13 +28,9 @@ import {
   FUTURE_CONE_LASER_TRIANGLE_OPACITY,
   FUTURE_CONE_WORLDLINE_RING_OPACITY,
   FUTURE_CONE_WORLDLINE_SPHERE_OPACITY,
-  KILL_NOTIFICATION_RING_OPACITY,
-  KILL_NOTIFICATION_SPHERE_OPACITY,
   LIGHTHOUSE_WORLDLINE_OPACITY,
   PAST_CONE_WORLDLINE_RING_OPACITY,
-  PLAYER_MARKER_GLOW_OPACITY_OTHER,
-  PLAYER_MARKER_MAIN_OPACITY_OTHER,
-  PLAYER_MARKER_SIZE_OTHER,
+  SHIP_INNER_HIDE_RADIUS,
 } from "./constants";
 import {
   buildDisplayMatrix,
@@ -123,7 +119,11 @@ export const SceneContent = ({
   const spawns = useGameStore((s) => s.spawns);
   const frozenWorldLines = useGameStore((s) => s.frozenWorldLines);
   const debrisRecords = useGameStore((s) => s.debrisRecords);
-  const killNotification = useGameStore((s) => s.killNotification);
+  // 3D kill marker (sphere + ring) は OtherPlayerRenderer に統合済。store の killNotification は
+  // HUD (Overlays) の text notification 用途のみ、この scene では参照しない。
+  // 自機死亡 event (self-dead の fade anchor 用、player.phaseSpace.pos は ghost 追従で動くため
+  // 死亡位置として使えない → 別途 store から取る)。
+  const myDeathEvent = useGameStore((s) => s.myDeathEvent);
 
   const playerList = useMemo(() => Array.from(players.values()), [players]);
   const myPlayer = useMemo(
@@ -298,7 +298,8 @@ export const SceneContent = ({
         />
       ))}
 
-      {/* 生存プレイヤーの現在の世界線を描画 */}
+      {/* 生存プレイヤーの現在の世界線を描画。自機は innerHideRadius で本体周辺を hide
+          (砲身等との被り解消、shader fade)。 */}
       {playerList.map((player) => (
         <WorldLineRenderer
           key={`worldline-${player.id}`}
@@ -307,21 +308,36 @@ export const SceneContent = ({
           observerPos={observerPos}
           observerBoost={observerBoost}
           {...(isLighthouse(player.id) ? { tubeRadius: 0.06, tubeOpacity: LIGHTHOUSE_WORLDLINE_OPACITY } : {})}
+          {...(player.id === myId ? { innerHideRadius: SHIP_INNER_HIDE_RADIUS } : {})}
         />
       ))}
 
-      {/* 各プレイヤーのマーカー（死亡中の自分のみ非表示）。
-          Lighthouse: 専用の塔モデル (LighthouseRenderer)。
-          自機 (人間): SelfShipRenderer (八角 hull + 8 RCS + 下 45° 大砲、deadpan SF)。
-          他機 (人間): 従来の sphere + glow halo (差別化)。 */}
+      {/* 各プレイヤーのマーカー。
+          Lighthouse: 専用の塔モデル (LighthouseRenderer、past-cone anchor + death fade)。
+          自機 (人間) 生存中: SelfShipRenderer (六角 hull + 4 RCS + 懸架砲、deadpan SF)。
+          他機 (人間) 生存中 + 任意死亡: OtherPlayerRenderer (sphere + glow、死亡中は
+            LH と同じ past-cone fade を適用。self-dead 用に myDeathEvent.pos を override
+            で渡す = ghost 追従で動く phaseSpace.pos ではなく実際の死亡 event を anchor に)。 */}
       {playerList.map((player) => {
-        if (player.id === myId && player.isDead) return null;
-
         if (isLighthouse(player.id)) {
           return <LighthouseRenderer key={`player-${player.id}`} player={player} />;
         }
 
         const isMe = player.id === myId;
+
+        if (player.isDead) {
+          // Self-dead は myDeathEvent.pos を死亡 event として使う (player.phaseSpace.pos は
+          // ghost 追従で変動するため)。Other-dead は player.phaseSpace.pos (= freeze 済) で OK。
+          const deathEventOverride =
+            isMe && myDeathEvent ? myDeathEvent.pos : undefined;
+          return (
+            <OtherPlayerRenderer
+              key={`player-${player.id}`}
+              player={player}
+              deathEventOverride={deathEventOverride}
+            />
+          );
+        }
 
         if (isMe) {
           return (
@@ -336,45 +352,7 @@ export const SceneContent = ({
           );
         }
 
-        const wp = player.phaseSpace.pos; // world
-        const color = getThreeColor(player.color);
-        const size = PLAYER_MARKER_SIZE_OTHER;
-        const invUntil = selectInvincibleUntil(useGameStore.getState(), player.id);
-        const isInvincible = Date.now() < invUntil;
-        // Pulse: opacity oscillates 0.3–1.0 at 2Hz during invincibility
-        const pulse = isInvincible ? 0.65 + 0.35 * Math.sin(Date.now() * 0.012) : 1.0;
-
-        // 球は volumetric なので per-vertex Lorentz を掛けない (γ 楕円化を避ける)。
-        // display 座標へ並進だけ。
-        const dp = transformEventForDisplay(wp, observerPos, observerBoost);
-        return (
-          <group key={`player-${player.id}`} position={[dp.x, dp.y, dp.t]}>
-            <mesh
-              scale={[size, size, size]}
-              geometry={sharedGeometries.playerSphere}
-            >
-              <meshStandardMaterial
-                color={color}
-                emissive={color}
-                emissiveIntensity={0.4}
-                roughness={0.3}
-                metalness={0.1}
-                transparent
-                opacity={PLAYER_MARKER_MAIN_OPACITY_OTHER * pulse}
-              />
-            </mesh>
-            <mesh
-              scale={[size * 1.8, size * 1.8, size * 1.8]}
-              geometry={sharedGeometries.playerSphere}
-            >
-              <meshBasicMaterial
-                color={color}
-                transparent
-                opacity={PLAYER_MARKER_GLOW_OPACITY_OTHER * pulse}
-              />
-            </mesh>
-          </group>
-        );
+        return <OtherPlayerRenderer key={`player-${player.id}`} player={player} />;
       })}
 
       {/* 自機 exhaust + acceleration arrow は SelfShipRenderer の 8 RCS nozzle に
@@ -546,36 +524,9 @@ export const SceneContent = ({
       {/* 時空星屑（個別点のクラウド） */}
       <StardustRenderer />
 
-      {/* キル通知（キル時空点に 3D 表示、球=位置のみ / リング=D pattern） */}
-      {killNotification && (() => {
-        const wpKill = createVector4(
-          killNotification.hitPos.t,
-          killNotification.hitPos.x,
-          killNotification.hitPos.y,
-          killNotification.hitPos.z,
-        );
-        const wp = {
-          x: killNotification.hitPos.x,
-          y: killNotification.hitPos.y,
-          t: killNotification.hitPos.t,
-        };
-        const dp = transformEventForDisplay(wpKill, observerPos, observerBoost);
-        const kc = getThreeColor(killNotification.color);
-        return (
-          <group>
-            <mesh geometry={sharedGeometries.killSphere} position={[dp.x, dp.y, dp.t]}>
-              <meshBasicMaterial color={kc} transparent opacity={KILL_NOTIFICATION_SPHERE_OPACITY} />
-            </mesh>
-            <mesh
-              geometry={sharedGeometries.killRing}
-              matrix={buildMeshMatrix(wp, displayMatrix)}
-              matrixAutoUpdate={false}
-            >
-              <meshBasicMaterial color={kc} transparent opacity={KILL_NOTIFICATION_RING_OPACITY} side={THREE.DoubleSide} />
-            </mesh>
-          </group>
-        );
-      })()}
+      {/* 死亡 marker (sphere + ring) は各 player renderer (OtherPlayerRenderer 死亡 branch)
+          に統合、past-cone fade 同期で表示。killNotification store state は UI HUD (Overlays
+          の text notification) のみに使用。 */}
 
       {/* スポーンエフェクト */}
       {spawns.map((spawn) => (

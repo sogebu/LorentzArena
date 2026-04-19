@@ -295,6 +295,11 @@ export const PLAYER_MARKER_SIZE_OTHER = 0.2;
 // radius 0.32 / height 0.16 (比 1:2、scale ~1.8×) に増強。机上比較で sphere 0.21 を
 // 大きく超え、八角プリズムが「機体」として認識される厚みに。
 export const SHIP_HULL_RADIUS = 0.32;
+// 自機本体周辺で「自分の過去光円錐 / 世界線」が砲身等と被って見えるのを抑制する
+// inner-hide 半径 (display 原点 = 観測者からこの距離未満の vertex は alpha=0)。
+// HULL_RADIUS 連動 = 機体サイズに比例して自動追従。係数で「hull の何倍まで隠すか」を決める。
+export const SHIP_INNER_HIDE_RADIUS_COEFFICIENT = 9;
+export const SHIP_INNER_HIDE_RADIUS = SHIP_HULL_RADIUS * SHIP_INNER_HIDE_RADIUS_COEFFICIENT;
 export const SHIP_HULL_HEIGHT = 0.16;
 // Hull 色は **固定** (プレイヤー色を使わない)。deadpan 軍用機の dark steel-navy。
 // 自機識別は「機体形状そのもの」(他機 sphere との対比) + 観測者 = 自機 (rest frame で

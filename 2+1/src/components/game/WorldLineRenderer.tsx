@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { PLAYER_WORLDLINE_OPACITY } from "./constants";
 import { buildDisplayMatrix } from "./displayTransform";
+import { createInnerHideShader } from "./innerHideShader";
 import { getThreeColor } from "./threeCache";
 import { applyTimeFadeShader } from "./timeFadeShader";
 import type { WorldLineRendererProps } from "./types";
@@ -18,6 +19,7 @@ export const WorldLineRenderer = ({
   observerBoost,
   tubeRadius = 0.03,
   tubeOpacity = PLAYER_WORLDLINE_OPACITY,
+  innerHideRadius,
 }: WorldLineRendererProps) => {
   const tubeRef = useRef<THREE.Mesh>(null);
   const prevTubeGeoRef = useRef<THREE.TubeGeometry | null>(null);
@@ -61,6 +63,16 @@ export const WorldLineRenderer = ({
   // 持つ world 座標を display frame に変換し、その z (= observer rest-frame での dt)
   // から Lorentzian fade を計算して alpha に乗算。生存世界線の tip は observer.t 近傍
   // で fade ≈ 1、tail や凍結世界線の古い部分は自然消失。
+  // 自機の世界線は innerHideRadius を渡して観測者周辺を hide (砲身等との被り解消)。
+  const onShader = useMemo(() => {
+    if (innerHideRadius == null) return applyTimeFadeShader;
+    const hide = createInnerHideShader(innerHideRadius);
+    return (s: THREE.WebGLProgramParametersWithUniforms) => {
+      applyTimeFadeShader(s);
+      hide(s);
+    };
+  }, [innerHideRadius]);
+
   const threeColor = getThreeColor(color);
   return (
     <>
@@ -74,7 +86,7 @@ export const WorldLineRenderer = ({
             metalness={0.1}
             transparent
             opacity={tubeOpacity}
-            onBeforeCompile={applyTimeFadeShader}
+            onBeforeCompile={onShader}
           />
         </mesh>
       )}
