@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**デプロイ済み** (build `2026/04/19 21:38:15 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`cdd0f80` デプロイ済み** (build `2026/04/19 21:38:15 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
 2026-04-19 夜 (自機デザイン着地 — belly-mounted 艦砲、Direction D 系): 長時間の対話的設計で
 自機を sphere → **六角プリズム + 4 隅 RCS nozzle + 底面 bracket + 懸架砲** に刷新。ship viewer
