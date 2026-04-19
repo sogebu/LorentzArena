@@ -91,7 +91,7 @@ session 冒頭の orientation 用。各項目の詳細は [`docs/architecture.md
 - [`DESIGN.md`](DESIGN.md) — 設計判断の記録
 - [`EXPLORING.md`](EXPLORING.md) — option space 探索
 - [`SESSION.md`](SESSION.md) — 現在の作業状態
-- `plans/` — 複数 Stage リファクタの計画書 (`2026-04-14-authority-dissolution.md` 完了、`2026-04-15-design-reorg.md` 完了、`2026-04-18-design-reorg.md` §7 retroactive、`2026-04-18-claude-md-delegation-level2.md` 本 migration の設計)
+- `plans/` — 複数 Stage リファクタの計画書 (`2026-04-14-authority-dissolution.md` 完了、`2026-04-15-design-reorg.md` 完了、`2026-04-18-design-reorg.md` §7 retroactive、`2026-04-18-claude-md-delegation-level2.md` 本 migration の設計、`2026-04-19-host-migration-symmetry.md` host migration 5 点修正の post-mortem)
 - `../CONVENTIONS.md` → `~/Claude/claude-config/CONVENTIONS.md` (symlink)
 - `../docs/NETWORKING.md` — ネットワーク設定の詳細
 - `relay-deploy/README.md` — WS Relay 本番デプロイ手順
