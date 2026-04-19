@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**デプロイ済み** (build `2026/04/19 18:03:14 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`a5bedd7` デプロイ済み** (build `2026/04/19 18:03:14 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
 2026-04-19 昼 (視覚調整、4 値): odakin とのインタラクティブ tuning で opacity / flash 4 値を再チューン。**(a) `PLAYER_WORLDLINE_OPACITY`: 0.65 → 0.4** (人間世界線を控えめに、LH 0.4 と同値になり階層フラット化)、**(b) `ARENA_PAST_CONE_OPACITY`: 1.0 → 0.5** (アリーナ円柱 × 過去光円錐交線を半分に)、**(c) `LIGHT_CONE_WIRE_OPACITY`: 0.05 → 0.02** (自機光円錐 wireframe を更に淡く)、**(d) `STARDUST_FLASH_FUTURE_BOOST`: 0.5 → 0.75** (未来光円錐通過時の星屑 flash peak を 1.5→1.75 倍、past 1.5 の 1/3 → 1/2 に引き上げ)。localhost HMR で逐次確認 → odakin OK で deploy。視覚のみの変更、挙動・テスト影響なし。
 
