@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**デプロイ済み** (build `2026/04/20 06:49:52 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`e0cea0d` デプロイ済み** (build `2026/04/20 06:49:52 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
 2026-04-20 朝 (HUD 微調整): Ghost 中 (= 自機死亡中) に Speedometer の energy bar を非表示
 (`{!player.isDead && (...)}` で wrap)。Ghost は燃料制約なしで常時フル加速できるため、
