@@ -211,7 +211,7 @@ export const MAX_HIT_LOG = 200;
 // --- Light cone rendering ---
 export const LIGHT_CONE_HEIGHT = 20;
 export const LIGHT_CONE_SURFACE_OPACITY = 0.1;
-export const LIGHT_CONE_WIRE_OPACITY = 0.05;
+export const LIGHT_CONE_WIRE_OPACITY = 0.02;
 // 各プレイヤーは自分の光円錐しか見えない設計なので固定色で OK。
 // アリーナ `hsl(180,40%,70%)` と hue 20° 差の薄い空色 neutral。
 // 彩度低めで背景寄り、パステル化時に再調整前提。
@@ -265,10 +265,10 @@ export const STARDUST_FLASH_SIGMA = 0.1;
 export const STARDUST_FLASH_PAST_BOOST = 1.5;
 // 未来光円錐 flash 強さ。過去より控えめ。
 // 2026-04-18: 1.0 → 0.8 → 0.5。past の 1/3 に引き下げ、未来 event の情報量の少なさを強く反映。
-export const STARDUST_FLASH_FUTURE_BOOST = 0.5;
+export const STARDUST_FLASH_FUTURE_BOOST = 0.75;
 
 // --- Worldline / laser opacity ---
-export const PLAYER_WORLDLINE_OPACITY = 0.65;
+export const PLAYER_WORLDLINE_OPACITY = 0.4;
 export const LIGHTHOUSE_WORLDLINE_OPACITY = 0.4;
 export const LASER_WORLDLINE_OPACITY = 0.2;
 
@@ -329,7 +329,7 @@ export const ARENA_VERTICAL_LINE_OPACITY = 0.05;
 // 過去光円錐 × 円柱交線 LineLoop の透明度。clamp されず `pos.t - ρ(θ)` をそのまま
 // 描く独立 position attribute を持つ (円柱上端/下端 rim とは別の線)。
 // 「今まさに光が届いている円柱上の事象の集合」として意味を保持するため濃く描く。
-export const ARENA_PAST_CONE_OPACITY = 1.0;
+export const ARENA_PAST_CONE_OPACITY = 0.5;
 // 円柱「上端 rim」(= 位置 pos.t + max(ρ, HALF_HEIGHT)) の透明度。ρ > HALF_HEIGHT
 // の θ では未来光円錐交線と一致し、ρ < HALF_HEIGHT の θ では固定半幅 H による rim。
 // pastCone の 1.0 より控えめ (既に起きた event vs まだ起きていない event の情報量差)。
