@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**デプロイ済み** (build `2026/04/19 17:52:07 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`7de2937` デプロイ済み** (build `2026/04/19 17:52:07 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
 2026-04-19 昼 (LH post-hit i-frame 共通化): **灯台にも 0.5s post-hit i-frame を適用**。`selectPostHitUntil` の `if (isLighthouse(victimId)) return 0` 短絡を撤廃 (game-store.ts:507)、人間 victim と同経路で `latest hit wallTime + POST_HIT_IFRAME_MS` を返すように。`LIGHTHOUSE_HIT_DAMAGE = 0.2` で 6 発死は不変、最短殺害時間が 5 × POST_HIT_IFRAME_MS = 2.5s に固定 (集中砲火即死の理不尽さ回避が動機、2026-04-18 夜 Phase C2 前哨で「無敵時間なし」だった設計判断を覆し)。`selectInvincibleUntil` (5s respawn 無敵) は依然 LH 短絡 (-Infinity) — そちらは LH に不要。同時整理: useGameLoop.ts:516 のコメント「11 発死、無敵時間なし」を「6 発死 (定数と整合)、post-hit i-frame は人間と共通」に修正、constants.ts の LIGHTHOUSE_HIT_DAMAGE / POST_HIT_IFRAME_MS JSDoc に共通化を反映。テスト 2 本追加 (39→41 件 all green): `selectPostHitUntil(LH)` が `latest+POST_HIT_IFRAME_MS` を返す / 第 2 発を即発火しても energy + hitLog 不変。typecheck clean。localhost 確認: odakin OK。
 
