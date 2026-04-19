@@ -38,6 +38,7 @@ import {
   transformEventForDisplay,
 } from "./displayTransform";
 import { buildMeshMatrix, DisplayFrameProvider } from "./DisplayFrameContext";
+import { GameLights } from "./GameLights";
 import { futureLightConeIntersectionLaser, pastLightConeIntersectionLaser } from "./laserPhysics";
 import {
   getThreeColor,
@@ -279,8 +280,7 @@ export const SceneContent = ({
       observerPos={observerPos}
       displayMatrix={displayMatrix}
     >
-      <ambientLight intensity={0.5} />
-      <pointLight position={[5, 5, 5]} intensity={1} />
+      <GameLights />
 
       {/* 時空星屑 (4D event cloud、world-frame 静止、periodic boundary で無限供給) */}
       <StardustRenderer />

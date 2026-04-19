@@ -2,6 +2,7 @@ import { Canvas, useThree } from "@react-three/fiber";
 import { useEffect, useRef, useState } from "react";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { createVector3, createVector4, type Vector3 } from "../physics";
+import { GameLights } from "./game/GameLights";
 import { SelfShipRenderer } from "./game/SelfShipRenderer";
 
 /**
@@ -89,11 +90,7 @@ export const ShipViewer = () => {
   return (
     <div style={{ position: "fixed", inset: 0, background: bgColor }}>
       <Canvas camera={{ position: [4, -4, 3], up: [0, 0, 1], fov: 45 }}>
-        <ambientLight intensity={0.5} />
-        <pointLight position={[6, 6, 6]} intensity={1.0} />
-        <pointLight position={[-6, -6, 4]} intensity={0.6} />
-        <pointLight position={[6, -6, -4]} intensity={0.4} />
-        <pointLight position={[0, 0, -6]} intensity={0.3} />
+        <GameLights />
 
         {showGrid && (
           <gridHelper

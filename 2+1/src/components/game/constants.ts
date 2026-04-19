@@ -366,21 +366,20 @@ export const SHIP_HULL_X_SCALE = 1.4;
 // 全長 (breech 含む visible extent): 旧 10.0 → 5.0、tip xy/z ≈ ±2.65 (cannon group 原点から)。
 // 2026-04-19 後半 第 2 段: BARREL_LENGTH 2.5 → 2.3 に短縮で第 1 ring が breech と接触。
 // 計算: 第 1 ring 近端 = BARREL * 1/(N+1) - REAR_EXT - RING_LEN/2 = 2.3/4 - 0.25 - 0.075 = 0.25 = breech 末端 ✓
-export const SHIP_GUN_BARREL_RADIUS = 0.035;
-export const SHIP_GUN_BARREL_LENGTH = 2.3;
-export const SHIP_GUN_TIP_RADIUS = 0.025;
-// 2026-04-19 後半: 「TIP 長さ 2/3 に」指定で 2.5 → 1.67。
-export const SHIP_GUN_TIP_LENGTH = 1.67;
+export const SHIP_GUN_BARREL_RADIUS = 0.025;
+export const SHIP_GUN_BARREL_LENGTH = 2.5;
+export const SHIP_GUN_TIP_RADIUS = 0.0125;
+export const SHIP_GUN_TIP_LENGTH = 1.25;
 // Breech (砲尾): hull edge から伸びる主砲身を包む chunky cylinder、「ここから砲が
 // 生えている」感を出す。Bofors / 戦車主砲の breech ハウジング風。
-export const SHIP_GUN_BREECH_RADIUS = 0.15;
+export const SHIP_GUN_BREECH_RADIUS = 0.075;
 export const SHIP_GUN_BREECH_LENGTH = 0.5;
 // 補強リング (主砲身に 3 本、Bofors 40mm / 古典艦砲の reinforcement bands 風)
-export const SHIP_GUN_RING_RADIUS = 0.08;
-export const SHIP_GUN_RING_LENGTH = 0.15;
+export const SHIP_GUN_RING_RADIUS = 0.04;
+export const SHIP_GUN_RING_LENGTH = 0.075;
 export const SHIP_GUN_RING_COUNT = 3;
 // Muzzle brake (砲口、TIP 末端に取り付く軽い拡大部、flash hider / brake 風)
-export const SHIP_GUN_MUZZLE_BRAKE_RADIUS = 0.05;
+export const SHIP_GUN_MUZZLE_BRAKE_RADIUS = 0.025;
 export const SHIP_GUN_MUZZLE_BRAKE_LENGTH = 0.2;
 // Three.js Y-axis rotation by +π/4: +X → (cos, 0, -sin) = (√2/2, 0, -√2/2)。
 // このシーンは Z up なので -Z = down → +π/4 で +X が下に倒れる (forward + down)。
@@ -390,7 +389,9 @@ export const SHIP_GUN_PITCH_DOWN_RAD = Math.PI / 4;
 // 後方視点でも砲身が hull 下に常に見える (前端マウントだと hull 影に隠れて見えなかった)。
 // BRACKET = hull 底面と砲身根元を繋ぐ短い垂直支柱。砲身はその bracket 末端から +π/4
 // down-forward に伸びる。BRACKET_RADIUS は「半分の太さ」指定で 0.04 (= 0.08 → 0.04)。
-export const SHIP_GUN_BRACKET_RADIUS = 0.04;
+export const SHIP_GUN_BRACKET_RADIUS = 0.02; // cannon mount 側 (細い先端)
+// Hull 根元側の半径。tapered cone (円錐台) 形状で root を少し太くすると「支え」感が出る。
+export const SHIP_GUN_BRACKET_BASE_RADIUS = 0.05;
 export const SHIP_GUN_BRACKET_HEIGHT = 0.55;
 // 砲全体を group 内で -x 方向に shift (= bracket が cannon 軸上のどこを掴むかを決める)。
 // REAR_EXTENSION = BREECH_LENGTH/2 で **bracket が一番後ろの太い breech 部の真ん中** を

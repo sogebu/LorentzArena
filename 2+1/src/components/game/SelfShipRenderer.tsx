@@ -22,6 +22,7 @@ import {
   SHIP_CANNON_REAR_EXTENSION,
   SHIP_GUN_BARREL_LENGTH,
   SHIP_GUN_BARREL_RADIUS,
+  SHIP_GUN_BRACKET_BASE_RADIUS,
   SHIP_GUN_BRACKET_HEIGHT,
   SHIP_GUN_BRACKET_RADIUS,
   SHIP_GUN_BREECH_LENGTH,
@@ -369,6 +370,21 @@ export const SelfShipRenderer = ({
                 side={THREE.BackSide}
               />
             </mesh>
+            {/* Throat disk: nozzle 最奥 (inward 側) を塞ぐ発光円盤。radius = THROAT、
+                color = EXHAUST_INNER_COLOR (噴射炎 inner core と同色)。「ノズル奥が
+                燃えてる」見え方を作る。meshBasicMaterial なのでライト非依存で常に全輝度。
+                rotation.x = -π/2 で disk normal を local +y (= nozzle exit 方向、外側から
+                覗き込む camera 向き) に合わせる。 */}
+            <mesh
+              position={[0, -SHIP_NOZZLE_LENGTH / 2, 0]}
+              rotation={[-Math.PI / 2, 0, 0]}
+            >
+              <circleGeometry args={[SHIP_NOZZLE_THROAT_RADIUS, 16]} />
+              <meshBasicMaterial
+                color={exhaustInnerColor}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
             {/* Mount pylon: hull edge → nozzle throat を繋ぐ tapered cylinder。
                 +y (top, outward 側) = nozzle throat 接続 (細い)、-y (bottom, hull 側) = base (太い)。
                 group 原点は nozzle 中心、mount 中心は hull edge と throat の中点 →
@@ -420,9 +436,12 @@ export const SelfShipRenderer = ({
           -SHIP_HULL_HEIGHT / 2 - SHIP_GUN_BRACKET_HEIGHT / 2,
         ]}
       >
+        {/* Tapered cone (円錐台): radiusTop = BASE_RADIUS (hull 根元側、太い) →
+            radiusBottom = BRACKET_RADIUS (cannon mount 側、細い)。rotation=[π/2,0,0] で
+            局所 +Y が world +Z (= hull 側) に回転するため、radiusTop = 根元。 */}
         <cylinderGeometry
           args={[
-            SHIP_GUN_BRACKET_RADIUS,
+            SHIP_GUN_BRACKET_BASE_RADIUS,
             SHIP_GUN_BRACKET_RADIUS,
             SHIP_GUN_BRACKET_HEIGHT,
             8,

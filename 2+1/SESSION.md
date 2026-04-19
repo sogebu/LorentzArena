@@ -2,7 +2,35 @@
 
 ## 現在のステータス
 
-対戦可能。**`d5654fe` デプロイ済み** (build `2026/04/20 07:55:09 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**デプロイ済み** (build `2026/04/20 08:42:14 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+
+2026-04-20 (cannon / 機体 redesign + ライティング rig 共通化):
+- **砲本体 1/2 相似スケール**: BARREL radius 0.035→0.025 / length 2.3→2.5 (実質原初 5.0 からは半分)、
+  TIP radius 0.025→0.0125 / length 1.67→**1.25** (更に半分、細い部分だけの長さ指定)、
+  BREECH radius 0.15→0.075 / length 0.5、RING radius 0.08→0.04 / length 0.075、
+  MUZZLE radius 0.05→0.025 / length 0.2。合計砲軸長 ≈ 4.45。REAR_EXT は BREECH_LENGTH/2 で自動追従。
+- **Bracket (支柱)**: RADIUS 0.04→0.02 (半分のまま)、HEIGHT 0.55 維持。新定数
+  `SHIP_GUN_BRACKET_BASE_RADIUS = 0.05` を追加して hull 根元側を太くした **tapered 円錐台**
+  (rotation [π/2,0,0] で cylinder local +Y が world +Z に回るため `radiusTop = BASE_RADIUS` が
+  根元、`radiusBottom = BRACKET_RADIUS` が cannon mount 側)。
+- **Nozzle throat disk**: 4 nozzle 各々の最奥 (inward、pylon 側) に `EXHAUST_INNER_COLOR` の
+  meshBasicMaterial 発光円盤 (circleGeometry, THROAT_RADIUS, DoubleSide) を追加。「奥で燃えてる」
+  見え方、ライト非依存で常時 full 輝度。
+- **ライティング rig 統一 `GameLights.tsx`**: ゲーム本体 (SceneContent) と ShipViewer で共有。
+  旧 (ambient 0.5 + pointLight intensity 1 / ShipViewer は 4 灯 studio rig) から、**単一
+  pointLight (-5, -5, -5) intensity 4 `decay={0}`** の dramatic side-lit に統一。
+  `decay={0}` 理由: three.js r155+ の pointLight は physically-correct inverse-square がデフォで、
+  距離 ~8.66 だと intensity 2-4 程度では実効 0.03-0.05 で真っ暗になる (user feedback で判明)。
+  rig parameter (位置・intensity・色) を `GameLights.tsx` 1 箇所で集中管理、ShipViewer での
+  design iterate がそのままゲームと一致する。
+- 関連 emissive: hull/nozzle/gun/bracket の SHIP_*_EMISSIVE_INTENSITY は 1/5 → 1/2 → 原初と
+  ユーザーと対話しながら段階評価、最終的に原初値 (0.45 / 0.7 / 0.35 / 0.45 / 0.7) に復帰。
+  ambient=0 + 単灯 rig との組合せで shadow 側にも emissive が乗って sci-fi グロウ感残し、
+  lit 側は強光でコントラスト確保。
+
+以下は過去エントリ。
+
+2026-04-20 (Stardust ortho 可視化、投影独立な point size):
 
 2026-04-20 (世界系 time fade 統一):
 - **`buildDisplayMatrix` / `transformEventForDisplay` の world frame 分岐に時間並進を導入**
