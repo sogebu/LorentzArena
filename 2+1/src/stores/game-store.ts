@@ -503,10 +503,14 @@ export const selectPendingKillEvents = (state: LogState): KillEventRecord[] =>
  * Phase C1: 被弾 i-frame 終了 wallTime。hitLog の victimId 最新 wallTime +
  * POST_HIT_IFRAME_MS。hit 履歴が無ければ 0 (= never)。
  * handleDamage が同 frame 複数 hit を 1 発扱いにするために使う。
+ *
+ * 灯台にも適用 (2026-04-19): 以前は LH 短絡 `return 0` で毎発有効としていたが、
+ * 集中砲火で LH が即死する挙動が爽快感より理不尽寄りに振れるとの判断で人間と
+ * 共通化。LIGHTHOUSE_HIT_DAMAGE = 0.2 / ENERGY_MAX = 1.0 で 6 発死は変えず、
+ * 最短殺害時間が 5 × POST_HIT_IFRAME_MS = 2.5s になる。なお `selectInvincibleUntil`
+ * は依然として LH 短絡 (-Infinity) — 5s respawn 無敵は LH には不要。
  */
 export const selectPostHitUntil = (state: LogState, victimId: string): number => {
-  // 灯台は post-hit i-frame なし (毎発有効、爽快感優先)。
-  if (isLighthouse(victimId)) return 0;
   let latest = 0;
   for (const e of state.hitLog) {
     if (e.victimId !== victimId) continue;

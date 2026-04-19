@@ -9,6 +9,7 @@ import {
 import {
   ENERGY_MAX,
   HIT_DAMAGE,
+  LIGHTHOUSE_HIT_DAMAGE,
   LIGHTHOUSE_ID_PREFIX,
   MAX_WORLDLINE_HISTORY,
   POST_HIT_IFRAME_MS,
@@ -205,7 +206,8 @@ describe("handleDamage — Lighthouse 2 発で死 (回復なし)", () => {
     expect(selectIsDead(useGameStore.getState(), lhId)).toBe(false);
 
     // 1 発目の直後 hitLog.wallTime を書き換えて i-frame を擬似的に超過させる
-    // (実ゲームでは > 500ms 経過した状況を再現)
+    // (実ゲームでは > 500ms 経過した状況を再現)。2026-04-19 の i-frame 共通化以降、
+    // この mutation 無しでは第 2 発が i-frame で弾かれて lethal 判定が立たない。
     useGameStore.setState((s) => ({
       hitLog: s.hitLog.map((e) => ({
         ...e,
@@ -217,6 +219,38 @@ describe("handleDamage — Lighthouse 2 発で死 (回復なし)", () => {
     const s = useGameStore.getState();
     expect(selectIsDead(s, lhId)).toBe(true);
     expect(s.frozenWorldLines.length).toBe(1);
+  });
+});
+
+describe("handleDamage — Lighthouse post-hit i-frame (2026-04-19 で人間と共通化)", () => {
+  const lhId = `${LIGHTHOUSE_ID_PREFIX}test`;
+
+  beforeEach(() => {
+    resetStore(new Map([[lhId, makePlayer(lhId, ENERGY_MAX)]]));
+  });
+
+  it("i-frame 内の第 2 発は damage 適用されない (旧仕様の `selectPostHitUntil → 0` 短絡を撤廃)", () => {
+    const store = useGameStore.getState();
+    store.handleDamage(lhId, "killer", HIT_POS, LIGHTHOUSE_HIT_DAMAGE, LASER_DIR, "me");
+    const energyAfterFirst = useGameStore.getState().players.get(lhId)?.energy;
+    expect(energyAfterFirst).toBeCloseTo(ENERGY_MAX - LIGHTHOUSE_HIT_DAMAGE);
+
+    // 第 2 発を即座に発火 (wall-time 差 ≈ 0、i-frame 内)
+    store.handleDamage(lhId, "killer", HIT_POS, LIGHTHOUSE_HIT_DAMAGE, LASER_DIR, "me");
+    const after = useGameStore.getState();
+    expect(after.players.get(lhId)?.energy).toBe(energyAfterFirst);
+    // hitLog も増えない (i-frame 連打延長封じ、人間と同設計)
+    expect(after.hitLog.length).toBe(1);
+  });
+
+  it("selectPostHitUntil(LH) は latest hit wallTime + POST_HIT_IFRAME_MS を返す", () => {
+    const store = useGameStore.getState();
+    store.handleDamage(lhId, "killer", HIT_POS, LIGHTHOUSE_HIT_DAMAGE, LASER_DIR, "me");
+    const s = useGameStore.getState();
+    const latestHit = s.hitLog[s.hitLog.length - 1];
+    expect(selectPostHitUntil(s, lhId)).toBe(
+      latestHit.wallTime + POST_HIT_IFRAME_MS,
+    );
   });
 });
 

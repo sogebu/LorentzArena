@@ -513,7 +513,8 @@ export function useGameLoop({
           for (const { victimId, killerId, hitPos, laserDir } of hitResult.hits) {
             // Phase C1: damage を先に適用 (i-frame / 既死 / 無敵 は handleDamage
             // が内部で弾く)。致命なら handleDamage 内で handleKill が呼ばれる。
-            // 灯台は専用 damage (= LIGHTHOUSE_HIT_DAMAGE) で 11 発死、無敵時間なし、回復なし。
+            // 灯台は専用 damage (= LIGHTHOUSE_HIT_DAMAGE = 0.2) で 6 発死、energy 回復なし、
+            // respawn 無敵なし。post-hit i-frame (500ms) は 2026-04-19 から人間と共通。
             const damage = isLighthouse(victimId) ? LIGHTHOUSE_HIT_DAMAGE : HIT_DAMAGE;
             sendToNetwork({
               type: "hit" as const,

@@ -69,7 +69,9 @@ export const THRUST_ENERGY_RATE = 1.0 / 9;
 export const ENERGY_RECOVERY_RATE = 1.0 / 6; // 6 秒で 0→満タン（撃/推どちらもしていないときのみ回復）
 
 // Damage model (Phase C1):
-// 灯台専用の被弾ダメージ。LH は無敵 / 回復なし、1.0 → -0.2 で 6 発死。
+// 灯台専用の被弾ダメージ。LH は respawn 無敵なし / energy 回復なし、1.0 → -0.2 で 6 発死。
+// post-hit i-frame (POST_HIT_IFRAME_MS = 500ms) は 2026-04-19 から人間と共通化
+// (集中砲火即死の理不尽さ回避、最短殺害時間 5×500ms = 2.5s に固定)。
 export const LIGHTHOUSE_HIT_DAMAGE = 0.2;
 
 // 被弾 1 発で energy を HIT_DAMAGE (= 0.5) 消費。energy < 0 で死 (境界 0 は生存)。
@@ -78,6 +80,7 @@ export const HIT_DAMAGE = ENERGY_MAX / 2;
 // 被弾後 500ms は追加 damage を無視 (同 frame 複数 laser hit 事故防止)。
 // respawn 無敵 (INVINCIBILITY_DURATION 5s) とは別系統: こちらは damage 数値のみ 0 クランプ、
 // kill event そのものは発生しうる (ただし energy が減っていないので実質起きない)。
+// 人間 + LH 共通 (2026-04-19、`selectPostHitUntil`)。
 export const POST_HIT_IFRAME_MS = 500;
 
 // phaseSpace 受信の wall-time gap がこの閾値を超えた場合、受信側は該当プレイヤーの
