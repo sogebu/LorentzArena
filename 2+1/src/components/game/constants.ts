@@ -354,8 +354,10 @@ export const SHIP_HULL_X_SCALE = 1.4;
 // 2026-04-19 後半: 「レーザー砲は長さだけ半分」指定で全 length 値を 1/2 に。
 // radius は不変 (BARREL 0.05 / TIP 0.025 / BREECH 0.15 / RING 0.08 / BRAKE 0.05)。
 // 全長 (breech 含む visible extent): 旧 10.0 → 5.0、tip xy/z ≈ ±2.65 (cannon group 原点から)。
-export const SHIP_GUN_BARREL_RADIUS = 0.05;
-export const SHIP_GUN_BARREL_LENGTH = 2.5;
+// 2026-04-19 後半 第 2 段: BARREL_LENGTH 2.5 → 2.3 に短縮で第 1 ring が breech と接触。
+// 計算: 第 1 ring 近端 = BARREL * 1/(N+1) - REAR_EXT - RING_LEN/2 = 2.3/4 - 0.25 - 0.075 = 0.25 = breech 末端 ✓
+export const SHIP_GUN_BARREL_RADIUS = 0.035;
+export const SHIP_GUN_BARREL_LENGTH = 2.3;
 export const SHIP_GUN_TIP_RADIUS = 0.025;
 // 2026-04-19 後半: 「TIP 長さ 2/3 に」指定で 2.5 → 1.67。
 export const SHIP_GUN_TIP_LENGTH = 1.67;

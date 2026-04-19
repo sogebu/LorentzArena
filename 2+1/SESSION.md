@@ -2,7 +2,9 @@
 
 ## 現在のステータス
 
-対戦可能。**`cdd0f80` デプロイ済み** (build `2026/04/19 21:38:15 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**デプロイ済み** (build `2026/04/19 22:17:05 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+
+2026-04-19 深夜 (自機 barrel 微調整): `SHIP_GUN_BARREL_RADIUS` 0.05 → **0.035** (より細身の「対物ライフル」風)、`SHIP_GUN_BARREL_LENGTH` 2.5 → **2.3** で第 1 補強リングが breech に接触 (ring 位置は `BARREL_LENGTH * i/(N+1)` の比例なので barrel 短縮で ring が origin 寄りに動く)。他 radius / length は不変、色も palette 3 層維持。
 
 2026-04-19 夜 (自機デザイン着地 — belly-mounted 艦砲、Direction D 系): 長時間の対話的設計で
 自機を sphere → **六角プリズム + 4 隅 RCS nozzle + 底面 bracket + 懸架砲** に刷新。ship viewer
