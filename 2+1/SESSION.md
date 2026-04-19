@@ -2,7 +2,11 @@
 
 ## 現在のステータス
 
-対戦可能。**`abb1cf4` デプロイ済み** (build `2026/04/20 06:45:30 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**デプロイ済み** (build `2026/04/20 06:49:52 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+
+2026-04-20 朝 (HUD 微調整): Ghost 中 (= 自機死亡中) に Speedometer の energy bar を非表示
+(`{!player.isDead && (...)}` で wrap)。Ghost は燃料制約なしで常時フル加速できるため、
+バー表示は意味なし → 視覚 noise 削減。
 
 2026-04-20 朝 (死亡 past-cone エフェクト共通化 + 自機本体周辺 inner-hide + ghost 燃料制約撤去):
 
