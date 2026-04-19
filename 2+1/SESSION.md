@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**デプロイ済み** (build `2026/04/20 07:55:09 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`d5654fe` デプロイ済み** (build `2026/04/20 07:55:09 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
 2026-04-20 (世界系 time fade 統一):
 - **`buildDisplayMatrix` / `transformEventForDisplay` の world frame 分岐に時間並進を導入**
