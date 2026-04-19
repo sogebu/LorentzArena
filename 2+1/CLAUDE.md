@@ -38,6 +38,28 @@ deploy 後に報告する項目:
 - 本番 URL: https://sogebu.github.io/LorentzArena/
 - build 値 (取得: `grep -oE '[0-9]{4}/[0-9]{2}/[0-9]{2} [0-9:]+' dist/assets/index-*.js | head -1`)。odakin がスマホ HUD で表示される build 値と照合してキャッシュ更新を確認
 
+## Deploy 前に dev server を `pkill` しないこと
+
+**してはいけない**: `pkill -f "vite"` で background dev server を殺してから `pnpm run deploy`。
+- `pnpm run deploy` (= `vite build` → `gh-pages`) は dev server に依存しない (port 5173 を使うのは dev 側だけ、build は別 process)
+- `Bash(run_in_background: true)` で起動した dev server task が SIGTERM (exit 143) で死ぬと、harness は **「Background command 'Restart dev server' failed」通知を出す** (= 異常終了として report)
+- 動作上は無害だが notification noise になる、odakin が「失敗した?」と惑う原因
+- **正しい運用**: deploy 時は dev server に触らない。HMR が動いてれば preview URL もそのまま生きてるので、deploy 前後の動作確認は localhost で完結
+- どうしても止めたい場合 (port 競合 etc.) は harness の task ID で stop すれば graceful 扱いになる可能性あり (`pkill` は harness を経由しないのが問題)
+
+## ShipViewer ルート (`#viewer`)
+
+`src/components/ShipViewer.tsx` はゲーム本体 (PeerProvider / GameStore / 光円錐 / network) を一切起動せず、自機 3D モデル (`SelfShipRenderer`) を 360° 回転 / thrust 9 方向ボタン / grid / BG 切替で preview する独立 scene。`http://localhost:5173/LorentzArena/#viewer` (本番も `https://sogebu.github.io/LorentzArena/#viewer`) で起動。`App.tsx` 冒頭で `window.location.hash === '#viewer'` 判定して分岐。
+
+**用途**: 機体形状・色・スケールの design イテレートを高速に回す (ゲーム state 不要、HMR が即反映)。
+
+**OrbitControls は `three/examples/jsm/controls/OrbitControls.js` から直 import** (drei 経由ではなく)。理由:
+- 2026-04-19 に `@react-three/drei` minified bundle が AVG antivirus に `JS:Prontexi-Z [Trj]` 誤検知され Vite optimize 直後に bundle が quarantine 削除 → 真っ白事故
+- ShipViewer は OrbitControls 1 機能しか drei から使っていなかった → three native 直 import で drei 依存ごと撤去
+- 今後も drei 追加は「単機能のために重い meta-package を入れる」リスクとして警戒すること
+
+詳細は `design/rendering.md` §自機 SelfShipRenderer。
+
 ## ローカルプレビュー注意点
 
 - **ルーム分離**: `#room=<名前>` で分離。本番 (sogebu.github.io) がルーム `default` を使うため localhost テストは `#room=test` 等別ルーム必須 (同名だと `la-default` ID 衝突)

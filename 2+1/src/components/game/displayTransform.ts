@@ -9,20 +9,26 @@ import {
 /**
  * Convert a world-frame event into display coordinates.
  *
- * English:
- *   - When `observerBoost` is present, we display in the observer's instantaneous rest frame.
- *   - Otherwise, we keep world-frame coordinates.
- *
- * 日本語:
- *   - `observerBoost` がある場合は観測者の瞬間静止系で表示します。
- *   - ない場合は世界系のまま表示します。
+ *   - Rest frame (`observerBoost` 有り): `L · (event − observer)` で観測者を display 原点に。
+ *   - World frame (`observerBoost = null`): 時間成分のみ `event.t − observer.t` に並進。
+ *     空間 (x, y) は world 座標のまま保持 → カメラが観測者を追随。時間並進によって
+ *     `timeFadeShader` が読む display z が `Δt` となり、rest frame と fade 挙動が一致する。
+ *   - 観測者が未設定 (`observerPos = null`): 素通し。
  */
 export const transformEventForDisplay = (
   worldEvent: Vector4,
   observerPos: Vector4 | null,
   observerBoost: ReturnType<typeof lorentzBoost> | null,
 ): Vector4 => {
-  if (!observerPos || !observerBoost) return worldEvent;
+  if (!observerPos) return worldEvent;
+  if (!observerBoost) {
+    return {
+      t: worldEvent.t - observerPos.t,
+      x: worldEvent.x,
+      y: worldEvent.y,
+      z: worldEvent.z,
+    };
+  }
   return multiplyVector4Matrix4(
     observerBoost,
     subVector4(worldEvent, observerPos),
@@ -48,8 +54,14 @@ export const buildDisplayMatrix = (
   observerBoost: ReturnType<typeof lorentzBoost> | null,
 ): THREE.Matrix4 => {
   const m = new THREE.Matrix4();
-  if (!observerPos || !observerBoost) {
-    return m; // identity
+  if (!observerPos) {
+    return m; // identity (観測者未設定)
+  }
+  if (!observerBoost) {
+    // 世界系: 時間のみ並進。display z = world t − observer.t、xy は world のまま (カメラ側で追随)。
+    // `timeFadeShader` の vertex z = Δt として機能 → rest frame と fade 挙動統一。
+    m.makeTranslation(0, 0, -observerPos.t);
+    return m;
   }
 
   const L = observerBoost;

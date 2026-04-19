@@ -10,8 +10,10 @@ import type { lorentzBoost, Vector4 } from "../../physics";
  *   の出力)。観測者変化時に 1 回だけ計算し全 mesh で共有。
  * - `T(worldPos)`: 事象の world 座標への並進。mesh ごとに異なる。`buildMeshMatrix` helper で合成。
  *
- * 世界系表示 (observerBoost = null) では `buildDisplayMatrix` が identity を返すので自動的に
- * world = display。β=0 でも同じ。
+ * 世界系表示 (observerBoost = null) では `buildDisplayMatrix` は **時間並進のみ** の行列を返す
+ * (空間 xy は world のまま、display z = world t − observer.t)。これにより `timeFadeShader`
+ * が読む vertex z が rest frame と同じく Δt となり、fade 挙動が観測フレーム非依存になる。
+ * β=0 rest frame でも同等。
  */
 
 /** Compose `displayMatrix × T(worldPos)`. mesh の `matrix` prop に渡す共通の組み立て。 */
@@ -27,7 +29,7 @@ export interface DisplayFrameValue {
   observerU: { x: number; y: number } | null;
   observerBoost: ReturnType<typeof lorentzBoost> | null;
   observerPos: Vector4 | null;
-  /** world → display 変換 matrix (boost + 観測者位置並進)。identity if 世界系表示 */
+  /** world → display 変換 matrix (boost + 観測者位置並進、世界系では時間並進のみ) */
   displayMatrix: THREE.Matrix4;
 }
 

@@ -7,14 +7,23 @@ import {
 } from "./constants";
 
 /**
- * Stardust 専用 shader: 時間 fade (Lorentzian) + 光円錐通過 flash (Gaussian)。
+ * Stardust 専用 shader: 時間 fade (Lorentzian) + 光円錐通過 flash (Gaussian) + 投影独立の
+ * point size 計算。
  *
- * 光円錐面 (rest frame で display z = ±ρ) を spark が通過する瞬間に alpha boost。
+ * 光円錐面 (observer rest frame で display z = ±ρ) を spark が通過する瞬間に alpha boost。
  * 過去 cone は強め、未来 cone は控えめ (届いていない event の情報量差)。
  *
- * rest frame では `modelMatrix × vertex` が観測者相対 (boost + T(-observer)) なので
- * tfDisplayPos.xyz をそのまま使える。world frame では `displayMatrix = I` で絶対座標に
- * なるため flash は正しく出ないが、通常プレイは rest frame なので許容 (簡素化優先)。
+ * `modelMatrix × vertex` が rest frame では `L(u) · (event − observer)`、world frame では
+ * `T(0, 0, −observer.t) · event` (2026-04-20 統一) でいずれも observer 相対の display 座標を返す
+ * → `sdPos.xy` = 観測者からの空間ベクトル、`sdPos.z` = Δt として光円錐/fade 判定がフレーム独立。
+ *
+ * **投影独立な point size**: three.js PointsMaterial の sizeAttenuation は perspective でしか
+ * `gl_PointSize *= scale / -mvPos.z` を掛けず ortho では素通し → size=0.04 [pixels] で不可視。
+ * 対称化: 両モードで「projection の pixels-per-world-unit」を導出して乗算する。
+ *   - perspective: `scale / -mvPos.z` (= 視点からの距離で減衰)
+ *   - orthographic: `scale · projectionMatrix[1][1]` (= zoom、depth 非依存)
+ * どちらも `scale` (= canvas_height/2) を基準に、投影行列から pixels/world 比を引き出す同じ意味の式。
+ * 定数マジックナンバー不要、canvas resize / zoom 変更にも追従。
  */
 export const applyStardustShader = (
   shader: THREE.WebGLProgramParametersWithUniforms,
@@ -52,7 +61,20 @@ float sdFlashBoost;`,
     )
     .replace(
       "gl_PointSize = size;",
-      "gl_PointSize = size * (1.0 + sdFlashBoost);",
+      // 両モード統一: size × flash × pixels-per-world-unit を一式で乗算。
+      // three.js 後続の #ifdef USE_SIZEATTENUATION は perspective のみ scale/-z を掛けるが、
+      // ここで ortho も含めて同じ意味の係数を先に乗じておく → 後続 branch を上書きで相殺
+      // するより、ここで完結させる方が対称的。以降の三者式 (isPerspective 分岐) を無効化
+      // するため、projectionMatrix[2][3] を見て mode を判定し同一形で書く。
+      `float sdPxPerWorld = (projectionMatrix[2][3] == -1.0)
+    ? scale / -mvPosition.z
+    : scale * projectionMatrix[1][1];
+  gl_PointSize = size * (1.0 + sdFlashBoost) * sdPxPerWorld;`,
+    )
+    // three.js の後続 perspective 分岐は我々で既に処理済 → no-op 化 (二重乗算防止)。
+    .replace(
+      "if ( isPerspective ) gl_PointSize *= ( scale / - mvPosition.z );",
+      "",
     );
   shader.fragmentShader = shader.fragmentShader
     .replace(

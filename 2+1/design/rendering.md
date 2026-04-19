@@ -163,7 +163,128 @@ z ∈ [1.52, 1.62] spire
 
 **`LIGHTHOUSE_SINK = 0.16` (2026-04-18 夜)**: 塔全体高さ (~1.62) の約 10% を event 位置より下に沈める。anchorPos (past-cone 判定) はそのまま、inner group の `position={[0, 0, -LIGHTHOUSE_SINK]}` で視覚シフトのみ適用。狙い: 塔基部が event 位置 (= 観測者の過去光円錐との交点) と一致すると浮いて見える問題を解消 ー 少し埋めて「地面に定着した建造物」感を出す。sink は past-cone 判定には非干渉 (anchor は塔基部 z=0 のまま) なので物理的タイミングへの影響はゼロ、純粋に視覚マージン。
 
-**hit 判定パラメータ**: `LIGHTHOUSE_HIT_RADIUS = 0.40` (塔底面 r=0.40 と同値)、`LIGHTHOUSE_HIT_DAMAGE = 0.2` (6 発で死、1.0 → ... → 0 → -0.2 で strict `< 0`)、無敵時間なし (`selectPostHitUntil` は LH で常に 0)、energy 回復なし。
+**hit 判定パラメータ**: `LIGHTHOUSE_HIT_RADIUS = 0.40` (塔底面 r=0.40 と同値)、`LIGHTHOUSE_HIT_DAMAGE = 0.2` (6 発で死、1.0 → ... → 0 → -0.2 で strict `< 0`)、無敵時間なし → **2026-04-19 で人間と共通の `POST_HIT_IFRAME_MS = 500ms` を適用** (集中砲火即死回避、最短殺害時間 5×500ms = 2.5s に固定。`selectPostHitUntil` の `if (isLighthouse(victimId)) return 0` 短絡を撤廃)。`selectInvincibleUntil` (5s respawn 無敵) のみ LH 短絡 (-Infinity) を維持。energy 回復なし。
+
+### 死亡 past-cone エフェクト共通化 (`pastConeDisplay.ts` + `DeathMarker.tsx`、2026-04-20)
+
+灯台で確立した「過去光円錐 anchor + 沈む alpha fade + 死亡マーカー (球 + 輪)」を、人間プレイヤー (自機 / 他機) にも展開。共通ロジックを 2 ファイルに抽出。
+
+**`pastConeDisplay.ts` の `computePastConeDisplayState(playerPos, spawnT, isDead, observerPos)`**:
+
+pure 関数。past-cone surface anchor + 死亡 fade を計算し `{anchorPos, visible, alpha, deathMarkerAlpha}` を返す。LH / 他機 / 自機 共通。**呼出側 (LighthouseRenderer / OtherPlayerRenderer / SelfShipRenderer の dead branch) は同 utility を使うことで past-cone 振舞いの一貫性が保証される**。
+
+**`DeathMarker.tsx` (sphere + ring): 沈む球 + 沈まない輪**
+
+最も非自明な設計判断。最終形は **「球は world event 位置で沈む、輪は過去光円錐 surface anchor で沈まない」**。
+
+- **Sphere**: `transformEventForDisplay(deathEventPos, observer)` で配置 → 観測者が時間前進すると display.t が −Δt 進み、視覚的に「過去に沈む」。「死は spacetime 上の 1 event であり、その event 自体は時間と共に観測者から遠ざかる」という直感に一致。
+- **Ring**: 過去光円錐 surface 上にアンカー (`anchorT = observer.t − ρ`) → 観測者が静止しているなら display 位置は変わらず「沈まない」。観測者が動けば光行差で位置がずれる。「死亡は今まさに観測者に届きつつある光現象 (= past cone が掠める瞬間) として印象づける」。
+
+設計の試行錯誤 (要約):
+1. 初版: 両方 world-event 固定 (球と輪両方沈む)
+2. 「輪は沈まない」フィードバック → 輪だけ past-cone surface anchor に
+3. 「観測者の now 平面 (HUD-like) では?」を一度試して却下 (空間方向にも依存しない方が自然)
+4. 「過去の spacetime 点に固定」→ 結局沈むので却下
+5. 最終: **「輪 = 過去光円錐上に固定、球 = world event で沈む」(odakin 確定)**
+
+両方とも `DEBRIS_MAX_LAMBDA` で fade 1→0 を同期させ、debris と同タイミングで時空に溶ける。
+
+**SceneContent routing**:
+
+- LH: `LighthouseRenderer` が `computePastConeDisplayState` + `<DeathMarker>` を内蔵
+- 他機 (生存/死亡 共通): `OtherPlayerRenderer` が同経路
+- 自機 (生存): `SelfShipRenderer`
+- 自機 (死亡): **`SelfShipRenderer` をスキップして `OtherPlayerRenderer` (with `deathEventOverride={myDeathEvent.pos}`) を出す**。
+  - 理由: 自機の `player.phaseSpace.pos` は ghost 物理で更新され続ける (= ghost.pos に追従) ので、死亡 event の実位置と乖離する。`myDeathEvent.pos` を override で渡すことで「観測者の過去光円錐に届く death event」が実 death event のままになる。
+
+旧 SceneContent の `killNotification` 内 3D sphere+ring (killer===me の時だけ 1500ms 表示) は撤去、各 player renderer 側で全死亡に対し統一表示。`store.killNotification` は HUD text 通知 (`Overlays`) のみで残置。
+
+### 自機 SelfShipRenderer (deadpan SF / 4 diagonal RCS / belly-mounted cannon、2026-04-19)
+
+odakin との対話的設計で **自機を sphere → 六角プリズム + 4 隅 RCS nozzle + 底面 bracket + 懸架砲** に刷新 (`SelfShipRenderer.tsx`)。
+
+**設計哲学: deadpan SF**
+
+「ジョークは大真面目にシリアスな顔をしてやるから可笑しい」。ゲーム仕様 (8 方向 thrust + 過去光円錐との交点で見えるレーザー = 観測者から見ると下 45° 前方に進む) を **literal に反映した形状** で笑いを取る。象徴主義 (黄色三角 / cockpit dome) は不採用、形状そのものに語らせる。
+
+**Hull**: 六角プリズム (CylinderGeometry segments=6)、+x に vertex (尖端) + X 方向 scale 1.4× で elongate → 前後に細長い「nose 付き」シルエット。**形そのものが前方を示す** (黄色三角や cockpit dome は不採用)。`SHIP_FORWARD_MARK_*` 撤去。
+
+**4 RCS Nozzle (de Laval ベル、π/4・3π/4・5π/4・7π/4)**:
+
+物理的に正しい RCS 噴射の分解。`intensity_i = max(0, -localThrust · outward_i)` で、
+
+- WASD 単押し (例: W = +x 加速) → 隣接する **2 ノズルが各 1/√2 (≈ 0.707)** で噴射 (5π/4 + 3π/4 が反対方向)
+- W+A (= 北西、対角加速) → 単一ノズル (5π/4) が 1.0 で噴射
+
+→ 「角度の合成則」が見た目に反映される (相対論的速度合成じゃないが、向きの幾何は古典そのもの)。ノズル形状は de Laval ベル (top=EXIT 太い / bottom=THROAT 細い)、外面 FrontSide / 内面 BackSide で 2 pass 描画 (内壁 dark)、tapered mount pylon で hull edge に接合。
+
+**砲 (belly-mounted、+π/4 down-forward)**:
+
+ゲーム仕様: レーザーは 2+1 では 45° 上向きに照射、観測者の過去光円錐との交点で時間発展を見るため、観測者から見ると **下 45° 前方に進む**。これを literal に「下 45° 向きの腹部砲」として実装。
+
+- Hull 底面から垂直 bracket (細い radius 0.04、高さ 0.55) で懸架
+- **bracket は breech 中点に attach** (`SHIP_CANNON_REAR_EXTENSION = SHIP_GUN_BREECH_LENGTH / 2`) → 砲尾懸架感
+- 構成: breech + 主砲身 (長) + 3 補強リング + TIP (短) + muzzle brake
+- **`SHIP_LIFT_Z = HULL_H/2 + BRACKET_H = 0.63` で全体を持ち上げ → cannon 軸が world origin (= 過去光円錐交点 = レーザー発射点) を通過、fire 時レーザーと cannon が完全整合**
+- barrel は最終調整で 0.05/2.5 → **0.035/2.3** (細身の対物ライフル風) に着地、ring 位置 (`BARREL_LENGTH * i/(N+1)` 比例) は barrel 短縮で origin 寄りに → 第 1 ring が breech に接触
+
+**色 palette (3 層)**: hue 210 vs 220 の subtle 差で hull と hardware を分離
+
+| 層 | HSL | 用途 |
+|---|---|---|
+| Navy | hsl(210, 30%, 28%) | hull + cannon 全体、主体 |
+| Steel-blue | hsl(220, 25%, 38%) | bracket + pylon + nozzle 外面、取り付け hardware |
+| Dark mid | hsl(220, 30%, 26%) | nozzle 内壁、接合陰 |
+
+cannon 全体を navy にしたのは「兵器を hardware として独立させない」設計判断 (船体と砲が同色 = 一体化した道具感)。barrel だけ steel-blue にする案は「砲が浮く」で却下、ring だけ steel-blue も同様。
+
+**廃棄した方向**:
+
+- Direction H (観測ドローン / 望遠鏡、telescope-on-deck): 「ダサい」「形わからん」フィードバックで pre-H 状態に git restore して belly-turret (Direction D) に分岐し着地
+- AccelerationArrow / ExhaustCone は SelfShipRenderer 内 4 nozzle 個別 EMA smoothing で再構成 (旧コード SceneContent.tsx から削除、git history で復元可)
+
+**ShipViewer (`#viewer` hash route、`src/components/ShipViewer.tsx`)**:
+
+ゲーム外で 360° preview する独立 scene。OrbitControls (drei ではなく three の jsm から直 import、後述 AVG 回避)、thrust 9 方向ボタン、auto-rotate / grid / BG 切替。PeerProvider / GameStore / 光円錐 一切起動せず → 形状デザインを高速イテレートできる。`App.tsx` で `window.location.hash === '#viewer'` 判定して `<ShipViewer />` を返す分岐。
+
+**AVG 誤検知事件 (2026-04-19)**: `@react-three/drei` bundle が AVG antivirus に `JS:Prontexi-Z [Trj]` と誤検知され、Vite optimize 直後に bundle が quarantine 削除されて真っ白事故。**ShipViewer の OrbitControls を `three/examples/jsm/controls/OrbitControls.js` から直 import に切替** (drei 依存完全撤去) で回避。教訓: 単機能 (OrbitControls だけ) のために重い meta-package を入れない、native API で代替できるなら優先。
+
+### Inner-hide shader (LightCone × cannon の被り解消、2026-04-20)
+
+**動機**: 自機の belly-mounted cannon (origin を貫く軸) と、自機自身の **過去光円錐 / 自機の世界線 tube** が origin 近傍で完全に重なる → cannon が past-cone surface に埋もれて見えない。同様に「他プレイヤーが自機の過去光円錐と交わる時、相手の cannon 周りに自機の past-cone wireframe が乗ってきて視覚汚染する」。
+
+**解決: per-vertex shader で「指定 world 位置から半径 R 以内の vertex を alpha=0」にする**
+
+`innerHideShader.ts` の `createInnerHideShader(radius, centerWorld: THREE.Vector3)`:
+
+- shader injection (`onBeforeCompile`) で vertex shader に `varying vDistToHideCenter` + uniform `uInnerHideCenter` (vec3) を注入
+- vertex stage で `length(transformed - uInnerHideCenter)` を計算 (= world 距離)
+- fragment stage で `if (vDistToHideCenter < uInnerHideRadius) discard` ではなく `gl_FragColor.a = 0` (transparent material と整合、depth 書きしない設計を維持)
+- **`centerWorld: Vector3` を受け取り uniform に直 bind** → useFrame で in-place `set(x,y,z)` するだけで auto sync (allocation ゼロ、毎 frame 更新可)
+- `applyTimeFadeShader` と並列に `onBeforeCompile` chain 可 (varying / uniform 名衝突なし、両方適用すれば time fade × inner hide の積)
+
+**hide center の選び方 (semantic)**:
+
+| 対象 mesh | hide center | 理由 |
+|---|---|---|
+| 自機の自分の過去光円錐 (`LightConeRenderer`) | `observer.pos` (= 自機 event) | 光円錐の apex そのもの |
+| 自機の自分の worldline tube | past-cone intersection (= worldline tip) | 自機の現在位置 (= apex でもある) |
+| **他プレイヤー / LH の worldline tube** | `pastLightConeIntersectionWorldLine(wl, observerPos)` | **観測者が「今見ている」spacetime 点** (gnomon マーカーが描かれる位置)。**最終 vertex (= 相手の現在 world 位置) ではない** ← 一度ここを間違えて odakin に訂正された |
+
+「観測者から相手はどこに見えるか」 = 過去光円錐との交差点。worldline の最終 vertex は相手の現在 world 位置で、観測者には光速遅延で **過去の位置** に見えるため、最終 vertex を hide center にすると「見えている相手の周りに hide が効かず、未来の相手の周りに hide が効く」というズレ事故になる。
+
+**半径**: hull radius と連動した形式で
+
+```
+SHIP_INNER_HIDE_RADIUS = SHIP_HULL_RADIUS × SHIP_INNER_HIDE_RADIUS_COEFFICIENT
+                       = 0.32 × 9 = 2.88
+LH_INNER_HIDE_RADIUS   = SHIP_HULL_RADIUS × LH_INNER_HIDE_RADIUS_COEFFICIENT
+                       = 0.32 × 2.5 = 0.8
+```
+
+LH は塔モデルが小さい + 砲身がないので小さめ。係数は 3 → 4 → 5 → 6 → 7 → 8 → 9 とインタラクティブ tuning で着地。当初 `SHIP_INNER_HIDE_RADIUS = 8.5` リテラルで試して「おおきすぎやろ。自機の大きさぐらいじゃないの。自機の適当な半径の適当な係数倍、とかして連動するようにしたら」フィードバック → hull 連動式に切替。
+
+**SceneContent routing**: 全 worldline (生存中: 自機 / 他機 / LH、凍結) に `innerHideRadius` prop を渡す。LH は `LH_INNER_HIDE_RADIUS`、それ以外は `SHIP_INNER_HIDE_RADIUS`。`LightConeRenderer` (= self past cone) は常に `SHIP_INNER_HIDE_RADIUS` 適用。
 
 ### worldLine.history サイズ: 5000 → 1000 (FPS 対策、2026-04-17)
 
@@ -379,7 +500,7 @@ opacity = baseOpacity × fade
 
 **timelike drift 撤回** (2026-04-17 夜): spark.t を観測者.t と同じ dt 進める案 (案 16 star aberration 寄り、「世界系静止観測者に spark 停止」) を `2b6815b` で試したが体感で流入版 (null event) の方が「時空通過感」で β 理念 (物理を通して体験) に沿うため `b15694d` で削除。
 
-**world frame fade** (D pattern 共通限界): `buildDisplayMatrix` が world frame で identity を返し shader z が絶対 world t になるため観測者.t 進行で全 star が薄くなる (stardust 固有でなく arena / worldlines / debris / lasers 全 D pattern 共通)。修正案は world frame でも `T(-observer)` を返す設計移行で defer (architectural、SESSION.md §次)。
+**world frame fade** (2026-04-20 解消): 旧: `buildDisplayMatrix` が world frame で identity を返し shader z = 絶対 world t → 観測者.t 進行で全 D pattern 要素が薄くなる (stardust 固有でなく arena / worldlines / debris / lasers 共通)。新: world frame 分岐で `T(0, 0, -observer.t)` を返す (空間 xy は world のまま、カメラ側で追随)。`transformEventForDisplay` も同様に時間のみ並進で揃え、mesh matrix と球位置の整合性維持。これにより shader vertex z = Δt となり rest frame と fade 挙動一致。空間並進まで入れる案 (rest 対称の `event - observer`) は camera rig 変更が必要になるため見送り、最小差分で fade 問題のみ解決。詳細: `src/components/game/displayTransform.ts` docstring。
 
 ### 世界系カメラ: プレイヤー追随
 
