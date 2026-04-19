@@ -91,15 +91,18 @@ export const LightConeRenderer = ({
   observerPosRef.current = observerPos;
 
   const color = useMemo(() => getThreeColor(LIGHT_CONE_COLOR), []);
-  // 自機本体・砲身周辺と被るのを抑制: display 原点から SHIP_INNER_HIDE_RADIUS 未満の
-  // vertex を alpha=0 に。timeFade と並列に shader chain。
+  // 自機本体・砲身周辺と被るのを抑制: 観測者 (observer.pos) からの世界座標距離が
+  // SHIP_INNER_HIDE_RADIUS 未満の vertex を alpha=0 に。timeFade と並列に shader chain。
+  // hideCenter は Vector3 ref を keep し、useFrame で observer.pos に更新 (= 自機が
+  // 動いても hide center が追従)。
+  const hideCenter = useMemo(() => new THREE.Vector3(), []);
   const onShader = useMemo(() => {
-    const hide = createInnerHideShader(SHIP_INNER_HIDE_RADIUS);
+    const hide = createInnerHideShader(SHIP_INNER_HIDE_RADIUS, hideCenter);
     return (s: THREE.WebGLProgramParametersWithUniforms) => {
       applyTimeFadeShader(s);
       hide(s);
     };
-  }, []);
+  }, [hideCenter]);
 
   // --- 4 geometry (future/past × surface/wire)、2 BufferAttribute を共有 ---
   const geo = useMemo(() => {
@@ -138,6 +141,9 @@ export const LightConeRenderer = ({
   useFrame(() => {
     const pos = observerPosRef.current;
     if (!pos) return;
+    // Inner hide center を観測者位置に追従。三次元の uniform で世界座標 → shader 内で
+    // 各 vertex との距離計算。
+    hideCenter.set(pos.x, pos.y, pos.t);
     const { futurePositions, futureAttr, pastPositions, pastAttr } = geo;
     const N = ARENA_RADIAL_SEGMENTS;
 

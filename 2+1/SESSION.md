@@ -2,7 +2,19 @@
 
 ## 現在のステータス
 
-対戦可能。**`e0cea0d` デプロイ済み** (build `2026/04/20 06:49:52 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**デプロイ済み** (build `2026/04/20 07:04:40 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+
+2026-04-20 朝 (敵世界線も inner-hide 対象に拡張):
+- `WorldLineRenderer` の hide center を旧「最終 vertex (= player の現在世界位置)」から
+  **観測者の過去光円錐との交差点** (`pastLightConeIntersectionWorldLine(wl, observerPos)`)
+  に変更。これは gnomon マーカーが描画される位置 = 観測者が「今見ている」spacetime 点。
+- `innerHideShader.ts`: `createInnerHideShader(radius, centerWorld: Vector3)` に汎用化、
+  Vector3 ref を受け取り useFrame で in-place 更新 (uniform auto sync)。
+- `LightConeRenderer` (= self): hide center を observer.pos に毎 frame 同期。
+- `WorldLineRenderer` (= 全 worldline): hide center を past-cone intersection に毎 frame 同期。
+- `SceneContent`: 全 worldline (生存中: 自機 / 他機 / LH、凍結) に `innerHideRadius` を渡す。
+  LH は `LH_INNER_HIDE_RADIUS = SHIP_HULL_RADIUS × 2.5 = 0.8` (機体 2.88 の 1/3.6)、
+  他は `SHIP_INNER_HIDE_RADIUS = 2.88`。
 
 2026-04-20 朝 (HUD 微調整): Ghost 中 (= 自機死亡中) に Speedometer の energy bar を非表示
 (`{!player.isDead && (...)}` で wrap)。Ghost は燃料制約なしで常時フル加速できるため、

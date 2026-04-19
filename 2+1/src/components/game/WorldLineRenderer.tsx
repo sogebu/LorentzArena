@@ -1,6 +1,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { pastLightConeIntersectionWorldLine } from "../../physics";
 import { PLAYER_WORLDLINE_OPACITY } from "./constants";
 import { buildDisplayMatrix } from "./displayTransform";
 import { createInnerHideShader } from "./innerHideShader";
@@ -52,10 +53,21 @@ export const WorldLineRenderer = ({
   }, []);
 
   const displayMatrix = buildDisplayMatrix(observerPos, observerBoost);
+  // Inner hide center: 観測者の過去光円錐とこの世界線との交差点 (= 観測者がこの player を
+  // 「今見ている」spacetime 点) に追従。これは gnomon マーカーが描かれる位置でもあり、
+  // worldLine 最終 vertex (= player の現在位置) ではない (= 観測者からは光速遅延で過去に見える)。
+  // useFrame で in-place 更新 → shader uniform が auto sync。
+  const hideCenter = useMemo(() => new THREE.Vector3(), []);
   useFrame(() => {
     if (tubeRef.current) {
       tubeRef.current.matrix.copy(displayMatrix);
       tubeRef.current.matrixAutoUpdate = false;
+    }
+    if (innerHideRadius != null && observerPos) {
+      const intersection = pastLightConeIntersectionWorldLine(wl, observerPos);
+      if (intersection) {
+        hideCenter.set(intersection.pos.x, intersection.pos.y, intersection.pos.t);
+      }
     }
   });
 
@@ -63,15 +75,16 @@ export const WorldLineRenderer = ({
   // 持つ world 座標を display frame に変換し、その z (= observer rest-frame での dt)
   // から Lorentzian fade を計算して alpha に乗算。生存世界線の tip は observer.t 近傍
   // で fade ≈ 1、tail や凍結世界線の古い部分は自然消失。
-  // 自機の世界線は innerHideRadius を渡して観測者周辺を hide (砲身等との被り解消)。
+  // 加えて innerHideRadius が指定されていれば、観測者の past-cone とこの worldLine の
+  // 交差点 (= player が「今見える」位置) を中心に world 距離 R 未満を hide。
   const onShader = useMemo(() => {
     if (innerHideRadius == null) return applyTimeFadeShader;
-    const hide = createInnerHideShader(innerHideRadius);
+    const hide = createInnerHideShader(innerHideRadius, hideCenter);
     return (s: THREE.WebGLProgramParametersWithUniforms) => {
       applyTimeFadeShader(s);
       hide(s);
     };
-  }, [innerHideRadius]);
+  }, [innerHideRadius, hideCenter]);
 
   const threeColor = getThreeColor(color);
   return (

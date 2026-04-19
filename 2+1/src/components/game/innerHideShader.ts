@@ -1,22 +1,34 @@
-import type * as THREE from "three";
+import * as THREE from "three";
 
 /**
- * Per-vertex inner-radius hide: 観測者 (display frame の origin) からの距離が指定 R 未満
- * の vertex を alpha=0 にして、自機本体周辺で他の geometry (砲身等) と被って見える
- * 「自分の過去光円錐 / 自分の世界線」を消す。
+ * Per-vertex inner-radius hide: 指定された world 座標の中心点から半径 R 内の vertex を
+ * alpha=0 にして、対象オブジェクト周辺で被って見える geometry を消す。
  *
- * D pattern mesh (mesh.matrix = displayMatrix) で使う。`modelMatrix * vertex` が
- * display 座標 (= observer rest frame) を返し、その length が観測者からの距離になる。
+ * D pattern mesh (vertex は world 座標、mesh.matrix = displayMatrix) で使う。
+ *   - centerWorld: world 座標の中心点 (= 隠したい場所、e.g. プレイヤー現在位置)
+ *   - radius: world 座標距離 (= 機体サイズ等の係数)
  *
- * `applyTimeFadeShader` と並列で onBeforeCompile に流し込んで OK (varying / uniform 名衝突なし)。
+ * shader 内では `length(transformed - uInnerHideCenter)` で world 距離を計算。
+ *
+ * **重要**: centerWorld は **`THREE.Vector3` インスタンスの参照** を受け取る。caller が
+ * `.set(x, y, z)` で in-place 更新すれば、three.js が自動的に uniform 同期する
+ * (= per-frame 更新可能)。シーンの観測者・対象 player が動くケースで必須。
+ *
+ * `applyTimeFadeShader` と並列で onBeforeCompile に流し込み可 (varying / uniform 名衝突なし)。
  *
  * Usage:
- *   const hide = createInnerHideShader(8.0);
+ *   const center = new THREE.Vector3();
+ *   const hide = createInnerHideShader(R, center);
  *   <meshStandardMaterial onBeforeCompile={(s) => { applyTimeFadeShader(s); hide(s); }} />
+ *   // useFrame で毎 tick: center.set(player.pos.x, player.pos.y, player.pos.t);
  */
-export const createInnerHideShader = (radius: number) => {
+export const createInnerHideShader = (
+  radius: number,
+  centerWorld: THREE.Vector3,
+) => {
   return (shader: THREE.WebGLProgramParametersWithUniforms): void => {
     shader.uniforms.uInnerHideRadius = { value: radius };
+    shader.uniforms.uInnerHideCenter = { value: centerWorld };
     shader.vertexShader = injectVertex(shader.vertexShader);
     shader.fragmentShader = injectFragment(shader.fragmentShader);
   };
@@ -42,18 +54,18 @@ const injectVertex = (src: string): string => {
       VERTEX_DECL_KEY,
       `${VERTEX_DECL_KEY}
 varying float vInnerDist;
-uniform float uInnerHideRadius;`,
+uniform float uInnerHideRadius;
+uniform vec3 uInnerHideCenter;`,
     )
     .replace(
       VERTEX_COMPUTE_KEY,
       `${VERTEX_COMPUTE_KEY}
 {
-  vec4 ihDisplayPos = vec4(transformed, 1.0);
+  vec3 ihLocalPos = transformed;
   #ifdef USE_INSTANCING
-    ihDisplayPos = instanceMatrix * ihDisplayPos;
+    ihLocalPos = (instanceMatrix * vec4(transformed, 1.0)).xyz;
   #endif
-  ihDisplayPos = modelMatrix * ihDisplayPos;
-  vInnerDist = length(ihDisplayPos.xyz);
+  vInnerDist = length(ihLocalPos - uInnerHideCenter);
 }`,
     );
 };

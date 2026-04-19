@@ -295,11 +295,16 @@ export const PLAYER_MARKER_SIZE_OTHER = 0.2;
 // radius 0.32 / height 0.16 (比 1:2、scale ~1.8×) に増強。机上比較で sphere 0.21 を
 // 大きく超え、八角プリズムが「機体」として認識される厚みに。
 export const SHIP_HULL_RADIUS = 0.32;
-// 自機本体周辺で「自分の過去光円錐 / 世界線」が砲身等と被って見えるのを抑制する
-// inner-hide 半径 (display 原点 = 観測者からこの距離未満の vertex は alpha=0)。
-// HULL_RADIUS 連動 = 機体サイズに比例して自動追従。係数で「hull の何倍まで隠すか」を決める。
+// 自機本体・他機本体・LH の周辺で「過去光円錐 / 世界線」が砲身・LH 塔・他機 sphere 等と
+// 被って見えるのを抑制する inner-hide 半径。観測者の過去光円錐とその world line の
+// 交差点 (= gnomon が描かれる位置) を中心に world 距離 R 未満の vertex を alpha=0 に。
+// HULL_RADIUS 連動 = 機体サイズに比例して自動追従。
 export const SHIP_INNER_HIDE_RADIUS_COEFFICIENT = 9;
 export const SHIP_INNER_HIDE_RADIUS = SHIP_HULL_RADIUS * SHIP_INNER_HIDE_RADIUS_COEFFICIENT;
+// LH は機体より小さく狭い範囲だけ隠す (LH 塔の半径は ~0.2 (LIGHTHOUSE_HIT_RADIUS) で
+// 機体より細い、過剰に隠さない)。HULL_RADIUS の数倍小さい係数。
+export const LH_INNER_HIDE_RADIUS_COEFFICIENT = 2.5;
+export const LH_INNER_HIDE_RADIUS = SHIP_HULL_RADIUS * LH_INNER_HIDE_RADIUS_COEFFICIENT;
 export const SHIP_HULL_HEIGHT = 0.16;
 // Hull 色は **固定** (プレイヤー色を使わない)。deadpan 軍用機の dark steel-navy。
 // 自機識別は「機体形状そのもの」(他機 sphere との対比) + 観測者 = 自機 (rest frame で

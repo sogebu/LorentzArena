@@ -29,6 +29,7 @@ import {
   FUTURE_CONE_WORLDLINE_RING_OPACITY,
   FUTURE_CONE_WORLDLINE_SPHERE_OPACITY,
   LIGHTHOUSE_WORLDLINE_OPACITY,
+  LH_INNER_HIDE_RADIUS,
   PAST_CONE_WORLDLINE_RING_OPACITY,
   SHIP_INNER_HIDE_RADIUS,
 } from "./constants";
@@ -287,7 +288,8 @@ export const SceneContent = ({
       {/* アリーナ円柱 (視覚ガイド、world-frame 静止、過去光円錐交線ハイライト) */}
       <ArenaRenderer />
 
-      {/* 凍結世界線（世界オブジェクト）を描画 */}
+      {/* 凍結世界線（世界オブジェクト）を描画。観測者過去光円錐との交差点周辺を hide
+          (DeathMarker / 塔等との被り解消)。LH の凍結世界線は LH 専用半径で狭く隠す。 */}
       {frozenWorldLines.map((fw, i) => (
         <WorldLineRenderer
           key={`frozen-${i}-${fw.worldLine.history[0]?.pos.t ?? 0}`}
@@ -295,11 +297,14 @@ export const SceneContent = ({
           color={fw.color}
           observerPos={observerPos}
           observerBoost={observerBoost}
+          innerHideRadius={
+            isLighthouse(fw.playerId) ? LH_INNER_HIDE_RADIUS : SHIP_INNER_HIDE_RADIUS
+          }
         />
       ))}
 
-      {/* 生存プレイヤーの現在の世界線を描画。自機は innerHideRadius で本体周辺を hide
-          (砲身等との被り解消、shader fade)。 */}
+      {/* 生存プレイヤーの現在の世界線を描画。観測者過去光円錐との交差点周辺を hide。
+          LH は機体より細いので狭い半径 (LH_INNER_HIDE_RADIUS) で隠す。 */}
       {playerList.map((player) => (
         <WorldLineRenderer
           key={`worldline-${player.id}`}
@@ -307,8 +312,10 @@ export const SceneContent = ({
           color={player.color}
           observerPos={observerPos}
           observerBoost={observerBoost}
+          innerHideRadius={
+            isLighthouse(player.id) ? LH_INNER_HIDE_RADIUS : SHIP_INNER_HIDE_RADIUS
+          }
           {...(isLighthouse(player.id) ? { tubeRadius: 0.06, tubeOpacity: LIGHTHOUSE_WORLDLINE_OPACITY } : {})}
-          {...(player.id === myId ? { innerHideRadius: SHIP_INNER_HIDE_RADIUS } : {})}
         />
       ))}
 
