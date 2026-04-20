@@ -2,12 +2,14 @@
 
 ## 現在のステータス
 
-対戦可能。**`e9171c4` デプロイ済み** (build `2026/04/20 10:52:08 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`0066399` デプロイ済み** (build `2026/04/20 17:50:00 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
-マルチプレイ state バグ: **A (症状 3) / B (症状 2)** を修正 + deploy 済。
+マルチプレイ state バグ: **A (症状 3) / B (症状 2) / 症状 5** を修正 + deploy 済。
 A は初版 deploy 後に再発、**新規接続 peer への intro unicast 再送** (`e9171c4`) で
-真の root cause を解消。**症状 5 は grace period 付き peer removal で修正 (localhost 検証待ち、未 deploy)**。
-C (症状 1 + 4) は未着手。詳細: ↓ 2026-04-20 昼/午後 entry + `plans/2026-04-20-multiplayer-state-bugs.md`。
+真の root cause を解消。**症状 5 は grace period 付き peer removal (`0066399`)** で
+players map 即時蒸発を防止 (localhost 検証 OK、tab hidden 復帰時の clock drift は
+defer)。C (症状 1 + 4) は未着手。詳細: ↓ 2026-04-20 昼/午後 entry +
+`plans/2026-04-20-multiplayer-state-bugs.md`。
 
 2026-04-20 午後 (症状 5 grace period 修正、未 deploy):
 - **症状 5 (host migration & タブ復帰で相手消失) の仮説 (ii) に対応**: `RelativisticGame.tsx`
