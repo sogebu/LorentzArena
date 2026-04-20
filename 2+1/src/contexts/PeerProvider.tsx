@@ -1228,13 +1228,19 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       const pm = new PeerManager<Message>(probeId, opts);
       probePm = pm;
 
+      // Stale-callback guard: probe destroy 後に queue されていた late callback が
+      // fire したとき、既に後続 probe が走っていれば誤爆で destroy してしまう。
+      // PeerJS の destroy() は JS event loop 上の pending event を即 cancel しない
+      // ので、ローカル `pm` と outer `probePm` を比較して自分が current か確認する。
       probeTimeout = setTimeout(() => {
+        if (probePm !== pm) return;
         // eslint-disable-next-line no-console
         console.log("[PeerProvider] Self-verify probe timeout — assume OK");
         cleanupProbe();
       }, HOST_SELF_VERIFY_TIMEOUT_MS);
 
       pm.onPeerStatusChange((status) => {
+        if (probePm !== pm) return; // stale
         if (cancelled) {
           cleanupProbe();
           return;
@@ -1247,6 +1253,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       });
 
       pm.onMessage("self_verify", (_senderId, msg) => {
+        if (probePm !== pm) return; // stale
         if (!isRedirectMessage(msg)) return;
         if (cancelled) return;
         const realHostId = msg.hostId;
@@ -1271,6 +1278,15 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     const backupTimer = setInterval(runProbe, HOST_SELF_VERIFY_BACKUP_MS);
+
+    // Initial probe on effect mount (主 bug fix): tab-hidden 復帰の本命シナリオで、
+    // HOST_HIDDEN_GRACE が peerManager destroy → Stage 2 effect cleanup (listener 撤去)
+    // → visibilitychange(visible) が listener 不在時に発火 → Phase 1 が新 peerManager を
+    // setState → ここで effect mount、という順序のため **復帰時の visibility event を
+    // 取り逃している**。mount 時点で一回 probe を走らせれば、Phase 1 が race に勝って
+    // split を作り出した状況を即検出できる。既存 visibility trigger は 2 回目以降の
+    // hide/show で活きる。backup timer は network blip 等 visibility に乗らない経路用。
+    runProbe();
 
     return () => {
       cancelled = true;
