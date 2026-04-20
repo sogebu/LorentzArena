@@ -2,11 +2,13 @@
 
 ## 現在のステータス
 
-対戦可能。**`f8a4589` デプロイ済み** (build `2026/04/21 08:02:51 JST`)。本番: https://sogebu.github.io/LorentzArena/
+対戦可能。**`1b9e743` デプロイ済み** (build `2026/04/21 08:20:46 JST`)。本番: https://sogebu.github.io/LorentzArena/
 
-**Stage 1 + 1.5 + 2 完成**。Stage 2 で症状 1 (host split) の自動解消が入り、visibility 復帰時の PeerServer race で両 peer が BH と信じる状態を能動 probe で検出・demote。localhost 実機検証で split 発生 → 自動復旧シーケンスが確認できた。詳細・残り段階設計 (Stage 3): `plans/2026-04-20-multiplayer-state-bugs.md`。
+**Stage 1 + 1.5 + 2 + 3 完成**。Stage 3 で freeze(5s) + GC(15s) = 計 20s 無通信で removePlayer する stale GC が入り、3+ peer での disconnected peer resurrection (Bug X) が解消した。audit 中に Stage 3 GC を **単独では無効化する critical bug** を発見 → `applySnapshot` の lastUpdate refresh が全 entry を対象にしており、disconnected peer の snapshot refresh で stale 時計が永久リセットされていた。修正: 既存 entry の lastUpdate は phaseSpace のみが refresh、新規 add (=store.players に無かった id) だけ初期化。段階設計は `plans/2026-04-20-multiplayer-state-bugs.md`。
 
 ## 本日 (2026-04-20〜21) の主要 entry
+
+`1b9e743` **Stage 3 stale player GC + snapshot.ts lastUpdate refresh 条件化** (症状 4 残存分 + Bug X resurrection 対策): freeze(5s) + GC(15s) = 計 20s 無通信で removePlayer。client は star topology で他 peer 切断を検知できず、Stage 1.5 local 保護と合わせて切断 peer が永久存続する (Bug X) を解消。audit で Stage 3 を **単独で無効化する critical bug** を発見し同時修正: `applySnapshot` §163 が毎回全 entry の lastUpdate を refresh → 他 peer 保持分の snapshot で disconnected peer の stale 時計が永久リセットされていた。修正: 新規追加 (`!store.players.has(sp.id)`) のみ lastUpdate を初期化、既存 entry は phaseSpace (強い生存信号) だけが refresh。useStaleDetection に `staleFrozenAtRef` + `STALE_GC_THRESHOLD=15000` 追加、`checkStale` を `() => string[]` 化、useGameLoop 側で `removePlayer` + `cleanupPeer` を実行。drift prune で外部 ad-hoc delete との desync を self-heal。58/58 pass。
 
 `305d779` + `13ebd64` + `235900f` + `f8a4589` **Stage 2 host self-verification probe + audit 4 件 fix** (症状 1 = host split 対策): tab-hidden 復帰の ~1s 窓で PeerServer race により両 peer が BH と信じる split-brain を能動検出・自動解消する。使い捨て `probe-*` PeerManager で `la-{roomName}` に接続 → redirect で realHostId 取得 → myId と比較、split なら `performDemotion` 共通 helper で末端処理 (redirect broadcast → clearBeaconHolder → reconnect → **LH ownership 移譲** → roleVersion bump)。主 trigger = initial probe on mount + visibilitychange→visible、副 trigger = 30s setInterval、timeout 8s で false-positive demote 回避。設計詳細 + audit で発見した 4 bug (初回 probe 欠落 / stale callback race / self-demote guard / **LH 二重駆動 catastrophic pre-existing**) の post-mortem は `plans/2026-04-20-multiplayer-state-bugs.md §Stage 2 実装記録`。Vitest 58/58 pass。
 
@@ -45,7 +47,7 @@
 | 1 | host split (両 peer が自分を host と認識) | **修正済 `305d779`** (Stage 2 自動解消) |
 | 2 | 他 player respawn 消失 | **修正済 `8ce595f`** |
 | 3 | 撃破数リストに peer ID prefix | **修正済 `2be56b4` + `e9171c4`** |
-| 4 | ghost 張り付き (missed respawn → isDead 貼り付き) | **Stage 1 `4ef4fca` + 1.5 `c9503a4` で自動救済 deploy 済**、Stage 3 で stale GC を足すと残存パスも解消 |
+| 4 | ghost 張り付き (missed respawn → isDead 貼り付き) | **修正済** (Stage 1 `4ef4fca` + 1.5 `c9503a4` 自動救済 + Stage 3 `1b9e743` stale GC で残存パスも解消) |
 | 5 | migration & タブ復帰で相手消失 | **修正済 `0066399`** |
 
 共通根因: **transient event delivery 失敗 = state 恒久 divergence**。reconciliation 機構が構造的に欠けていた。Stage 1 で周期 snapshot broadcast を追加 → 次 snapshot で自動再同期。Stage 2/3 (host self-verification + stale GC) は plan に段階設計。案 C (playerName primary key) は Stage 1-3 後も残存する UX 課題のみなので defer。
@@ -74,9 +76,9 @@
 
 ## 次にやること
 
-- **本番実戦観察**: Stage 1+1.5+2 + audit 4 bug fix deploy 済。症状 1 (host split) / B' / 症状 4 の自動解消、LH 二重駆動の解消を本番 console log / UI で確認。`[PeerProvider] Host split detected` が出たら Stage 2 が効いている印
-- **Stage 3 (症状 4 残存分 + Bug X resurrection)**: stale player GC (freeze 後さらに 15s 無通信 → removePlayer)。~15 LOC。副次的に 3+ peer での Stage 1.5 resurrection (切断 peer が別 peer の snapshot 経由で re-add される latent) も解消見込み
-- **3+ peer latent 観察**: `RelativisticGame §201-217` の peer removal が client 同士 mesh 無しを前提で設計、3+ client 時に他 client が 3s grace 後に削除される疑念。Stage 1.5 の 5s snapshot で再補充されれば緩和、Stage 3 で根本解決
+- **本番実戦観察**: Stage 1+1.5+2+3 + audit 5 bug fix deploy 済。症状 1 (host split) / 症状 4 (ghost stuck) / LH 二重駆動 / Bug X resurrection の自動解消を本番 console log / UI で確認。`[PeerProvider] Host split detected` が出たら Stage 2 が、切断 peer が 20s で UI から消えたら Stage 3 が効いている印
+- **3+ peer 実機テスト**: Stage 3 の主 target は 3+ peer での切断 peer resurrection。2-peer 対戦では差が出ないので 3+ peer で実戦観察が理想
+- **マルチプレイ state バグ 5 点 全解消**: symptom table の 1-5 全て修正済 marker 付き。次の state 系課題が出るまで本件は closed
 - **進行方向可視化 分岐 A**: 他機 exhaust (phaseSpace に共変 α^μ 同梱、`Λ(u_own)` boost / `Λ(u_obs)^{-1}` 戻し)、AccelerationArrow 他機展開 (要設計再考)
 - **進行方向可視化 分岐 B/C**: sphere + heading-dart (案 14) / star aberration skybox (案 16)、default frame 選択。詳細: `EXPLORING.md §進行方向・向きの認知支援`
 - **フルチュートリアル** (必須、初見 UX、B3 とは別)

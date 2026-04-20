@@ -311,13 +311,65 @@ isDead 再導出の self への適用 (merged log で保険として望ましい
 で新規配列作ってから sort、store 不変) / tie-breaker (既存 selectIsDead と同じ
 strict gt、整合)。
 
+## Stage 3 実装記録 — 2026-04-21 (`1b9e743` deploy 済、build 08:20:46 JST)
+
+Stage 2 に続き同日中に Stage 3 も着手・完了。設計通り `useStaleDetection` に
+GC 閾値判定を追加、実質 ~15 LOC で動く予定だったが、audit 中に **Stage 3 を
+単独では無効化する critical bug** を発見して同時 fix した。
+
+### 実装
+
+- **`useStaleDetection.ts`**:
+  - `staleFrozenAtRef: Map<string, number>` 追加 (freeze 時刻記録)
+  - `STALE_GC_THRESHOLD = 15000` 定数追加
+  - `checkStale` を `() => string[]` に変更、既に frozen な peer が threshold 超
+    なら GC 候補として return
+  - `recoverStale` / `cleanupDisconnected` / `cleanupPeer` が staleFrozenAtRef
+    も clear
+  - 冒頭に drift prune (外部 ad-hoc `staleFrozenRef.current.delete(id)` 呼び出し
+    経路 — messageHandler §100/§274/§290、RelativisticGame §109、useGameLoop
+    §594 — が staleFrozenAtRef を clear しないため小さな leak が溜まる。機能
+    的に無害だが self-heal する)
+- **`useGameLoop.ts §335`**: `checkStale` 返値の各 ID について `removePlayer`
+  + `stale.cleanupPeer` を実行
+
+### Audit 中に発見した critical enabler bug (snapshot.ts §163)
+
+`applySnapshot` 内で msg.players の **全 entry** に対して
+`lastUpdateTimeRef.current.set(sp.id, Date.now())` が走っていた。結果:
+
+- BH が B を disconnect で removePlayer (3s grace)
+- C (client) が B を players に保持したまま、5s 周期 Stage 1.5 snapshot を BH に送信
+- BH の applySnapshot で `lastUpdateTimeRef[B] = now` を C のすべての snapshot
+  で refresh → BH.checkStale で B が永久に stale 判定されない
+- → **Stage 3 GC が fire しない** (Bug X resurrection が Stage 3 で解消されない)
+
+fix: `if (!store.players.has(sp.id))` (新規追加時) のみ lastUpdate を初期化。既存
+entry は phaseSpace (直接 or relay 経由の生存信号) だけが refresh。snapshot は
+弱い presence 信号として扱い、stale 時計を回さない。
+
+新規 join (store.players 空) の従来 semantics は維持。再 add via snapshot (切断
+→ 別 peer の snapshot で復活) のケースも新規追加扱いで lastUpdate 初期化 →
+20s で freeze+GC → eventual consistency に収束。
+
+### 効果 (3+ peer 切断シナリオ)
+
+A-B-C 3 peer、B が disconnect:
+- A (BH): 3s grace で removePlayer (既存路、変化なし)
+- C (client): phaseSpace 停止で 5s 後 freeze、さらに 15s 後 Stage 3 GC で removePlayer (新規)
+- A が C の snapshot で B を re-add するケースも、次の freeze+GC で 20s 以内に消える
+
+Stage 3 + snapshot.ts fix により、最遅でも切断から ~30s で全 peer が eventual
+consistency に収束する。plan §Bug X resurrection が closed。
+
 ## 次セッションで最初にやること (改訂)
 
-**Stage 1 / 1.5 / 2 すべて deploy 済** (2026-04-21)。次の作業候補:
+**Stage 1 / 1.5 / 2 / 3 すべて deploy 済** (2026-04-21、`1b9e743` / build 08:20:46)。
+マルチプレイ state バグ 5 症状全て修正済み marker 付き。次の作業候補:
 
-1. **本番実戦観察 (継続)**: 症状 1 (Stage 2) / B' / 症状 4 (Stage 1+1.5) の自動解消度合い、LH 二重駆動 (Bug 4) の解消を本番 console log / UI で確認
-2. **Stage 3 (症状 4 残存分)**: stale player GC — freeze 後さらに 15s 無通信で `removePlayer`。~15 LOC 見積
-3. **3+ peer latent**: Stage 1.5 5s snapshot で緩和されている可能性、Stage 2 実機テスト時に観察 → Stage 3 で disconnected peer removal が entry 作り出すなら Bug X (resurrection) も同時解消
+1. **本番実戦観察 (継続)**: 5 症状 + LH 二重駆動 + Bug X resurrection の自動解消を本番で確認。console log (`Host split detected`) / UI (切断後 ~20s で peer 消える) で効果を追える
+2. **3+ peer 実機テスト**: Stage 3 の主 target。2-peer では差が出ないため、3 peer 以上での切断・resurrection 挙動を観察
+3. **plan は closed**: 追加の state 問題が本番で出たら次の plan で対応
 
 ## Stage 1.5 — peer 貢献 snapshot (pseudo-mesh) — 2026-04-21
 
