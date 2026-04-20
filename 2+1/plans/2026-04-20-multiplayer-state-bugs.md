@@ -394,6 +394,50 @@ semantics なので、将来 mesh 接続を追加すれば自動的に mesh snap
 つまり **mesh への stepping stone として設計された**。現在は star 経由だが、
 mesh 接続が確立されれば client→client も直接伝播できる。
 
+### Stage 1.5 深掘り audit + critical bug fix (`76ba182`)
+
+Stage 1.5 実装後の深い code audit で **LH ownerId 汚染** bug を発見・修正。
+
+**bug 経路**: `buildSnapshot` §54 は LH の ownerId を caller (`myId`) に強制
+rewrite していた (migration 直後の 1-tick race 安全弁)。Stage 1 までは BH だけが
+呼んでいたので無害。Stage 1.5 で全 peer が呼ぶようになった結果:
+
+1. client A が `buildSnapshot(A_id)` → 出力 snapshot の LH.ownerId = A_id
+2. BH が受信 → applySnapshot §167-175 の「local-newer 優先」で snapshot が勝つ
+   ケース (BH tab hidden / 初期化直後 / pos.t 拮抗) に BH の local LH.ownerId = A_id
+3. BH の useGameLoop の `lh.ownerId === myId` check が false → **BH の LH AI 沈黙**
+
+BH の次 broadcast は `buildSnapshot(BH_id, true)` で LH.ownerId = BH_id に再
+rewrite して出すので他 client の表示は復元するが、**BH のローカル state は stuck**。
+
+**修正**: `buildSnapshot` に `isBeaconHolder: boolean` 引数を追加:
+- `isBeaconHolder=true` (BH が呼ぶ): LH.ownerId を自分に rewrite (migration 安全弁を維持)
+- `isBeaconHolder=false` (client が Stage 1.5 で呼ぶ): LH.ownerId を preserve
+
+3 call sites 更新:
+- `PeerProvider.tsx` Stage 1.5 effect: `peerManager.getIsBeaconHolder()` を tick ごと
+  に動的に渡す (role change に自動追従)
+- `RelativisticGame.tsx` §181 (新 joiner 送信): true 固定 (BH-only path)
+- `messageHandler.ts` §78 (snapshotRequest 応答): true 固定 (BH-only path)
+
+regression test 1 件追加 (non-BH caller が LH owner を preserve することを verify)。
+58/58 pass。
+
+### 深掘り audit の他の発見 (minor / defer)
+
+以下は audit で checkpoint したが bug には至らない / scope 外と判断した点:
+
+- **frozenWorldLines / debrisRecords は snapshot 非同梱**: BH が merge で kill entry
+  を後から取得しても、freeze の可視化が再生成されない (現 worldLine を freeze すると
+  タイミングずれの誤り) → 可視化のみの軽微な不整合、データ破損ではない。defer。
+- **displayName field vs map drift**: pre-existing Bug C。Stage 1.5 で悪化せず。
+- **lastUpdateTimeRef 更新**: A の snapshot が B の entry を含むと BH の B.lastUpdate が
+  refresh される → stale 検出が遅れる経路。2 peer では顕在化せず。defer。
+- **3+ peer latent**: pre-existing (RelativisticGame §201-217)。Stage 1.5 の 5s 再補充で
+  緩和される可能性あり、要実戦観察。
+- **clock skew**: wallTime は source-stamped で dedup key なので skew 耐性あり。non-issue。
+- **frozen/debris を snapshot に同梱** は SESSION.md の「defer 中」に既に記録済。
+
 ## 再現手順 (現時点で把握している範囲)
 
 - Claude Preview では `document.hidden=true` で useGameLoop が止まるため**再現不能**。localhost + 実機 (odakin iPhone 等) の組合せ必須
