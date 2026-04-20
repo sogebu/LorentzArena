@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**`76713d7` デプロイ済み** (build `2026/04/21 06:55:08 JST`)。本番: https://sogebu.github.io/LorentzArena/
+対戦可能。**`10316c0` デプロイ済み** (build `2026/04/21 06:58:50 JST`)。本番: https://sogebu.github.io/LorentzArena/
 
 **Stage 1 + 1.5 完成・deploy 済**。5s 周期 snapshot で missed event の reconciliation channel が入り、B' / 症状 4 / 類似 bug を自動救済。Stage 1.5 で全 peer が snapshot 貢献 → BH が union-merge → BH 単独視点依存が解消。本番実戦で効果観察中。詳細・段階設計 (Stage 2/3): `plans/2026-04-20-multiplayer-state-bugs.md`。
 
