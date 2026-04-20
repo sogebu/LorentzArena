@@ -2,11 +2,13 @@
 
 ## 現在のステータス
 
-対戦可能。**`2596a08` デプロイ済み** (build `2026/04/21 07:34:35 JST`)。本番: https://sogebu.github.io/LorentzArena/
+対戦可能。**`13ebd64` デプロイ済み** (build `2026/04/21 07:44:47 JST`)。本番: https://sogebu.github.io/LorentzArena/
 
 **Stage 1 + 1.5 + 2 完成**。Stage 2 で症状 1 (host split) の自動解消が入り、visibility 復帰時の PeerServer race で両 peer が BH と信じる状態を能動 probe で検出・demote。localhost 実機検証で split 発生 → 自動復旧シーケンスが確認できた。詳細・残り段階設計 (Stage 3): `plans/2026-04-20-multiplayer-state-bugs.md`。
 
 ## 本日 (2026-04-20〜21) の主要 entry
+
+`13ebd64` **Stage 2 bug fix: 初回 probe 欠落 + stale callback 誤爆**: 監査で 2 点発見。(1) tab-hidden 復帰で HOST_HIDDEN_GRACE が peerManager destroy → Stage 2 effect cleanup で visibilitychange listener が一旦外れる → Phase 1 が setPeerManager する直前に visibility event が listener 不在で発火 → 初回 split は 30s backup まで検出されず。effect mount 時に `runProbe()` 1 回追加で即検出。(2) PeerJS の `peer.destroy()` は JS event loop 上の queued event を即 cancel しないので、cleanupProbe で `probePm=null` 後に next probe が走ると、probe 1 の late callback が probe 2 を誤 destroy する race。各 handler 冒頭に `if (probePm !== pm) return;` の stale guard を 3 箇所 (timeout / onPeerStatusChange / onMessage) 追加で defensive 化。58/58 pass。
 
 `305d779` **Stage 2 host self-verification probe**: tab-hidden 復帰の ~1s 窓で PeerServer race により両 peer が BH と信じる split-brain を能動的に検出・自動解消。使い捨て `probe-*` PeerManager で `la-{roomName}` に接続 → redirect で realHostId 取得 → myId と比較、split なら `performDemotion` で末端処理 (redirect broadcast → clearBeaconHolder → reconnect → roleVersion bump)。主 trigger = visibilitychange→visible (race の唯一の窓)、副 trigger = 30s setInterval (network blip 汎用)、timeout 8s で false-positive demote 回避。既存 `demoteToClient` 末端 5 ステップを `performDemotion(pm, realHostId, onRoleChange)` helper に extract して probe と共有。localhost 2 tab で T1 regression OK / T2 で意図せず split 発生→自動解消観察 / T3 明示 split OK / T4 solo host OK。58/58 pass。
 
