@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**Stage 2 実装完了・localhost 2 tab 検証 OK**。本番: https://sogebu.github.io/LorentzArena/
+対戦可能。**`2596a08` デプロイ済み** (build `2026/04/21 07:34:35 JST`)。本番: https://sogebu.github.io/LorentzArena/
 
 **Stage 1 + 1.5 + 2 完成**。Stage 2 で症状 1 (host split) の自動解消が入り、visibility 復帰時の PeerServer race で両 peer が BH と信じる状態を能動 probe で検出・demote。localhost 実機検証で split 発生 → 自動復旧シーケンスが確認できた。詳細・残り段階設計 (Stage 3): `plans/2026-04-20-multiplayer-state-bugs.md`。
 
