@@ -139,18 +139,38 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
 
     const store = useGameStore.getState();
 
+    // 新規接続 peer を抽出。登録時の 1 回 broadcast (onMessage register 時) は
+    // 「送信時点で開いている connection」にしか届かず、後から繋いできた peer には
+    // 自分の displayName が伝わらない → 撃破数リストで `id.slice(0, 6)` の素の
+    // peerId prefix が出る症状 3 の root cause。new connection ごとに unicast intro
+    // を送り直すことで確実に到達。
+    const newPeerIds: string[] = [];
+    for (const conn of connections) {
+      if (!conn.open) continue;
+      if (prevConnectionIdsRef.current.has(conn.id)) continue;
+      newPeerIds.push(conn.id);
+    }
+
+    if (peerManager && newPeerIds.length > 0) {
+      for (const newId of newPeerIds) {
+        peerManager.sendTo(newId, {
+          type: "intro",
+          senderId: myId,
+          displayName,
+        });
+      }
+    }
+
     if (peerManager?.getIsBeaconHolder()) {
       const myPlayer = store.players.get(myId);
       if (myPlayer) {
-        for (const conn of connections) {
-          if (!conn.open) continue;
-          if (prevConnectionIdsRef.current.has(conn.id)) continue;
+        for (const newId of newPeerIds) {
           // Stage F: 既存 peer (= store に entry がある) は event log から
           // self-maintained。migration 経路で元 client 同士が初接続する場合も
           // ここで弾くことで「既存 peer は snapshot を受け取らない」設計を保つ。
           // 真の new joiner は player entry を未保持 → has=false → 送信。
-          if (store.players.has(conn.id)) continue;
-          peerManager.sendTo(conn.id, buildSnapshot(myId));
+          if (store.players.has(newId)) continue;
+          peerManager.sendTo(newId, buildSnapshot(myId));
         }
       }
     }
@@ -175,7 +195,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       stale.cleanupDisconnected(connectedIds);
       return next;
     });
-  }, [connections, myId, peerManager, stale]);
+  }, [connections, myId, peerManager, stale, displayName]);
 
   // joinRegistry 変化時に全プレイヤーの色を再計算
   useEffect(() => {
