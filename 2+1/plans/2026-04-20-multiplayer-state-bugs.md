@@ -119,11 +119,14 @@ const spawnT = latestRespawn?.position.t ?? player.phaseSpace.pos.t;
 
 ## 次セッションで最初にやること
 
+A / B は 2026-04-20 昼に修正 + deploy 済 (`9a22fd9` / build `2026/04/20 10:28:06`)。
+
 1. 本書 + `plans/2026-04-19-host-migration-symmetry.md` を読む
-2. ~~A (ControlPanel fallback + intro pending) を先に fix + localhost でテスト + deploy~~ → 完了 `2be56b4`
-3. ~~B (spawnT を respawnLog ベース) を fix~~ → 完了 `8ce595f`。**deploy + 実戦テスト** (respawn が絡むので localhost 単独で検出困難、odakin が実機で B 症状の消失を確認する)
-4. 残課題 B' (OtherPlayerRenderer LIVE 消失) を C 調査と合わせて再観測
-5. C の再設計議論、plan 書き起こしから
+2. 本番で odakin に症状 3 (撃破数リストの名前表示) / 症状 2 (respawn 後の LH /
+   他機 visibility) の消失を確認してもらう。残存ならこの plan を reopen
+3. 残課題 B' (OtherPlayerRenderer LIVE 消失) を C 調査と合わせて再観測
+4. C の再設計議論、plan 書き起こしから (3 案: localStorage に peerId 永続化 /
+   playerName primary key 化 / migration 確実化)
 
 ## 再現手順 (現時点で把握している範囲)
 
