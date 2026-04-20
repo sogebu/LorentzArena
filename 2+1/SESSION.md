@@ -8,13 +8,7 @@
 
 ## 本日 (2026-04-20〜21) の主要 entry
 
-`f8a4589` **Stage 2 audit 4 件目 fix: LH 二重駆動 (catastrophic pre-existing)**: `assumeHostRole` は migration 時に全 LH.ownerId を自分に書き換える (LH AI 駆動権取得) が、逆操作 (demote で手放す) が performDemotion に無かった。結果: demote 後も旧 BH の useGameLoop で `lh.ownerId === myId` が true のまま LH AI が走り続け、phaseSpace / laser を broadcast → 新 BH も同 LH を駆動 → **LH 二重駆動** + registerHostRelay で他 peer にも二重配送。Stage 2 demote だけでなく既存 `demoteToClient` 経路も同じ bug を抱えていた pre-existing 問題。fix: performDemotion に LH ownership 移譲 loop を追加 (assumeHostRole と構造対称)。
-
-`235900f` **performDemotion self-demote guard**: beacon-acquire の demoteToClient は callsite で `realHostId !== myId` check 無し (rare race で self-redirect 受信余地あり)、helper 側で吸収。
-
-`13ebd64` **Stage 2 bug fix: 初回 probe 欠落 + stale callback 誤爆**: 監査で 2 点発見。(1) tab-hidden 復帰で HOST_HIDDEN_GRACE が peerManager destroy → Stage 2 effect cleanup で visibilitychange listener が一旦外れる → Phase 1 が setPeerManager する直前に visibility event が listener 不在で発火 → 初回 split は 30s backup まで検出されず。effect mount 時に `runProbe()` 1 回追加で即検出。(2) PeerJS の `peer.destroy()` は JS event loop 上の queued event を即 cancel しないので、cleanupProbe で `probePm=null` 後に next probe が走ると、probe 1 の late callback が probe 2 を誤 destroy する race。各 handler 冒頭に `if (probePm !== pm) return;` の stale guard を 3 箇所 (timeout / onPeerStatusChange / onMessage) 追加で defensive 化。58/58 pass。
-
-`305d779` **Stage 2 host self-verification probe**: tab-hidden 復帰の ~1s 窓で PeerServer race により両 peer が BH と信じる split-brain を能動的に検出・自動解消。使い捨て `probe-*` PeerManager で `la-{roomName}` に接続 → redirect で realHostId 取得 → myId と比較、split なら `performDemotion` で末端処理 (redirect broadcast → clearBeaconHolder → reconnect → roleVersion bump)。主 trigger = visibilitychange→visible (race の唯一の窓)、副 trigger = 30s setInterval (network blip 汎用)、timeout 8s で false-positive demote 回避。既存 `demoteToClient` 末端 5 ステップを `performDemotion(pm, realHostId, onRoleChange)` helper に extract して probe と共有。localhost 2 tab で T1 regression OK / T2 で意図せず split 発生→自動解消観察 / T3 明示 split OK / T4 solo host OK。58/58 pass。
+`305d779` + `13ebd64` + `235900f` + `f8a4589` **Stage 2 host self-verification probe + audit 4 件 fix** (症状 1 = host split 対策): tab-hidden 復帰の ~1s 窓で PeerServer race により両 peer が BH と信じる split-brain を能動検出・自動解消する。使い捨て `probe-*` PeerManager で `la-{roomName}` に接続 → redirect で realHostId 取得 → myId と比較、split なら `performDemotion` 共通 helper で末端処理 (redirect broadcast → clearBeaconHolder → reconnect → **LH ownership 移譲** → roleVersion bump)。主 trigger = initial probe on mount + visibilitychange→visible、副 trigger = 30s setInterval、timeout 8s で false-positive demote 回避。設計詳細 + audit で発見した 4 bug (初回 probe 欠落 / stale callback race / self-demote guard / **LH 二重駆動 catastrophic pre-existing**) の post-mortem は `plans/2026-04-20-multiplayer-state-bugs.md §Stage 2 実装記録`。Vitest 58/58 pass。
 
 `c9503a4` + `76ba182` **Stage 1.5 peer 貢献 snapshot + audit fix**: 全 peer が 5s 周期で snapshot 送信、BH が union-merge して enriched snapshot を再配信。高頻度 (phaseSpace=star) / 低頻度 (snapshot=peer 貢献) で通信形態を分ける。`getIsBeaconHolder()` guard 1 行撤去で実現。BH 帯域 O(N) 維持、BH missed event を他 peer 観測から自動救済。深掘り audit で発見した critical bug (client 送信時の `buildSnapshot` が LH.ownerId を自分に rewrite → BH merge で LH 所有権汚染 → BH の LH AI 沈黙) を `76ba182` で fix (`isBeaconHolder` 引数追加)。58/58 pass。
 
@@ -51,7 +45,7 @@
 | 1 | host split (両 peer が自分を host と認識) | **修正済 `305d779`** (Stage 2 自動解消) |
 | 2 | 他 player respawn 消失 | **修正済 `8ce595f`** |
 | 3 | 撃破数リストに peer ID prefix | **修正済 `2be56b4` + `e9171c4`** |
-| 4 | ghost 張り付き (missed respawn → isDead 貼り付き) | **Stage 1 `4ef4fca` で自動救済予定** |
+| 4 | ghost 張り付き (missed respawn → isDead 貼り付き) | **Stage 1 `4ef4fca` + 1.5 `c9503a4` で自動救済 deploy 済**、Stage 3 で stale GC を足すと残存パスも解消 |
 | 5 | migration & タブ復帰で相手消失 | **修正済 `0066399`** |
 
 共通根因: **transient event delivery 失敗 = state 恒久 divergence**。reconciliation 機構が構造的に欠けていた。Stage 1 で周期 snapshot broadcast を追加 → 次 snapshot で自動再同期。Stage 2/3 (host self-verification + stale GC) は plan に段階設計。案 C (playerName primary key) は Stage 1-3 後も残存する UX 課題のみなので defer。
@@ -80,9 +74,9 @@
 
 ## 次にやること
 
-- **本番実戦観察**: Stage 1 + 1.5 + 2 deploy 後、症状 1 (host split) / B' / 症状 4 の自動解消度合いを確認
-- **Stage 3 (症状 4 残存分)**: stale player GC (freeze 後さらに 15s 無通信 → removePlayer)。~15 LOC
-- **3+ peer latent**: RelativisticGame §201-217 の peer removal が client 同士 mesh 無しを前提で設計、3+ client 時に他 client が 3s grace 後に削除される疑念。Stage 1.5 の 5s snapshot で再補充されれば緩和。Stage 2 実機テスト時に観察
+- **本番実戦観察**: Stage 1+1.5+2 + audit 4 bug fix deploy 済。症状 1 (host split) / B' / 症状 4 の自動解消、LH 二重駆動の解消を本番 console log / UI で確認。`[PeerProvider] Host split detected` が出たら Stage 2 が効いている印
+- **Stage 3 (症状 4 残存分 + Bug X resurrection)**: stale player GC (freeze 後さらに 15s 無通信 → removePlayer)。~15 LOC。副次的に 3+ peer での Stage 1.5 resurrection (切断 peer が別 peer の snapshot 経由で re-add される latent) も解消見込み
+- **3+ peer latent 観察**: `RelativisticGame §201-217` の peer removal が client 同士 mesh 無しを前提で設計、3+ client 時に他 client が 3s grace 後に削除される疑念。Stage 1.5 の 5s snapshot で再補充されれば緩和、Stage 3 で根本解決
 - **進行方向可視化 分岐 A**: 他機 exhaust (phaseSpace に共変 α^μ 同梱、`Λ(u_own)` boost / `Λ(u_obs)^{-1}` 戻し)、AccelerationArrow 他機展開 (要設計再考)
 - **進行方向可視化 分岐 B/C**: sphere + heading-dart (案 14) / star aberration skybox (案 16)、default frame 選択。詳細: `EXPLORING.md §進行方向・向きの認知支援`
 - **フルチュートリアル** (必須、初見 UX、B3 とは別)
