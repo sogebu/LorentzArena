@@ -182,6 +182,17 @@
 
 ## 既知の課題
 
+### マルチプレイ state バグ 4 点 (2026-04-20 観測、未修正)
+
+本番 (`a1554be` デプロイ後) で連続観測、分析 + 修正方針は `plans/2026-04-20-multiplayer-state-bugs.md` に詳述。
+要約:
+1. **host split**: 切断→再接続後、両 peer が自分を host と認識する状態。2026-04-19 の migration-symmetry 修正は正常 migration のみカバー、reconnection 経路は未対応
+2. **他 player respawn 消失**: respawn 直後の新 worldLine (history.length=1) で spawnT 計算、遠距離だと visible=false
+3. **撃破数リストに peer ID prefix**: intro → phaseSpace 順序逆転時に intro handler が早期 return、displayName が players map に入らない
+4. **ghost 張り付き**: Speedometer energy bar が `{!player.isDead && (...)}` で wrap 済、reconnection で peerId 変わり killLog/respawnLog の ID 同一性が崩れ selectIsDead が stale
+
+共通根因は message order-of-arrival 依存。修正優先度 A (症状 3 fallback) → B (症状 2 spawnT) → C (症状 1+4 の設計変更)、詳細は plan。
+
 ### defer 中
 
 - DESIGN.md 残存する設計臭 #2 (#1/#3/#4 は自然解消)
@@ -215,6 +226,12 @@
 - localId PeerJS ID 衝突 (tab-hidden 復帰時)、PeerServer ネットワークエラーでスタック (WS Relay 未設定時)
 
 ## 次にやること
+
+### マルチプレイバグ修正 (最優先、別セッション)
+
+`plans/2026-04-20-multiplayer-state-bugs.md` に沿って A → B → C の順で着手。
+A は表面止血 (ControlPanel displayName fallback + intro pending)、localhost で完結する。
+B は spawnT を respawnLog ベースに、実戦テスト要。C は reconnection 時の peerId / playerName key 設計、要議論。
 
 ### Phase C (別セッション)
 
