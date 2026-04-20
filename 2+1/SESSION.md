@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**デプロイ済み** (build `2026/04/20 09:17:24 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`a1554be` デプロイ済み** (build `2026/04/20 09:17:24 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
 2026-04-20 (ゲーム内 HUD / Lobby 位置微調整):
 - **Exhaust を worldline 上位描画**: 4 nozzle の outer/inner 両 mesh に `renderOrder={10}` + material
