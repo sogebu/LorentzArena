@@ -65,7 +65,7 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
       <div
         style={{
           position: "absolute",
-          top: "-25vh",
+          top: "-22vh",
           left: 0,
           right: 0,
           height: "100vh",
@@ -82,9 +82,11 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          justifyContent: "center",
+          justifyContent: "flex-start",
           width: "100%",
           height: "100%",
+          paddingTop: "40vh",
+          boxSizing: "border-box",
         }}
       >
       {/* Language toggle */}

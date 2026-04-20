@@ -585,7 +585,11 @@ export const SelfShipRenderer = ({
       </group>
 
       {/* Exhaust (4 nozzle 各々、旧 ExhaustCone と同 spec、2 層 cone + additive blending)。
-          位置・向き・scale は useFrame で nozzle 個別に動的設定。 */}
+          位置・向き・scale は useFrame で nozzle 個別に動的設定。
+          **`renderOrder={10}` + `depthTest: false`**: 世界線 tube 等の D pattern geometry
+          と重なっても煙が必ず上に描画される (transparent + additive なので後勝ち順が
+          意味を持つ)。depthTest off で他 object に occlude されず、renderOrder で常に
+          後段描画。 */}
       {nozzleAngles.map((_, i) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: NOZZLE_COUNT 固定 + 順序不変
         <group key={`exhaust-${i}`}>
@@ -595,6 +599,7 @@ export const SelfShipRenderer = ({
             }}
             geometry={sharedGeometries.exhaustCone}
             visible={false}
+            renderOrder={10}
           >
             <meshBasicMaterial
               ref={(el) => {
@@ -602,6 +607,7 @@ export const SelfShipRenderer = ({
               }}
               color={exhaustOuterColor}
               transparent
+              depthTest={false}
               depthWrite={false}
               blending={THREE.AdditiveBlending}
               toneMapped={false}
@@ -613,6 +619,7 @@ export const SelfShipRenderer = ({
             }}
             geometry={sharedGeometries.exhaustCone}
             visible={false}
+            renderOrder={10}
           >
             <meshBasicMaterial
               ref={(el) => {
@@ -620,6 +627,7 @@ export const SelfShipRenderer = ({
               }}
               color={exhaustInnerColor}
               transparent
+              depthTest={false}
               depthWrite={false}
               blending={THREE.AdditiveBlending}
               toneMapped={false}

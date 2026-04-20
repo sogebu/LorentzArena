@@ -179,7 +179,7 @@ export const Overlays = ({
           <div
             style={{
               position: "absolute",
-              top: "46%",
+              top: "42%",
               left: "50%",
               transform: "translate(-50%, -50%)",
               zIndex: 199,

@@ -2,7 +2,18 @@
 
 ## 現在のステータス
 
-対戦可能。**`8a5a516` デプロイ済み** (build `2026/04/20 09:02:42 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**デプロイ済み** (build `2026/04/20 09:17:24 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+
+2026-04-20 (ゲーム内 HUD / Lobby 位置微調整):
+- **Exhaust を worldline 上位描画**: 4 nozzle の outer/inner 両 mesh に `renderOrder={10}` + material
+  に `depthTest={false}`。D pattern の worldline tube と重なっても煙が必ず上にレンダされる
+  (additive blending の後勝ちで色足し合わせ)。従来は worldline が後段で書かれると煙が埋もれる
+  ケースがあった。
+- **Lobby 待機画面の船位置微調整**: container `top: -25vh → -22vh`。船を気持ち下げて、言語
+  トグル (日本語 / English) の上に nozzle 先端が被らないように。title の上の空きスペースに
+  hull + nozzles、title の右脇を cannon が通る構図。
+- **「射撃中」テキスト位置**: Overlays の firing indicator `top: 46% → 42%`。自機が redesign で
+  視認可能面積が増えて、従来の中央寄り配置だと HUD テキストと hull が重なるようになった。
 
 2026-04-20 (灯台光源 + Lobby ship preview + ShipPreview 抽出):
 - **光源を灯台に配置**: `GameLights` に `positions` prop 追加、SceneContent で各灯台の
