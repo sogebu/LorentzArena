@@ -205,12 +205,23 @@ const registerPeerOrderListener = (
  * beaconRef.current の destroy は beacon-acquire effect の cleanup に委譲する
  * (既存 `demoteToClient` と同じパターン — `clearBeaconHolder()` + `setRoleVersion`
  *  で effect 再実行、早期 return により前 run cleanup で beacon が destroy される)。
+ *
+ * Self-demote guard: (b) は callsite で `realHostId !== myId` check 済だが、(a) の
+ * demoteToClient は check していない (自身の stale 登録に routing される rare race で
+ * self-redirect を受ける余地あり)。helper 側で吸収して両 path 共通の防御とする。
  */
 const performDemotion = (
   pm: NetworkManager,
   realHostId: string,
   onRoleChange: () => void,
 ) => {
+  if (realHostId === pm.id()) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[PeerProvider] performDemotion called with self-id, ignoring",
+    );
+    return;
+  }
   pm.broadcast({ type: "redirect", hostId: realHostId } as Message);
   pm.clearBeaconHolder();
   pm.setBeaconHolderId(realHostId);
