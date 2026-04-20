@@ -226,6 +226,26 @@ const performDemotion = (
   pm.clearBeaconHolder();
   pm.setBeaconHolderId(realHostId);
   pm.connect(realHostId);
+
+  // Transfer LH ownership to realHostId (assumeHostRole §setPlayers の逆操作)。
+  // useGameLoop §462-522 の LH AI は `lh.ownerId === myId` で gate されており、
+  // demote 後も ownership が旧 BH (= 自分) のままだと local LH AI が走り続け、
+  // phaseSpace / laser を broadcast → 新 BH も同 LH の AI を回すので **LH が
+  // 二重駆動** (jitter / 重複発射 / 他 peer への 2 重配送) という catastrophic
+  // symptom になる。BH flag clear と同時に LH ownership も realHostId に移譲する。
+  const store = useGameStore.getState();
+  store.setPlayers((prev) => {
+    let changed = false;
+    const next = new Map(prev);
+    for (const [id, player] of next) {
+      if (isLighthouse(id) && player.ownerId !== realHostId) {
+        next.set(id, { ...player, ownerId: realHostId });
+        changed = true;
+      }
+    }
+    return changed ? next : prev;
+  });
+
   onRoleChange();
 };
 
