@@ -10,8 +10,10 @@ import { DeathMarker } from "./DeathMarker";
 import { buildMeshMatrix, useDisplayFrame } from "./DisplayFrameContext";
 import { transformEventForDisplay } from "./displayTransform";
 import { computePastConeDisplayState } from "./pastConeDisplay";
+import { getLatestSpawnT } from "./respawnTime";
 import { getThreeColor, sharedGeometries } from "./threeCache";
 import type { RelativisticPlayer } from "./types";
+import { useGameStore } from "../../stores/game-store";
 
 // 灯台 (Lighthouse) のプロシージャル 3D モデル。
 //
@@ -57,9 +59,11 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
   const lampColor = useMemo(() => new THREE.Color("hsl(190, 100%, 92%)"), []);
 
   const wp = player.phaseSpace.pos;
-  // spawn / respawn 時刻 = worldLine の最初の event。死亡で worldLine は再生成されるため
-  // (game-store.ts handleSpawn) 復活後は history[0] が新しい復活時刻を指す。
-  const spawnT = player.worldLine.history[0]?.pos.t ?? wp.t;
+  // spawn / respawn 時刻は respawnLog 最新 entry から取得 (gap-reset で
+  // worldLine.history[0] が上書きされても spawnT が変動しないように)。詳細:
+  // `respawnTime.ts §getLatestSpawnT` の JSDoc。
+  const respawnLog = useGameStore((s) => s.respawnLog);
+  const spawnT = getLatestSpawnT(respawnLog, player);
 
   // Past-cone anchor / visibility / fade は `computePastConeDisplayState` で共通化
   // (他プレイヤーの死亡 fade と同じロジック、詳細は utility の JSDoc 参照)。

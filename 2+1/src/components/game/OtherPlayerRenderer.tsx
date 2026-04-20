@@ -9,6 +9,7 @@ import { DeathMarker } from "./DeathMarker";
 import { useDisplayFrame } from "./DisplayFrameContext";
 import { transformEventForDisplay } from "./displayTransform";
 import { computePastConeDisplayState } from "./pastConeDisplay";
+import { getLatestSpawnT } from "./respawnTime";
 import { getThreeColor, sharedGeometries } from "./threeCache";
 import type { RelativisticPlayer } from "./types";
 import { selectInvincibleUntil, useGameStore } from "../../stores/game-store";
@@ -53,6 +54,7 @@ export const OtherPlayerRenderer = ({
   // Pulse: opacity oscillates 0.3–1.0 at 2Hz during invincibility (生存時のみ意味あり)
   const pulse = isInvincible ? 0.65 + 0.35 * Math.sin(Date.now() * 0.012) : 1.0;
 
+  const respawnLog = useGameStore((s) => s.respawnLog);
   const wp = player.phaseSpace.pos;
 
   // 描画位置と alpha を生存/死亡で切り分け。死亡中は死亡 event 位置の past-cone fade に加え、
@@ -63,7 +65,9 @@ export const OtherPlayerRenderer = ({
   let deathMarkerAlpha: number | null = null;
   if (player.isDead) {
     const deathEventPos = deathEventOverride ?? wp;
-    const spawnT = player.worldLine.history[0]?.pos.t ?? deathEventPos.t;
+    // 死亡 branch は spawnT を使わないが、API 整合のため respawnLog 経由で取得。
+    // gap-reset で worldLine.history[0] が書き換わっても影響を受けない。
+    const spawnT = getLatestSpawnT(respawnLog, player);
     const state = computePastConeDisplayState(deathEventPos, spawnT, true, observerPos);
     if (!state.visible) return null;
     renderPos = state.anchorPos;

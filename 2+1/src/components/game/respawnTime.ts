@@ -1,5 +1,5 @@
 import { SPAWN_RANGE } from "./constants";
-import type { RelativisticPlayer } from "./types";
+import type { RelativisticPlayer, RespawnEventRecord } from "./types";
 
 /**
  * 初回スポーン / リスポーン / 新 joiner スポーンで共通に使う座標時刻を算出。
@@ -71,3 +71,29 @@ export const createRespawnPosition = (
   y: Math.random() * SPAWN_RANGE,
   z: 0,
 });
+
+/**
+ * プレイヤーの最新 spawn coord time を respawnLog から取得。
+ *
+ * 「spawnT」は past-cone visibility 判定の境界 (= この event が観測者の過去光円錐に
+ * まだ届いていない間は renderer 側で invisible にする)。以前は
+ * `player.worldLine.history[0]?.pos.t` を使っていたが、phaseSpace gap-reset
+ * (`WORLDLINE_GAP_THRESHOLD_MS`) が発火すると `history[0]` が「現在の phaseSpace」で
+ * 上書きされ spawnT が jump up → `pastConeT < spawnT` が成立し LH tower 等が
+ * 一時的に消える bug があった (host migration 時に LH が消える症状の一因)。
+ *
+ * respawnLog は handleSpawn 時のみ append され gap-reset では触らないので、
+ * 「spawn event の coord time」という semantics に忠実。
+ *
+ * Fallback: respawnLog に entry が無い例外ケース (players map に居るのに
+ * respawnLog 側で未登録 = bug) のみ worldLine origin を採用。
+ */
+export const getLatestSpawnT = (
+  respawnLog: readonly RespawnEventRecord[],
+  player: RelativisticPlayer,
+): number => {
+  for (let i = respawnLog.length - 1; i >= 0; i--) {
+    if (respawnLog[i].playerId === player.id) return respawnLog[i].position.t;
+  }
+  return player.worldLine.history[0]?.pos.t ?? player.phaseSpace.pos.t;
+};
