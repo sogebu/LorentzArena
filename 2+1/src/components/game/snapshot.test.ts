@@ -173,6 +173,164 @@ describe("applySnapshot", () => {
     expect(displayNames.get("old-peer")).toBe("Alice");
   });
 
+  it("Stage 1: migration path で snapshot-only の kill entry が union-merge される (firedForUi=false で追加)", () => {
+    const myId = "me";
+    useGameStore.setState({
+      players: new Map([
+        ["me", makePlayer("me", 5.0)],
+        ["victim", makePlayer("victim", 5.0)],
+      ]),
+      killLog: [],
+      respawnLog: [],
+    });
+
+    const msg: SnapshotMsg = {
+      ...makeSnapshot([
+        { id: "me", posT: 5.0 },
+        { id: "victim", posT: 5.0 },
+      ]),
+      killLog: [
+        {
+          victimId: "victim",
+          killerId: "me",
+          hitPos: { t: 3.0, x: 0, y: 0, z: 0 },
+          wallTime: 1000,
+          victimName: "Victim",
+          victimColor: "#fff",
+          firedForUi: true, // beacon holder 側では past-cone 到達済み
+        },
+      ],
+    };
+
+    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
+
+    const { killLog } = useGameStore.getState();
+    expect(killLog).toHaveLength(1);
+    expect(killLog[0].victimId).toBe("victim");
+    // 受信側観測者の past-cone 到達前なので firedForUi=false で追加される
+    expect(killLog[0].firedForUi).toBe(false);
+  });
+
+  it("Stage 1: migration path で local 先行の kill entry は保持される (snapshot replace で消えない)", () => {
+    const myId = "me";
+    useGameStore.setState({
+      players: new Map([
+        ["me", makePlayer("me", 5.0)],
+        ["victim", makePlayer("victim", 5.0)],
+      ]),
+      killLog: [
+        {
+          victimId: "victim",
+          killerId: "me",
+          hitPos: { t: 3.0, x: 0, y: 0, z: 0 },
+          wallTime: 2000,
+          victimName: "Victim",
+          victimColor: "#fff",
+          firedForUi: true,
+        },
+      ],
+      respawnLog: [],
+    });
+
+    // snapshot: beacon holder にはまだ local の kill が到達していない (空)
+    const msg = makeSnapshot([
+      { id: "me", posT: 5.0 },
+      { id: "victim", posT: 5.0 },
+    ]);
+
+    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
+
+    const { killLog } = useGameStore.getState();
+    expect(killLog).toHaveLength(1);
+    expect(killLog[0].wallTime).toBe(2000);
+    // local の firedForUi=true 状態は保持される (UI 二重発火防止)
+    expect(killLog[0].firedForUi).toBe(true);
+  });
+
+  it("Stage 1: migration path で missed respawn の自動救済 (isDead 張り付きが snapshot の respawn entry 流入で解消)", () => {
+    const myId = "observer";
+    // local: victim は kill 済で isDead=true のまま貼り付き (respawn message を取り逃した)
+    const deadVictim: RelativisticPlayer = {
+      ...makePlayer("victim", 5.0),
+      isDead: true,
+    };
+    useGameStore.setState({
+      players: new Map([
+        ["observer", makePlayer("observer", 5.0)],
+        ["victim", deadVictim],
+      ]),
+      killLog: [
+        {
+          victimId: "victim",
+          killerId: "observer",
+          hitPos: { t: 3.0, x: 0, y: 0, z: 0 },
+          wallTime: 1000,
+          victimName: "Victim",
+          victimColor: "#fff",
+          firedForUi: true,
+        },
+      ],
+      respawnLog: [], // respawn entry を local は取り逃している
+    });
+
+    // snapshot: beacon holder は respawn を受信していて respawnLog に含む
+    const msg: SnapshotMsg = {
+      ...makeSnapshot([
+        { id: "observer", posT: 5.0 },
+        { id: "victim", posT: 5.0 },
+      ]),
+      killLog: [
+        {
+          victimId: "victim",
+          killerId: "observer",
+          hitPos: { t: 3.0, x: 0, y: 0, z: 0 },
+          wallTime: 1000,
+          victimName: "Victim",
+          victimColor: "#fff",
+          firedForUi: true,
+        },
+      ],
+      respawnLog: [
+        {
+          playerId: "victim",
+          position: { t: 4.0, x: 0, y: 0, z: 0 },
+          wallTime: 2000, // kill (1000) より後
+        },
+      ],
+    };
+    // snapshot の victim entry は isDead=false (beacon holder は respawn 済と認識)
+    const victimEntry = msg.players.find((p) => p.id === "victim");
+    if (victimEntry) victimEntry.isDead = false;
+
+    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
+
+    const { players, respawnLog } = useGameStore.getState();
+    expect(respawnLog).toHaveLength(1);
+    expect(respawnLog[0].playerId).toBe("victim");
+    // isDead が merged log から再導出され false に復帰
+    expect(players.get("victim")?.isDead).toBe(false);
+  });
+
+  it("Stage 1: migration path で scores は local を保持 (観測者相対性を破壊しない)", () => {
+    const myId = "me";
+    useGameStore.setState({
+      players: new Map([["me", makePlayer("me", 5.0)]]),
+      scores: { me: 3 }, // local 観測者の視点で 3 kill
+    });
+
+    const msg: SnapshotMsg = {
+      ...makeSnapshot([{ id: "me", posT: 5.0 }]),
+      scores: { me: 0, other: 5 }, // host 観測者の視点は別
+    };
+
+    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
+
+    const { scores } = useGameStore.getState();
+    // local 観測者の scores は上書きされない
+    expect(scores.me).toBe(3);
+    expect(scores.other).toBeUndefined();
+  });
+
   it("migration path: snapshot 側の pos.t が新しい場合は snapshot を採用", () => {
     const myId = "me";
     useGameStore.setState({

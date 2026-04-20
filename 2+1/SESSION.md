@@ -4,7 +4,11 @@
 
 対戦可能。**`c49ce40` デプロイ済み** (build `2026/04/20 18:36:03 JST`)。本番: https://sogebu.github.io/LorentzArena/
 
-マルチプレイ state バグ 5 点 (2026-04-20 本番観測): 症状 2 / 3 / 5 修正 + deploy 済、**hidden 復帰 clock drift** も解消。残は C (症状 1 + 4)。詳細: `plans/2026-04-20-multiplayer-state-bugs.md`。
+マルチプレイ state バグ 5 点 (2026-04-20 本番観測): 症状 2 / 3 / 5 修正 + deploy 済、**hidden 復帰 clock drift** も解消。**Stage 1 (周期 snapshot broadcast) 実装済・未 deploy** (localhost 検証待ち)。残は C (症状 1 + 4)、B' の残存確認。詳細: `plans/2026-04-20-multiplayer-state-bugs.md`。
+
+## 作業中 (2026-04-20 夜)
+
+**Stage 1 周期 snapshot broadcast** (未 deploy、localhost 検証待ち): B' / 症状 4 (ghost 張り付き) / 未来の missed-event 類への reconciliation channel。beacon holder が 5 秒ごとに全 peer へ `buildSnapshot` を送信、受信側は `applySnapshot` の isMigrationPath 分岐で **log union-merge + isDead 再導出 + scores 保持** 適用。missed respawn で isDead 貼り付きでも次 snapshot で自動救済される設計。4 files +285/-16、Vitest 55/55。次セッション: odakin 実機 2 タブ検証 → 問題なければ deploy、OK 出たら Stage 2 (host self-verification = 症状 1 対処) に着手。
 
 ## 本日 (2026-04-20) の主要 entry
 

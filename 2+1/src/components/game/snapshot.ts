@@ -10,7 +10,7 @@ import { useGameStore } from "../../stores/game-store";
 import { ENERGY_MAX, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
 import { isLighthouse } from "./lighthouse";
 import { computeSpawnCoordTime } from "./respawnTime";
-import type { RelativisticPlayer } from "./types";
+import type { KillEventRecord, RelativisticPlayer, RespawnEventRecord } from "./types";
 
 /**
  * Authority 解体 Stage F: 新規 join peer 1 人に送る state 一式を組み立てる。
@@ -151,6 +151,14 @@ export const applySnapshot = (
     lastUpdateTimeRef.current.set(sp.id, Date.now());
   }
 
+  // displayNames は local と snapshot を merge。snapshot に含まれる ID は上書き
+  // (host 側が最新)、含まれない旧 ID (reconnection で消えた peer) は local を保持 →
+  // killLog に残存する旧 peerId → displayName の逆引きが壊れないようにする。
+  const mergedDisplayNames = new Map(store.displayNames);
+  for (const [id, name] of Object.entries(msg.displayNames)) {
+    mergedDisplayNames.set(id, name);
+  }
+
   if (isMigrationPath) {
     // 自機: local 優先 (snapshot の自機エントリがあっても上書きしない)
     const existingMine = store.players.get(myId);
@@ -166,23 +174,85 @@ export const applySnapshot = (
         nextPlayers.set(id, local);
       }
     }
-  }
 
-  // displayNames は local と snapshot を merge。snapshot に含まれる ID は上書き
-  // (host 側が最新)、含まれない旧 ID (reconnection で消えた peer) は local を保持 →
-  // killLog に残存する旧 peerId → displayName の逆引きが壊れないようにする。
-  const mergedDisplayNames = new Map(store.displayNames);
-  for (const [id, name] of Object.entries(msg.displayNames)) {
-    mergedDisplayNames.set(id, name);
-  }
+    // Stage 1 (2026-04-20): 周期 snapshot broadcast + migration 経路共通の union-merge。
+    // 既存 migration 経路は log を wholesale replace していたが、周期 snapshot では
+    // local に最新 kill/respawn が先行している場合があり (自機 own-authoritative イベント
+    // が beacon holder に到達する前) その entry を取りこぼすと一時的に state が巻き戻る。
+    // 対処: (key = victimId/playerId + wallTime) で dedupe しつつ union。local 側の entry を
+    // 優先保持し snapshot-only の新規 entry だけを追加する。これで:
+    //   - local 先行の kill/respawn: そのまま保持 (replace だと消える)
+    //   - snapshot 先行の kill/respawn (他 peer が起こし local が取り逃したイベント):
+    //     マージで流入、受信側の past-cone 到達で firedForUi が true に遷移
+    //   - firedForUi 状態: local が true なら維持 (UI 二重発火防止)、snapshot-only の
+    //     entry は false で追加 (ローカル観測者の past-cone 判定はまだ)
+    const killKey = (e: { victimId: string; wallTime: number }) =>
+      `${e.victimId}@${e.wallTime}`;
+    const localKillKeys = new Set(store.killLog.map(killKey));
+    const snapshotOnlyKills: KillEventRecord[] = msg.killLog
+      .filter((e) => !localKillKeys.has(killKey(e)))
+      .map((e) => ({ ...e, firedForUi: false }));
+    const mergedKillLog: KillEventRecord[] = [
+      ...store.killLog,
+      ...snapshotOnlyKills,
+    ].sort((a, b) => a.wallTime - b.wallTime);
 
-  useGameStore.setState({
-    players: nextPlayers,
-    scores: { ...msg.scores },
-    displayNames: mergedDisplayNames,
-    killLog: msg.killLog.map((e) => ({ ...e })),
-    respawnLog: msg.respawnLog.map((e) => ({ ...e })),
-  });
+    const respawnKey = (e: { playerId: string; wallTime: number }) =>
+      `${e.playerId}@${e.wallTime}`;
+    const localRespawnKeys = new Set(store.respawnLog.map(respawnKey));
+    const snapshotOnlyRespawns: RespawnEventRecord[] = msg.respawnLog
+      .filter((e) => !localRespawnKeys.has(respawnKey(e)))
+      .map((e) => ({ ...e }));
+    const mergedRespawnLog: RespawnEventRecord[] = [
+      ...store.respawnLog,
+      ...snapshotOnlyRespawns,
+    ].sort((a, b) => a.wallTime - b.wallTime);
+
+    // isDead を merged log から再導出し、nextPlayers の各 entry に反映する。
+    // これが周期 snapshot の中核: missed respawn で local が isDead=true 貼り付きに
+    // なっていても、snapshot 経由で respawnLog entry が流入すると latestRespawn >
+    // latestKill に遷移し isDead=false に復帰する (ghost stuck / B' 消失の自動救済)。
+    const lastKillByVictim = new Map<string, number>();
+    for (const e of mergedKillLog) {
+      const prev = lastKillByVictim.get(e.victimId);
+      if (prev === undefined || e.wallTime > prev)
+        lastKillByVictim.set(e.victimId, e.wallTime);
+    }
+    const lastRespawnByPlayer = new Map<string, number>();
+    for (const e of mergedRespawnLog) {
+      const prev = lastRespawnByPlayer.get(e.playerId);
+      if (prev === undefined || e.wallTime > prev)
+        lastRespawnByPlayer.set(e.playerId, e.wallTime);
+    }
+    for (const [id, p] of nextPlayers) {
+      const kTime = lastKillByVictim.get(id);
+      const derivedDead =
+        kTime !== undefined && kTime > (lastRespawnByPlayer.get(id) ?? -Infinity);
+      if (derivedDead !== p.isDead) {
+        nextPlayers.set(id, { ...p, isDead: derivedDead });
+      }
+    }
+
+    useGameStore.setState({
+      players: nextPlayers,
+      // scores は観測者相対なので local を保持 (firePendingKillEvents が past-cone
+      // 到達時に各 peer で独立に加算する)。snapshot の scores で上書きすると
+      // 全 peer が beacon holder の観測に同期して相対論的独立性が壊れる。
+      displayNames: mergedDisplayNames,
+      killLog: mergedKillLog,
+      respawnLog: mergedRespawnLog,
+    });
+  } else {
+    // 新規 join: 既存 state が無いので snapshot を wholesale 適用。scores を含めて
+    // 初期 seed (host 観測時点の kill を past-cone 処理前の状態で引き継ぐ)。
+    useGameStore.setState({
+      players: nextPlayers,
+      scores: { ...msg.scores },
+      displayNames: mergedDisplayNames,
+      killLog: msg.killLog.map((e) => ({ ...e })),
+      respawnLog: msg.respawnLog.map((e) => ({ ...e })),
+    });
+  }
 
   // 自機が snapshot に含まれていない場合 (新規 join の一般ケース) は、
   // 「宇宙の最新時刻」(= snapshot 送信時点で host が算出した最大 .pos.t) で

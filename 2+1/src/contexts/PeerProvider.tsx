@@ -19,7 +19,9 @@ import {
   colorForJoinOrder,
   colorForPlayerId,
 } from "../components/game/colors";
+import { SNAPSHOT_BROADCAST_INTERVAL_MS } from "../components/game/constants";
 import { isLighthouse } from "../components/game/lighthouse";
+import { buildSnapshot } from "../components/game/snapshot";
 import { PeerManager, type PeerServerStatus } from "../services/PeerManager";
 import { WsRelayManager, type WsRelayStatus } from "../services/WsRelayManager";
 import { useGameStore } from "../stores/game-store";
@@ -913,6 +915,34 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       migrationTimerCleanupRef.current = null;
     };
   }, [peerManager, connectionPhase, activeTransport, roomPeerId, roleVersion]);
+
+  // Stage 1 (2026-04-20): Periodic snapshot broadcast from beacon holder.
+  // Supplements event-based delivery (kill/respawn/intro) with a reconciliation
+  // channel that recovers from missed transient events. Receivers apply via
+  // applySnapshot's isMigrationPath branch (union-merge logs, preserve scores).
+  // Trigger set: (a) dropped respawn → ghost stuck (B'), (b) dropped intro →
+  // ID-prefix display, (c) missed kill → score drift, (d) migration race windows.
+  // Cost analysis: snapshot payload grows O(kill+respawn log size + players × worldLine).
+  // killLog/respawnLog are tail-sliced (MAX_KILL_LOG/MAX_RESPAWN_LOG) so bounded.
+  // Peer-count × 1/5s = cheap for <10 peer sessions. See plans/2026-04-20-multiplayer-state-bugs.md §Stage 1.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on role change
+  useEffect(() => {
+    if (!peerManager) return;
+    if (!myId) return;
+    if (connectionPhase !== "connected") return;
+    if (!peerManager.getIsBeaconHolder()) return;
+
+    const timer = setInterval(() => {
+      // 他 peer 0 人なら broadcast する意味無し (自分に送信されない実装だが無駄な buildSnapshot 呼び出しを避ける)
+      const connected = peerManager.getConnectedPeerIds();
+      // la-{roomName} beacon peer のみの場合 (実質 solo) も skip
+      const realPeers = connected.filter((id) => id !== roomPeerId);
+      if (realPeers.length === 0) return;
+      peerManager.send(buildSnapshot(myId));
+    }, SNAPSHOT_BROADCAST_INTERVAL_MS);
+
+    return () => clearInterval(timer);
+  }, [peerManager, myId, connectionPhase, roomPeerId, roleVersion]);
 
   // WS Relay: register host_closed handler for migration peer list
   useEffect(() => {

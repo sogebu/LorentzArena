@@ -102,6 +102,17 @@ export const WORLDLINE_GAP_THRESHOLD_MS = 500;
 // race を吸収、ただし truly disconnected peer が長時間リスト残留しない程度。
 export const PEER_REMOVAL_GRACE_MS = 3000;
 
+// Stage 1 (2026-04-20): beacon holder が全 peer へ `buildSnapshot` を周期送信する間隔 (ms)。
+// 目的: kill / respawn / intro などの transient event を 1 発取り逃すと state が
+// 恒久 divergence する脆弱性に対する reconciliation channel。受信側は
+// `applySnapshot` の isMigrationPath 分岐 (log union-merge + isDead 再導出 +
+// scores 保持) で反映する。
+// 値 5000ms の根拠: divergence 最大窓 = 本値。人間が「相手が見えない」と感じる
+// 時間のオーダー (数秒) と、帯域コスト (snapshot payload × peer 数 / 5s) の
+// バランス。<10 peer セッションでは帯域誤差。詳細:
+// `plans/2026-04-20-multiplayer-state-bugs.md` §Stage 1。
+export const SNAPSHOT_BROADCAST_INTERVAL_MS = 5000;
+
 // 世界線の最大サンプル数。
 // 本来は 5000 だったが、長時間プレイで SceneContent.tsx の
 // `worldLineIntersections` / `laserIntersections` / `futureLightConeIntersections`
