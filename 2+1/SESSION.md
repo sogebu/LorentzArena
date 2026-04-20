@@ -2,11 +2,15 @@
 
 ## 現在のステータス
 
-対戦可能。**`13ebd64` デプロイ済み** (build `2026/04/21 07:44:47 JST`)。本番: https://sogebu.github.io/LorentzArena/
+対戦可能。**`f8a4589` デプロイ済み** (build `2026/04/21 08:02:51 JST`)。本番: https://sogebu.github.io/LorentzArena/
 
 **Stage 1 + 1.5 + 2 完成**。Stage 2 で症状 1 (host split) の自動解消が入り、visibility 復帰時の PeerServer race で両 peer が BH と信じる状態を能動 probe で検出・demote。localhost 実機検証で split 発生 → 自動復旧シーケンスが確認できた。詳細・残り段階設計 (Stage 3): `plans/2026-04-20-multiplayer-state-bugs.md`。
 
 ## 本日 (2026-04-20〜21) の主要 entry
+
+`f8a4589` **Stage 2 audit 4 件目 fix: LH 二重駆動 (catastrophic pre-existing)**: `assumeHostRole` は migration 時に全 LH.ownerId を自分に書き換える (LH AI 駆動権取得) が、逆操作 (demote で手放す) が performDemotion に無かった。結果: demote 後も旧 BH の useGameLoop で `lh.ownerId === myId` が true のまま LH AI が走り続け、phaseSpace / laser を broadcast → 新 BH も同 LH を駆動 → **LH 二重駆動** + registerHostRelay で他 peer にも二重配送。Stage 2 demote だけでなく既存 `demoteToClient` 経路も同じ bug を抱えていた pre-existing 問題。fix: performDemotion に LH ownership 移譲 loop を追加 (assumeHostRole と構造対称)。
+
+`235900f` **performDemotion self-demote guard**: beacon-acquire の demoteToClient は callsite で `realHostId !== myId` check 無し (rare race で self-redirect 受信余地あり)、helper 側で吸収。
 
 `13ebd64` **Stage 2 bug fix: 初回 probe 欠落 + stale callback 誤爆**: 監査で 2 点発見。(1) tab-hidden 復帰で HOST_HIDDEN_GRACE が peerManager destroy → Stage 2 effect cleanup で visibilitychange listener が一旦外れる → Phase 1 が setPeerManager する直前に visibility event が listener 不在で発火 → 初回 split は 30s backup まで検出されず。effect mount 時に `runProbe()` 1 回追加で即検出。(2) PeerJS の `peer.destroy()` は JS event loop 上の queued event を即 cancel しないので、cleanupProbe で `probePm=null` 後に next probe が走ると、probe 1 の late callback が probe 2 を誤 destroy する race。各 handler 冒頭に `if (probePm !== pm) return;` の stale guard を 3 箇所 (timeout / onPeerStatusChange / onMessage) 追加で defensive 化。58/58 pass。
 
