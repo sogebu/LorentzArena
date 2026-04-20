@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-対戦可能。**デプロイ済み** (build `2026/04/20 09:02:42 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`8a5a516` デプロイ済み** (build `2026/04/20 09:02:42 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
 2026-04-20 (灯台光源 + Lobby ship preview + ShipPreview 抽出):
 - **光源を灯台に配置**: `GameLights` に `positions` prop 追加、SceneContent で各灯台の
