@@ -70,6 +70,14 @@ export function useStaleDetection() {
     purgeDisconnected(lastCoordTimeRef.current, connectedIds); // S-3: cleanup 漏れ修正
   };
 
+  // 単一 peer の stale 関連 ref をまとめて purge。grace period 付き peer removal
+  // (RelativisticGame の PEER_REMOVAL_GRACE_MS) で setTimeout 発火時に使う。
+  const cleanupPeer = (playerId: string) => {
+    staleFrozenRef.current.delete(playerId);
+    lastUpdateTimeRef.current.delete(playerId);
+    lastCoordTimeRef.current.delete(playerId);
+  };
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: all values are stable refs or closures over refs — never change
   return useMemo(
     () => ({
@@ -79,6 +87,7 @@ export function useStaleDetection() {
       checkStale,
       recoverStale,
       cleanupDisconnected,
+      cleanupPeer,
     }),
     [],
   );

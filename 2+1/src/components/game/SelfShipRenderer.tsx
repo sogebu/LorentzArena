@@ -1,7 +1,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
-import { type Vector3, type Vector4 } from "../../physics";
+import type { Vector3, Vector4 } from "../../physics";
 import {
   ARROW_BASE_LENGTH,
   ARROW_BASE_OFFSET,

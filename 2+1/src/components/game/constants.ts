@@ -92,6 +92,16 @@ export const POST_HIT_IFRAME_MS = 500;
 // 詳細: DESIGN.md § migration 「phaseSpace gap → worldLine 凍結」
 export const WORLDLINE_GAP_THRESHOLD_MS = 500;
 
+// connections から peer が消えた時、即座に players map から削除せずに猶予時間を置く。
+// 目的: host migration / 短時間 tab hidden / 一過的 network blip で一瞬 connection が
+// 切れた相手を、猶予内に再接続したら players map に残したまま復帰させる。
+// 即時削除だと OtherPlayerRenderer が描画対象を失い、ship が 3D シーンから消える
+// (症状 5: 2026-04-20 本番観測)。猶予中に reconnect があれば setTimeout をキャンセル、
+// 真の disconnect なら猶予経過後に削除。
+// 値 3000ms の根拠: heartbeat timeout 2500ms (PeerProvider) より少し長くして migration
+// race を吸収、ただし truly disconnected peer が長時間リスト残留しない程度。
+export const PEER_REMOVAL_GRACE_MS = 3000;
+
 // 世界線の最大サンプル数。
 // 本来は 5000 だったが、長時間プレイで SceneContent.tsx の
 // `worldLineIntersections` / `laserIntersections` / `futureLightConeIntersections`

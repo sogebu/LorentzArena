@@ -10,6 +10,7 @@ import {
   LIGHTHOUSE_COLOR,
   LIGHTHOUSE_ID_PREFIX,
   OFFSET,
+  PEER_REMOVAL_GRACE_MS,
   SPAWN_RANGE,
 } from "./game/constants";
 import { HUD } from "./game/HUD";
@@ -131,6 +132,13 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
 
   // 切断したプレイヤーを削除 & 新規接続に snapshot 送信
   const prevConnectionIdsRef = useRef<Set<string>>(new Set());
+  // 症状 5 fix: peer removal を grace period 付き setTimeout に切り替え。
+  // host migration / tab 復帰 / 一過的 blip で一瞬 connections から消えた相手を
+  // 即座に players map から蒸発させると 3D シーンから ship が消える。猶予中に
+  // 再接続したら cancel、真に切れていたら PEER_REMOVAL_GRACE_MS 後に削除。
+  const pendingRemovalTimeoutsRef = useRef<
+    Map<string, ReturnType<typeof setTimeout>>
+  >(new Map());
   useEffect(() => {
     if (!myId) return;
 
@@ -178,24 +186,46 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       connections.filter((c) => c.open).map((c) => c.id),
     );
 
-    store.setPlayers((prev) => {
-      const idsToRemove: string[] = [];
-      for (const playerId of prev.keys()) {
-        if (!connectedIds.has(playerId) && !isLighthouse(playerId)) {
-          idsToRemove.push(playerId);
-        }
+    // 再接続したら pending removal をキャンセル (players map に残ったまま復帰)。
+    for (const id of connectedIds) {
+      const pending = pendingRemovalTimeoutsRef.current.get(id);
+      if (pending !== undefined) {
+        clearTimeout(pending);
+        pendingRemovalTimeoutsRef.current.delete(id);
       }
-      if (idsToRemove.length === 0) return prev;
-      const next = new Map(prev);
-      for (const id of idsToRemove) {
-        next.delete(id);
-      }
-      // Stage C: log エントリは残す (未 respawn kill が残っていても GC は
-      // Stage C-4 の pair 成立ベース。切断時の個別削除は不要)。
-      stale.cleanupDisconnected(connectedIds);
-      return next;
-    });
+    }
+
+    // connections から落ちた peer に対し、まだ pending が無ければ removal を予約。
+    // Stage C: log エントリは残す (未 respawn kill が残っていても GC は Stage C-4
+    // の pair 成立ベース)。
+    for (const playerId of store.players.keys()) {
+      if (isLighthouse(playerId)) continue;
+      if (connectedIds.has(playerId)) continue;
+      if (pendingRemovalTimeoutsRef.current.has(playerId)) continue;
+
+      const timeout = setTimeout(() => {
+        pendingRemovalTimeoutsRef.current.delete(playerId);
+        useGameStore.getState().setPlayers((prev) => {
+          if (!prev.has(playerId)) return prev;
+          const next = new Map(prev);
+          next.delete(playerId);
+          return next;
+        });
+        stale.cleanupPeer(playerId);
+      }, PEER_REMOVAL_GRACE_MS);
+      pendingRemovalTimeoutsRef.current.set(playerId, timeout);
+    }
   }, [connections, myId, peerManager, stale, displayName]);
+
+  // unmount 時に pending removal timeouts を全解除 (orphan setTimeout 防止)。
+  useEffect(() => {
+    return () => {
+      for (const timeout of pendingRemovalTimeoutsRef.current.values()) {
+        clearTimeout(timeout);
+      }
+      pendingRemovalTimeoutsRef.current.clear();
+    };
+  }, []);
 
   // joinRegistry 変化時に全プレイヤーの色を再計算
   useEffect(() => {

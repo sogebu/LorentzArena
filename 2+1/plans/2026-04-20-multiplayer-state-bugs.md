@@ -126,6 +126,21 @@ displayName を知る状態に収束する。
   同一 helper で fallback なく吸収される (lighthouse.ts §createLighthouse は
   未使用関数、LH spawn 経路は RelativisticGame init effect の handleSpawn)
 
+### 症状 5 → grace period 付き peer removal — **修正 (未 deploy、localhost 検証待ち)**
+
+`RelativisticGame.tsx` の切断 peer 削除を即時から `PEER_REMOVAL_GRACE_MS = 3000ms` の
+`setTimeout` に変更。
+
+- 再接続が猶予内なら `clearTimeout` でキャンセル → players map に残留、phaseSpace 復帰で
+  正常追従再開
+- 真の disconnect なら猶予後に `setPlayers` で削除 + `stale.cleanupPeer(id)` で
+  `staleFrozenRef` / `lastUpdateTimeRef` / `lastCoordTimeRef` 一括 purge
+- 値 3000ms: heartbeat timeout 2500ms > grace、migration race 吸収
+- unmount cleanup: `pendingRemovalTimeoutsRef` の全 timeout を解除する useEffect を追加
+  (orphan setTimeout 防止)
+- 症状 5 の 3 仮説 (i) phaseSpace 再送遅延 / (ii) 切断 GC race / (iii) visibilitychange のうち
+  **最有力 (ii) を直撃**。仮説 (i) / (iii) が真なら症状は残る → odakin 実機テストで判別
+
 ### B' (未着手). OtherPlayerRenderer LIVE branch の視認性
 
 OtherPlayerRenderer の LIVE branch は past-cone visibility check を**していない**

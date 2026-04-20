@@ -1,4 +1,4 @@
-import * as THREE from "three";
+import type * as THREE from "three";
 
 /**
  * Per-vertex inner-radius hide: 指定された world 座標の中心点から半径 R 内の vertex を
