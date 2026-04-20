@@ -2,13 +2,28 @@
 
 ## 現在のステータス
 
-対戦可能。**`9a22fd9` デプロイ済み** (build `2026/04/20 10:28:06 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`e9171c4` デプロイ済み** (build `2026/04/20 10:52:08 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
-マルチプレイ state バグ 4 点のうち **A / B を修正 + deploy 済** (2026-04-20 昼、
-commit `2be56b4` / `8ce595f`)。C (症状 1 + 4) は設計変更大きく別セッション。
-詳細は ↓ の 2026-04-20 昼 entry + `plans/2026-04-20-multiplayer-state-bugs.md`。
+マルチプレイ state バグ: **A (症状 3) / B (症状 2)** を修正 + deploy 済。
+A は初版 deploy 後に再発、**新規接続 peer への intro unicast 再送** (`e9171c4`) で
+真の root cause を解消。**症状 5 (host migration & タブ復帰で相手が消える)** を
+本番再観測して plan に追加、別セッションで調査。C (症状 1 + 4) も未着手。
+詳細: ↓ 2026-04-20 昼 entry + `plans/2026-04-20-multiplayer-state-bugs.md`。
 
-2026-04-20 昼 (マルチプレイ state バグ A + B 修正、未 deploy):
+2026-04-20 昼 (症状 3 再発の真 root cause 修正 + 症状 5 追加観測) [`e9171c4`]:
+- **症状 3 (peer ID prefix 露出) の真 root cause**: `RelativisticGame.tsx` の
+  intro 発信は `onMessage` 登録時の 1 回 broadcast のみで、送信時点で開いている
+  connection にしか届かない。**後から接続してきた peer には永久に届かない**ので
+  displayNames map に entry が入らず、`2be56b4` の 4 段 fallback も拾えない。
+  本番 deploy 後に odakin が screenshot で撃破数リスト `gv14dv:` を再観測して発覚。
+- **fix**: `prevConnectionIdsRef` diff で検出した新規接続 peer に対し全 peer が
+  自分の intro を unicast 再送。A→B / B→A 接続順序に依存しない双方向伝播。
+  beacon holder の snapshot 送信路は new joiner 判定 (`!store.players.has`) 維持。
+- **症状 5 (新規観測)**: host migration & タブ復帰した相手が 3D シーンから消える。
+  接続設定 UI には「接続中」表示だが ship marker が消える。B fix では解決せず、
+  別原因。plan 側に 3 候補列挙、別セッション。B' と合わせて追う。
+
+2026-04-20 昼 (マルチプレイ state バグ A + B 修正):
 - **症状 3 displayName 表示 (A)** [`2be56b4`]: `displayNames` Map を reactive state
   に昇格 (`setDisplayName` / `applySnapshot` を setState 経由で immutable 更新)。
   ControlPanel の score list name 解決を 4 段 fallback に
