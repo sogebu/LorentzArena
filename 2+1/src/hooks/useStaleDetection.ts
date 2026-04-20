@@ -16,18 +16,6 @@ const STALE_MIN_RATE = 0.1; // coordinate time must advance at least 10% of wall
 // 観測の他 peer 残留ケース。
 const STALE_GC_THRESHOLD = 15000;
 
-/** Remove entries from a Map/Set whose keys are not in connectedIds. */
-const purgeDisconnected = (
-  collection: Map<string, unknown> | Set<string>,
-  connectedIds: Set<string>,
-) => {
-  for (const id of collection.keys()) {
-    if (!connectedIds.has(id)) {
-      collection.delete(id);
-    }
-  }
-};
-
 export function useStaleDetection() {
   const staleFrozenRef = useRef<Set<string>>(new Set());
   const lastUpdateTimeRef = useRef<Map<string, number>>(new Map());
@@ -115,13 +103,6 @@ export function useStaleDetection() {
     lastCoordTimeRef.current.delete(playerId);
   };
 
-  const cleanupDisconnected = (connectedIds: Set<string>) => {
-    purgeDisconnected(staleFrozenRef.current, connectedIds);
-    purgeDisconnected(staleFrozenAtRef.current, connectedIds);
-    purgeDisconnected(lastUpdateTimeRef.current, connectedIds);
-    purgeDisconnected(lastCoordTimeRef.current, connectedIds); // S-3: cleanup 漏れ修正
-  };
-
   // 単一 peer の stale 関連 ref をまとめて purge。grace period 付き peer removal
   // (RelativisticGame の PEER_REMOVAL_GRACE_MS) で setTimeout 発火時、Stage 3 GC
   // 発火時の両方で使う。
@@ -140,7 +121,6 @@ export function useStaleDetection() {
       lastCoordTimeRef,
       checkStale,
       recoverStale,
-      cleanupDisconnected,
       cleanupPeer,
     }),
     [],

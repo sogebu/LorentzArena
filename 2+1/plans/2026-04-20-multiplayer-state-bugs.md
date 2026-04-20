@@ -362,6 +362,14 @@ A-B-C 3 peer、B が disconnect:
 Stage 3 + snapshot.ts fix により、最遅でも切断から ~30s で全 peer が eventual
 consistency に収束する。plan §Bug X resurrection が closed。
 
+### Stage 3 audit round 3 (2026-04-21 夜)
+
+odakin 要請で Stage 3 深掘り audit を実施、15+ candidate を系統的に検証:
+
+- ✓ `store` reference stale / isMigrationPath / Bug X 実トレース / document.hidden 中の GC / migration race / 自分自身の GC / Stage 2 probe interaction / solo / GC vs respawn race / killLog orphan (pre-existing) / LH 誤 GC / BH loopback / LH lastUpdate / 新規 joiner flow — **全て既存 guard で対応済、新規 critical bug 無し**
+- ⚠️ **Trade-off**: 4+ peer で遅延 joiner (= B disconnect 後に join してきた peer Z が B を初期 snapshot で取得 → Z が B を保持する間、Z の Stage 1.5 snapshot が他 peer に B を re-add し続ける) シナリオで、ghost 収束時間が最遅 ~40s まで延びる。pre-Stage 3 の永久残留よりは大幅改善、完全解消には `recentlyRemovedRef` ~30 LOC の plumbing (RelativisticGame 3s grace + Stage 3 GC で removal timestamp 記録、applySnapshot で blacklist filter) が必要、現スケール (2-3 peer 常用) では必要性が出るまで defer
+- ℹ️ **Pre-existing dead code**: `useStaleDetection.cleanupDisconnected` + helper `purgeDisconnected` が定義されているが外部呼び出し無し。Stage 3 とは無関係だが書類整理の一環として削除 (同 commit)
+
 ## 次セッションで最初にやること (改訂)
 
 **Stage 1 / 1.5 / 2 / 3 すべて deploy 済** (2026-04-21、`1b9e743` / build 08:20:46)。
