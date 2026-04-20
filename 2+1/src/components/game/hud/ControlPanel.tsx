@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { useI18n } from "../../../i18n";
+import { useGameStore } from "../../../stores/game-store";
 import { isLighthouse } from "../lighthouse";
 import type { RelativisticPlayer } from "../types";
 import { isTouchDevice } from "./utils";
@@ -108,10 +109,23 @@ export const ControlPanel = ({
   getPlayerColor,
 }: ControlPanelProps) => {
   const { t } = useI18n();
+  const displayNames = useGameStore((s) => s.displayNames);
+  const killLog = useGameStore((s) => s.killLog);
   const sortedScores = useMemo(
     () => Object.entries(scores).sort(([, a], [, b]) => b - a),
     [scores],
   );
+  const resolveName = (id: string): string => {
+    const fromPlayer = players.get(id)?.displayName;
+    if (fromPlayer) return fromPlayer;
+    const fromDisplayNames = displayNames.get(id);
+    if (fromDisplayNames) return fromDisplayNames;
+    // killLog は victim の name しか持たないが、reconnection で消えた peer が
+    // 過去に被撃墜されていれば逆引きできる。
+    const fromVictim = killLog.find((e) => e.victimId === id)?.victimName;
+    if (fromVictim) return fromVictim;
+    return id.slice(0, 6);
+  };
 
   return (
     <div
@@ -185,7 +199,7 @@ export const ControlPanel = ({
                 ? players.get(myId)?.displayName ?? t("hud.you")
                 : isLighthouse(id)
                   ? t("hud.lighthouse")
-                  : players.get(id)?.displayName ?? id.slice(0, 6)}
+                  : resolveName(id)}
               : {kills}
             </div>
           ))}

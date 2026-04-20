@@ -58,11 +58,11 @@ export interface GameState {
   debrisRecords: DebrisRecord[];
   killNotification: KillNotification3D | null;
   myDeathEvent: DeathEvent | null;
+  displayNames: Map<string, string>;
 
   // --- Non-reactive state (read via getState() only, no re-render) ---
   processedLasers: Set<string>;
   pendingSpawnEvents: PendingSpawnEvent[];
-  displayNames: Map<string, string>;
   lighthouseSpawnTime: Map<string, number>;
   /**
    * Authority 解体 Stage E: 各 peer が観測した LH の最後の laser 発射 wallTime。
@@ -160,11 +160,11 @@ export const useGameStore = create<GameState>()((set, get) => ({
   debrisRecords: [],
   killNotification: null,
   myDeathEvent: null,
+  displayNames: new Map(),
 
   // Non-reactive
   processedLasers: new Set(),
   pendingSpawnEvents: [],
-  displayNames: new Map(),
   lighthouseSpawnTime: new Map(),
   lighthouseLastFireTime: new Map(),
   killLog: [],
@@ -414,7 +414,12 @@ export const useGameStore = create<GameState>()((set, get) => ({
     }),
 
   setDisplayName: (playerId, name) => {
-    get().displayNames.set(playerId, name);
+    set((state) => {
+      if (state.displayNames.get(playerId) === name) return state;
+      const next = new Map(state.displayNames);
+      next.set(playerId, name);
+      return { displayNames: next };
+    });
   },
 
   addProcessedLaser: (laserId) => {

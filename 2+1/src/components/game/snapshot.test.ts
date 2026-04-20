@@ -147,6 +147,32 @@ describe("applySnapshot", () => {
     expect(peer?.phaseSpace.pos.x).toBe(100);
   });
 
+  it("displayNames は local と snapshot を merge (snapshot 側で上書き、local-only エントリは保持)", () => {
+    const myId = "me";
+    // local: reconnection 前に残存していた旧 peerId → name のマップ
+    useGameStore.setState({
+      displayNames: new Map([
+        ["old-peer", "Alice"],
+        ["peer", "OldPeerName"],
+      ]),
+    });
+
+    // snapshot: host から受信、"peer" の name は更新される、"old-peer" は含まれない
+    const msg: SnapshotMsg = {
+      ...makeSnapshot([{ id: "me", posT: 1.0 }, { id: "peer", posT: 1.0 }]),
+      displayNames: { peer: "Peer", me: "Me" },
+    };
+
+    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
+
+    const { displayNames } = useGameStore.getState();
+    // snapshot 側で上書き
+    expect(displayNames.get("peer")).toBe("Peer");
+    expect(displayNames.get("me")).toBe("Me");
+    // local-only エントリは残存 (killLog に残っている旧 peer の逆引き用)
+    expect(displayNames.get("old-peer")).toBe("Alice");
+  });
+
   it("migration path: snapshot 側の pos.t が新しい場合は snapshot を採用", () => {
     const myId = "me";
     useGameStore.setState({

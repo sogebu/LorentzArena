@@ -168,14 +168,18 @@ export const applySnapshot = (
     }
   }
 
-  // displayNames / scores
+  // displayNames は local と snapshot を merge。snapshot に含まれる ID は上書き
+  // (host 側が最新)、含まれない旧 ID (reconnection で消えた peer) は local を保持 →
+  // killLog に残存する旧 peerId → displayName の逆引きが壊れないようにする。
+  const mergedDisplayNames = new Map(store.displayNames);
   for (const [id, name] of Object.entries(msg.displayNames)) {
-    store.displayNames.set(id, name);
+    mergedDisplayNames.set(id, name);
   }
 
   useGameStore.setState({
     players: nextPlayers,
     scores: { ...msg.scores },
+    displayNames: mergedDisplayNames,
     killLog: msg.killLog.map((e) => ({ ...e })),
     respawnLog: msg.respawnLog.map((e) => ({ ...e })),
   });
