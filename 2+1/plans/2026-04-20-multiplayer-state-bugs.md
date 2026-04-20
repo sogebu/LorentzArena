@@ -1,6 +1,9 @@
-# 2026-04-20: マルチプレイ state バグ 3 点 (分析、修正未着手)
+# 2026-04-20: マルチプレイ state バグ 4 点 (A + B 修正済、C 未着手)
 
-本番で実対戦中に複数の state 異常が同時に観測された。修正は後日。次セッションで着手する際はまず本書 + `plans/2026-04-19-host-migration-symmetry.md` を読む。
+本番で実対戦中に複数の state 異常が同時に観測された。A (症状 3) と B (症状 2) は
+2026-04-20 昼に修正完了 (commit `2be56b4` / `8ce595f`、localhost 検証済、未 deploy)。
+C (症状 1 + 4) は reconnection 時の peerId 再払い出しが絡む設計レベルの変更が
+必要で、別セッション。次セッションで着手する際はまず本書 + `plans/2026-04-19-host-migration-symmetry.md` を読む。
 
 ## 観測された症状 (本番デプロイ `a1554be` / build `2026/04/20 09:17:24 JST`、localhost `09:02:42` 側スクショ)
 
@@ -50,7 +53,7 @@ subagent (Explore) が指摘した各症状の最有力仮説:
 
 ## 修正方針 (優先度順、案ベース)
 
-### A. 症状 3 → 最小表面止血 (低リスク、即効)
+### A. 症状 3 → 最小表面止血 (低リスク、即効) — **完了 `2be56b4`**
 
 ControlPanel の displayName lookup を多段 fallback に:
 
@@ -66,7 +69,28 @@ players.get(id)?.displayName
 
 **副作用**: なし。見た目の fallback が増えるだけ。
 
-### B. 症状 2 → pastConeDisplay の spawnT を respawnLog ベースに (中リスク、集中的テスト要)
+### B. 症状 2 → pastConeDisplay の spawnT を respawnLog ベースに — **完了 `8ce595f`**
+
+実装メモ:
+- `respawnTime.ts` に `getLatestSpawnT(respawnLog, player)` helper を追加
+- LighthouseRenderer / OtherPlayerRenderer (dead branch) の spawnT を差し替え
+- 実際の根因は「gap-reset (host migration / tab 復帰で WORLDLINE_GAP_THRESHOLD_MS
+  超過)」で worldLine が fresh に置換され history[0] が jump up すること。
+  当初 plan の「respawn 直後 history.length=1」はこの現象の一ケースに過ぎない。
+  fix は respawnLog を source of truth にすることで両ケース (respawn 直後 +
+  gap-reset 後) を統一的に吸収
+- **LH への影響**: LH も handleSpawn 経由で respawnLog entry を持つので、
+  同一 helper で fallback なく吸収される (lighthouse.ts §createLighthouse は
+  未使用関数、LH spawn 経路は RelativisticGame init effect の handleSpawn)
+
+### B' (未着手). OtherPlayerRenderer LIVE branch の視認性
+
+OtherPlayerRenderer の LIVE branch は past-cone visibility check を**していない**
+(computePastConeDisplayState は dead branch でのみ呼ばれる)。症状 2 の
+「相手が respawn 後に ship が消える」の原因は別にある可能性あり — sphere の
+描画位置 (world frame で dp.t = spawnT - observer.t) が camera frustum から
+外れている、あるいは selectIsDead が stale で `player.isDead === true` が
+張り付いている、等。C の調査で一緒に追う。
 
 現在 `spawnT = player.worldLine.history[0]?.pos.t`。respawn 直後は history.length=1 で spawn 位置のみ。これを store の `respawnLog` の最新 entry から取る:
 
@@ -96,9 +120,10 @@ const spawnT = latestRespawn?.position.t ?? player.phaseSpace.pos.t;
 ## 次セッションで最初にやること
 
 1. 本書 + `plans/2026-04-19-host-migration-symmetry.md` を読む
-2. A (ControlPanel fallback + intro pending) を先に fix + localhost でテスト + deploy
-3. B (spawnT を respawnLog ベース) を fix + 実戦テスト (respawn が絡むので localhost 単独で検出困難、odakin が実機で)
-4. C の再設計議論、plan 書き起こしから
+2. ~~A (ControlPanel fallback + intro pending) を先に fix + localhost でテスト + deploy~~ → 完了 `2be56b4`
+3. ~~B (spawnT を respawnLog ベース) を fix~~ → 完了 `8ce595f`。**deploy + 実戦テスト** (respawn が絡むので localhost 単独で検出困難、odakin が実機で B 症状の消失を確認する)
+4. 残課題 B' (OtherPlayerRenderer LIVE 消失) を C 調査と合わせて再観測
+5. C の再設計議論、plan 書き起こしから
 
 ## 再現手順 (現時点で把握している範囲)
 

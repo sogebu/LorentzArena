@@ -4,6 +4,26 @@
 
 対戦可能。**`a1554be` デプロイ済み** (build `2026/04/20 09:17:24 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
+マルチプレイ state バグ 4 点のうち **A / B を local で修正済** (2026-04-20 昼、
+未 deploy、commit `2be56b4` / `8ce595f`)。C (症状 1 + 4) は設計変更大きく別セッション。
+詳細は ↓ の 2026-04-20 昼 entry + `plans/2026-04-20-multiplayer-state-bugs.md`。
+
+2026-04-20 昼 (マルチプレイ state バグ A + B 修正、未 deploy):
+- **症状 3 displayName 表示 (A)** [`2be56b4`]: `displayNames` Map を reactive state
+  に昇格 (`setDisplayName` / `applySnapshot` を setState 経由で immutable 更新)。
+  ControlPanel の score list name 解決を 4 段 fallback に
+  (players → displayNames → killLog.victimName → id.slice(0, 6))。
+  applySnapshot は local と snapshot を merge (snapshot 上書き + local-only 保持)
+  で、reconnection で消えた旧 peerId → name が killLog の逆引きで残る。
+- **症状 2 spawnT を respawnLog 経由に (B)** [`8ce595f`]: LighthouseRenderer /
+  OtherPlayerRenderer の spawnT を `worldLine.history[0]?.pos.t` から
+  `respawnTime.ts` の `getLatestSpawnT(respawnLog, player)` に差し替え。
+  gap-reset (WORLDLINE_GAP_THRESHOLD_MS 超過 = host migration / tab 復帰) で
+  `worldLine` が fresh に置換されても spawnT は jump up しない。respawnLog は
+  handleSpawn 時のみ append で gap-reset では触らないので semantics に忠実。
+- test: snapshot.test.ts に displayNames merge 回帰 1 件、respawnTime.test.ts を
+  新規 4 件。**46/46 pass**、typecheck clean。
+
 2026-04-20 (ゲーム内 HUD / Lobby 位置微調整):
 - **Exhaust を worldline 上位描画**: 4 nozzle の outer/inner 両 mesh に `renderOrder={10}` + material
   に `depthTest={false}`。D pattern の worldline tube と重なっても煙が必ず上にレンダされる
@@ -182,16 +202,19 @@
 
 ## 既知の課題
 
-### マルチプレイ state バグ 4 点 (2026-04-20 観測、未修正)
+### マルチプレイ state バグ 4 点 (2026-04-20 観測)
 
 本番 (`a1554be` デプロイ後) で連続観測、分析 + 修正方針は `plans/2026-04-20-multiplayer-state-bugs.md` に詳述。
-要約:
-1. **host split**: 切断→再接続後、両 peer が自分を host と認識する状態。2026-04-19 の migration-symmetry 修正は正常 migration のみカバー、reconnection 経路は未対応
-2. **他 player respawn 消失**: respawn 直後の新 worldLine (history.length=1) で spawnT 計算、遠距離だと visible=false
-3. **撃破数リストに peer ID prefix**: intro → phaseSpace 順序逆転時に intro handler が早期 return、displayName が players map に入らない
-4. **ghost 張り付き**: Speedometer energy bar が `{!player.isDead && (...)}` で wrap 済、reconnection で peerId 変わり killLog/respawnLog の ID 同一性が崩れ selectIsDead が stale
 
-共通根因は message order-of-arrival 依存。修正優先度 A (症状 3 fallback) → B (症状 2 spawnT) → C (症状 1+4 の設計変更)、詳細は plan。
+| # | 症状 | 状態 |
+|---|---|---|
+| 1 | **host split**: 切断→再接続後、両 peer が自分を host と認識 | 未着手 (案 C) |
+| 2 | **他 player respawn 消失**: spawnT 計算が gap-reset で bumped | **修正済 `8ce595f`** (未 deploy) |
+| 3 | **撃破数リストに peer ID prefix**: intro 順序逆転で displayName missing | **修正済 `2be56b4`** (未 deploy) |
+| 4 | **ghost 張り付き**: reconnection で peerId 変わり selectIsDead が stale | 未着手 (案 C) |
+
+共通根因は message order-of-arrival 依存。A / B は修正完了、C (症状 1+4 の
+reconnection 時 ID 同一性問題) は設計変更大きく別セッション。
 
 ### defer 中
 
