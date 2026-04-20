@@ -13,6 +13,7 @@ import {
   HIT_DEBRIS_MAX_LAMBDA,
   LASER_RANGE,
   LIGHT_CONE_HEIGHT,
+  MAX_FROZEN_WORLDLINES,
   MAX_LASERS,
   PROCESSED_LASERS_CLEANUP_THRESHOLD,
   RESPAWN_DELAY,
@@ -27,6 +28,7 @@ import {
   processHitDetection,
   checkCausalFreeze,
   processLaserFiring,
+  ballisticCatchupPhaseSpace,
 } from "../components/game/gameLoop";
 import {
   firePendingKillEvents,
@@ -131,17 +133,59 @@ export function useGameLoop({
     };
 
     const gameLoop = () => {
-      if (document.hidden) {
-        lastTimeRef.current = Date.now();
-        return;
-      }
+      // hidden 中は game loop を skip。lastTimeRef は fresh に保たず、復帰時の
+      // 最初の tick で dTau = hidden 全体の wall delta として ballistic catchup を
+      // 走らせる (下の `if (dTau > 0.2)` branch)。hidden 中に fresh 化する旧実装は
+      // 自 pos.t を universal wall-clock から drift させていた。
+      if (document.hidden) return;
 
       const currentTime = Date.now();
       const dTau = (currentTime - lastTimeRef.current) / 1000;
       lastTimeRef.current = currentTime;
-      // Visibility 遷移直後や setInterval 一時停止の復帰で稀に elevated dt が
-      // 混入する場合の防御。> 200 ms のティックは 1 フレーム捨てる (input/physics skip)。
-      if (dTau > 0.2) return;
+      // 大 dTau (hidden 復帰 / setInterval 一時停止復帰) は ballistic catchup で
+      // 吸収: 自機は thrust 入力なし・friction のみで phaseSpace を前進、worldLine は
+      // freeze + 1 点 reset で clean 切断。他 peer の phaseSpace は受信ハンドラで独立に
+      // 更新される。入力・laser・LH AI・衝突判定・描画状態更新はこの frame で skip。
+      if (dTau > 0.2) {
+        const store = useGameStore.getState();
+        const me = store.players.get(myId);
+        if (me && !me.isDead) {
+          const newPhaseSpace = ballisticCatchupPhaseSpace(me.phaseSpace, dTau);
+          store.setPlayers((prev) => {
+            const cur = prev.get(myId);
+            if (!cur) return prev;
+            if (cur.worldLine !== me.worldLine) return prev; // respawn race guard
+            const next = new Map(prev);
+            next.set(myId, {
+              ...cur,
+              phaseSpace: newPhaseSpace,
+              // 既存 history を捨てて 1 点から再スタート。
+              // (凍結側は下の setFrozenWorldLines で保存する)
+              worldLine: { ...cur.worldLine, history: [newPhaseSpace] },
+            });
+            return next;
+          });
+          // 既存 worldLine が空でなければ凍結 (messageHandler の gap reset と同じ semantic)。
+          if (me.worldLine.history.length > 0) {
+            store.setFrozenWorldLines((prev) =>
+              [...prev, {
+                playerId: myId,
+                worldLine: me.worldLine,
+                color: me.color,
+              }].slice(-MAX_FROZEN_WORLDLINES),
+            );
+          }
+          // network に catchup 後の phaseSpace を通知。受信側は gap 検出で
+          // 自動 freeze + 新セグメント開始する。
+          sendToNetwork({
+            type: "phaseSpace" as const,
+            senderId: myId,
+            position: newPhaseSpace.pos,
+            velocity: newPhaseSpace.u,
+          });
+        }
+        return;
+      }
 
       const store = useGameStore.getState();
 

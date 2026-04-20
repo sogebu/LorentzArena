@@ -152,6 +152,43 @@ export function processPlayerPhysics(
   };
 }
 
+/**
+ * タブ hidden 復帰時の ballistic catchup。thrust 入力なしで friction のみ適用し、
+ * phaseSpace を sub-step で前進させる。
+ *
+ * 目的: hidden 中は game loop が tick しないため、単純に `lastTimeRef` を fresh に
+ * 保つ従来実装だと自 pos.t が他 peer と drift する (= 症状 5 と同系の副作用)。
+ * hidden も「プレイヤーは coast (操縦入力なし) していた」として pos.t・u・x を
+ * 連続に進めることで universal wall-clock と自 proper time が乖離しない。
+ *
+ * sub-step 幅 `STEP = 0.1s` は通常 tick の skip 閾値 (0.2s) より小さく、friction の
+ * 数値安定性 (FRICTION_COEFFICIENT = 0.5 → 時間定数 2s、STEP*FRICTION < 0.05 で線形
+ * 近似誤差 < 0.1%) を確保。worldLine は呼び出し側が freeze + 1 点 reset で clean に
+ * 連続化させる (渡さない、返さない)。
+ *
+ * 非常に長い hidden (例えば > 数時間) でも while ループは O(N) で完結する
+ * (N=1 時間 ≈ 36000 iterations、JS 実行時間 < 50ms 想定)。上限指定は現状なし。
+ */
+export function ballisticCatchupPhaseSpace(
+  ps: ReturnType<typeof createPhaseSpace>,
+  totalDTau: number,
+): ReturnType<typeof createPhaseSpace> {
+  const STEP = 0.1;
+  let current = ps;
+  let remaining = totalDTau;
+  while (remaining > 1e-6) {
+    const step = Math.min(STEP, remaining);
+    const friction = createVector3(
+      -current.u.x * FRICTION_COEFFICIENT,
+      -current.u.y * FRICTION_COEFFICIENT,
+      0,
+    );
+    current = evolvePhaseSpace(current, friction, step);
+    remaining -= step;
+  }
+  return current;
+}
+
 // --- Lighthouse AI ---
 
 export interface LighthouseResult {
