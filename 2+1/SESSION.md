@@ -2,7 +2,22 @@
 
 ## 現在のステータス
 
-対戦可能。**`03bd0f0` デプロイ済み** (build `2026/04/20 08:42:14 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**デプロイ済み** (build `2026/04/20 09:02:42 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+
+2026-04-20 (灯台光源 + Lobby ship preview + ShipPreview 抽出):
+- **光源を灯台に配置**: `GameLights` に `positions` prop 追加、SceneContent で各灯台の
+  過去光円錐交差点 (= LighthouseRenderer が塔を置く位置) の display 座標を毎 frame 計算して
+  渡す。複数灯台なら複数灯 (将来対応)、灯台ゼロ / 観測者未設定時は default static
+  `(-5, -5, -5)` に fallback。`decay={0}` 維持 (遠近で明度変えたくなった時にここで調整)。
+- **Lobby に自機 3D プレビュー背景**: ShipViewer の Canvas 部分を `ShipPreview.tsx` に切り出し、
+  ShipViewer と Lobby で共有。Lobby は `top: -25vh, height: 100vh` で container を viewport 上に
+  はみ出させ、canvas 幾何中央を 25vh 付近に → 船が title より上にレンダ (縮小なし、船自体の
+  見た目は ShipViewer と同じ)。`pointerEvents: none` で input / button を塞がず、zIndex 0 で
+  コンテンツ wrapper (zIndex 1) の下に敷く。
+- **ShipPreview props**: `autoRotate` / `showGrid` / `bgColor` / `interactive` / `cameraPosition`
+  / `cameraTarget` / `thrustAccelRef` / `cameraYawRef` を受け付け、ShipViewer の UI state を
+  そのまま橋渡し。ShipPreview は GameLights を内部 import するので、ライティング変更は Lobby /
+  ShipViewer / ゲーム本体の 3 箇所すべてに即時反映。
 
 2026-04-20 (cannon / 機体 redesign + ライティング rig 共通化):
 - **砲本体 1/2 相似スケール**: BARREL radius 0.035→0.025 / length 2.3→2.5 (実質原初 5.0 からは半分)、

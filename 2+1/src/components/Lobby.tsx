@@ -4,6 +4,7 @@ import { useI18n, type Lang } from "../i18n";
 import { LIGHTHOUSE_DISPLAY_NAME } from "./game/lighthouse";
 import { getTopScores, type HighScoreEntry } from "../services/highScores";
 import { fetchLeaderboard } from "../services/leaderboard";
+import { ShipPreview } from "./ShipPreview";
 
 declare const __BUILD_TIME__: string;
 
@@ -55,6 +56,37 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
         color: "white",
       }}
     >
+      {/* 背景: 自機 3D preview (くるくる auto-rotate)、フルスクリーン。pointerEvents は
+          ShipPreview 側で none、UI の input / button をブロックしない。zIndex 0 で背景層、
+          UI コンテンツは下の wrapper で zIndex 1 に持ち上げる。 */}
+      {/* container を `top: -25vh` で viewport 上にはみ出させると、canvas の幾何中央
+          (= 船がレンダされる位置) が実 viewport の ~25vh (= title より上) に来る。
+          camera / target は default のまま = ship はサイズ不変で orbit 挙動も自然。 */}
+      <div
+        style={{
+          position: "absolute",
+          top: "-25vh",
+          left: 0,
+          right: 0,
+          height: "100vh",
+          zIndex: 0,
+        }}
+      >
+        <ShipPreview bgColor="transparent" />
+      </div>
+
+      <div
+        style={{
+          position: "relative",
+          zIndex: 1,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          width: "100%",
+          height: "100%",
+        }}
+      >
       {/* Language toggle */}
       <div
         style={{
@@ -244,6 +276,7 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
           ))}
         </div>
       )}
+      </div>
     </div>
   );
 };

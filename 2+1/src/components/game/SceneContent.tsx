@@ -273,6 +273,27 @@ export const SceneContent = ({
     [observerPos, observerBoost],
   );
 
+  // 光源位置: 各灯台の過去光円錐交差点 (= LighthouseRenderer が塔を置く位置) の
+  // display 座標。灯台がゼロ / 観測者未設定なら undefined を渡して GameLights の
+  // DEFAULT にフォールバック。複数灯台なら複数灯。
+  const lightPositions = useMemo<
+    readonly [number, number, number][] | undefined
+  >(() => {
+    if (!observerPos) return undefined;
+    const positions: [number, number, number][] = [];
+    for (const player of playerList) {
+      if (!isLighthouse(player.id)) continue;
+      const intersection = pastLightConeIntersectionWorldLine(
+        player.worldLine,
+        observerPos,
+      );
+      const anchorWorld = intersection ? intersection.pos : player.phaseSpace.pos;
+      const dp = transformEventForDisplay(anchorWorld, observerPos, observerBoost);
+      positions.push([dp.x, dp.y, dp.t]);
+    }
+    return positions.length > 0 ? positions : undefined;
+  }, [playerList, observerPos, observerBoost]);
+
   return (
     <DisplayFrameProvider
       observerU={observerU}
@@ -280,7 +301,7 @@ export const SceneContent = ({
       observerPos={observerPos}
       displayMatrix={displayMatrix}
     >
-      <GameLights />
+      <GameLights positions={lightPositions} />
 
       {/* 時空星屑 (4D event cloud、world-frame 静止、periodic boundary で無限供給) */}
       <StardustRenderer />

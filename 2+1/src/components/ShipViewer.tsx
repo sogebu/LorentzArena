@@ -1,63 +1,25 @@
-import { Canvas, useThree } from "@react-three/fiber";
-import { useEffect, useRef, useState } from "react";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { createVector3, createVector4, type Vector3 } from "../physics";
-import { GameLights } from "./game/GameLights";
-import { SelfShipRenderer } from "./game/SelfShipRenderer";
+import { useRef, useState } from "react";
+import { createVector3, type Vector3 } from "../physics";
+import { ShipPreview } from "./ShipPreview";
 
 /**
  * 機体デザイン専用の standalone preview。ゲーム本体の context (PeerProvider /
- * GameStore / 光円錐 etc.) を一切起動せず、`SelfShipRenderer` のみを singular に
- * 表示。three.js 純正 OrbitControls で 360° 回転、auto-rotate ON、grid + axes 付き。
+ * GameStore / 光円錐 etc.) を一切起動せず、`ShipPreview` (Canvas + SelfShipRenderer)
+ * に UI を重ねた iterate 用ビュー。three.js 純正 OrbitControls で 360° 回転、
+ * auto-rotate ON、grid + axes、thrust 入力、BG 切替を UI で操作可能。
  *
  * URL: `#viewer` で起動 (App.tsx で hash 判定)。
  *
  * **drei を使わない理由**: AVG (& 一部のアンチウイルス) が `@react-three/drei` の
  * minified bundle を JS:Prontexi-Z と誤検知して即時隔離するため、Vite optimize の
  * .js が消えて import 失敗 → 真っ白になる事故あり (2026-04-19)。three.js 同梱の
- * `OrbitControls` を直接 useEffect で wire up することで drei bundle を生成させない。
- *
- * thrust 入力は UI ボタンで切り替え (静止 / 8 方向の WASD 相当) → 噴射炎・nozzle 反応
- * のチェックも単独で可能。cameraYaw は固定 0 (機体は常に +x 向き)、観測者 boost なし。
+ * `OrbitControls` を直接 useEffect で wire up することで drei bundle を生成させない
+ * (`ShipPreview` 内で対応)。
  */
-
-const Orbit = ({ autoRotate }: { autoRotate: boolean }) => {
-  const { camera, gl } = useThree();
-  useEffect(() => {
-    const controls = new OrbitControls(camera, gl.domElement);
-    controls.target.set(0, 0, 0);
-    controls.minDistance = 1.5;
-    controls.maxDistance = 20;
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.autoRotate = autoRotate;
-    controls.autoRotateSpeed = 1.2;
-    let raf = 0;
-    const tick = () => {
-      controls.update();
-      raf = requestAnimationFrame(tick);
-    };
-    tick();
-    return () => {
-      cancelAnimationFrame(raf);
-      controls.dispose();
-    };
-  }, [camera, gl, autoRotate]);
-  return null;
-};
 
 export const ShipViewer = () => {
   const thrustAccelRef = useRef<Vector3>(createVector3(0, 0, 0));
   const cameraYawRef = useRef<number>(0);
-
-  const stubPlayer = useRef({
-    id: "preview",
-    phaseSpace: {
-      pos: createVector4(0, 0, 0, 0),
-      u: createVector3(0, 0, 0),
-    },
-    color: "#ffffff",
-  }).current;
 
   type ThrustOption = {
     label: string;
@@ -88,28 +50,15 @@ export const ShipViewer = () => {
   const [bgColor, setBgColor] = useState("#0a0a0f");
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: bgColor }}>
-      <Canvas camera={{ position: [4, -4, 3], up: [0, 0, 1], fov: 45 }}>
-        <GameLights />
-
-        {showGrid && (
-          <gridHelper
-            args={[10, 20, "#3a3a4a", "#1a1a26"]}
-            rotation={[Math.PI / 2, 0, 0]}
-          />
-        )}
-        {showGrid && <axesHelper args={[2.5]} />}
-
-        <SelfShipRenderer
-          player={stubPlayer}
-          thrustAccelRef={thrustAccelRef}
-          cameraYawRef={cameraYawRef}
-          observerPos={stubPlayer.phaseSpace.pos}
-          observerBoost={null}
-        />
-
-        <Orbit autoRotate={autoRotate} />
-      </Canvas>
+    <div style={{ position: "fixed", inset: 0 }}>
+      <ShipPreview
+        autoRotate={autoRotate}
+        showGrid={showGrid}
+        bgColor={bgColor}
+        interactive
+        thrustAccelRef={thrustAccelRef}
+        cameraYawRef={cameraYawRef}
+      />
 
       <div
         style={{
