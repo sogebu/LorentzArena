@@ -441,7 +441,7 @@ describe("buildSnapshot", () => {
     resetStore();
   });
 
-  it("LH ownerId は caller (= beacon holder) に rewrite される", () => {
+  it("isBeaconHolder=true: LH ownerId は caller に強制 rewrite (migration 安全弁)", () => {
     const lhId = `${LIGHTHOUSE_ID_PREFIX}1`;
     const newHostId = "new-host";
     const oldHostId = "old-host";
@@ -454,7 +454,7 @@ describe("buildSnapshot", () => {
       ]),
     });
 
-    const msg = buildSnapshot(newHostId);
+    const msg = buildSnapshot(newHostId, true);
 
     const lhEntry = msg.players.find((p) => p.id === lhId);
     expect(lhEntry).toBeDefined();
@@ -466,5 +466,30 @@ describe("buildSnapshot", () => {
     expect(peerEntry?.ownerId).toBe("peer");
     const meEntry = msg.players.find((p) => p.id === newHostId);
     expect(meEntry?.ownerId).toBe(newHostId);
+  });
+
+  it("Stage 1.5: isBeaconHolder=false (client 送信) は LH ownerId を preserve、自分を主張しない", () => {
+    const lhId = `${LIGHTHOUSE_ID_PREFIX}1`;
+    const bhId = "bh-legit";
+    const clientId = "client-a";
+    useGameStore.setState({
+      players: new Map([
+        // LH の正当な owner は BH
+        [lhId, makePlayer(lhId, 1.0, 0, "#ff0", bhId)],
+        [bhId, makePlayer(bhId, 1.0, 0, "#fff")],
+        [clientId, makePlayer(clientId, 1.0, 0, "#0ff")],
+      ]),
+    });
+
+    // client が自分の局所観測を Stage 1.5 で送る (isBeaconHolder=false)
+    const msg = buildSnapshot(clientId, false);
+
+    const lhEntry = msg.players.find((p) => p.id === lhId);
+    expect(lhEntry).toBeDefined();
+    // LH ownerId は正当な BH を preserve、client の id にしない。
+    // (client が BH 権限を主張するフェイクを送ると BH merge 時に LH 所有権汚染 →
+    //  BH の LH AI 沈黙という catastrophic bug になる)
+    expect(lhEntry?.ownerId).toBe(bhId);
+    expect(lhEntry?.ownerId).not.toBe(clientId);
   });
 });

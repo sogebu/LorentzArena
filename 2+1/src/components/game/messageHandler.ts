@@ -75,7 +75,7 @@ export const createMessageHandler =
       // 新規 join client からの pull retry。host だけが返答する。
       if (!peerManager.getIsBeaconHolder()) return;
       if (!isValidString(senderId)) return;
-      peerManager.sendTo(senderId, buildSnapshot(myId));
+      peerManager.sendTo(senderId, buildSnapshot(myId, true));
       return;
     }
 

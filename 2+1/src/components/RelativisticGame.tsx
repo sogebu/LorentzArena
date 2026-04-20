@@ -178,7 +178,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
           // ここで弾くことで「既存 peer は snapshot を受け取らない」設計を保つ。
           // 真の new joiner は player entry を未保持 → has=false → 送信。
           if (store.players.has(newId)) continue;
-          peerManager.sendTo(newId, buildSnapshot(myId));
+          peerManager.sendTo(newId, buildSnapshot(myId, true));
         }
       }
     }

@@ -960,7 +960,11 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       const connected = peerManager.getConnectedPeerIds();
       const realPeers = connected.filter((id) => id !== roomPeerId);
       if (realPeers.length === 0) return;
-      peerManager.send(buildSnapshot(myId));
+      // isBeaconHolder を明示的に渡す: BH だけが LH ownerId を自分に rewrite する権利を持つ。
+      // client が BH の権限を主張するフェイクを送ると BH 側 merge で LH 所有権が汚染される
+      // (BH の LH AI が沈黙する catastrophic bug)。tick ごとに imperative flag を見る。
+      const isBH = peerManager.getIsBeaconHolder();
+      peerManager.send(buildSnapshot(myId, isBH));
     }, SNAPSHOT_BROADCAST_INTERVAL_MS);
 
     return () => clearInterval(timer);

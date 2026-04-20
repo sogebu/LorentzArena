@@ -13,16 +13,24 @@ import { computeSpawnCoordTime } from "./respawnTime";
 import type { KillEventRecord, RelativisticPlayer, RespawnEventRecord } from "./types";
 
 /**
- * Authority 解体 Stage F: 新規 join peer 1 人に送る state 一式を組み立てる。
+ * Authority 解体 Stage F / Stage 1.5: 周期 reconciliation または新規 join 送信用の
+ * state 一式を組み立てる。
  *
- * beacon holder (= host) が `peerManager.sendTo(newPeerId, buildSnapshot(myId))`
- * で送る。既存 peer には送らない (彼らの state は event log から自己維持)。
+ * Callers:
+ *   - beacon holder (= host) が `peerManager.sendTo(newPeerId, buildSnapshot(myId, true))`
+ *     で新 joiner に送る (Stage F)。
+ *   - 全 peer が 5s 周期で `peerManager.send(buildSnapshot(myId, isBH))` を送る
+ *     (Stage 1 + 1.5)。BH 以外は `isBeaconHolder=false` で呼ぶこと。
  *
- * LH ownerId は caller (= beacon holder) に常時 rewrite する。migration 直後の
- * 1-tick 窓で assumeHostRole() の setPlayers コミットが snapshot 発行より遅れても
- * 新 joiner が古い (死んだ) host を LH owner と見る split を防ぐ。
+ * `isBeaconHolder=true` のとき LH ownerId を caller (= myId) に強制 rewrite する
+ * (migration 直後の 1-tick 窓で assumeHostRole の setPlayers コミットが snapshot
+ * 発行より遅れても、新 joiner が古い死んだ host を LH owner と見る split を防ぐ)。
+ *
+ * `isBeaconHolder=false` (Stage 1.5 の client 送信) のとき LH ownerId は preserve。
+ * クライアントが LH 所有権を主張すべきでなく、主張するとフェイクを BH が merge して
+ * BH 自身の lh.ownerId が汚染され BH の LH AI 沈黙という catastrophic bug になる。
  */
-export const buildSnapshot = (myId: string) => {
+export const buildSnapshot = (myId: string, isBeaconHolder: boolean) => {
   const s = useGameStore.getState();
   // 新 joiner のスポーン時刻は「宇宙の最新時刻」= 全プレイヤーの .pos.t の max。
   // beacon holder が高 γ で座標時間が遅れている / ghosting 等でも正しい時刻が取れる。
@@ -50,8 +58,12 @@ export const buildSnapshot = (myId: string) => {
   }> = [];
 
   for (const [, p] of s.players) {
-    // LH owner は caller (beacon holder) に強制。他プレイヤーは self-own 維持。
-    const ownerId = isLighthouse(p.id) ? myId : p.ownerId;
+    // LH owner: BH caller のみ自分に強制 rewrite (migration 安全弁)。非 BH caller
+    // (Stage 1.5 client) は preserve — 非 BH が LH 所有権を主張すると BH が merge
+    // 時に lh.ownerId を汚染される (BH の LH AI 沈黙の catastrophic bug)。
+    // 人間プレイヤーは常に self-own 維持。
+    const ownerId =
+      isLighthouse(p.id) && isBeaconHolder ? myId : p.ownerId;
     players.push({
       id: p.id,
       ownerId,
