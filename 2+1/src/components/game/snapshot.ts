@@ -208,6 +208,23 @@ export const applySnapshot = (
       ...snapshotOnlyRespawns,
     ].sort((a, b) => a.wallTime - b.wallTime);
 
+    // Stage 1: local-only player の保護。nextPlayers は msg.players から構築される
+    // ため、local store にあるが snapshot に無い entry は素朴に setState すると消失する。
+    // star topology では beacon holder が常に最新 view を持つので理論上発生稀だが、
+    // 以下の race で実害あり:
+    //   - peer X が beacon holder に join → phaseSpace を broadcast → beacon holder が
+    //     relay で他 peer Y に伝搬、の途中で beacon holder が snapshot を build
+    //     (= X が players に入る前の snapshot) → Y は relay 経由で X を既に保持 →
+    //     snapshot 適用で X が 5 秒消える → 次 snapshot で復帰 (= 新 joiner の blip)
+    //   - host migration 過渡期の view 不一致でも同様
+    // local-only entry を nextPlayers に 1 本移植するだけで防げる。snapshot の isDead
+    // 再導出 (下) は merged log ベースなので、local-only entry にも正しく作用する。
+    for (const [id, localPlayer] of store.players) {
+      if (!nextPlayers.has(id)) {
+        nextPlayers.set(id, localPlayer);
+      }
+    }
+
     // isDead を merged log から再導出し、nextPlayers の各 entry に反映する。
     // これが周期 snapshot の中核: missed respawn で local が isDead=true 貼り付きに
     // なっていても、snapshot 経由で respawnLog entry が流入すると latestRespawn >

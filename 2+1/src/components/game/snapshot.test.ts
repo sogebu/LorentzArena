@@ -311,6 +311,29 @@ describe("applySnapshot", () => {
     expect(players.get("victim")?.isDead).toBe(false);
   });
 
+  it("Stage 1: migration path で local-only player は保護される (snapshot に含まれない entry も残る)", () => {
+    const myId = "me";
+    // local: relay 経由で "late-joiner" を受信済だが、beacon holder の snapshot build
+    // は late-joiner が players に入る直前の state で作られた、という race を再現
+    useGameStore.setState({
+      players: new Map([
+        ["me", makePlayer("me", 5.0)],
+        ["late-joiner", makePlayer("late-joiner", 4.5, 77)],
+      ]),
+    });
+
+    // snapshot: late-joiner は含まれていない
+    const msg = makeSnapshot([{ id: "me", posT: 5.0 }]);
+
+    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
+
+    const { players } = useGameStore.getState();
+    // local-only だった late-joiner は保護されて残る (5 秒消えてから復帰の blip 防止)
+    expect(players.has("late-joiner")).toBe(true);
+    expect(players.get("late-joiner")?.phaseSpace.pos.t).toBe(4.5);
+    expect(players.get("late-joiner")?.phaseSpace.pos.x).toBe(77);
+  });
+
   it("Stage 1: migration path で scores は local を保持 (観測者相対性を破壊しない)", () => {
     const myId = "me";
     useGameStore.setState({
