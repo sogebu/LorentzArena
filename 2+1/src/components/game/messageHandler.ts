@@ -188,8 +188,15 @@ export const createMessageHandler =
         return next;
       });
     } else if (msg.type === "snapshot") {
-      // Stage F: syncTime + hostMigration を統合した新規 join 用 state 一式。
-      // バリデーションは applySnapshot 内でも行うが、外周で基本形だけ確認。
+      // 3 経路の union:
+      //   - Stage F: 新規 join client への host 一発送信 (sendTo)
+      //   - Stage 1 (2026-04-20): BH → 全 client への 5s 周期 reconciliation broadcast
+      //   - Stage 1.5 (2026-04-21): 全 peer → conns への 5s 周期 peer 貢献 snapshot
+      //     (client → BH 方向も open、BH が各 peer の局所観測を union-merge)
+      // いずれも applySnapshot 内 isMigrationPath 分岐で union-merge + isDead 再導出が
+      // 走るので sender authority に依らず安全。senderId は intentionally check しない
+      // (Stage 1.5 で「peer 貢献を歓迎」方向に反転)。validation は applySnapshot 内でも
+      // 行うが、外周で基本形だけ確認。
       if (
         !isFiniteNumber(msg.hostTime) ||
         !msg.scores ||

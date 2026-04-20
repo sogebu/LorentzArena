@@ -313,11 +313,86 @@ strict gt、整合)。
 
 ## 次セッションで最初にやること (改訂)
 
-1. **odakin が localhost で Stage 1 を 2 タブ検証** → OK なら deploy (`4ef4fca` + `55401f4`)
+1. **odakin が localhost で Stage 1 + 1.5 を 2 タブ検証** → OK なら deploy (`4ef4fca` + `55401f4` + Stage 1.5)
 2. deploy 後の本番実戦で B' / 症状 4 が自動解消されるか観測
-3. **Stage 2 (host self-verification)** 着手 — 症状 1 の自動解消を狙う。Bug B (snapshot sender 未検証) も併せて修正
+3. **Stage 2 (host self-verification)** 着手 — 症状 1 の自動解消を狙う
 4. Stage 3 (stale GC) は Stage 2 実装中の設計判断で進捗見極め
 5. 3+ peer latent 疑念 (§Stage 1 深掘り bug audit) は Stage 2 調査時に検証
+
+## Stage 1.5 — peer 貢献 snapshot (pseudo-mesh) — 2026-04-21
+
+### 動機: Stage 1 は BH 独り舞台 → 対称性が低く、BH 自身の missed event は救済できない
+
+Stage 1 設計 (BH が snapshot を broadcast、client は受け取るだけ) は、BH が受信
+取りこぼし (例: client A の kill message が BH に届かず client B に届いた) した
+場合、BH 発の snapshot には該当 entry が無いため全 client が BH の視点を共有して
+missed のまま固定される。BH の観測が global truth になってしまう。
+
+### 洞察: 頻度で通信形態の semantics を分けるのが自然
+
+- **phaseSpace / kill / respawn (高頻度 ~125Hz / sparse events)**: order/latency
+  sensitive → star 経由 (BH relay)、owner-authoritative
+- **snapshot (低頻度 0.2Hz)**: eventual consistency で十分、多ソース冗長性が効く
+  → peer 貢献型 reconciliation (pseudo-mesh)
+
+これは distributed systems で standard な "leader-based strong consistency +
+gossip eventual consistency" のハイブリッド。Raft + gossip の classic 構成。
+
+相対論的にも味わい深い: 自分の局所観測 (phaseSpace) は owner-authoritative、
+しかし reconciliation には "universal frame" がない — 全員が自分の view を
+送って union-merge する方が "局所観測の集合" として自然。
+
+### 設計比較 (5 軸)
+
+| 軸 | Stage 1 (BH 独り舞台) | Stage 1.5 (BH merger) | full mesh |
+|---|---|---|---|
+| 対称性 | BH 非対称 | 全員送信 ✓ | 完全対称 ✓✓ |
+| 効率性 | BH O(N) | BH O(N) 維持 ✓ | 全員 O(N²) |
+| クリーンさ | 単純 | 頻度で役割分離 ✓ | 完全分離 ✓ |
+| シンプルさ | 現状 | **guard 1 行撤去** | mesh 接続管理 +100 LOC |
+| 堅牢性 | BH 単独視点 | BH が全 peer 観測から merge ✓ | BH downtime でも継続 |
+
+Stage 1.5 は "guard 1 行撤去でほぼ完成" の甘い spot。full mesh の真の BH-downtime
+resilience は現スケール (2-4 peer、BH tab-hidden は HOST_HIDDEN_GRACE で既に対応
+済) では ROI 低く defer。
+
+### 実装
+
+**変更**: `PeerProvider.tsx` の snapshot broadcast effect から
+`if (!peerManager.getIsBeaconHolder()) return;` を撤去。全 peer が 5s ごとに
+snapshot を送信する。
+
+**動作 (star topology 上の伝播)**:
+1. client A: `peerManager.send(buildSnapshot(A_view))` → A の conns = {BH} のみに届く
+2. BH: applySnapshot の isMigrationPath 分岐で A の log entry を union-merge
+3. BH の 5s interval: merge 済 state から snapshot build → 全 client に broadcast
+4. 他 client: BH の enriched snapshot を union-merge
+
+伝播最大 10s (A が BH fire 直後に送信したケース)、平均 5s。
+
+**BH 帯域**: O(N) 維持 (受信 +N-1/5s、送信 N-1/5s 不変)。client 側: +1 送信/5s。
+
+**意図的な設計変更 (Bug B の扱い反転)**: 従来 Bug B (snapshot sender 未検証) は
+リスク扱いだったが、Stage 1.5 では **peer 貢献を歓迎する方向**に反転。`senderId`
+check は意図的に行わない。union-merge + dedup で sender に依らず安全。cooperative
+game 前提の cost/benefit。悪意ある peer が偽 entry を入れるリスクは残るが、
+現スコープでは許容。
+
+### test
+
+`snapshot.test.ts` に Stage 1.5 動作の end-to-end 的 test を 1 件追加:
+- BH が client (alice) の snapshot を受信 → BH の missed kill が alice の観測から
+  union-merge で流入 → BH 側 `killLog` に entry が追加、`victim.isDead` 再導出で
+  true に遷移、scores は BH の局所値を保持 (観測者相対性)
+
+57/57 pass。typecheck clean。
+
+### Stage 1.5 → full mesh への将来移行可能性
+
+Stage 1.5 の messageHandler は既に "どの peer からの snapshot も受け付ける"
+semantics なので、将来 mesh 接続を追加すれば自動的に mesh snapshot 化する。
+つまり **mesh への stepping stone として設計された**。現在は star 経由だが、
+mesh 接続が確立されれば client→client も直接伝播できる。
 
 ## 再現手順 (現時点で把握している範囲)
 

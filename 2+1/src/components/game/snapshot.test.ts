@@ -311,6 +311,65 @@ describe("applySnapshot", () => {
     expect(players.get("victim")?.isDead).toBe(false);
   });
 
+  it("Stage 1.5: client の snapshot を BH が受信 → BH の missed kill が client 側観測から union-merge 流入", () => {
+    // 状況: BH は victim の kill event を message 取りこぼしで保持していない。
+    //       client (alice) は victim の kill を目撃して killLog に保持。
+    //       Stage 1.5 で alice が自分の局所観測 snapshot を BH に送信 → BH が merge して
+    //       他 client の missed kill を自動救済できる経路が開く。
+    const bhId = "bh";
+    useGameStore.setState({
+      players: new Map([
+        ["bh", makePlayer("bh", 5.0)],
+        ["alice", makePlayer("alice", 5.0)],
+        ["victim", makePlayer("victim", 5.0)],
+      ]),
+      killLog: [], // BH は kill を取り逃している
+      respawnLog: [],
+      scores: { bh: 0, alice: 0 },
+    });
+
+    // alice の局所観測 snapshot: victim を目撃した kill entry を保持
+    const aliceSnapshot: SnapshotMsg = {
+      ...makeSnapshot([
+        { id: "bh", posT: 5.0 },
+        { id: "alice", posT: 5.0 },
+        { id: "victim", posT: 5.0 },
+      ]),
+      killLog: [
+        {
+          victimId: "victim",
+          killerId: "alice",
+          hitPos: { t: 3.0, x: 0, y: 0, z: 0 },
+          wallTime: 1500,
+          victimName: "Victim",
+          victimColor: "#fff",
+          firedForUi: true, // alice 側では発火済
+        },
+      ],
+      scores: { alice: 1 }, // alice 観測者視点の scores (BH が上書きされないことも確認)
+    };
+    // alice の view では victim は isDead (alice が殺した直後)
+    const victimEntry = aliceSnapshot.players.find((p) => p.id === "victim");
+    if (victimEntry) victimEntry.isDead = true;
+
+    // BH が alice の snapshot を受信 (Stage 1.5 で新たに開く経路)
+    applySnapshot(bhId, aliceSnapshot, () => "#fff", makeLastUpdateRef());
+
+    const state = useGameStore.getState();
+    // BH の killLog に alice 観測の kill が union-merge される
+    expect(state.killLog).toHaveLength(1);
+    expect(state.killLog[0].victimId).toBe("victim");
+    expect(state.killLog[0].killerId).toBe("alice");
+    // receiver (BH) 側 past-cone 未到達なので firedForUi=false で追加
+    expect(state.killLog[0].firedForUi).toBe(false);
+    // victim の isDead は merged log から再導出され true になる (BH も victim を dead と認識)
+    expect(state.players.get("victim")?.isDead).toBe(true);
+    // scores は BH の観測相対 (alice の観測の 1 で上書きされず、BH 初期値 0 のまま)。
+    // 実際には次 game tick で firePendingKillEvents が BH の past-cone 到達で alice に +1 する。
+    expect(state.scores.bh).toBe(0);
+    expect(state.scores.alice).toBe(0);
+  });
+
   it("Stage 1: migration path で local-only player は保護される (snapshot に含まれない entry も残る)", () => {
     const myId = "me";
     // local: relay 経由で "late-joiner" を受信済だが、beacon holder の snapshot build

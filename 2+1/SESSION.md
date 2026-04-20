@@ -4,9 +4,11 @@
 
 対戦可能。**`c49ce40` デプロイ済み** (build `2026/04/20 18:36:03 JST`)。本番: https://sogebu.github.io/LorentzArena/
 
-**Stage 1 (周期 snapshot broadcast) 完成・未 deploy** (`4ef4fca` + `55401f4`、localhost 検証待ち)。missed event の reconciliation channel が入って B' / 症状 4 (ghost 張り付き) / 未来の類似 bug を自動救済する。詳細と段階設計 (Stage 2/3) は `plans/2026-04-20-multiplayer-state-bugs.md`。
+**Stage 1 + 1.5 完成・未 deploy** (localhost 検証待ち)。5s 周期 snapshot で missed event の reconciliation channel が入り、B' / 症状 4 / 類似 bug を自動救済。Stage 1.5 で全 peer が snapshot 貢献 → BH が union-merge → BH 単独視点依存が解消。詳細・段階設計 (Stage 2/3): `plans/2026-04-20-multiplayer-state-bugs.md`。
 
 ## 本日 (2026-04-20〜21) の主要 entry
+
+**Stage 1.5 peer 貢献 snapshot**: 全 peer が 5s ごとに snapshot 送信、BH が union-merge して enriched snapshot を再配信。高頻度 (phaseSpace=star) / 低頻度 (snapshot=peer 貢献) で通信形態を分ける。`getIsBeaconHolder()` guard 1 行撤去 + test 1 件。BH 帯域 O(N) 維持、BH missed event を他 peer 観測から自動救済。Vitest 57/57。
 
 `55401f4` **Stage 1 bug audit fix**: snapshot 適用で local-only player (local store にあるが snapshot に含まれない entry) が setState で捨てられる race bug を修正。`nextPlayers` に local-only entry を移植するだけで復旧。test 1 件追加、56/56 pass。
 

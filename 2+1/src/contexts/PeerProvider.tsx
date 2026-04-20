@@ -916,26 +916,48 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     };
   }, [peerManager, connectionPhase, activeTransport, roomPeerId, roleVersion]);
 
-  // Stage 1 (2026-04-20): Periodic snapshot broadcast from beacon holder.
-  // Supplements event-based delivery (kill/respawn/intro) with a reconciliation
-  // channel that recovers from missed transient events. Receivers apply via
-  // applySnapshot's isMigrationPath branch (union-merge logs, preserve scores).
-  // Trigger set: (a) dropped respawn → ghost stuck (B'), (b) dropped intro →
-  // ID-prefix display, (c) missed kill → score drift, (d) migration race windows.
-  // Cost analysis: snapshot payload grows O(kill+respawn log size + players × worldLine).
-  // killLog/respawnLog are tail-sliced (MAX_KILL_LOG/MAX_RESPAWN_LOG) so bounded.
-  // Peer-count × 1/5s = cheap for <10 peer sessions. See plans/2026-04-20-multiplayer-state-bugs.md §Stage 1.
+  // Stage 1.5 (2026-04-21): Peer-contributive periodic snapshot (pseudo-mesh semantics).
+  //
+  // 思想: 頻度で通信形態の semantics を分ける。
+  //   - phaseSpace / kill / respawn (高頻度 ~125Hz / sparse events): owner-authoritative で
+  //     star 経由 (BH relay)。order/latency sensitive。
+  //   - snapshot (低頻度 0.2Hz): 全 peer が貢献する reconciliation channel。各 peer が
+  //     自分の局所観測から snapshot を送信、BH が union-merge して enriched snapshot を
+  //     全 peer に再配信 (*) → missed event が「別 peer の観測にはあった」場合に自動救済。
+  //
+  // (*) client A のときは send() の宛先 = conns = {BH} のみ。BH は受信を applySnapshot で
+  //     merge (既存 isMigrationPath 分岐)。次の BH の 5s tick で merge 済 state から build
+  //     した snapshot を全 client に送信。client は BH の enriched snapshot を merge。
+  //     伝播最大 10s (A が BH の fire 直後に送ったケース)、平均 5s。
+  //
+  // Stage 1 (BH 独り舞台) からの変更: `getIsBeaconHolder()` guard を撤去。全 peer が送信。
+  //
+  // 対称性: A の局所観測 (例: A が目撃した kill) が BH に missed されていても A → BH で
+  // 流入、BH の merged snapshot 経由で C にも到達。BH 単独視点依存が解消。
+  // 効率性: BH 帯域は O(N) 維持 (受信 +N-1/5s、送信は従来通り N-1/5s)。mesh 化の O(N²)
+  // にはならない。client 側帯域: 送信 +1/5s (無視できる)。
+  // 堅牢性: BH が kill/respawn を取り逃した state を各 peer の snapshot から自動復元。
+  // 真の BH downtime resilience (BH 停止中の reconciliation 継続) は full mesh が必要で
+  // defer。現スケール (2-4 peer) では BH tab-hidden 時の HOST_HIDDEN_GRACE + migration で
+  // 実用充分。
+  //
+  // Trigger set: 従来 (a) dropped respawn → ghost stuck (B'), (b) dropped intro, (c) missed
+  // kill → score drift, (d) migration race に加え、(e) BH 視点で観測されていない event の
+  // 他 peer からの回復 を獲得。
+  //
   // biome-ignore lint/correctness/useExhaustiveDependencies: roleVersion forces re-eval on role change
   useEffect(() => {
     if (!peerManager) return;
     if (!myId) return;
     if (connectionPhase !== "connected") return;
-    if (!peerManager.getIsBeaconHolder()) return;
+    // Stage 1.5: BH-only guard を撤去。client も含め全 peer が snapshot を送信する。
+    // BH: conns = 全 client → enriched snapshot を全員に配信
+    // client: conns = {BH} → 自分の局所観測を BH に寄せて merge してもらう
 
     const timer = setInterval(() => {
-      // 他 peer 0 人なら broadcast する意味無し (自分に送信されない実装だが無駄な buildSnapshot 呼び出しを避ける)
+      // 他 peer 0 人なら送信する意味無し (自分に送信されない実装だが無駄な buildSnapshot
+      // 呼び出しを避ける)。la-{roomName} beacon peer のみの場合 (実質 solo) も skip。
       const connected = peerManager.getConnectedPeerIds();
-      // la-{roomName} beacon peer のみの場合 (実質 solo) も skip
       const realPeers = connected.filter((id) => id !== roomPeerId);
       if (realPeers.length === 0) return;
       peerManager.send(buildSnapshot(myId));
