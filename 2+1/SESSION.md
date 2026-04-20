@@ -2,11 +2,13 @@
 
 ## 現在のステータス
 
-対戦可能。**`10316c0` デプロイ済み** (build `2026/04/21 06:58:50 JST`)。本番: https://sogebu.github.io/LorentzArena/
+対戦可能。**Stage 2 実装完了・localhost 2 tab 検証 OK**。本番: https://sogebu.github.io/LorentzArena/
 
-**Stage 1 + 1.5 完成・deploy 済**。5s 周期 snapshot で missed event の reconciliation channel が入り、B' / 症状 4 / 類似 bug を自動救済。Stage 1.5 で全 peer が snapshot 貢献 → BH が union-merge → BH 単独視点依存が解消。本番実戦で効果観察中。詳細・段階設計 (Stage 2/3): `plans/2026-04-20-multiplayer-state-bugs.md`。
+**Stage 1 + 1.5 + 2 完成**。Stage 2 で症状 1 (host split) の自動解消が入り、visibility 復帰時の PeerServer race で両 peer が BH と信じる状態を能動 probe で検出・demote。localhost 実機検証で split 発生 → 自動復旧シーケンスが確認できた。詳細・残り段階設計 (Stage 3): `plans/2026-04-20-multiplayer-state-bugs.md`。
 
 ## 本日 (2026-04-20〜21) の主要 entry
+
+`305d779` **Stage 2 host self-verification probe**: tab-hidden 復帰の ~1s 窓で PeerServer race により両 peer が BH と信じる split-brain を能動的に検出・自動解消。使い捨て `probe-*` PeerManager で `la-{roomName}` に接続 → redirect で realHostId 取得 → myId と比較、split なら `performDemotion` で末端処理 (redirect broadcast → clearBeaconHolder → reconnect → roleVersion bump)。主 trigger = visibilitychange→visible (race の唯一の窓)、副 trigger = 30s setInterval (network blip 汎用)、timeout 8s で false-positive demote 回避。既存 `demoteToClient` 末端 5 ステップを `performDemotion(pm, realHostId, onRoleChange)` helper に extract して probe と共有。localhost 2 tab で T1 regression OK / T2 で意図せず split 発生→自動解消観察 / T3 明示 split OK / T4 solo host OK。58/58 pass。
 
 `c9503a4` + `76ba182` **Stage 1.5 peer 貢献 snapshot + audit fix**: 全 peer が 5s 周期で snapshot 送信、BH が union-merge して enriched snapshot を再配信。高頻度 (phaseSpace=star) / 低頻度 (snapshot=peer 貢献) で通信形態を分ける。`getIsBeaconHolder()` guard 1 行撤去で実現。BH 帯域 O(N) 維持、BH missed event を他 peer 観測から自動救済。深掘り audit で発見した critical bug (client 送信時の `buildSnapshot` が LH.ownerId を自分に rewrite → BH merge で LH 所有権汚染 → BH の LH AI 沈黙) を `76ba182` で fix (`isBeaconHolder` 引数追加)。58/58 pass。
 
@@ -40,7 +42,7 @@
 
 | # | 症状 | 状態 |
 |---|---|---|
-| 1 | host split (両 peer が自分を host と認識) | Stage 2 待ち (host self-verify) |
+| 1 | host split (両 peer が自分を host と認識) | **修正済 `305d779`** (Stage 2 自動解消) |
 | 2 | 他 player respawn 消失 | **修正済 `8ce595f`** |
 | 3 | 撃破数リストに peer ID prefix | **修正済 `2be56b4` + `e9171c4`** |
 | 4 | ghost 張り付き (missed respawn → isDead 貼り付き) | **Stage 1 `4ef4fca` で自動救済予定** |
@@ -72,8 +74,7 @@
 
 ## 次にやること
 
-- **本番実戦観察**: Stage 1 + 1.5 deploy 済、B' / 症状 4 の自動解消度合いを確認
-- **Stage 2 (症状 1)**: host self-verification。visibility-triggered probe + 30s backup で split 検出、既存 demotion 末端処理を extract して再利用。真因 (beacon set-and-forget + PeerServer race) と設計詳細・alt 案・付随作業 は `plans/2026-04-20-multiplayer-state-bugs.md §Stage 2 設計` 参照。~50-70 LOC 見積。別セッション着手
+- **本番実戦観察**: Stage 1 + 1.5 + 2 deploy 後、症状 1 (host split) / B' / 症状 4 の自動解消度合いを確認
 - **Stage 3 (症状 4 残存分)**: stale player GC (freeze 後さらに 15s 無通信 → removePlayer)。~15 LOC
 - **3+ peer latent**: RelativisticGame §201-217 の peer removal が client 同士 mesh 無しを前提で設計、3+ client 時に他 client が 3s grace 後に削除される疑念。Stage 1.5 の 5s snapshot で再補充されれば緩和。Stage 2 実機テスト時に観察
 - **進行方向可視化 分岐 A**: 他機 exhaust (phaseSpace に共変 α^μ 同梱、`Λ(u_own)` boost / `Λ(u_obs)^{-1}` 戻し)、AccelerationArrow 他機展開 (要設計再考)
