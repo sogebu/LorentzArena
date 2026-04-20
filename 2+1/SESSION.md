@@ -72,10 +72,10 @@
 
 ## 次にやること
 
-- **Stage 1 localhost 検証** → OK なら deploy → 本番実戦で B' / 症状 4 が自動解消されるか観測
-- **Stage 2 (症状 1)**: host self-verification (beacon probe で奪取検出 → 既存 demoteToClient 再利用)。~40 LOC 見込み。plan 参照
+- **本番実戦観察**: Stage 1 + 1.5 deploy 済、B' / 症状 4 の自動解消度合いを確認
+- **Stage 2 (症状 1)**: host self-verification。visibility-triggered probe + 30s backup で split 検出、既存 demotion 末端処理を extract して再利用。真因 (beacon set-and-forget + PeerServer race) と設計詳細・alt 案・付随作業 は `plans/2026-04-20-multiplayer-state-bugs.md §Stage 2 設計` 参照。~50-70 LOC 見積。別セッション着手
 - **Stage 3 (症状 4 残存分)**: stale player GC (freeze 後さらに 15s 無通信 → removePlayer)。~15 LOC
-- **3+ peer 時の latent 疑念**: RelativisticGame §201-217 の peer removal が client 同士 mesh していない前提で設計されていて、3+ client 時に他 client が 3s grace 後に削除される可能性。周期 snapshot で緩和されるかは要観察、Stage 2 調査時に併せて
+- **3+ peer latent**: RelativisticGame §201-217 の peer removal が client 同士 mesh 無しを前提で設計、3+ client 時に他 client が 3s grace 後に削除される疑念。Stage 1.5 の 5s snapshot で再補充されれば緩和。Stage 2 実機テスト時に観察
 - **進行方向可視化 分岐 A**: 他機 exhaust (phaseSpace に共変 α^μ 同梱、`Λ(u_own)` boost / `Λ(u_obs)^{-1}` 戻し)、AccelerationArrow 他機展開 (要設計再考)
 - **進行方向可視化 分岐 B/C**: sphere + heading-dart (案 14) / star aberration skybox (案 16)、default frame 選択。詳細: `EXPLORING.md §進行方向・向きの認知支援`
 - **フルチュートリアル** (必須、初見 UX、B3 とは別)
