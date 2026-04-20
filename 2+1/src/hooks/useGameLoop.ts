@@ -332,7 +332,20 @@ export function useGameLoop({
       setIsFiring(wantsFire && energy >= ENERGY_PER_SHOT);
 
       // S-5: stale 検知は死亡中も走らせる（他プレイヤーの stale を検知するため）
-      stale.checkStale(currentTime, store.players, myId);
+      // Stage 3 (2026-04-21): freeze 後 STALE_GC_THRESHOLD 経過した peer を
+      // players から完全削除する。client は他 peer への直接 connection が無く
+      // (star topology)、RelativisticGame の PEER_REMOVAL_GRACE_MS 経路が発動
+      // しないため、Stage 1.5 peer-contributive snapshot の local 保護が切断
+      // peer を永久存続させていた (Bug X resurrection)。freeze(5s) + GC(15s) =
+      // 計 20s 無通信で removePlayer → 次 snapshot から対象が外れて全 peer が
+      // eventual consistency に収束する。cleanupPeer で stale ref 一式 purge。
+      const gcIds = stale.checkStale(currentTime, store.players, myId);
+      if (gcIds.length > 0) {
+        for (const id of gcIds) {
+          store.removePlayer(id);
+          stale.cleanupPeer(id);
+        }
+      }
 
       // --- Ghost or physics ---
       // Re-read fresh state to avoid stale worldLine after respawn

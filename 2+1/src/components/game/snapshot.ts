@@ -160,7 +160,17 @@ export const applySnapshot = (
       displayName: sp.displayName,
       energy: typeof sp.energy === "number" ? sp.energy : ENERGY_MAX,
     });
-    lastUpdateTimeRef.current.set(sp.id, Date.now());
+    // Stage 3 (2026-04-21): 新規追加時のみ lastUpdate を初期化。既存 entry を
+    // snapshot で refresh すると Stage 3 GC が無効化される — Bug X resurrection で
+    // C の周期 snapshot が BH.lastUpdate[B] を永久に refresh し続け、BH の stale
+    // 検出が発動しないため。snapshot は弱い presence 信号、phaseSpace (直接 or
+    // relay 経由の生存信号) のみが lastUpdate を refresh すべき。
+    // 新規 join: store.players 空 → 全 sp に対してここで初期化 (従来通り)。
+    // 既存 peer (isMigrationPath): 既知 id は skip、未知 id (= 再 add via snapshot
+    // or 新規 peer) のみ初期化 → freeze + GC 時計が正しく回る。
+    if (!store.players.has(sp.id)) {
+      lastUpdateTimeRef.current.set(sp.id, Date.now());
+    }
   }
 
   // displayNames は local と snapshot を merge。snapshot に含まれる ID は上書き
