@@ -232,12 +232,12 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
           ))}
         </div>
       )}
-      {/* Build version (bottom-right, mirrors HUD ControlPanel) */}
+      {/* Build version (top-left、HUD ControlPanel と同じ配置で視線コストを下げる) */}
       <div
         style={{
           position: "absolute",
-          bottom: "12px",
-          right: "16px",
+          top: "10px",
+          left: "10px",
           fontSize: "11px",
           opacity: 0.4,
         }}
