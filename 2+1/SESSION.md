@@ -2,10 +2,10 @@
 
 ## 現在のステータス
 
-対戦可能。**`a1554be` デプロイ済み** (build `2026/04/20 09:17:24 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
+対戦可能。**`9a22fd9` デプロイ済み** (build `2026/04/20 10:28:06 JST`)。本番 URL: https://sogebu.github.io/LorentzArena/
 
-マルチプレイ state バグ 4 点のうち **A / B を local で修正済** (2026-04-20 昼、
-未 deploy、commit `2be56b4` / `8ce595f`)。C (症状 1 + 4) は設計変更大きく別セッション。
+マルチプレイ state バグ 4 点のうち **A / B を修正 + deploy 済** (2026-04-20 昼、
+commit `2be56b4` / `8ce595f`)。C (症状 1 + 4) は設計変更大きく別セッション。
 詳細は ↓ の 2026-04-20 昼 entry + `plans/2026-04-20-multiplayer-state-bugs.md`。
 
 2026-04-20 昼 (マルチプレイ state バグ A + B 修正、未 deploy):
