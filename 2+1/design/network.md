@@ -86,6 +86,94 @@ Priority: dynamic (Worker fetch) > static (`VITE_WEBRTC_ICE_SERVERS`) > PeerJS d
 ---
 
 
+## § Snapshot Reconciliation: 頻度で通信形態の semantics を分ける (Stage 1 + 1.5、2026-04-20〜21)
+
+### 問題: transient event delivery 失敗 = 恒久 state divergence
+
+Authority 解体後、`kill` / `respawn` / `intro` などのイベントは owner-authoritative に one-shot 送信される。delivery が 1 発落ちると (packet loss / migration race / tab flip)、受信側は永久にその event を知らないまま固定される。具体症状:
+
+- **missed respawn → ghost 張り付き (B')**: 受信側に kill だけが届いて respawn が落ちると、`player.isDead=true` が固定され、その後 victim の phaseSpace はすべて `messageHandler.ts §151` の `if (existing?.isDead) return prev` で無視される。victim は復活しても受信者には永遠に消えたまま。
+- **missed intro → 撃破数リストの peer ID prefix 表示**
+- **missed kill → 観測者相対 score の恒久 drift**
+
+単発の event delivery に全信頼を置く設計が構造的に脆弱。再送 / ack / ordering guarantee を入れる方向もあるが重い。
+
+### 思想: 頻度で通信形態の semantics を分ける
+
+**core idea**: データの性質ごとに通信形態を分ける。distributed systems の古典パターン (Raft/Paxos で強一貫性、Gossip で eventual 一貫性) の直接的適用。
+
+- **高頻度 stream (~125Hz)**: `phaseSpace` / `laser` / `kill` / `respawn` → **star (BH relay)**、owner-authoritative、order/latency sensitive
+- **低頻度 state sync (0.2Hz)**: `snapshot` → **peer 貢献型 reconciliation**、eventual consistency で十分、多ソース冗長性が効く
+
+**相対論的 resonance**: 自分の局所観測 (phaseSpace) は owner-authoritative (frame-relative)、しかし reconciliation には "universal frame" がない — 全 peer が自分の view を送って union-merge する方が "局所観測の集合" として自然。ゲームテーマとの美学的整合。
+
+### 段階設計: Stage 1 (BH 独り舞台) → Stage 1.5 (peer 貢献)
+
+**Stage 1** (`4ef4fca` + `55401f4`): beacon holder だけが 5 秒ごとに `buildSnapshot` を broadcast。受信側は `applySnapshot` の `isMigrationPath` 分岐で **log union-merge + isDead 再導出 + scores 保持**。missed respawn 等は次 snapshot で自動救済。
+
+- 既存の「新規 join 用 sendTo」経路を `setInterval(peerManager.send, 5000)` に拡張。isMigrationPath 分岐は既に `2be56b4` で導入済の防御的 merge を流用
+- **scores は local 保持**: `firePendingKillEvents` が過去光円錐到達で各観測者独立に加算する観測者相対量。snapshot で上書きすると相対論的独立性が壊れる
+- **isDead 再導出**: `player.isDead` field を直接 merge せず、merged killLog/respawnLog から `selectIsDead` と同じ論理で再計算。これが missed respawn 自動救済の中核
+- **Bug A (local-only player)**: `nextPlayers` が `msg.players` からのみ構築されると local store の entry が捨てられる race。relay 遅延で new joiner が一瞬消える可能性あり `55401f4` で修正 (局所 entry preserve)
+
+**Stage 1.5** (`c9503a4`): Stage 1 の限界 = **BH 自身の missed event は救済できない** (全 client が BH の視点を共有するだけ)。`getIsBeaconHolder()` guard を撤去して全 peer が snapshot を送信するよう反転。動作:
+
+1. client A: `peerManager.send(buildSnapshot)` → A の conns = {BH} のみに届く (star topology)
+2. BH: `applySnapshot` で A の log entry を union-merge → BH の state が enriched
+3. BH の 5s interval: merge 済 state から snapshot build → 全 client に broadcast
+4. 他 client: BH の enriched snapshot を union-merge
+
+伝播最大 10s (A が BH fire 直後送信)、平均 5s。BH 帯域 O(N) 維持 (mesh の O(N²) にはならない)。
+
+### 設計判断: full mesh ではなく pseudo-mesh (BH merger) を選んだ理由
+
+5 軸で候補を比較:
+
+| 軸 | Stage 1 (BH 独り舞台) | **Stage 1.5 (BH merger) ← 採用** | full mesh |
+|---|---|---|---|
+| 対称性 | BH 非対称 | 全員 snapshot 送信 ✓ | 完全対称 ✓✓ |
+| 効率性 | BH O(N) | BH O(N) 維持 ✓ | 全員 O(N²) |
+| クリーンさ | 単純 | 頻度で役割分離 ✓ | 完全分離 ✓ |
+| シンプルさ | 現状 | **guard 1 行撤去** | mesh 接続管理 +100 LOC |
+| 堅牢性 | BH 単独視点 | BH が全 peer 観測から merge ✓ | BH downtime でも継続 |
+
+full mesh の追加 robustness (BH 停止中の reconciliation 継続) は現スケール (2-4 peer、BH tab-hidden は `HOST_HIDDEN_GRACE` で既に対応済) では ROI 低く defer。
+
+**将来の full mesh 移行**: Stage 1.5 の messageHandler は既に "どの peer からの snapshot も受け付ける" semantics。mesh 接続を追加すれば自動的に mesh snapshot 化する (stepping stone として設計)。
+
+### 意図的な設計反転: sender authority check を入れない
+
+Stage 1 時点では「任意の peer が snapshot を送れる」は risk 扱い (Bug B) だった。Stage 1.5 では **peer 貢献を歓迎する方向**に反転。`senderId === beaconHolderId` の check は意図的に行わない。
+
+- union-merge + dedup key `(id, wallTime)` が sender に依らず安全
+- cooperative game 前提の cost/benefit。悪意 peer が偽 entry を入れるリスクは残るが現スコープ許容
+
+### 高頻度通信 (125Hz) と mesh の関係: 帯域は下がらない
+
+"snapshot は peer 貢献、phaseSpace も mesh でいけるのでは?" の検討結果:
+
+- broadcast semantics (全員が全員の update を受ける) では総送信回数 N×(N-1) が下限。star でも mesh でも同じ
+- mesh は **レイテンシ優位** (1 hop vs 2 hop)、125Hz では有意。ただし NAT 越えコスト (TURN 経由時の帯域) も考慮要
+- 帯域を下げる技法は別軸: interest management (past-cone pruning) / delta encoding / gossip trees / Voronoi 距離 pruning
+- このゲームの規模 (2-4 peer、全員互いの光円錐内) では mesh 化で 125Hz 帯域は下がらない
+
+結論: 高頻度 stream は star 継続、低頻度 snapshot のみ peer 貢献化。
+
+### `buildSnapshot(myId, isBeaconHolder)` 引数の意味論
+
+Stage 1.5 実装直後の深掘り audit で発見した catastrophic bug の修正 (`76ba182`)。`buildSnapshot` は LH の ownerId を caller (myId) に強制 rewrite していた (migration 直後の 1-tick race 安全弁)。Stage 1 までは BH のみが呼んでいたので無害だったが、Stage 1.5 で全 peer が呼ぶようになった結果:
+
+- client A が `buildSnapshot(A_id)` → 出力 snapshot の LH.ownerId = A_id
+- BH が受信 → `applySnapshot §167-175` の「local-newer 優先」で snapshot が勝つケース (BH tab hidden / pos.t 拮抗) に BH の local LH.ownerId = A_id に汚染
+- **BH の `lh.ownerId === myId` check が false → BH の LH AI 沈黙**
+
+修正: `isBeaconHolder: boolean` 引数で caller の役割を明示。`true` のときのみ LH.ownerId を自分に rewrite、client は preserve。3 call sites (PeerProvider Stage 1.5 effect は `getIsBeaconHolder()` を動的に渡す / RelativisticGame 新 joiner 送信は true 固定 / messageHandler の snapshotRequest 応答は true 固定)。
+
+**教訓**: "BH 専用" 機能を全 peer で使い回すとき、implicit な BH 前提 (権限主張系のロジック) を引数で明示化する必要がある。Stage 1 → 1.5 で抽出された暗黙 asymmetry の典型例。
+
+---
+
+
 ## § 通信・セキュリティ
 
 ### メッセージバリデーション
