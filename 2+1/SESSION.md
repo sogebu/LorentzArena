@@ -4,13 +4,13 @@
 
 対戦可能。**`c49ce40` デプロイ済み** (build `2026/04/20 18:36:03 JST`)。本番: https://sogebu.github.io/LorentzArena/
 
-マルチプレイ state バグ 5 点 (2026-04-20 本番観測): 症状 2 / 3 / 5 修正 + deploy 済、**hidden 復帰 clock drift** も解消。**Stage 1 (周期 snapshot broadcast) 実装済・未 deploy** (localhost 検証待ち)。残は C (症状 1 + 4)、B' の残存確認。詳細: `plans/2026-04-20-multiplayer-state-bugs.md`。
+**Stage 1 (周期 snapshot broadcast) 完成・未 deploy** (`4ef4fca` + `55401f4`、localhost 検証待ち)。missed event の reconciliation channel が入って B' / 症状 4 (ghost 張り付き) / 未来の類似 bug を自動救済する。詳細と段階設計 (Stage 2/3) は `plans/2026-04-20-multiplayer-state-bugs.md`。
 
-## 作業中 (2026-04-20 夜)
+## 本日 (2026-04-20〜21) の主要 entry
 
-**Stage 1 周期 snapshot broadcast** (未 deploy、localhost 検証待ち): B' / 症状 4 (ghost 張り付き) / 未来の missed-event 類への reconciliation channel。beacon holder が 5 秒ごとに全 peer へ `buildSnapshot` を送信、受信側は `applySnapshot` の isMigrationPath 分岐で **log union-merge + isDead 再導出 + scores 保持** 適用。missed respawn で isDead 貼り付きでも次 snapshot で自動救済される設計。4 files +285/-16、Vitest 55/55。次セッション: odakin 実機 2 タブ検証 → 問題なければ deploy、OK 出たら Stage 2 (host self-verification = 症状 1 対処) に着手。
+`55401f4` **Stage 1 bug audit fix**: snapshot 適用で local-only player (local store にあるが snapshot に含まれない entry) が setState で捨てられる race bug を修正。`nextPlayers` に local-only entry を移植するだけで復旧。test 1 件追加、56/56 pass。
 
-## 本日 (2026-04-20) の主要 entry
+`4ef4fca` **Stage 1 周期 snapshot broadcast**: beacon holder が 5 秒ごとに全 peer へ `buildSnapshot` を送信、受信側は `applySnapshot` の isMigrationPath 分岐で **log union-merge + isDead 再導出 + scores 保持** 適用。missed respawn で isDead 貼り付きでも次 snapshot で自動救済。4 files +285/-16、Vitest 55/55。
 
 `c49ce40` **hidden 復帰 clock drift → ballistic catchup**: `useGameLoop.ts:134` で `document.hidden` 中 `lastTimeRef` を fresh に保っていたのを止め、復帰時 first tick の大 dTau を `ballisticCatchupPhaseSpace` (thrust=0、friction のみ、STEP=0.1s sub-step) で吸収。worldLine は `freeze + 1 点 reset` で clean 切断、catchup 後の phaseSpace を network 通知。scope 外: LH AI catchup (host hidden 中 LH pause 受け入れ) / ghost 経路 (特殊)。test 5 件新規、51/51 pass。
 
@@ -38,13 +38,13 @@
 
 | # | 症状 | 状態 |
 |---|---|---|
-| 1 | host split (両 peer が自分を host と認識) | 未着手 (案 C) |
+| 1 | host split (両 peer が自分を host と認識) | Stage 2 待ち (host self-verify) |
 | 2 | 他 player respawn 消失 | **修正済 `8ce595f`** |
 | 3 | 撃破数リストに peer ID prefix | **修正済 `2be56b4` + `e9171c4`** |
-| 4 | ghost 張り付き (reconnection で selectIsDead stale) | 未着手 (案 C) |
+| 4 | ghost 張り付き (missed respawn → isDead 貼り付き) | **Stage 1 `4ef4fca` で自動救済予定** |
 | 5 | migration & タブ復帰で相手消失 | **修正済 `0066399`** |
 
-共通根因: message order-of-arrival 依存。C (1 + 4) + B' (OtherPlayerRenderer LIVE 消失) は reconnection 時 peerId 再払い出しの設計変更要、別セッション。3 案 (localStorage peerId / playerName primary key / migration 確実化) は plan に記載。
+共通根因: **transient event delivery 失敗 = state 恒久 divergence**。reconciliation 機構が構造的に欠けていた。Stage 1 で周期 snapshot broadcast を追加 → 次 snapshot で自動再同期。Stage 2/3 (host self-verification + stale GC) は plan に段階設計。案 C (playerName primary key) は Stage 1-3 後も残存する UX 課題のみなので defer。
 
 ### defer 中
 
@@ -69,8 +69,10 @@
 
 ## 次にやること
 
-- **C (症状 1 + 4)**: 3 案選定から、plan 議論継続
-- **B' (OtherPlayerRenderer LIVE 消失)**: 症状 5 直撃で合流と予想したが別原因の可能性、単独調査
+- **Stage 1 localhost 検証** → OK なら deploy → 本番実戦で B' / 症状 4 が自動解消されるか観測
+- **Stage 2 (症状 1)**: host self-verification (beacon probe で奪取検出 → 既存 demoteToClient 再利用)。~40 LOC 見込み。plan 参照
+- **Stage 3 (症状 4 残存分)**: stale player GC (freeze 後さらに 15s 無通信 → removePlayer)。~15 LOC
+- **3+ peer 時の latent 疑念**: RelativisticGame §201-217 の peer removal が client 同士 mesh していない前提で設計されていて、3+ client 時に他 client が 3s grace 後に削除される可能性。周期 snapshot で緩和されるかは要観察、Stage 2 調査時に併せて
 - **進行方向可視化 分岐 A**: 他機 exhaust (phaseSpace に共変 α^μ 同梱、`Λ(u_own)` boost / `Λ(u_obs)^{-1}` 戻し)、AccelerationArrow 他機展開 (要設計再考)
 - **進行方向可視化 分岐 B/C**: sphere + heading-dart (案 14) / star aberration skybox (案 16)、default frame 選択。詳細: `EXPLORING.md §進行方向・向きの認知支援`
 - **フルチュートリアル** (必須、初見 UX、B3 とは別)

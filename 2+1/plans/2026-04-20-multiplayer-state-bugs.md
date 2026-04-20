@@ -268,12 +268,56 @@ Stage 1-3 を入れても残るのは **score の reconnection 越え継続性**
   (roleVersion 依存で期待通り動くはず)
 - 5s 間隔が reconciliation 窓として体感的に許容できるか (短すぎる / 長すぎる調整余地)
 
+## Stage 1 深掘り bug audit — 2026-04-21 早朝 (`55401f4`)
+
+Stage 1 実装後に深掘りで発見した bug を audit として記録:
+
+**Bug A (修正済 `55401f4`)**: snapshot 適用で **local-only player が消失する race**。
+`nextPlayers` は `msg.players` からのみ構築されるため、`store.players` にあるが
+snapshot に含まれない entry は setState で捨てられる。star topology では beacon
+holder の view が常に最新なので発生稀だが、以下の race で実害あり:
+- peer X が beacon holder に join → phaseSpace broadcast → beacon holder が relay
+  で他 peer Y に伝搬、の途中で snapshot build (X 未反映) → Y は relay 経由で X を
+  保持 → snapshot 適用で X が 5 秒消える → 次 snapshot で復帰
+- host migration 過渡期の view 不一致でも同様
+
+修正: isMigrationPath 分岐で `nextPlayers` 構築後、`store.players` から nextPlayers
+に無い entry を移植する 4 行。isDead 再導出は merged log ベースなので、preserved
+local-only entry にも正しく作用する。test 1 件追加で regression guard。
+
+**Bug B (defer)**: snapshot message の sender authority 未検証 (pre-existing)。
+`messageHandler.ts` §190-205 の snapshot handler は `senderId === beaconHolderId` を
+チェックしておらず、任意 peer が snapshot を送れる。Stage 1 で周期 5s 化により
+影響拡大の可能性あり。Stage 2 (host self-verification) の一環でまとめて修正予定。
+
+**Bug C (defer)**: `player.displayName` field と `displayNames` map の drift
+(pre-existing、Stage 1 固有ではない)。applySnapshot で snapshot の player entry の
+displayName が undefined なら `player.displayName = undefined` になる一方、
+`mergedDisplayNames` map は local の名前を保持 → mismatch。`handleKill` §227 が
+`victim.displayName ?? slice(0, 6)` にフォールバックし ID prefix 表示になる経路。
+別 issue 化。
+
+**Latent 疑念 (Stage 1 責務外)**: `RelativisticGame.tsx` §201-217 の peer removal
+logic が 3+ client で機能不全の可能性。clients は star topology で直接 mesh を
+張らないため client の `connectedIds = {self, host}`。3+ peer 時に他 client が
+`store.players` にあるが `connectedIds` に無い → 3s grace 後に除去されるはず。
+2 peer テストでは顕在化していない。周期 snapshot (5s) が追加/復帰の役目を果たす
+ので Stage 1 で症状緩和の可能性あり、要実戦観察。Stage 2 着手時に併せて調査。
+
+**確認済み non-bug**: self broadcast loopback (send は自分の conns に送らない) /
+isDead 再導出の self への適用 (merged log で保険として望ましい動作) / roleVersion
+伝搬 (Phase 1 / soloHost / assumeHostRole / demotion 全経路で effect 再実行) /
+帯域 (killLog/respawnLog は MAX_* で cap、<10 peer 許容) / sort mutation (spread
+で新規配列作ってから sort、store 不変) / tie-breaker (既存 selectIsDead と同じ
+strict gt、整合)。
+
 ## 次セッションで最初にやること (改訂)
 
-1. **odakin が localhost で Stage 1 を 2 タブ検証** → OK なら deploy
+1. **odakin が localhost で Stage 1 を 2 タブ検証** → OK なら deploy (`4ef4fca` + `55401f4`)
 2. deploy 後の本番実戦で B' / 症状 4 が自動解消されるか観測
-3. **Stage 2 (host self-verification)** 着手 — 症状 1 の自動解消を狙う
+3. **Stage 2 (host self-verification)** 着手 — 症状 1 の自動解消を狙う。Bug B (snapshot sender 未検証) も併せて修正
 4. Stage 3 (stale GC) は Stage 2 実装中の設計判断で進捗見極め
+5. 3+ peer latent 疑念 (§Stage 1 深掘り bug audit) は Stage 2 調査時に検証
 
 ## 再現手順 (現時点で把握している範囲)
 
