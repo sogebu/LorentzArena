@@ -56,6 +56,7 @@
 - snapshot に `frozenWorldLines` / `debrisRecords` 同梱 — un-defer: リスポーン世界線連続観測時
 - host migration の LH 時刻 anchor 見直し
 - 色調をポップで明るく (方向性未定)
+- スマホ横画面 (fullscreen 表示) 対応 — landscape orientation 前提で HUD / touch UI / viewport を再配置。fullscreen API でアドレスバー / ホームインジケータ退避、safe-area-inset で notch 回避。現状は縦画面前提で横にすると HUD が潰れる
 
 ### パフォーマンス
 
