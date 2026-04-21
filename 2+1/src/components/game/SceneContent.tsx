@@ -3,6 +3,7 @@ import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import {
   futureLightConeIntersectionWorldLine,
+  getVelocity4,
   lorentzBoost,
   pastLightConeIntersectionWorldLine,
   type Vector3,
@@ -13,9 +14,10 @@ import { ArenaRenderer } from "./ArenaRenderer";
 import { DebrisRenderer } from "./DebrisRenderer";
 import { LaserBatchRenderer } from "./LaserBatchRenderer";
 import { LightConeRenderer } from "./LightConeRenderer";
+import { DeadShipRenderer } from "./DeadShipRenderer";
+import { DeathMarker } from "./DeathMarker";
 import { LighthouseRenderer } from "./LighthouseRenderer";
 import { isLighthouse } from "./lighthouse";
-import { OtherPlayerRenderer } from "./OtherPlayerRenderer";
 import { OtherShipRenderer } from "./OtherShipRenderer";
 import { SelfShipRenderer } from "./SelfShipRenderer";
 import { SpawnRenderer } from "./SpawnRenderer";
@@ -26,6 +28,7 @@ import {
   AIM_ARROW_OPACITY_STEP,
   CAMERA_DISTANCE_ORTHOGRAPHIC,
   CAMERA_DISTANCE_PERSPECTIVE,
+  DEATH_TAU_MAX,
   FUTURE_CONE_LASER_TRIANGLE_OPACITY,
   FUTURE_CONE_WORLDLINE_RING_OPACITY,
   FUTURE_CONE_WORLDLINE_SPHERE_OPACITY,
@@ -33,6 +36,7 @@ import {
   LH_INNER_HIDE_RADIUS,
   SHIP_INNER_HIDE_RADIUS,
 } from "./constants";
+import { pastLightConeIntersectionDeathWorldLine } from "./deathWorldLine";
 import {
   buildDisplayMatrix,
   transformEventForDisplay,
@@ -128,9 +132,21 @@ export const SceneContent = ({
   const myDeathEvent = useGameStore((s) => s.myDeathEvent);
 
   const playerList = useMemo(() => Array.from(players.values()), [players]);
-  const myPlayer = useMemo(
+  // myPlayer: 観測者 frame を組み立てるための "effective" player。
+  //   生存中: players.get(myId) そのまま。
+  //   死亡中: phaseSpace を `myDeathEvent.ghostPhaseSpace` に swap (ghost は自由飛行する観測者、
+  //     `players[myId].phaseSpace` は死亡時刻で凍結 = 他者 snapshot と同じ値)。この swap で
+  //     camera / past-cone / Radar 等すべての observer 計算が ghost を追う。
+  const rawMyPlayer = useMemo(
     () => (myId ? (players.get(myId) ?? null) : null),
     [players, myId],
+  );
+  const myPlayer = useMemo(
+    () =>
+      rawMyPlayer?.isDead && myDeathEvent
+        ? { ...rawMyPlayer, phaseSpace: myDeathEvent.ghostPhaseSpace }
+        : rawMyPlayer,
+    [rawMyPlayer, myDeathEvent],
   );
   const observerPos = myPlayer?.phaseSpace.pos ?? null;
   const observerU = useMemo(
@@ -315,34 +331,44 @@ export const SceneContent = ({
         const isMe = player.id === myId;
 
         if (player.isDead) {
-          // Self-dead は myDeathEvent.pos を死亡 event として使う (player.phaseSpace.pos は
-          // ghost 追従で変動するため)。Other-dead は player.phaseSpace.pos (= freeze 済) で OK。
-          const deathEventOverride =
-            isMe && myDeathEvent ? myDeathEvent.pos : undefined;
-          const deathEventPos = deathEventOverride ?? player.phaseSpace.pos;
-          // 他機の死亡は、観測者の過去光円錐が死亡 event に到達してから初めて「見える」。
-          // それまでは worldLine は死亡位置で凍結済だが、過去光円錐はまだ生存中の
-          // trajectory と交差するので `OtherShipRenderer` が pre-death の ship を描画
-          // できる (= 光速遅延中は相手が「まだ生きて見える」)。pastConeT ≥ deathT で
-          // `OtherPlayerRenderer` に switch し、DeathMarker + sphere fade を開始。
-          // 自機死亡は自分が death event 地点に居たので past-cone は即到達 → 常に
-          // OtherPlayerRenderer。世界系表示 (observerPos null) も death は瞬時扱い。
-          if (!isMe && observerPos) {
-            const dx = deathEventPos.x - observerPos.x;
-            const dy = deathEventPos.y - observerPos.y;
-            const pastConeT = observerPos.t - Math.sqrt(dx * dx + dy * dy);
-            if (pastConeT < deathEventPos.t) {
-              return (
-                <OtherShipRenderer key={`player-${player.id}`} player={player} />
-              );
-            }
+          // 2026-04-22 統一アルゴリズム:
+          //   死亡時のデータ (x_D, u_D, heading_D) は live 世界線データと完全同等で、
+          //   self / other 問わず `player.phaseSpace` から一本で導出する (self-dead は
+          //   useGameLoop の ghost branch で setPlayers を止めているので phaseSpace は
+          //   死亡時刻で凍結、other-dead は dead peer が broadcast 停止するので同じく凍結)。
+          //   (x_D, u_D) で τ_0 = past-cone ∩ W_D(τ) を計算し routing:
+          //   - τ_0 < 0: past-cone 未到達 → OtherShipRenderer (live worldline 交点で pre-death
+          //     ship、自機は observer 自身なので不要)。
+          //   - τ_0 ∈ [0, DEATH_TAU_MAX]: 死亡 event 観測中
+          //       DeadShipRenderer (ship @ x_D、opacity (τ_max−τ_0)/τ_max)
+          //       + DeathMarker (sphere @ x_D / ring @ x_D+u_D·τ_0、τ_effect_max で打ち切り)
+          //   - τ_0 > DEATH_TAU_MAX: fade 完了 → null
+          const xD = player.phaseSpace.pos;
+          const uD = getVelocity4(player.phaseSpace.u);
+          const headingD = player.phaseSpace.heading;
+
+          if (!observerPos) return null; // 世界系表示: 死亡 event は簡易に非表示
+          const tau0 = pastLightConeIntersectionDeathWorldLine(xD, uD, observerPos);
+          if (tau0 == null || tau0 < 0) {
+            if (isMe) return null;
+            return (
+              <OtherShipRenderer key={`player-${player.id}`} player={player} />
+            );
           }
+          if (tau0 > DEATH_TAU_MAX) return null;
+          const fadeAlpha = (DEATH_TAU_MAX - tau0) / DEATH_TAU_MAX;
+          const deadColor = getThreeColor(player.color);
           return (
-            <OtherPlayerRenderer
-              key={`player-${player.id}`}
-              player={player}
-              deathEventOverride={deathEventOverride}
-            />
+            <group key={`player-${player.id}`}>
+              <DeadShipRenderer
+                xD={xD}
+                headingD={headingD}
+                color={player.color}
+                playerId={player.id}
+                fadeAlpha={fadeAlpha}
+              />
+              <DeathMarker xD={xD} uD={uD} color={deadColor} />
+            </group>
           );
         }
 

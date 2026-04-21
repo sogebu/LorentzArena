@@ -68,7 +68,13 @@ export const Radar = ({
       const players = state.players;
       const lasers = state.lasers;
       const frozenWorldLines = state.frozenWorldLines;
-      const myPlayer = myId ? players.get(myId) : null;
+      const rawMyPlayer = myId ? players.get(myId) : null;
+      // 死亡中は myDeathEvent.ghostPhaseSpace で observer frame を構築 (player.phaseSpace
+      // は死亡時刻で凍結されているため)。SceneContent と同じ swap pattern。
+      const myPlayer =
+        rawMyPlayer?.isDead && state.myDeathEvent
+          ? { ...rawMyPlayer, phaseSpace: state.myDeathEvent.ghostPhaseSpace }
+          : rawMyPlayer;
 
       ctx.clearRect(0, 0, size, size);
 

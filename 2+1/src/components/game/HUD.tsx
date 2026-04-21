@@ -42,7 +42,13 @@ export const HUD = ({
   const killNotification = useGameStore((s) => s.killNotification);
   const myDeathEvent = useGameStore((s) => s.myDeathEvent);
 
-  const myPlayer = myId ? players.get(myId) : undefined;
+  const rawMyPlayer = myId ? players.get(myId) : undefined;
+  // 死亡中は Speedometer / HUD は ghost (myDeathEvent.ghostPhaseSpace) を観測者として扱う。
+  // `players[myId].phaseSpace` は死亡時刻で凍結されているため、速度/固有時間が止まる。
+  const myPlayer =
+    rawMyPlayer?.isDead && myDeathEvent
+      ? { ...rawMyPlayer, phaseSpace: myDeathEvent.ghostPhaseSpace }
+      : rawMyPlayer;
   const killGlow = killNotification !== null;
 
   return (

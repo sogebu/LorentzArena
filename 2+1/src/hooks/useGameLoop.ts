@@ -407,14 +407,12 @@ export function useGameLoop({
               ...physics.newPhaseSpace,
               heading: yawToQuat(cameraYawRef.current),
             };
+            // 2026-04-22: dead player は自分の ghost 位置を世界に announce しない。
+            // 従って `players[myId].phaseSpace` は死亡時刻で凍結されたまま (他者 snapshot
+            // と同じ値)、観測者 (ghost) frame の phaseSpace は myDeathEvent.ghostPhaseSpace
+            // のみが保持する。SceneContent / Radar / HUD 等は dead self の観測時に
+            // `myDeathEvent.ghostPhaseSpace` を読む (SceneContent の effective myPlayer swap 参照)。
             fresh.setMyDeathEvent({ ...de, ghostPhaseSpace: ghostPs });
-            fresh.setPlayers((prev) => {
-              const me = prev.get(myId);
-              if (!me || !me.isDead) return prev;
-              const next = new Map(prev);
-              next.set(myId, { ...me, phaseSpace: ghostPs });
-              return next;
-            });
           }
         } else if (freshMe) {
 

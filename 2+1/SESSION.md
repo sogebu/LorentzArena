@@ -9,6 +9,18 @@
 
 ## 本日 (2026-04-22) の主要 entry
 
+**死亡 event 表示を (x_D, u_D, τ_0) の統一アルゴリズムに刷新** (odakin 設計、未 commit): 旧実装 (DEBRIS_MAX_LAMBDA linear fade + ad-hoc ring anchor、DeathMarker が出ない/固まる regression 含む) を全廃、以下に統一。
+- **中核** ([deathWorldLine.ts](src/components/game/deathWorldLine.ts), 116/116 tests pass): 死者の extrapolated 世界線 `W_D(τ) = x_D + u_D·τ` と観測者過去光円錐の交点 τ_0 を二次方程式 `τ² − 2Bτ + C = 0` (B/C = Minkowski 内積/ノルム²) で解く helper `pastLightConeIntersectionDeathWorldLine`。過去側解は `B − √(B²−C)`。τ_0 < 0 は past-cone 未到達、null は spacelike 分離 (防御的)。
+- **表示窓** (constants.ts): `DEATH_TAU_MAX = 5` (body fade 完了)、`DEATH_TAU_EFFECT_MAX = 2` (sphere+ring 打ち切り)。単位は死者 proper time、高速死亡者ほど observer wall-clock で fade 窓が長引く (relativistic 不変)。
+- **DeathMarker**: `{xD, uD, color}` 受取、内部で τ_0 計算、`τ_0 ∈ [0, DEATH_TAU_EFFECT_MAX]` のみ on (flash 演出)。sphere @ x_D (沈む)、ring @ `x_D + u_D·τ_0` (C pattern 並進)。静止系 ring は Stage 2 で再検討 (今は C pattern のまま)。
+- **OtherPlayerRenderer**: body sphere @ x_D (固定、沈む)、opacity = `a_0·(DEATH_TAU_MAX − τ_0) / DEATH_TAU_MAX`。他者は `player.phaseSpace.{pos,u}` (死亡時刻 freeze)、自機は SceneContent から `myDeathEvent.{pos,u}` を override で注入。
+- **LighthouseRenderer**: 同じ (x_D, u_D) path。生存中の spawn past-cone visibility のみ `computePastConeDisplayState` に残し、fade 分岐を削除。
+- **SceneContent routing**: 死者 routing を τ_0 sign 駆動へ。`τ_0 < 0` → OtherShipRenderer (live 世界線の past-cone 交点で pre-death ship)、`τ_0 ∈ [0, DEATH_TAU_MAX]` → OtherPlayerRenderer、`> DEATH_TAU_MAX` → null。自機は observer swap `myPlayer.phaseSpace ← myDeathEvent.ghostPhaseSpace` で ghost を追従。
+- **ghost 非 broadcast**: useGameLoop ghost branch の `fresh.setPlayers(... phaseSpace: ghostPs)` を削除。`players[myId].phaseSpace` は死亡時刻で凍結されたまま (= 他者 snapshot と同値、host に ghost 位置がリークしない)。観測者 frame (camera / past-cone / Radar / HUD) は `myDeathEvent.ghostPhaseSpace` に swap (SceneContent / Radar / HUD で同 pattern)。
+- **debris 無変更**: user 指示「デブリやレーザー煙は昔の実装から何も変える必要はない」に従い、昨日の DebrisRenderer past-cone gate は revert 済。debris 粒子寿命 `DEBRIS_MAX_LAMBDA` は DeathMarker 窓と完全分離、debris 専用定数に降格。
+- **`pastConeDisplay.ts` slimming**: 死亡 branch + alpha / deathMarkerAlpha フィールドを削除、生存 spawn past-cone visibility のみを残す (`anchorPos` + `visible` の 2 フィールド)。
+- **typecheck + 116/116 tests pass**、Claude Preview clean reload。設計提案: `plans/死亡イベント.md` (odakin 原文)。
+
 **過去光円錐 worldline マーカー廃止 + 世界線太さ/不透明度を灯台と統一** (odakin 指定、未 commit):
 - 他プレイヤー世界線 × 自機過去光円錐 交点の sphere+core+ring gnomon (`worldLineIntersections`)
   を削除。視覚情報は同交点に描画される ship 3D model (`OtherShipRenderer`) と DeathMarker

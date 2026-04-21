@@ -1,12 +1,17 @@
 import { useMemo } from "react";
 import * as THREE from "three";
+import { getVelocity4 } from "../../physics/vector";
 import {
+  DEATH_TAU_MAX,
   LIGHTHOUSE_COLOR,
   PLAYER_MARKER_GLOW_OPACITY_OTHER,
   PLAYER_MARKER_MAIN_OPACITY_OTHER,
   PLAYER_MARKER_SIZE_OTHER,
 } from "./constants";
 import { buildApparentShapeMatrix } from "./apparentShape";
+import {
+  pastLightConeIntersectionDeathWorldLine,
+} from "./deathWorldLine";
 import { DeathMarker } from "./DeathMarker";
 import { useDisplayFrame } from "./DisplayFrameContext";
 import { transformEventForDisplay } from "./displayTransform";
@@ -66,14 +71,32 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
   const respawnLog = useGameStore((s) => s.respawnLog);
   const spawnT = getLatestSpawnT(respawnLog, player);
 
-  // Past-cone anchor / visibility / fade は `computePastConeDisplayState` で共通化
-  // (他プレイヤーの死亡 fade と同じロジック、詳細は utility の JSDoc 参照)。
-  const { anchorPos, visible, alpha, deathMarkerAlpha } = computePastConeDisplayState(
+  // 生存中: 従来通り past-cone anchor + visible チェック (spawn 光未到達 → 非表示)。
+  // 死亡中: 2026-04-22 統一アルゴリズム。x_D = wp (death 時刻で freeze 済)、u_D = phaseSpace.u
+  // の 4-velocity (LH は通常静止なので u_D ≈ (1, 0, 0, 0))。τ_0 で body fade + marker 発火判定。
+  const { anchorPos, visible } = computePastConeDisplayState(
     wp,
     spawnT,
-    player.isDead,
     observerPos,
   );
+
+  let towerAlpha = 1;
+  let showDeath = false;
+  const uD = useMemo(() => getVelocity4(player.phaseSpace.u), [player.phaseSpace.u]);
+  if (player.isDead && observerPos) {
+    const tau0 = pastLightConeIntersectionDeathWorldLine(wp, uD, observerPos);
+    if (tau0 == null || tau0 < 0 || tau0 > DEATH_TAU_MAX) {
+      // 未観測 or fade 完了 → 塔も marker も描画しない。
+      towerAlpha = 0;
+      showDeath = false;
+    } else {
+      towerAlpha = (DEATH_TAU_MAX - tau0) / DEATH_TAU_MAX;
+      showDeath = true;
+    }
+  }
+  // 生存中は塔そのまま、死亡中は死亡 fade 値。
+  const alpha = player.isDead ? towerAlpha : 1;
+  const towerVisible = player.isDead ? showDeath : visible;
 
   // 現在世界時刻位置の球マーカー (C pattern: display 並進のみ、他プレイヤー sphere と同じ表現)。
   // 塔の past-cone visibility とは独立: 生存中は常に表示 (リスポーン直後で塔がまだ
@@ -83,12 +106,15 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
   const dpNow = transformEventForDisplay(wp, observerPos, observerBoost);
   const sphereSize = PLAYER_MARKER_SIZE_OTHER;
 
+  // 死亡中は塔本体も x_D に固定 (past-cone sweep で anchorPos が変動しないよう)。
+  const towerAnchor = player.isDead ? wp : anchorPos;
+
   return (
     <>
-    {visible && (
+    {towerVisible && (
     <group
       matrix={buildApparentShapeMatrix(
-        anchorPos,
+        towerAnchor,
         player.phaseSpace.u,
         player.phaseSpace.heading,
         observerPos,
@@ -229,9 +255,9 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
       </group>
     )}
 
-    {/* 死亡 marker (sphere + ring): LH も OtherPlayer と同様に扱う (死亡光子到達 fade)。 */}
+    {/* 死亡 marker (sphere + ring): (x_D, u_D) から τ_0 を内部計算、DEATH_TAU_EFFECT_MAX 窓で on/off。 */}
     {player.isDead && (
-      <DeathMarker deathEventPos={wp} alpha={deathMarkerAlpha} color={mainColor} />
+      <DeathMarker xD={wp} uD={uD} color={mainColor} />
     )}
     </>
   );

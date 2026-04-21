@@ -1,55 +1,61 @@
 import * as THREE from "three";
-import type { Vector4 } from "../../physics";
+import type { Vector4 } from "../../physics/vector";
 import {
+  DEATH_TAU_EFFECT_MAX,
   KILL_NOTIFICATION_RING_OPACITY,
   KILL_NOTIFICATION_SPHERE_OPACITY,
 } from "./constants";
+import {
+  evaluateDeathWorldLine,
+  pastLightConeIntersectionDeathWorldLine,
+} from "./deathWorldLine";
 import { useDisplayFrame } from "./DisplayFrameContext";
 import { transformEventForDisplay } from "./displayTransform";
 import { sharedGeometries } from "./threeCache";
 
 /**
- * 死亡 marker (sphere + ring): 観測者の過去光円錐が death event に到達してから出現、
- * DEBRIS_MAX_LAMBDA かけて fade 1→0 で消失する「死亡光子到達」エフェクト。
+ * 死亡 marker (sphere + ring): 2026-04-22 統一アルゴリズム。
  *
- * LH / 自機 / 他機 共通。`computePastConeDisplayState` が返す `deathMarkerAlpha` を
- * そのまま `alpha` に渡す (null なら描画スキップ)。
+ * 入力: (x_D, u_D) のみ。
+ *   - x_D: 死亡時空点
+ *   - u_D: 死亡時 4-velocity (γ, γv_x, γv_y, γv_z)
  *
- * 2 つの marker は **anchor 方針が異なる**:
- *   - **Sphere**: world event 位置 (= 時空点 deathT で fixed) → 観測者進行で sink する。
- *     「死亡 event がどこ・いつ起きたか」を時空内に literal に示す不動の点。
- *   - **Ring**: 過去光円錐 surface 上 (= death event の spatial 位置 × `observer.t - ρ`)。
- *     観測者進行で anchorT も `+Δt` 足されて動く → display.t = -ρ で推移。静止観測者なら
- *     display.t 一定で「沈まない」。physics 的には「死亡の光子が届く球面が時間と共に広がる、
- *     その球面が死亡 event の spatial 位置と交わる点」。
+ * 表示条件: 観測者過去光円錐と W_D(τ) = x_D + u_D·τ の交点 τ_0 が
+ *   `τ_0 ∈ [0, DEATH_TAU_EFFECT_MAX]` の時のみ描画。それ以外 (未到達 / 打ち切り後) は
+ *   return null。linear / Lorentzian fade は掛けない (on/off の flash)。
+ *
+ * 2 つの marker の anchor:
+ *   - **Sphere** (死亡球): 死亡時空点 x_D に固定。他者も自分も **同じ** 時空点を指す。
+ *     C pattern で display 並進、観測者進行で display.t = (x_D.t − observer.t) が負になり sink。
+ *   - **Ring** (死亡リング): W_D(τ_0) = x_D + u_D·τ_0 に anchor。
+ *     死者が死亡時 v_D で慣性運動していたら到達するはずの event を「光子が届いた瞬間の
+ *     時空点」として記す。u_D=0 (停止死亡) なら x_D.xy 固定 + t 前進 (= 従来の
+ *     observer.t − ρ 表現と一致)。
+ *
+ * Stage 1 (現): ring は C pattern で並進のみ。Stage 2 (後): `(x_D0, u_D)` 中心静止系で
+ * ring を描いて世界系に boost (= 進行方向に潰れた楕円)。
  */
 export const DeathMarker = ({
-  deathEventPos,
-  alpha,
+  xD,
+  uD,
   color,
 }: {
-  deathEventPos: Vector4;
-  /** null なら描画しない (past-cone 未到達 / fade 完了)。0..1 = sphere+ring の opacity 乗数。 */
-  alpha: number | null;
+  xD: Vector4;
+  uD: Vector4;
   color: THREE.Color;
 }) => {
   const { observerPos, observerBoost } = useDisplayFrame();
-  if (alpha == null || alpha <= 0) return null;
+  if (!observerPos) return null;
 
-  // Sphere: world event 位置に C pattern で並進 (沈む = 観測者進行で display.t < 0)。
-  const sphereDp = transformEventForDisplay(deathEventPos, observerPos, observerBoost);
+  const tau0 = pastLightConeIntersectionDeathWorldLine(xD, uD, observerPos);
+  if (tau0 == null || tau0 < 0 || tau0 > DEATH_TAU_EFFECT_MAX) return null;
 
-  // Ring: 過去光円錐 surface anchor。spatial 位置は death event、時刻は観測者の
-  // 過去光円錐と交差する時刻 (= observer.t - ρ) に更新。観測者時刻が進むと anchor の
-  // 世界時刻も足され、display.t = -ρ で推移 (静止観測者なら沈まない)。
-  let ringAnchor = deathEventPos;
-  if (observerPos) {
-    const dx = deathEventPos.x - observerPos.x;
-    const dy = deathEventPos.y - observerPos.y;
-    const rho = Math.sqrt(dx * dx + dy * dy);
-    ringAnchor = { ...deathEventPos, t: observerPos.t - rho };
-  }
-  const ringDp = transformEventForDisplay(ringAnchor, observerPos, observerBoost);
+  // Sphere @ x_D (C pattern、観測者進行で沈む)。
+  const sphereDp = transformEventForDisplay(xD, observerPos, observerBoost);
+
+  // Ring @ W_D(τ_0) (C pattern、並進のみ)。
+  const ringWorld = evaluateDeathWorldLine(xD, uD, tau0);
+  const ringDp = transformEventForDisplay(ringWorld, observerPos, observerBoost);
 
   return (
     <>
@@ -61,7 +67,7 @@ export const DeathMarker = ({
           color={color}
           transparent
           depthWrite={false}
-          opacity={KILL_NOTIFICATION_SPHERE_OPACITY * alpha}
+          opacity={KILL_NOTIFICATION_SPHERE_OPACITY}
         />
       </mesh>
       <mesh
@@ -72,7 +78,7 @@ export const DeathMarker = ({
           color={color}
           transparent
           depthWrite={false}
-          opacity={KILL_NOTIFICATION_RING_OPACITY * alpha}
+          opacity={KILL_NOTIFICATION_RING_OPACITY}
           side={THREE.DoubleSide}
         />
       </mesh>

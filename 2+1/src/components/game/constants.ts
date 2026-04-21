@@ -39,6 +39,14 @@ export const GC_PAST_LCH_MULTIPLIER = 5;
 // デブリ 1 粒子の coord time 方向の長さ。DebrisRenderer の segment 生成と GC の両方で参照。
 export const DEBRIS_MAX_LAMBDA = 2.5;
 
+// --- Death event (2026-04-22 統一アルゴリズム) ---
+// 死者の extrapolated 世界線 W_D(τ) = x_D + u_D·τ の τ 窓。τ 単位は死者 proper time。
+// `DEATH_TAU_MAX`: body (他者が見る死者モデル) の fade 完了時。opacity = a_0·(τ_max − τ_0)/τ_max。
+// `DEATH_TAU_EFFECT_MAX`: sphere + ring marker の表示打ち切り。短い flash 演出。
+// 設計 doc: plans/2026-04-22-death-event-unified.md (実装側で作成予定)。
+export const DEATH_TAU_MAX = 5;
+export const DEATH_TAU_EFFECT_MAX = 2;
+
 // 当たり判定の半径
 export const HIT_RADIUS = 0.25;
 // 灯台専用の当たり判定半径 (塔底面の円柱半径 0.40 と同値、見た目に合わせて広め)

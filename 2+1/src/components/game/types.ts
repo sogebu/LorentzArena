@@ -28,6 +28,11 @@ export type DeathEvent = {
   readonly pos: Vector4; // 死亡位置（4元位置、fixed、UI key 等の参照用）
   readonly u: Vector4; // 死亡時の4元速度（fixed、ローレンツブースト初期値）
   /**
+   * 死亡時姿勢 quaternion (fixed)。dead ship を x_D anchor で描画する際に使う。
+   * ghostPhaseSpace.heading は ghost camera yaw で drift するので別途保存。
+   */
+  readonly heading: import("../../physics").Quaternion;
+  /**
    * ghost の動的 phaseSpace。自機入力 (thrust/heading/friction/energy) で
    * 生存時と同じ物理 (`processPlayerPhysics`) を流用して更新される。
    * ローカルのみ更新・ネットワーク非送信。他 peer からは自機は死亡時刻で
