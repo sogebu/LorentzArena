@@ -319,6 +319,24 @@ export const SceneContent = ({
           // ghost 追従で変動するため)。Other-dead は player.phaseSpace.pos (= freeze 済) で OK。
           const deathEventOverride =
             isMe && myDeathEvent ? myDeathEvent.pos : undefined;
+          const deathEventPos = deathEventOverride ?? player.phaseSpace.pos;
+          // 他機の死亡は、観測者の過去光円錐が死亡 event に到達してから初めて「見える」。
+          // それまでは worldLine は死亡位置で凍結済だが、過去光円錐はまだ生存中の
+          // trajectory と交差するので `OtherShipRenderer` が pre-death の ship を描画
+          // できる (= 光速遅延中は相手が「まだ生きて見える」)。pastConeT ≥ deathT で
+          // `OtherPlayerRenderer` に switch し、DeathMarker + sphere fade を開始。
+          // 自機死亡は自分が death event 地点に居たので past-cone は即到達 → 常に
+          // OtherPlayerRenderer。世界系表示 (observerPos null) も death は瞬時扱い。
+          if (!isMe && observerPos) {
+            const dx = deathEventPos.x - observerPos.x;
+            const dy = deathEventPos.y - observerPos.y;
+            const pastConeT = observerPos.t - Math.sqrt(dx * dx + dy * dy);
+            if (pastConeT < deathEventPos.t) {
+              return (
+                <OtherShipRenderer key={`player-${player.id}`} player={player} />
+              );
+            }
+          }
           return (
             <OtherPlayerRenderer
               key={`player-${player.id}`}
