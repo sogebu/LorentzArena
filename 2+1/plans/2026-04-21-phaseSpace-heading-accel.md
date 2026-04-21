@@ -210,12 +210,17 @@ alpha は linear で ok; 現状 pos/u は linear 補間なので現状維持)。
    - ship 展開済ならここで M pattern と組み合わせ
 4. **Commit B-4** `feat(AccelerationArrow): 他機にも展開、phaseSpace.alpha を Λ(u_obs)^{-1} で boost`
    - SESSION.md 「進行方向可視化 分岐 A」の実現。自機だけだったものを他機へ
-5. **Commit B-5** `feat(exhaust): exhaust の方向を phaseSpace.alpha から駆動`
-   - 他機 exhaust の向きが物理整合
-   - LH は alpha=0 なので exhaust なしのまま
+5. ~~**Commit B-5** `feat(exhaust): exhaust の方向を phaseSpace.alpha から駆動`~~ → **defer**
+   - 設計上の理由: 自機 exhaust は **thrust 単独** (friction 抜き) を使う必要があり、
+     `thrustAccelRef` は thrust 単独を保持する。`phaseSpace.alpha` は world 4-accel
+     = thrust + friction なので直接置換すると、coast 中 (friction のみ) でも exhaust
+     が発火して gameplay semantic が変わる。
+   - 他機への exhaust 展開も同様: broadcast される alpha は total accel。thrust 単独を
+     cross-peer で共有したいなら phaseSpace に thrust 専用フィールドを足す必要あり。
+   - 現実装では B-4 の AccelerationArrow が alpha 方向を既に可視化済なので、exhaust
+     の追加視覚情報の価値は限定的 → 別 plan (他機 ship 3D model 導入時) に退避。
 
-**デプロイ**: 各 commit 単位か、B-1..B-2 を 1 セット、B-3..B-5 を 1 セットで 2 回
-deploy が無難。
+**デプロイ**: B-1..B-2 を 1 セット、B-3..B-4 を 1 セットで 2 回 deploy 済。
 
 ---
 
