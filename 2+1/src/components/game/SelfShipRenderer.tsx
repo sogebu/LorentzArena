@@ -1,7 +1,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
-import type { Vector3, Vector4 } from "../../physics";
+import { quatToYaw, type Quaternion, type Vector3, type Vector4 } from "../../physics";
 import {
   ARROW_BASE_LENGTH,
   ARROW_BASE_OFFSET,
@@ -92,13 +92,15 @@ const INNER_CORE_SCALE = 0.45; // 旧 ExhaustCone と同値
 export const SelfShipRenderer = ({
   player,
   thrustAccelRef,
-  cameraYawRef,
   observerPos,
   observerBoost,
 }: {
-  player: { id: string; phaseSpace: { pos: Vector4 }; color: string };
+  player: {
+    id: string;
+    phaseSpace: { pos: Vector4; heading: Quaternion };
+    color: string;
+  };
   thrustAccelRef: React.RefObject<Vector3>;
-  cameraYawRef: React.RefObject<number>;
   observerPos: Vector4 | null;
   observerBoost: ReturnType<typeof lorentzBoost> | null;
 }) => {
@@ -181,8 +183,10 @@ export const SelfShipRenderer = ({
     );
     group.position.set(dp.x, dp.y, dp.t);
 
-    // Rotation: camera yaw (z 軸回り)。local +x が world camera-forward 方向に。
-    const yaw = cameraYawRef.current;
+    // Rotation: phaseSpace.heading (quaternion) から yaw を抽出 (2+1 では 1 自由度)。
+    // 自機の heading は useGameLoop 側で毎 tick `yawToQuat(cameraYaw)` がセットされる
+    // ので従来の cameraYawRef 直読と等価。Phase B migration の一環。
+    const yaw = quatToYaw(player.phaseSpace.heading);
     group.rotation.set(0, 0, yaw);
 
     // 4 cardinal nozzle 各々の独立噴射 (RCS の真面目な合成)。

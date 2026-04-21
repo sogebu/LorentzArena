@@ -1,7 +1,15 @@
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { createVector3, createVector4, type Vector3 } from "../physics";
+import {
+  createVector3,
+  createVector4,
+  quatIdentity,
+  type Quaternion,
+  type Vector3,
+  type Vector4,
+  yawToQuat,
+} from "../physics";
 import { GameLights } from "./game/GameLights";
 import { SelfShipRenderer } from "./game/SelfShipRenderer";
 
@@ -19,6 +27,28 @@ interface OrbitProps {
   interactive: boolean;
   target: [number, number, number];
 }
+
+/**
+ * SelfShipRenderer は player.phaseSpace.heading を読むので、preview では yawRef を
+ * heading に per-frame 反映する必要がある。Canvas 内で useFrame を使う必要があるため
+ * 小さな helper component として分離。SelfShipRenderer より前に JSX 配置して先に
+ * 登録されるようにすれば、同一 frame 内で heading 更新 → ship render の順になる。
+ */
+interface HeadingUpdaterProps {
+  yawRef: React.RefObject<number>;
+  stubPlayer: {
+    phaseSpace: { pos: Vector4; u: Vector3; heading: Quaternion };
+  };
+}
+const HeadingUpdater = ({ yawRef, stubPlayer }: HeadingUpdaterProps) => {
+  useFrame(() => {
+    stubPlayer.phaseSpace = {
+      ...stubPlayer.phaseSpace,
+      heading: yawToQuat(yawRef.current ?? 0),
+    };
+  });
+  return null;
+};
 
 const Orbit = ({ autoRotate, interactive, target }: OrbitProps) => {
   const { camera, gl } = useThree();
@@ -82,11 +112,19 @@ export const ShipPreview = ({
   const thrustRef = thrustAccelRef ?? defaultThrustRef;
   const yawRef = cameraYawRef ?? defaultYawRef;
 
-  const stubPlayer = useRef({
+  // stub player: phaseSpace は mutable (SelfShipRenderer が要求する readonly Quaternion
+  // を満たすため phaseSpace を毎 frame 置換)。HeadingUpdater (下、Canvas 内) が yawRef
+  // 基準で heading を更新する。
+  const stubPlayer = useRef<{
+    id: string;
+    phaseSpace: { pos: Vector4; u: Vector3; heading: Quaternion };
+    color: string;
+  }>({
     id: "preview",
     phaseSpace: {
       pos: createVector4(0, 0, 0, 0),
       u: createVector3(0, 0, 0),
+      heading: quatIdentity(),
     },
     color: "#ffffff",
   }).current;
@@ -111,10 +149,11 @@ export const ShipPreview = ({
         )}
         {showGrid && <axesHelper args={[2.5]} />}
 
+        <HeadingUpdater yawRef={yawRef} stubPlayer={stubPlayer} />
+
         <SelfShipRenderer
           player={stubPlayer}
           thrustAccelRef={thrustRef}
-          cameraYawRef={yawRef}
           observerPos={stubPlayer.phaseSpace.pos}
           observerBoost={null}
         />

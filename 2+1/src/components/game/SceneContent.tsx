@@ -373,7 +373,6 @@ export const SceneContent = ({
               key={`player-${player.id}`}
               player={player}
               thrustAccelRef={thrustAccelRef}
-              cameraYawRef={cameraYawRef}
               observerPos={observerPos}
               observerBoost={observerBoost}
             />
