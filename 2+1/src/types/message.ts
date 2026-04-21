@@ -13,7 +13,13 @@ export type Message =
   | {
       /**
        * Relativistic state update: 4-position and 3-velocity.
-       * JP: 相対論的状態（4元位置 + 3元速度）の更新。
+       *
+       * `heading` / `alpha` are optional for backward compat during the
+       * 2026-04-21 migration (plan `2026-04-21-phaseSpace-heading-accel.md`).
+       * Old clients omit them; receivers default to identity quat / zero 4-accel.
+       *
+       * JP: 相対論的状態（4元位置 + 3元速度 + 姿勢 + 4元加速度）の更新。
+       * heading / alpha は backward compat のため optional、欠落時は identity / zero。
        */
       type: "phaseSpace";
       /**
@@ -23,6 +29,8 @@ export type Message =
       senderId: string;
       position: { t: number; x: number; y: number; z: number };
       velocity: { x: number; y: number; z: number };
+      heading?: { w: number; x: number; y: number; z: number };
+      alpha?: { t: number; x: number; y: number; z: number };
     }
   | {
       /**
@@ -177,17 +185,27 @@ export type Message =
          * 旧バージョンとの互換のため optional (受信側は未定義時 ENERGY_MAX でフォールバック)。
          */
         energy?: number;
+        /**
+         * `heading` / `alpha` は 2026-04-21 migration で追加、旧 build との
+         * backward compat のため optional。欠落時は identity / zero 補完。
+         */
         phaseSpace: {
           pos: { t: number; x: number; y: number; z: number };
           u: { x: number; y: number; z: number };
+          heading?: { w: number; x: number; y: number; z: number };
+          alpha?: { t: number; x: number; y: number; z: number };
         };
         worldLineHistory: Array<{
           pos: { t: number; x: number; y: number; z: number };
           u: { x: number; y: number; z: number };
+          heading?: { w: number; x: number; y: number; z: number };
+          alpha?: { t: number; x: number; y: number; z: number };
         }>;
         worldLineOrigin: {
           pos: { t: number; x: number; y: number; z: number };
           u: { x: number; y: number; z: number };
+          heading?: { w: number; x: number; y: number; z: number };
+          alpha?: { t: number; x: number; y: number; z: number };
         } | null;
       }>;
     }

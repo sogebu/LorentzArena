@@ -182,6 +182,8 @@ export function useGameLoop({
             senderId: myId,
             position: newPhaseSpace.pos,
             velocity: newPhaseSpace.u,
+            heading: newPhaseSpace.heading,
+            alpha: newPhaseSpace.alpha,
           });
         }
         return;
@@ -447,6 +449,8 @@ export function useGameLoop({
               senderId: myId,
               position: physics.newPhaseSpace.pos,
               velocity: physics.newPhaseSpace.u,
+              heading: physics.newPhaseSpace.heading,
+              alpha: physics.newPhaseSpace.alpha,
             });
           }
         }
@@ -502,6 +506,8 @@ export function useGameLoop({
             senderId: lhId,
             position: result.newPs.pos,
             velocity: result.newPs.u,
+            heading: result.newPs.heading,
+            alpha: result.newPs.alpha,
           });
 
           if (result.laser) {

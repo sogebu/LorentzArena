@@ -493,3 +493,68 @@ describe("buildSnapshot", () => {
     expect(lhEntry?.ownerId).not.toBe(clientId);
   });
 });
+
+describe("buildSnapshot / applySnapshot heading / alpha round-trip", () => {
+  beforeEach(() => {
+    useGameStore.setState({
+      players: new Map(),
+      frozenWorldLines: [],
+      lasers: [],
+      scores: {},
+      killLog: [],
+      respawnLog: [],
+      displayNames: new Map(),
+    });
+  });
+
+  it("非 default の heading / alpha を build → wire に同梱 → apply で復元", async () => {
+    const { yawToQuat } = await import("../../physics");
+    const heading = yawToQuat(Math.PI / 3);
+    const alpha = createVector4(0.01, 0.2, 0.1, 0);
+    const myId = "me";
+    const peerId = "peer";
+    const mePs = createPhaseSpace(
+      createVector4(5, 1, 2, 0),
+      createVector3(0.3, 0, 0),
+      heading,
+      alpha,
+    );
+    useGameStore.setState({
+      players: new Map([
+        [myId, { ...makePlayer(myId, 5, 1), phaseSpace: mePs }],
+        [peerId, makePlayer(peerId, 4, 3, "#f00")],
+      ]),
+    });
+
+    const msg = buildSnapshot(myId, true);
+    const myEntry = msg.players.find((p) => p.id === myId);
+    expect(myEntry?.phaseSpace.heading).toBeDefined();
+    expect(myEntry?.phaseSpace.heading?.w).toBeCloseTo(heading.w, 9);
+    expect(myEntry?.phaseSpace.heading?.z).toBeCloseTo(heading.z, 9);
+    expect(myEntry?.phaseSpace.alpha).toBeDefined();
+    expect(myEntry?.phaseSpace.alpha?.x).toBeCloseTo(0.2, 9);
+
+    // default な peer は wire から省略 (帯域節約)
+    const peerEntry = msg.players.find((p) => p.id === peerId);
+    expect(peerEntry?.phaseSpace.heading).toBeUndefined();
+    expect(peerEntry?.phaseSpace.alpha).toBeUndefined();
+
+    // 新規 join 側で applySnapshot して state が復元されるか
+    const clientId = "newjoiner";
+    useGameStore.setState({ players: new Map() });
+    applySnapshot(clientId, msg, () => "#fff", { current: new Map() });
+    const rehydratedMe = useGameStore.getState().players.get(myId);
+    expect(rehydratedMe?.phaseSpace.heading.w).toBeCloseTo(heading.w, 9);
+    expect(rehydratedMe?.phaseSpace.alpha.x).toBeCloseTo(0.2, 9);
+  });
+
+  it("旧 build 送信 (heading / alpha 欠落 wire): apply 側で identity / zero 補完", () => {
+    // makeSnapshot helper は heading / alpha を吐かない旧形式 → backward compat 経路
+    const msg = makeSnapshot([{ id: "a", posT: 1 }, { id: "b", posT: 2 }]);
+    useGameStore.setState({ players: new Map() });
+    applySnapshot("me", msg, () => "#fff", { current: new Map() });
+    const a = useGameStore.getState().players.get("a");
+    expect(a?.phaseSpace.heading).toEqual({ w: 1, x: 0, y: 0, z: 0 });
+    expect(a?.phaseSpace.alpha).toEqual({ t: 0, x: 0, y: 0, z: 0 });
+  });
+});

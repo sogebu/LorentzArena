@@ -1,4 +1,14 @@
-import { appendWorldLine, createPhaseSpace, createWorldLine } from "../../physics";
+import {
+  appendWorldLine,
+  createPhaseSpace,
+  createVector3,
+  createVector4,
+  createWorldLine,
+  type Quaternion,
+  quatIdentity,
+  type Vector4,
+  vector4Zero,
+} from "../../physics";
 import { useGameStore } from "../../stores/game-store";
 import {
   ENERGY_MAX,
@@ -45,6 +55,41 @@ const isValidVector3 = (v: unknown): v is { x: number; y: number; z: number } =>
   isFiniteNumber((v as Record<string, unknown>).x) &&
   isFiniteNumber((v as Record<string, unknown>).y) &&
   isFiniteNumber((v as Record<string, unknown>).z);
+
+/**
+ * 旧 build 互換のため heading/alpha は optional。欠落・非 finite は default 補完。
+ * heading は {w,x,y,z}、alpha は {t,x,y,z}。malformed は identity/zero に fallback
+ * (接続を落とさない: 他 peer の不正 payload で自分の挙動を止める理由がない)。
+ */
+const parseOptionalQuaternion = (v: unknown): Quaternion => {
+  if (
+    v != null &&
+    typeof v === "object" &&
+    isFiniteNumber((v as Record<string, unknown>).w) &&
+    isFiniteNumber((v as Record<string, unknown>).x) &&
+    isFiniteNumber((v as Record<string, unknown>).y) &&
+    isFiniteNumber((v as Record<string, unknown>).z)
+  ) {
+    const q = v as { w: number; x: number; y: number; z: number };
+    return { w: q.w, x: q.x, y: q.y, z: q.z };
+  }
+  return quatIdentity();
+};
+
+const parseOptionalAlpha = (v: unknown): Vector4 => {
+  if (
+    v != null &&
+    typeof v === "object" &&
+    isFiniteNumber((v as Record<string, unknown>).t) &&
+    isFiniteNumber((v as Record<string, unknown>).x) &&
+    isFiniteNumber((v as Record<string, unknown>).y) &&
+    isFiniteNumber((v as Record<string, unknown>).z)
+  ) {
+    const a = v as { t: number; x: number; y: number; z: number };
+    return createVector4(a.t, a.x, a.y, a.z);
+  }
+  return vector4Zero();
+};
 
 const isValidString = (v: unknown, maxLen = 200): v is string =>
   typeof v === "string" && v.length > 0 && v.length <= maxLen;
@@ -144,7 +189,15 @@ export const createMessageHandler =
         posT: msg.position.t,
       });
       store.setPlayers((prev: Map<string, RelativisticPlayer>) => {
-        const phaseSpace = createPhaseSpace(msg.position, msg.velocity);
+        // heading / alpha は旧 build からの broadcast では欠落 → default 補完。
+        const heading = parseOptionalQuaternion(msg.heading);
+        const alpha = parseOptionalAlpha(msg.alpha);
+        const phaseSpace = createPhaseSpace(
+          createVector4(msg.position.t, msg.position.x, msg.position.y, msg.position.z),
+          createVector3(msg.velocity.x, msg.velocity.y, msg.velocity.z),
+          heading,
+          alpha,
+        );
 
         const existing = prev.get(playerId);
         // 死亡中（世界線凍結中）なら phaseSpace を無視

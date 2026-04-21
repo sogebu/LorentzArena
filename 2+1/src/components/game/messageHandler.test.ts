@@ -176,3 +176,51 @@ describe("messageHandler phaseSpace gap detection", () => {
     expect(players.get("peer")?.worldLine.history.length).toBe(1);
   });
 });
+
+describe("messageHandler phaseSpace heading / alpha (backward compat)", () => {
+  beforeEach(() => {
+    resetStore();
+  });
+
+  it("旧 build 送信 (heading / alpha 欠落): 受信側は identity / zero で補完", () => {
+    const deps = makeDeps("me");
+    const handler = createMessageHandler(deps);
+    handler("peer", makePhaseSpaceMsg("peer", 1.0, 0));
+    const peer = useGameStore.getState().players.get("peer");
+    expect(peer).toBeDefined();
+    expect(peer?.phaseSpace.heading).toEqual({ w: 1, x: 0, y: 0, z: 0 });
+    expect(peer?.phaseSpace.alpha).toEqual({ t: 0, x: 0, y: 0, z: 0 });
+  });
+
+  it("新 build 送信 (heading / alpha 同梱): 受信側は値を保持", () => {
+    const deps = makeDeps("me");
+    const handler = createMessageHandler(deps);
+    handler("peer", {
+      type: "phaseSpace" as const,
+      senderId: "peer",
+      position: { t: 1.0, x: 0, y: 0, z: 0 },
+      velocity: { x: 0.3, y: 0.0, z: 0 },
+      heading: { w: 0.7071, x: 0, y: 0, z: 0.7071 }, // yaw = π/2
+      alpha: { t: 0.01, x: 0.5, y: 0, z: 0 },
+    });
+    const peer = useGameStore.getState().players.get("peer");
+    expect(peer?.phaseSpace.heading.w).toBeCloseTo(0.7071, 4);
+    expect(peer?.phaseSpace.heading.z).toBeCloseTo(0.7071, 4);
+    expect(peer?.phaseSpace.alpha.t).toBeCloseTo(0.01, 6);
+    expect(peer?.phaseSpace.alpha.x).toBeCloseTo(0.5, 6);
+  });
+
+  it("malformed heading (w が非 finite): identity に fallback", () => {
+    const deps = makeDeps("me");
+    const handler = createMessageHandler(deps);
+    handler("peer", {
+      type: "phaseSpace" as const,
+      senderId: "peer",
+      position: { t: 1.0, x: 0, y: 0, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      heading: { w: NaN, x: 0, y: 0, z: 0 },
+    });
+    const peer = useGameStore.getState().players.get("peer");
+    expect(peer?.phaseSpace.heading).toEqual({ w: 1, x: 0, y: 0, z: 0 });
+  });
+});

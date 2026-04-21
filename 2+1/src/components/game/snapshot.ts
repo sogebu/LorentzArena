@@ -5,6 +5,10 @@ import {
   createVector4,
   createWorldLine,
   type PhaseSpace,
+  type Quaternion,
+  quatIdentity,
+  type Vector4,
+  vector4Zero,
 } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
 import { ENERGY_MAX, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
@@ -36,6 +40,12 @@ export const buildSnapshot = (myId: string, isBeaconHolder: boolean) => {
   // beacon holder が高 γ で座標時間が遅れている / ghosting 等でも正しい時刻が取れる。
   const hostTime = computeSpawnCoordTime(s.players);
 
+  type PhaseSpaceWire = {
+    pos: { t: number; x: number; y: number; z: number };
+    u: { x: number; y: number; z: number };
+    heading?: { w: number; x: number; y: number; z: number };
+    alpha?: { t: number; x: number; y: number; z: number };
+  };
   const players: Array<{
     id: string;
     ownerId: string;
@@ -43,19 +53,28 @@ export const buildSnapshot = (myId: string, isBeaconHolder: boolean) => {
     displayName?: string;
     isDead: boolean;
     energy: number;
-    phaseSpace: {
-      pos: { t: number; x: number; y: number; z: number };
-      u: { x: number; y: number; z: number };
-    };
-    worldLineHistory: Array<{
-      pos: { t: number; x: number; y: number; z: number };
-      u: { x: number; y: number; z: number };
-    }>;
-    worldLineOrigin: {
-      pos: { t: number; x: number; y: number; z: number };
-      u: { x: number; y: number; z: number };
-    } | null;
+    phaseSpace: PhaseSpaceWire;
+    worldLineHistory: Array<PhaseSpaceWire>;
+    worldLineOrigin: PhaseSpaceWire | null;
   }> = [];
+
+  // PhaseSpace → wire 形式。heading / alpha は default (identity / zero) の時は
+  // 省略して帯域節約 + 旧 build 互換。
+  const toPhaseSpaceWire = (ps: PhaseSpace): PhaseSpaceWire => {
+    const wire: PhaseSpaceWire = {
+      pos: { t: ps.pos.t, x: ps.pos.x, y: ps.pos.y, z: ps.pos.z },
+      u: { x: ps.u.x, y: ps.u.y, z: ps.u.z },
+    };
+    const h = ps.heading;
+    if (h.w !== 1 || h.x !== 0 || h.y !== 0 || h.z !== 0) {
+      wire.heading = { w: h.w, x: h.x, y: h.y, z: h.z };
+    }
+    const a = ps.alpha;
+    if (a.t !== 0 || a.x !== 0 || a.y !== 0 || a.z !== 0) {
+      wire.alpha = { t: a.t, x: a.x, y: a.y, z: a.z };
+    }
+    return wire;
+  };
 
   for (const [, p] of s.players) {
     // LH owner: BH caller のみ自分に強制 rewrite (migration 安全弁)。非 BH caller
@@ -71,28 +90,10 @@ export const buildSnapshot = (myId: string, isBeaconHolder: boolean) => {
       displayName: p.displayName,
       isDead: p.isDead,
       energy: p.energy,
-      phaseSpace: {
-        pos: { t: p.phaseSpace.pos.t, x: p.phaseSpace.pos.x, y: p.phaseSpace.pos.y, z: p.phaseSpace.pos.z },
-        u: { x: p.phaseSpace.u.x, y: p.phaseSpace.u.y, z: p.phaseSpace.u.z },
-      },
-      worldLineHistory: p.worldLine.history.map((ps: PhaseSpace) => ({
-        pos: { t: ps.pos.t, x: ps.pos.x, y: ps.pos.y, z: ps.pos.z },
-        u: { x: ps.u.x, y: ps.u.y, z: ps.u.z },
-      })),
+      phaseSpace: toPhaseSpaceWire(p.phaseSpace),
+      worldLineHistory: p.worldLine.history.map(toPhaseSpaceWire),
       worldLineOrigin: p.worldLine.origin
-        ? {
-            pos: {
-              t: p.worldLine.origin.pos.t,
-              x: p.worldLine.origin.pos.x,
-              y: p.worldLine.origin.pos.y,
-              z: p.worldLine.origin.pos.z,
-            },
-            u: {
-              x: p.worldLine.origin.u.x,
-              y: p.worldLine.origin.u.y,
-              z: p.worldLine.origin.u.z,
-            },
-          }
+        ? toPhaseSpaceWire(p.worldLine.origin)
         : null,
     });
   }
@@ -129,26 +130,50 @@ export const applySnapshot = (
   // 新規 join (既存 state 無し) は従来通り unconditional replace。
   const isMigrationPath = store.players.has(myId);
 
+  // wire → heading / alpha 復元。旧 build 送信 (欠落) は default。
+  const parseHeading = (h?: {
+    w: number;
+    x: number;
+    y: number;
+    z: number;
+  }): Quaternion =>
+    h && [h.w, h.x, h.y, h.z].every(Number.isFinite)
+      ? { w: h.w, x: h.x, y: h.y, z: h.z }
+      : quatIdentity();
+
+  const parseAlpha = (a?: {
+    t: number;
+    x: number;
+    y: number;
+    z: number;
+  }): Vector4 =>
+    a && [a.t, a.x, a.y, a.z].every(Number.isFinite)
+      ? createVector4(a.t, a.x, a.y, a.z)
+      : vector4Zero();
+
+  const fromPhaseSpaceWire = (w: {
+    pos: { t: number; x: number; y: number; z: number };
+    u: { x: number; y: number; z: number };
+    heading?: { w: number; x: number; y: number; z: number };
+    alpha?: { t: number; x: number; y: number; z: number };
+  }): PhaseSpace =>
+    createPhaseSpace(
+      createVector4(w.pos.t, w.pos.x, w.pos.y, w.pos.z),
+      createVector3(w.u.x, w.u.y, w.u.z),
+      parseHeading(w.heading),
+      parseAlpha(w.alpha),
+    );
+
   // Rehydrate players (me を含む全員)
   const nextPlayers = new Map<string, RelativisticPlayer>();
   for (const sp of msg.players) {
-    const phaseSpace = createPhaseSpace(
-      createVector4(sp.phaseSpace.pos.t, sp.phaseSpace.pos.x, sp.phaseSpace.pos.y, sp.phaseSpace.pos.z),
-      createVector3(sp.phaseSpace.u.x, sp.phaseSpace.u.y, sp.phaseSpace.u.z),
-    );
+    const phaseSpace = fromPhaseSpaceWire(sp.phaseSpace);
     const origin = sp.worldLineOrigin
-      ? createPhaseSpace(
-          createVector4(sp.worldLineOrigin.pos.t, sp.worldLineOrigin.pos.x, sp.worldLineOrigin.pos.y, sp.worldLineOrigin.pos.z),
-          createVector3(sp.worldLineOrigin.u.x, sp.worldLineOrigin.u.y, sp.worldLineOrigin.u.z),
-        )
+      ? fromPhaseSpaceWire(sp.worldLineOrigin)
       : null;
     let wl = createWorldLine(MAX_WORLDLINE_HISTORY, origin);
     for (const h of sp.worldLineHistory) {
-      const ps = createPhaseSpace(
-        createVector4(h.pos.t, h.pos.x, h.pos.y, h.pos.z),
-        createVector3(h.u.x, h.u.y, h.u.z),
-      );
-      wl = appendWorldLine(wl, ps);
+      wl = appendWorldLine(wl, fromPhaseSpaceWire(h));
     }
     nextPlayers.set(sp.id, {
       id: sp.id,
