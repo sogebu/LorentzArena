@@ -128,10 +128,9 @@ export const SceneContent = ({
   const spawns = useGameStore((s) => s.spawns);
   const frozenWorldLines = useGameStore((s) => s.frozenWorldLines);
   const debrisRecords = useGameStore((s) => s.debrisRecords);
-  // 3D kill marker (sphere + ring) は OtherPlayerRenderer に統合済。store の killNotification は
-  // HUD (Overlays) の text notification 用途のみ、この scene では参照しない。
-  // 自機死亡 event (self-dead の fade anchor 用、player.phaseSpace.pos は ghost 追従で動くため
-  // 死亡位置として使えない → 別途 store から取る)。
+  // 3D kill marker (sphere + ring) は DeathMarker (統一アルゴリズム) が担当。store の
+  // killNotification は HUD (Overlays) の text notification 用途のみ、この scene では参照しない。
+  // myDeathEvent は自機 ghost phaseSpace の保管用 (dead self で myPlayer.phaseSpace を swap)。
   const myDeathEvent = useGameStore((s) => s.myDeathEvent);
 
   const playerList = useMemo(() => Array.from(players.values()), [players]);
@@ -349,9 +348,9 @@ export const SceneContent = ({
           自機 (人間) 生存中: SelfShipRenderer (六角 hull + 4 RCS + 懸架砲、deadpan SF)。
           他機 (人間) 生存中: OtherShipRenderer (SelfShipRenderer 流用、past-cone 交点に
             ship 3D model を配置、heading/alpha は worldLine 各 sample から補間取得)。
-          他機 (人間) 死亡中 + 自機死亡中: OtherPlayerRenderer (sphere + glow + DeathMarker、
-            LH と同じ past-cone fade を適用。self-dead 用に myDeathEvent.pos を override
-            で渡す = ghost 追従で動く phaseSpace.pos ではなく実際の死亡 event を anchor に)。 */}
+          他機 (人間) 死亡中 + 自機死亡中: DeadShipRenderer (ship モデル @ x_D、opacity
+            `(τ_max − τ_0) / τ_max` で fade) + DeathMarker (sphere @ x_D + ring @ W_D(τ_0)、
+            τ_0 < DEATH_TAU_EFFECT_MAX のみ)。2026-04-22 統一アルゴリズム。 */}
       {playerList.map((player) => {
         if (isLighthouse(player.id)) {
           return <LighthouseRenderer key={`player-${player.id}`} player={player} />;
@@ -607,9 +606,9 @@ export const SceneContent = ({
       {/* 時空星屑（個別点のクラウド） */}
       <StardustRenderer />
 
-      {/* 死亡 marker (sphere + ring) は各 player renderer (OtherPlayerRenderer 死亡 branch)
-          に統合、past-cone fade 同期で表示。killNotification store state は UI HUD (Overlays
-          の text notification) のみに使用。 */}
+      {/* 死亡 marker (sphere + ring) は DeathMarker (LighthouseRenderer / SceneContent 死者
+          routing から call、2026-04-22 統一アルゴリズム) が担当。killNotification store state
+          は UI HUD (Overlays の text notification) のみに使用。 */}
 
       {/* スポーンエフェクト */}
       {spawns.map((spawn) => (

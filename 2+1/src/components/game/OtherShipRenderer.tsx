@@ -20,8 +20,10 @@ import type { RelativisticPlayer } from "./types";
  *   commit (ship の exhaust / arrow が thrust 単独信号で発火するよう補正)。
  *
  * 交点 null (新 peer で worldline 履歴が薄い、past-cone が届いていない等) の時は
- * 非描画 (gnomon marker 等も同条件)。死亡中は SceneContent 側で OtherPlayerRenderer
- * (死亡 fade) にフォールバックするので本 component は生存中のみに使う想定。
+ * 非描画 (gnomon marker 等も同条件)。死亡中は SceneContent の τ_0 routing で
+ * DeadShipRenderer + DeathMarker にフォールバック (8c019e3 統一アルゴリズム)。
+ * 本 component は生存中 + τ_0 < 0 の「past-cone 未到達で pre-death worldLine 上に見える」
+ * 期間に使う想定。
  *
  * 光源 / lighting は SceneContent の GameLights で共通処理、自機と同じマテリアルを
  * 流用するため一旦適当 (自機ごとのオーバーライドは今後の課題)。
