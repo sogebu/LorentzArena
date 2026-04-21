@@ -130,17 +130,18 @@ export const EXPLOSION_PARTICLE_COUNT = 30;
  * 煙 (debris) の共通色。hit / explosion で別色、player 色差別化は廃止
  * (2026-04-21 odakin 指定)。
  *
- * - `HIT_DEBRIS_COLOR` = hit smoke (laser 被弾、killer 起因): 明るい warm silver、
- *   fresh spark / 軽い煙の質感。
- * - `EXPLOSION_DEBRIS_COLOR` = explosion smoke (death、victim 起因): 暗めの warm
- *   gray、ash / 重い死煙の質感。
+ * - `HIT_DEBRIS_COLOR` = hit smoke (laser 被弾、killer 起因): warm silver、
+ *   fresh spark / 軽い煙の質感 (cool 寄り)。
+ * - `EXPLOSION_DEBRIS_COLOR` = explosion smoke (death、victim 起因): 明るめ warm
+ *   ember tint、hit より視認性が高く「死」が dramatic に出るように (初版 lightness
+ *   65% の dim ash は暗宇宙背景で埋もれたため、85% まで明るく + ember warm 寄り)。
  *
- * どちらも飽和した player 色と衝突しない warm gray 系で universal、brightness 差で
- * hit=軽い / explosion=重い の semantic 区別。識別は HUD / kill log で行うので
- * debris 色自体は中立に。
+ * どちらも飽和した player 色と衝突しない warm gray 系で universal、色相 (cool vs
+ * warm) と lightness で hit < explosion の視認階層。識別は HUD / kill log で行う
+ * ので debris 色自体は player 依存を排除。
  */
 export const HIT_DEBRIS_COLOR = "hsl(40, 12%, 80%)";
-export const EXPLOSION_DEBRIS_COLOR = "hsl(15, 8%, 65%)";
+export const EXPLOSION_DEBRIS_COLOR = "hsl(25, 25%, 82%)";
 
 // Phase C1: 被弾デブリ (hit、lethal/non-lethal 両方) 用パラメータ。
 // 設計コンセプト (2026-04-18 夜 UX 統一後): 「広さ・粒・1 粒の派手さは爆発と同じ、
