@@ -83,6 +83,7 @@
 - **本番実戦観察**: Stage 1+1.5+2+3 + audit 5 bug fix deploy 済。症状 1 (host split) / 症状 4 (ghost stuck) / LH 二重駆動 / Bug X resurrection の自動解消を本番 console log / UI で確認。`[PeerProvider] Host split detected` が出たら Stage 2 が、切断 peer が 20s で UI から消えたら Stage 3 が効いている印
 - **3+ peer 実機テスト**: Stage 3 の主 target は 3+ peer での切断 peer resurrection。2-peer 対戦では差が出ないので 3+ peer で実戦観察が理想
 - **マルチプレイ state バグ 5 点 全解消**: symptom table の 1-5 全て修正済 marker 付き。次の state 系課題が出るまで本件は closed
+- **`PeerProvider.tsx` を `peer-helpers.ts` に分割** (1,379 LOC → 1,079 LOC 予定): top-level helpers (type guards / registerHostRelay / registerPeerOrderListener / transferLighthouseOwnership / performDemotion / discoverBeaconHolder / appendToJoinRegistry) + 定数群は既に self-contained で抽出リスク低。pure refactor、動作変化無し予定
 - **進行方向可視化 分岐 A**: 他機 exhaust (phaseSpace に共変 α^μ 同梱、`Λ(u_own)` boost / `Λ(u_obs)^{-1}` 戻し)、AccelerationArrow 他機展開 (要設計再考)
 - **進行方向可視化 分岐 B/C**: sphere + heading-dart (案 14) / star aberration skybox (案 16)、default frame 選択。詳細: `EXPLORING.md §進行方向・向きの認知支援`
 - **フルチュートリアル** (必須、初見 UX、B3 とは別)
