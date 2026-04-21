@@ -1,6 +1,13 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { createVector3, createVector4, gamma, lorentzBoost } from "../../physics";
+import {
+  createVector3,
+  createVector4,
+  gamma,
+  lorentzBoost,
+  quatIdentity,
+  yawToQuat,
+} from "../../physics";
 import { buildApparentShapeMatrix } from "./apparentShape";
 import { buildMeshMatrix } from "./DisplayFrameContext";
 import { buildDisplayMatrix } from "./displayTransform";
@@ -21,7 +28,7 @@ describe("buildApparentShapeMatrix (底面 display xy 楕円 + 塔軸 L(−uA)·
     it("observerPos = null → buildMeshMatrix", () => {
       const displayMatrix = buildDisplayMatrix(null, null);
       const anchor = createVector4(0, -3, 2, 1);
-      const v = buildApparentShapeMatrix(anchor, ZERO_U, null, displayMatrix);
+      const v = buildApparentShapeMatrix(anchor, ZERO_U, quatIdentity(), null, displayMatrix);
       const d = buildMeshMatrix(anchor, displayMatrix);
       matrixApproxEqual(v, d);
     });
@@ -33,7 +40,7 @@ describe("buildApparentShapeMatrix (底面 display xy 楕円 + 塔軸 L(−uA)·
         observerPos,
         lorentzBoost(createVector3(0, 0, 0)),
       );
-      const v = buildApparentShapeMatrix(anchor, ZERO_U, observerPos, displayMatrix);
+      const v = buildApparentShapeMatrix(anchor, ZERO_U, quatIdentity(), observerPos, displayMatrix);
       const d = buildMeshMatrix(anchor, displayMatrix);
       matrixApproxEqual(v, d);
     });
@@ -48,7 +55,7 @@ describe("buildApparentShapeMatrix (底面 display xy 楕円 + 塔軸 L(−uA)·
       lorentzBoost(createVector3(0, 0, 0)),
     );
     const anchor = createVector4(-5, -5, 0, 0);
-    const m = buildApparentShapeMatrix(anchor, ZERO_U, observerPos, displayMatrix);
+    const m = buildApparentShapeMatrix(anchor, ZERO_U, quatIdentity(), observerPos, displayMatrix);
 
     it("前面 (model x=+0.3): √2·0.3 stretch、display t 一定", () => {
       const out = apply(m, 0.3, 0, 0);
@@ -93,7 +100,7 @@ describe("buildApparentShapeMatrix (底面 display xy 楕円 + 塔軸 L(−uA)·
         observerPos,
         lorentzBoost(createVector3(0, 0, 0)),
       );
-      const m = buildApparentShapeMatrix(anchor, ZERO_U, observerPos, displayMatrix);
+      const m = buildApparentShapeMatrix(anchor, ZERO_U, quatIdentity(), observerPos, displayMatrix);
       const out = apply(m, 1, 1, 0);
       // (1,1) の x_∥ 成分 = √2、S·(1,1) の x_∥ 成分 = √2·√2 = 2、x_⊥ 成分 = 0
       //   → display spatial ずれ = 2·x_∥ = (√2, √2)、display t 不変
@@ -113,7 +120,7 @@ describe("buildApparentShapeMatrix (底面 display xy 楕円 + 塔軸 L(−uA)·
         observerPos,
         lorentzBoost(createVector3(0, 0, 0)),
       );
-      const m = buildApparentShapeMatrix(anchor, uA, observerPos, displayMatrix);
+      const m = buildApparentShapeMatrix(anchor, uA, quatIdentity(), observerPos, displayMatrix);
       const out = apply(m, 0, 0, 1);
       expect(out.x).toBeCloseTo(-5 + uA.x, 9);
       expect(out.y).toBeCloseTo(0 + uA.y, 9);
@@ -128,7 +135,7 @@ describe("buildApparentShapeMatrix (底面 display xy 楕円 + 塔軸 L(−uA)·
         observerPos,
         lorentzBoost(createVector3(0, 0, 0)),
       );
-      const m = buildApparentShapeMatrix(anchor, uA, observerPos, displayMatrix);
+      const m = buildApparentShapeMatrix(anchor, uA, quatIdentity(), observerPos, displayMatrix);
       const out = apply(m, 0.3, 0, 0);
       expect(out.x).toBeCloseTo(-5 + Math.SQRT2 * 0.3, 9);
       expect(out.y).toBeCloseTo(0, 9);
@@ -144,7 +151,7 @@ describe("buildApparentShapeMatrix (底面 display xy 楕円 + 塔軸 L(−uA)·
       //   (5 - 0 - 0)² = 5² → anchor.t = 0, anchor.spatial = (-5, 0)
       const anchor = createVector4(0, -5, 0, 0);
       const displayMatrix = buildDisplayMatrix(observerPos, lorentzBoost(uO));
-      const m = buildApparentShapeMatrix(anchor, ZERO_U, observerPos, displayMatrix);
+      const m = buildApparentShapeMatrix(anchor, ZERO_U, quatIdentity(), observerPos, displayMatrix);
 
       // display での anchor 位置を取得し、base 頂点の display t が一致することを確認
       const anchorDisp = new THREE.Vector3(anchor.x, anchor.y, anchor.t).applyMatrix4(
@@ -159,7 +166,7 @@ describe("buildApparentShapeMatrix (底面 display xy 楕円 + 塔軸 L(−uA)·
       const observerPos = createVector4(5, 0, 0, 0);
       const anchor = createVector4(0, -5, 0, 0);
       const displayMatrix = buildDisplayMatrix(observerPos, lorentzBoost(uO));
-      const m = buildApparentShapeMatrix(anchor, ZERO_U, observerPos, displayMatrix);
+      const m = buildApparentShapeMatrix(anchor, ZERO_U, quatIdentity(), observerPos, displayMatrix);
 
       const top = apply(m, 0, 0, 1);
       const bottom = apply(m, 0, 0, 0);
@@ -170,6 +177,69 @@ describe("buildApparentShapeMatrix (底面 display xy 楕円 + 塔軸 L(−uA)·
       expect(top.x - bottom.x).toBeCloseTo(-uO.x, 9);
       expect(top.y - bottom.y).toBeCloseTo(-uO.y, 9);
       expect(top.z - bottom.z).toBeCloseTo(gO, 9);
+    });
+  });
+
+  describe("heading による底面回転 (R_q 合成)", () => {
+    // 静止 A、静止 O、x_∥^O = (1, 0)。heading yaw = π/2 → model (1, 0, 0) は
+    // 回転後 (0, 1, 0) 方向、S (x_∥ 軸 √2) を適用して world xy に戻っても
+    // x_∥ 方向の stretch は受けない (y 方向 vertex、x_⊥ 成分)。
+    it("yaw=π/2 で model (1, 0, 0) は y 方向に伸びる (x_∥ stretch 非作用)", () => {
+      const observerPos = createVector4(0, 0, 0, 0);
+      const anchor = createVector4(-5, -5, 0, 0);
+      const displayMatrix = buildDisplayMatrix(
+        observerPos,
+        lorentzBoost(createVector3(0, 0, 0)),
+      );
+      const m = buildApparentShapeMatrix(
+        anchor,
+        ZERO_U,
+        yawToQuat(Math.PI / 2),
+        observerPos,
+        displayMatrix,
+      );
+      const out = apply(m, 1, 0, 0);
+      // model (1, 0) → R_q · (1, 0) = (0, 1) (display xy) → S · (0, 1) = (0, 1)
+      // world 変位 = anchor + (0, 1, 0)、anchor = (t=-5, x=-5, y=0) なので (-5, 1, -5)
+      expect(out.x).toBeCloseTo(-5, 9);
+      expect(out.y).toBeCloseTo(1, 9);
+      expect(out.z).toBeCloseTo(-5, 9);
+    });
+
+    it("yaw=π/2 で model (0, 1, 0) は −x 方向に伸びる + √2 stretch", () => {
+      const observerPos = createVector4(0, 0, 0, 0);
+      const anchor = createVector4(-5, -5, 0, 0);
+      const displayMatrix = buildDisplayMatrix(
+        observerPos,
+        lorentzBoost(createVector3(0, 0, 0)),
+      );
+      const m = buildApparentShapeMatrix(
+        anchor,
+        ZERO_U,
+        yawToQuat(Math.PI / 2),
+        observerPos,
+        displayMatrix,
+      );
+      const out = apply(m, 0, 1, 0);
+      // model (0, 1) → R_q · (0, 1) = (−1, 0) → S · (−1, 0) = (−√2, 0)
+      // anchor.y = 0 なので y 成分は 0
+      expect(out.x).toBeCloseTo(-5 - Math.SQRT2, 9);
+      expect(out.y).toBeCloseTo(0, 9);
+      expect(out.z).toBeCloseTo(-5, 9);
+    });
+
+    it("heading = identity で従来の挙動 (LH と等価)", () => {
+      const observerPos = createVector4(0, 0, 0, 0);
+      const anchor = createVector4(-5, -5, 0, 0);
+      const displayMatrix = buildDisplayMatrix(
+        observerPos,
+        lorentzBoost(createVector3(0, 0, 0)),
+      );
+      const mIdentity = buildApparentShapeMatrix(anchor, ZERO_U, quatIdentity(), observerPos, displayMatrix);
+      const outIdentity = apply(mIdentity, 0.3, 0, 0);
+      // 既存テストと同じ: out.x = -5 + √2·0.3
+      expect(outIdentity.x).toBeCloseTo(-5 + Math.SQRT2 * 0.3, 9);
+      expect(outIdentity.z).toBeCloseTo(-5, 9);
     });
   });
 });

@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { Vector3, Vector4 } from "../../physics";
+import { quatToYaw, type Quaternion, type Vector3, type Vector4 } from "../../physics";
 import { buildMeshMatrix } from "./DisplayFrameContext";
 
 /**
@@ -22,11 +22,14 @@ const ELLIPSE_K = Math.SQRT2;
  * Model vertex (m.x, m.y, m.z) を以下で世界系へ写す:
  *
  * 1. **底面 (m.xy)**: 観測者 O の rest frame (= display frame) の xy plane
- *    (simultaneity slice) 上で x_∥^O 方向に k=√2 stretch:
- *      (X_disp, Y_disp) = S · (m.x, m.y),   S = I + (k−1) · x_∥^O ⊗ x_∥^O^T
+ *    (simultaneity slice) 上で model を先に heading R_q で回し、続けて x_∥^O
+ *    方向に k=√2 stretch:
+ *      (X_disp, Y_disp) = S · R_q · (m.x, m.y)
+ *      R_q = 2D yaw 回転 (quatToYaw(anchorHeading) から抽出、2+1 は yaw 1 自由度)
+ *      S   = I + (k−1) · x_∥^O ⊗ x_∥^O^T
  *    x_∥^O = display spatial で anchor から観測者への単位ベクトル。
  *    `displayMatrix^{-1}` で world 系へ back-solve (translation は direction vec
- *    に効かない)。
+ *    に効かない)。LH は heading = identity (yaw = 0) で R_q = I、従来と等価。
  * 2. **塔軸 (m.z)**: A の world 4-velocity 方向に m.z 倍 = L(−uA)·(0,0,1) in
  *    three.js = (uA.x, uA.y, γ(uA))。LH (uA=0) は world t 軸、ship (uA≠0) は
  *    worldline tangent 方向に γ 倍で倒れる。
@@ -45,15 +48,17 @@ const ELLIPSE_K = Math.SQRT2;
  * - `observerPos = null` → `buildMeshMatrix` fallback。
  * - display spatial で anchor と観測者の xy が一致 (x_∥^O 不定) → 同上 fallback。
  *
- * @param anchorPos   worldline ∩ 観測者 past-cone の world 4-vec。
- * @param anchorU     A の world 系 spatial 4-velocity (Vector3、2+1 では z=0)。
- *                    LH は `vector3Zero()`、ship は `player.phaseSpace.u`。
- * @param observerPos 観測者の world 4-vec (null で fallback)。
+ * @param anchorPos     worldline ∩ 観測者 past-cone の world 4-vec。
+ * @param anchorU       A の world 系 spatial 4-velocity (Vector3、2+1 では z=0)。
+ *                      LH は `vector3Zero()`、ship は `player.phaseSpace.u`。
+ * @param anchorHeading A の姿勢 quaternion。2+1 では yaw 1 自由度、LH は identity。
+ * @param observerPos   観測者の world 4-vec (null で fallback)。
  * @param displayMatrix world → display の THREE.Matrix4 (= `buildDisplayMatrix`)。
  */
 export const buildApparentShapeMatrix = (
   anchorPos: Vector4,
   anchorU: Vector3,
+  anchorHeading: Quaternion,
   observerPos: Vector4 | null,
   displayMatrix: THREE.Matrix4,
 ): THREE.Matrix4 => {
@@ -81,12 +86,26 @@ export const buildApparentShapeMatrix = (
   const Sxy = dk * xParX * xParY;
   const Syy = 1 + dk * xParY * xParY;
 
-  // M[:, 0] と M[:, 1] を back-solve: display での base 変位が (S·m.xy, 0_display_t)
+  // heading R_q を display xy plane 上で model 先に回し、その後 S で stretch。
+  // 2+1 では yaw 1 自由度のみ使う想定、z 軸まわりの pure rotation として抽出。
+  //   R_q · (1, 0) = (cos, sin)   R_q · (0, 1) = (−sin, cos)
+  // S · R_q · (1, 0) と S · R_q · (0, 1) を display direction として求める。
+  const yaw = quatToYaw(anchorHeading);
+  const c = Math.cos(yaw);
+  const s = Math.sin(yaw);
+  // S · (cos, sin) = (Sxx·cos + Sxy·sin, Sxy·cos + Syy·sin)
+  const sr0x = Sxx * c + Sxy * s;
+  const sr0y = Sxy * c + Syy * s;
+  // S · (−sin, cos) = (−Sxx·sin + Sxy·cos, −Sxy·sin + Syy·cos)
+  const sr1x = -Sxx * s + Sxy * c;
+  const sr1y = -Sxy * s + Syy * c;
+
+  // M[:, 0] と M[:, 1] を back-solve: display での base 変位が (S·R_q·m.xy, 0_t)
   // になるように world 系の direction vector を取る。tAnchor は translation で
   // direction vec に効かない → displayMatrix^{-1} を direction に掛けて得る。
   const invDisplay = new THREE.Matrix4().copy(displayMatrix).invert();
-  const mCol0 = new THREE.Vector4(Sxx, Sxy, 0, 0).applyMatrix4(invDisplay);
-  const mCol1 = new THREE.Vector4(Sxy, Syy, 0, 0).applyMatrix4(invDisplay);
+  const mCol0 = new THREE.Vector4(sr0x, sr0y, 0, 0).applyMatrix4(invDisplay);
+  const mCol1 = new THREE.Vector4(sr1x, sr1y, 0, 0).applyMatrix4(invDisplay);
 
   // 塔軸 (m.z 列): A の world 4-velocity 方向 = L(−uA)·(0,0,1) in three.js
   // = (uA.x, uA.y, γ(uA))。LH uA=0 で (0, 0, 1) = world t 軸。

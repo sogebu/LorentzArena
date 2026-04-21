@@ -87,7 +87,13 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
     <>
     {visible && (
     <group
-      matrix={buildApparentShapeMatrix(anchorPos, player.phaseSpace.u, observerPos, displayMatrix)}
+      matrix={buildApparentShapeMatrix(
+        anchorPos,
+        player.phaseSpace.u,
+        player.phaseSpace.heading,
+        observerPos,
+        displayMatrix,
+      )}
       matrixAutoUpdate={false}
     >
     <group position={[0, 0, -LIGHTHOUSE_SINK * 0.5]} scale={0.5}>
