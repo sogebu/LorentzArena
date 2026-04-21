@@ -2,11 +2,40 @@
 
 ## 現在のステータス
 
-対戦可能。**`1b9e743` デプロイ済み** (build `2026/04/21 08:20:46 JST`)。本番: https://sogebu.github.io/LorentzArena/
+対戦可能。**`43a33b6` デプロイ済** (build `2026/04/21 23:50:10 JST`)。本番: https://sogebu.github.io/LorentzArena/
+(ただし `43a33b6` (revert) は pushed のみで本番 deploy は `cf5b262` 時刻、コード的に同義)。
 
-**Stage 1 + 1.5 + 2 + 3 完成**。Stage 3 で freeze(5s) + GC(15s) = 計 20s 無通信で removePlayer する stale GC が入り、3+ peer での disconnected peer resurrection (Bug X) が解消した。audit 中に Stage 3 GC を **単独では無効化する critical bug** を発見 → `applySnapshot` の lastUpdate refresh が全 entry を対象にしており、disconnected peer の snapshot refresh で stale 時計が永久リセットされていた。修正: 既存 entry の lastUpdate は phaseSpace のみが refresh、新規 add (=store.players に無かった id) だけ初期化。段階設計は `plans/2026-04-20-multiplayer-state-bugs.md`。
+**Phase A (PhaseSpace 拡張) + Phase B (renderer 移行) 完了**。PhaseSpace を `(pos, u, heading, alpha)` に拡張して network 配管、他機も ship 3D model (SelfShipRenderer 流用) で past-cone 交点に描画。debris / laser past-cone marker 色を universal 化。**未解決 regression: DeathMarker が出ないことがある + sphere sinking 設計通りに動かない報告** (`plans/2026-04-21-deathmarker-regression.md` に引継ぎメモ)。
 
-## 本日 (2026-04-20〜21) の主要 entry
+## 本日 (2026-04-21) の主要 entry
+
+`43a33b6` **誤った DeathMarker 修正を revert**: odakin 報告「DeathMarker が出ないことがある」を sphere の past-cone anchor 化で解決できると誤読した `f494986` を revert。sphere が sink する設計 (world event の t で fixed) は意図通りで、実際の regression 原因は未特定。調査メモ: `plans/2026-04-21-deathmarker-regression.md`。仮説 1-4 (myDeathEvent.pos 意図せず更新 / snapshot が dead phaseSpace 上書き / DEBRIS_MAX_LAMBDA が短すぎる / routing 副作用) を次セッションで検証。
+
+`cf5b262` **EXPLOSION_DEBRIS_COLOR を明るく**: 初版 `hsl(15, 8%, 65%)` (lightness 65%) が暗宇宙背景に埋もれて「死亡エフェクト出ない」報告 → `hsl(25, 25%, 82%)` (lightness 82% + warm ember tint) に。hit smoke (`hsl(40, 12%, 80%)`) より明るく、死が dramatic に出るよう調整。
+
+`5fae0be` **debris smoke + laser past-cone marker を universal 色に**: odakin 指定の UI 整理。(1) `HIT_DEBRIS_COLOR` (warm silver、fresh spark) + `EXPLOSION_DEBRIS_COLOR` (warm ember、重い死煙) で hit / explosion 別に universal 化、per-player 色廃止。(2) レーザー過去光円錐マーカー (`laserIntersections` 三角) を `LASER_PAST_CONE_MARKER_COLOR = "hsl(210, 20%, 85%)"` (cool silver) に universal 化。未変更: world line 過去光円錐 gnomon (sphere+core+ring) / radar triangle / laser 未来光円錐 → 引き続き player 色。player 識別は HUD / kill log / 世界線 / radar で行う方針。handleDamage.test.ts 既存 3 ケースを universal constant 照合に rewrite。
+
+`3d1831d` **他機を ship 3D model で描画 (OtherShipRenderer 新設)**: SelfShipRenderer を synthetic player (past-cone 交点の pos + heading) + synthetic thrustRef (alpha + FRICTION·u で thrust 単独を近似復元) でラップして他機にも流用。生存他機の render target を `OtherPlayerRenderer` (sphere + glow + 一時 nose/arrow) → `OtherShipRenderer` (ship model at past-cone 交点) に切替。OtherPlayerRenderer は死亡専用に縮小、B-3 nose indicator + B-4 AccelerationArrow を削除 (ship model に吸収)。lighting は既存 GameLights (灯台 past-cone 交点 position + `decay={0}`) を流用、他機 ship color 差別化は defer。
+
+`b204295` **nose / 加速度矢印を past-cone 交点に**: odakin 指摘「他機の heading / alpha は光が届いた時点 (= past-cone 交点) の値を使うべき」の修正。`pastLightConeIntersectionWorldLine` が Phase A-4 の補間ロジックで交点位置の (pos, u, heading, alpha) を返すので、OtherPlayerRenderer の nose/arrow anchor を現在位置 → 交点位置に切替。sphere 本体は gameplay 視認性で現在位置のまま (sphere と nose/arrow の空間ずれ = 相対論的光遅延の educational 可視化)。3d1831d で OtherShipRenderer に吸収された。
+
+`4a026d7` + `0865859` **Phase B-3 / B-4: OtherPlayerRenderer に nose indicator + AccelerationArrow を追加**: heading / alpha が cross-peer broadcast されることの visible proof として、sphere 外側に player 色の短い nose bar + display 方向に normalize した矢印。sphere だけの他機表現に方向情報を付与。3d1831d で ship 3D model 移行時に吸収・削除。
+
+`f158faf` + `0ededd8` **Phase B-1 / B-2: apparent shape helper に heading 引数 + SelfShipRenderer の yaw source を phaseSpace.heading に**: (1) `buildApparentShapeMatrix` に `anchorHeading: Quaternion` 引数を追加、display xy plane 内で model 先に `R_q` (yaw 回転) → S (k=√2 x_∥^O stretch) の順に合成。LH は heading=identity で従来挙動と等価。(2) SelfShipRenderer の `cameraYawRef` 直読を `quatToYaw(player.phaseSpace.heading)` に置換、ShipPreview に `HeadingUpdater` helper (Canvas 内 useFrame) を追加して yawRef → stubPlayer.heading を同期。
+
+`65ada08` + `fadedf3` + `f1299dc` + `2085790` **Phase A-1..A-4: PhaseSpace 拡張 + 配管**:
+  - A-1 `2085790`: Quaternion helpers (`Quaternion` 型 + identity / yawToQuat / quatToYaw / multiplyQuat / slerpQuat / normalizeQuat / conjugateQuat) を vector.ts に、PhaseSpace を `(pos, u, heading, alpha)` に拡張、`createPhaseSpace` は default 引数 (identity / zero) で救済、`evolvePhaseSpace` は内部で既に計算していた world 4-加速度 `accel4World` を `alpha` に格納 + heading は transport。99/99 pass。
+  - A-2 `f1299dc`: wire format に `heading?` / `alpha?` を optional 追加 (旧 build 互換)、`messageHandler` / `snapshot` で `parseOptionalQuaternion` / `parseOptionalAlpha` helper 経由で default 補完。build 側で default (identity/zero) は wire 省略で帯域節約。104/104 pass。
+  - A-3 `fadedf3`: 自機 heading source を `cameraYawRef` に固定、gameLoop の 3 経路 (ballistic catchup / alive tick / ghost tick) で `yawToQuat(cameraYaw)` を newPhaseSpace に上書き。
+  - A-4 `65ada08`: `pastLightConeIntersectionWorldLine` / future 版 / Linear reference の 4 箇所で `interpolateSegmentPhaseSpace(prev, curr, tParam, interpPos)` 新 helper 経由に統一、heading は slerp、alpha は linear 補間で交点の PhaseSpace を返す。106/106 pass。
+
+**Phase B-5 (他機 exhaust) は defer** (`plans/2026-04-21-phaseSpace-heading-accel.md` 参照): 自機 exhaust は thrust 単独を `thrustAccelRef` に持つが `phaseSpace.alpha = thrust + friction` で semantic 一致しない。他機への展開は thrust 単独を broadcast する新 field 追加が必要で、別 plan (他機 ship 3D model 導入時) に退避。B-4 の AccelerationArrow が alpha 方向を既に可視化済なので現状の視覚情報価値は B-1..B-4 範囲で十分。Phase C (旧 ref 撤去) は B-2 で cameraYawRef の ship 向き用途が除去済、残り Phase C-1 (wire optional → required) は混在期間確認後に。
+
+`dc758db` **apparent-shape 2 本 plan + rendering.md + SESSION.md 整備**: `1933908` の全面書き換えで散らかった plan (v1/v4 + 実装更新) を再構成、odakin 原案 M matrix 提案を `plans/2026-04-21-ship-apparent-shape-M-matrix.md` に復元 (`4b1017c` の 284 行を git から書き戻し)。
+
+`f0e6627` **apparent-shape を M pattern に刷新**: odakin spec「底面は O 静止系時間軸に垂直 (display xy plane に flat)、塔軸は `L(uO)·L(−uA)·(0,0,1)` 方向 (= A の 4-velocity を O 静止系で観た向き)」+ ship 対応 generic 化。`(anchorPos, anchorU, observerPos, displayMatrix)` signature。LH phaseSpace.u=0 で従来挙動と numerically 一致、ship 拡張は call site 変更なしでそのまま載る設計。
+
+## 以前の主要 entry
 
 `fe365ad` **PeerProvider top-level helpers を `peer-helpers.ts` に分離** (未 deploy、本番は `1b9e743` のまま): 1,379 LOC まで累積した PeerProvider.tsx を pure file move で組織化。抽出対象は `NetworkManager` 型 + 8 helper (type guards / appendToJoinRegistry / registerPeerOrderListener / registerHostRelay / transferLighthouseOwnership / performDemotion / discoverBeaconHolder)、いずれも self-contained。component-specific な types (ActiveTransport / ConnectionPhase / PeerContextValue) + timing constants (policy として useEffect が参照) + PeerProvider 本体は残留。`NetworkManager` は consumer (useGameLoop / useSnapshotRetry) 互換維持のため `export type { NetworkManager };` で PeerProvider 経由でも import 可。PeerProvider.tsx: 1,379 → 1,125 LOC (-18%)、peer-helpers.ts: 294 LOC 新規。責任分離: React component logic ↔ pure network/state helpers がファイル境界で明示。typecheck + Vitest 58/58 pass。
 
@@ -76,18 +105,33 @@
 
 ### 低優先リスク / 未検証
 
+- **DeathMarker が出ないことがある + sphere sinking 設計通り動かない (odakin 報告、未解決、最優先)**: 調査メモ
+  [`plans/2026-04-21-deathmarker-regression.md`](plans/2026-04-21-deathmarker-regression.md)。
+  仮説 4 つ (myDeathEvent.pos 不意の更新 / snapshot が dead phaseSpace 上書き /
+  `DEBRIS_MAX_LAMBDA=2.5s` の窓が短い / 生存→死亡 routing の副作用) を次セッション
+  で実機再現して eliminate する順序を記載。誤 fix `f494986` は `43a33b6` で revert 済。
 - **リスポーン時に世界線が繋がる** (2026-04-14 Stage F-1 後再発): 最有力は F-1 snapshot で `frozenWorldLines` 未 serialize → respawn 時 `appendWorldLine` で連結。何 peer 視点で出るか未調査
 - localId PeerJS ID 衝突 (tab-hidden 復帰時)、PeerServer ネットワークエラー stack (WS Relay 未設定時)
 - モバイルハイスコア (iOS Safari ホーム画面復帰時保存)
 
 ## 次にやること
 
-- **本番実戦観察**: Stage 1+1.5+2+3 + audit 5 bug fix deploy 済。症状 1 (host split) / 症状 4 (ghost stuck) / LH 二重駆動 / Bug X resurrection の自動解消を本番 console log / UI で確認。`[PeerProvider] Host split detected` が出たら Stage 2 が、切断 peer が 20s で UI から消えたら Stage 3 が効いている印
-- **3+ peer 実機テスト**: Stage 3 の主 target は 3+ peer での切断 peer resurrection。2-peer 対戦では差が出ないので 3+ peer で実戦観察が理想
-- **マルチプレイ state バグ 5 点 全解消**: symptom table の 1-5 全て修正済 marker 付き。次の state 系課題が出るまで本件は closed
-- **進行方向可視化 分岐 A**: 他機 exhaust (phaseSpace に共変 α^μ 同梱、`Λ(u_own)` boost / `Λ(u_obs)^{-1}` 戻し)、AccelerationArrow 他機展開 (要設計再考)
+- **(最優先) DeathMarker regression 解決**: 上記「低優先リスク / 未検証」の最上段、および
+  [`plans/2026-04-21-deathmarker-regression.md`](plans/2026-04-21-deathmarker-regression.md) の仮説 1-4 を
+  multi-tab 実機で順に eliminate。仮説 3 (DEATH_MARKER_LAMBDA 導入で窓長く) は quick win
+  候補として先に試す価値あり (physics ではなく UX 改善)。
+- **Phase B-5 (他機 exhaust) 再設計**: `phaseSpace.alpha = thrust + friction` が
+  thrust 単独信号でないため、他機への ship 3D model exhaust 展開は pure thrust を
+  新 wire field で broadcast する必要あり。別 plan 起こし時に対応。
+- **Phase C-1 (wire format 厳格化)**: 新 build (heading/alpha 送信) のみの混在期間
+  確認後、受信 optional → required に厳格化して shim を削除。タイミングは
+  `plans/2026-04-21-phaseSpace-heading-accel.md` 参照。
+- **他機 ship color 差別化**: hull 材質が固定 navy なので peer ごとに分かりづらい。
+  各 player color を hull emissive / accent に反映する material variant が必要
+  (現状 `SHIP_HULL_*` 固定定数の分岐設計)。
+- **本番実戦観察**: 多機能が 1 日で入ったので (Phase A + B + color + ship model)、
+  multi-tab 本番テストで regression 探索と UX 確認。DeathMarker 調査はその一環。
 - **進行方向可視化 分岐 B/C**: sphere + heading-dart (案 14) / star aberration skybox (案 16)、default frame 選択。詳細: `EXPLORING.md §進行方向・向きの認知支援`
-- **Ship に apparent shape (M pattern) 展開**: LH は 2026-04-21 夕に stylization 版 M pattern で実装済 ([`apparentShape.ts`](src/components/game/apparentShape.ts) generic、`(anchorPos, anchorU, observerPos, displayMatrix)` signature)。ship (OtherPlayerRenderer / SelfShipRenderer) への展開は未着手。設計資料は 2 本並走: [`plans/2026-04-21-ship-apparent-shape-pattern.md`](plans/2026-04-21-ship-apparent-shape-pattern.md) (v1..v4 歴代 + 現 stylization spec + 物理 ideal) + [`plans/2026-04-21-ship-apparent-shape-M-matrix.md`](plans/2026-04-21-ship-apparent-shape-M-matrix.md) (ship 原案 Open questions B-1..E-5)
 - **フルチュートリアル** (必須、初見 UX、B3 とは別)
 - 各プレイヤー固有時刻表示 / スマホ UI 残 / 用語再考 / 音楽の時間同期
 - **レーザー以外の世界線 × 未来光円錐の表示**: 現 sphere 0.15 + ring 0.12 薄い、opacity 上げ or gnomon/pulse 昇格
