@@ -195,13 +195,45 @@ const registerPeerOrderListener = (
 };
 
 /**
+ * LH の駆動権 (= `lh.ownerId`) を新しい所有者に移譲する。useGameLoop §462 の LH AI は
+ * `lh.ownerId === myId` で gate されているため、この field が「誰が LH を駆動するか」
+ * の single source of truth。
+ *
+ * 対称操作 (思想):
+ *   - BH 就任時 (`assumeHostRole`): newOwnerId = self (駆動権取得)
+ *   - BH 降格時 (`performDemotion`): newOwnerId = realHostId (駆動権放出)
+ *
+ * idempotent (ownerId が既に一致すれば no-op)。変更があれば setPlayers で
+ * immutable に更新し次 RAF tick に反映。
+ */
+const transferLighthouseOwnership = (newOwnerId: string) => {
+  useGameStore.getState().setPlayers((prev) => {
+    let changed = false;
+    const next = new Map(prev);
+    for (const [id, player] of next) {
+      if (isLighthouse(id) && player.ownerId !== newOwnerId) {
+        next.set(id, { ...player, ownerId: newOwnerId });
+        changed = true;
+      }
+    }
+    return changed ? next : prev;
+  });
+};
+
+/**
  * Finalize host demotion once the real BH is known.
  * Shared by:
  *   (a) beacon-acquire effect の `demoteToClient` (discovery probe 経由で realHostId 取得後)
  *   (b) Stage 2 host self-verification probe (visibility / backup timer 経由で split 検出後)
  *
- * 手順: 自クライアントに redirect broadcast → BH flag clear → 新 BH を設定 →
- * 接続 → roleVersion bump で依存 effect 再評価 (heartbeat / beacon / peerList 等)。
+ * 手順 (対称操作として `assumeHostRole` と対):
+ *   assumeHostRole    | performDemotion
+ *   ------------------|-----------------------------------
+ *   clearBH           | broadcast redirect (clients 通知)
+ *   setAsBH (self)    | clearBH + setBHId(realHostId) + connect
+ *   transferLHOwner(self) | transferLHOwner(realHostId)
+ *   roleVersion bump  | roleVersion bump
+ *
  * beaconRef.current の destroy は beacon-acquire effect の cleanup に委譲する
  * (既存 `demoteToClient` と同じパターン — `clearBeaconHolder()` + `setRoleVersion`
  *  で effect 再実行、早期 return により前 run cleanup で beacon が destroy される)。
@@ -226,27 +258,67 @@ const performDemotion = (
   pm.clearBeaconHolder();
   pm.setBeaconHolderId(realHostId);
   pm.connect(realHostId);
+  transferLighthouseOwnership(realHostId);
+  onRoleChange();
+};
 
-  // Transfer LH ownership to realHostId (assumeHostRole §setPlayers の逆操作)。
-  // useGameLoop §462-522 の LH AI は `lh.ownerId === myId` で gate されており、
-  // demote 後も ownership が旧 BH (= 自分) のままだと local LH AI が走り続け、
-  // phaseSpace / laser を broadcast → 新 BH も同 LH の AI を回すので **LH が
-  // 二重駆動** (jitter / 重複発射 / 他 peer への 2 重配送) という catastrophic
-  // symptom になる。BH flag clear と同時に LH ownership も realHostId に移譲する。
-  const store = useGameStore.getState();
-  store.setPlayers((prev) => {
-    let changed = false;
-    const next = new Map(prev);
-    for (const [id, player] of next) {
-      if (isLighthouse(id) && player.ownerId !== realHostId) {
-        next.set(id, { ...player, ownerId: realHostId });
-        changed = true;
-      }
+/**
+ * 使い捨て probe PeerManager で la-{roomName} に接続、beacon からの redirect を
+ * 受信して「現時点で誰が BH か」を発見する。beacon 関連の 2 つの probe を統合:
+ *   - beacon-acquire の `demoteToClient` (claim 失敗後、真の BH を発見して demote)
+ *   - Stage 2 self-verification probe (BH と信じているが split していないか検証)
+ *
+ * 内部 `done` flag で callback の one-shot semantics を保証 (PeerJS の destroy が
+ * JS event loop 上の queued event を即 cancel しないため、late callback が発火
+ * しても動作済の状態は変わらない)。返値の cleanup 関数で外部から cancel 可能。
+ *
+ * `onResult` は redirect 受信時、`onInconclusive` は timeout or error 時に呼ぶ。
+ * どちらか一方のみ、最初の 1 回だけ呼ばれる。
+ */
+const discoverBeaconHolder = (params: {
+  roomPeerId: string;
+  options: ReturnType<typeof buildPeerOptionsFromEnv>;
+  timeoutMs: number;
+  probeIdPrefix?: string;
+  onResult: (realHostId: string) => void;
+  onInconclusive: () => void;
+}): (() => void) => {
+  const probeId =
+    (params.probeIdPrefix ?? "") +
+    Math.random().toString(36).substring(2, 11);
+  const pm = new PeerManager<Message>(probeId, params.options);
+  let done = false;
+
+  const finish = (deliver: () => void) => {
+    if (done) return;
+    done = true;
+    clearTimeout(timeout);
+    pm.destroy();
+    deliver();
+  };
+
+  const timeout = setTimeout(
+    () => finish(params.onInconclusive),
+    params.timeoutMs,
+  );
+
+  pm.onPeerStatusChange((status) => {
+    if (done) return;
+    if (status.status === "open") {
+      pm.connect(params.roomPeerId);
+    } else if (status.status === "error") {
+      finish(params.onInconclusive);
     }
-    return changed ? next : prev;
   });
 
-  onRoleChange();
+  pm.onMessage("discovery", (_senderId, msg) => {
+    if (done) return;
+    if (!isRedirectMessage(msg)) return;
+    finish(() => params.onResult(msg.hostId));
+  });
+
+  // 外部 cancel: 結果 deliver 無しで destroy。内部で既に finish 済なら no-op。
+  return () => finish(() => {});
 };
 
 /** Register standard host relay handlers on a PeerManager. */
@@ -802,18 +874,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         peerOrderRef.current = peerOrderRef.current.filter(
           (id) => id !== newHostId,
         );
-        const store = useGameStore.getState();
-        store.setPlayers((prev) => {
-          let changed = false;
-          const next = new Map(prev);
-          for (const [id, player] of next) {
-            if (isLighthouse(id) && player.ownerId !== newHostId) {
-              next.set(id, { ...player, ownerId: newHostId });
-              changed = true;
-            }
-          }
-          return changed ? next : prev;
-        });
+        transferLighthouseOwnership(newHostId);
       }
       setRoleVersion((v) => v + 1);
     };
@@ -1060,8 +1121,7 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout>;
     let beaconFailCount = 0;
-    let currentDiscoveryPm: PeerManager<Message> | null = null;
-    let currentDiscoveryTimeout: ReturnType<typeof setTimeout> | undefined;
+    let cancelDiscovery: (() => void) | null = null;
     const actualHostId = myId;
 
     // When beacon acquisition fails repeatedly, another host exists.
@@ -1069,55 +1129,37 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     const demoteToClient = () => {
       if (cancelled) return;
       // eslint-disable-next-line no-console
-      console.log("[PeerProvider] Beacon contention detected — demoting to client");
-
-      // Connect to beacon as client to discover the real host
-      const opts = buildPeerOptionsFromEnv(dynamicIceServers);
-      const discoveryPm = new PeerManager<Message>(
-        Math.random().toString(36).substring(2, 11),
-        opts,
+      console.log(
+        "[PeerProvider] Beacon contention detected — demoting to client",
       );
-      currentDiscoveryPm = discoveryPm;
-
-      currentDiscoveryTimeout = setTimeout(() => {
-        // Beacon unreachable (may have crashed) — stay as host
-        // eslint-disable-next-line no-console
-        console.log("[PeerProvider] Beacon unreachable during demotion — staying as host");
-        discoveryPm.destroy();
-        currentDiscoveryPm = null;
-        // Resume beacon retry
-        beaconFailCount = 0;
-        if (!cancelled) retryTimer = setTimeout(tryBeacon, 3000);
-      }, 8000);
-
-      discoveryPm.onPeerStatusChange((status) => {
-        if (cancelled) {
-          clearTimeout(currentDiscoveryTimeout);
-          discoveryPm.destroy();
-          currentDiscoveryPm = null;
-          return;
-        }
-        if (status.status === "open") {
-          discoveryPm.connect(roomPeerId);
-        }
-      });
-
-      discoveryPm.onMessage("demotion_redirect", (_senderId, msg) => {
-        if (isRedirectMessage(msg)) {
-          clearTimeout(currentDiscoveryTimeout);
-          const realHostId = msg.hostId;
-          // eslint-disable-next-line no-console
-          console.log("[PeerProvider] Demotion: real host is", realHostId, "— redirecting clients");
-          discoveryPm.destroy();
-          currentDiscoveryPm = null;
-
+      cancelDiscovery = discoverBeaconHolder({
+        roomPeerId,
+        options: buildPeerOptionsFromEnv(dynamicIceServers),
+        timeoutMs: 8000,
+        onResult: (realHostId) => {
+          cancelDiscovery = null;
           if (cancelled) return;
-
-          // Redirect own clients, clear BH flag, reconnect, bump roleVersion.
+          // eslint-disable-next-line no-console
+          console.log(
+            "[PeerProvider] Demotion: real host is",
+            realHostId,
+            "— redirecting clients",
+          );
           performDemotion(peerManager, realHostId, () =>
             setRoleVersion((v) => v + 1),
           );
-        }
+        },
+        onInconclusive: () => {
+          cancelDiscovery = null;
+          if (cancelled) return;
+          // Beacon unreachable (may have crashed) — stay as host
+          // eslint-disable-next-line no-console
+          console.log(
+            "[PeerProvider] Beacon unreachable during demotion — staying as host",
+          );
+          beaconFailCount = 0;
+          retryTimer = setTimeout(tryBeacon, 3000);
+        },
       });
     };
 
@@ -1187,11 +1229,8 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         beaconRef.current.destroy();
         beaconRef.current = null;
       }
-      clearTimeout(currentDiscoveryTimeout);
-      if (currentDiscoveryPm) {
-        currentDiscoveryPm.destroy();
-        currentDiscoveryPm = null;
-      }
+      cancelDiscovery?.();
+      cancelDiscovery = null;
     };
   }, [activeTransport, peerManager, myId, roomPeerId, connectionPhase, dynamicIceServers, roleVersion]);
 
@@ -1203,9 +1242,9 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   // 既存 `demoteToClient` は beacon claim 失敗時にしか発火せず、claim 成功後の split は
   // 検出されない (passive)。Stage 2 は能動的に「現時点で誰が真の BH か」を別経路で verify。
   //
-  // 動作: 使い捨ての `probePm` (random ID, `probe-` prefix) を作って la-{roomName} に
-  // 接続、beacon からの redirect を受信。
-  //   - redirect.hostId === myId → legit BH、destroy して終了 (自分自身の beacon が応答)
+  // 動作: `discoverBeaconHolder` helper で la-{roomName} に probe 接続、beacon から
+  // の redirect を受信。
+  //   - redirect.hostId === myId → legit BH (自分自身の beacon が応答)
   //   - redirect.hostId !== myId → split 確定 → performDemotion で末端処理
   //   - timeout (8s) → verification 不可、assume OK で打ち切り (transient 障害で false-
   //     positive demote すると逆 split 誘発するため conservative)
@@ -1214,16 +1253,20 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   //   - 主 (visibility → visible): 症状 1 の race が起きる唯一のタイミング = tab-hidden
   //     復帰。visibility をトリガーにすれば split 発生から数秒で検出。
   //   - 副 (30s interval): network blip 等 visibility に乗らない経路の安全網。
+  //   - 初期 (effect mount): tab 復帰→Phase 1 再起動→effect mount の順序で visibility
+  //     event を取り逃すため、mount 直後に 1 回走らせる。
   //
   // Edge cases (plan §Stage 2 設計 `Edge case`):
   //   (1) probe が自分自身の beacon に接続: redirect.hostId === myId で OK 判定
-  //   (2) probe 中に role 変化: cancelled flag + cleanup で in-flight probe 中断
+  //   (2) probe 中に role 変化: cancelled flag + cancelProbe で in-flight probe 中断
   //   (3) probe 中に tab hidden: HOST_HIDDEN_GRACE で peerManager destroy → cleanup
   //   (4) WS Relay mode: beacon pattern 不使用、effect 全体 skip
   //   (5) solo host: probe は走るが self-redirect で OK 判定 (1 client 追加時 split
   //       耐性を持つため対称的)
   //   (6) PeerServer 不到達: timeout → assume OK で続行 (false-positive 回避)
-  //   (7) 同時 2 probe: `if (probePm) return;` で dedup
+  //   (7) 同時 2 probe: `if (cancelProbe) return;` で dedup (in-flight フラグ兼用)
+  //   (8) probe PM の late callback による他 probe 誤爆: `discoverBeaconHolder` 内部の
+  //       `done` flag で one-shot 保証
   //
   // test 戦略: WebRTC 接続絡みで unit test 困難 → odakin 実機検証。
   //
@@ -1236,71 +1279,40 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     if (!peerManager.getIsBeaconHolder()) return;
 
     let cancelled = false;
-    let probePm: PeerManager<Message> | null = null;
-    let probeTimeout: ReturnType<typeof setTimeout> | undefined;
-
-    const cleanupProbe = () => {
-      clearTimeout(probeTimeout);
-      probeTimeout = undefined;
-      if (probePm) {
-        probePm.destroy();
-        probePm = null;
-      }
-    };
+    let cancelProbe: (() => void) | null = null;
 
     const runProbe = () => {
       if (cancelled) return;
       if (document.hidden) return; // hidden 中 probe は無駄
-      if (probePm) return; // 並行 probe 防止
+      if (cancelProbe) return; // 並行 probe 防止
       if (!peerManager.getIsBeaconHolder()) return; // role 変化時 skip
 
-      const probeId = `probe-${Math.random().toString(36).substring(2, 11)}`;
-      const opts = buildPeerOptionsFromEnv(dynamicIceServers);
-      const pm = new PeerManager<Message>(probeId, opts);
-      probePm = pm;
+      cancelProbe = discoverBeaconHolder({
+        roomPeerId,
+        options: buildPeerOptionsFromEnv(dynamicIceServers),
+        timeoutMs: HOST_SELF_VERIFY_TIMEOUT_MS,
+        probeIdPrefix: "probe-",
+        onResult: (realHostId) => {
+          cancelProbe = null;
+          if (cancelled) return;
+          if (!peerManager.getIsBeaconHolder()) return; // mid-probe で role 変化
+          if (realHostId === myId) return; // legit BH — verified
 
-      // Stale-callback guard: probe destroy 後に queue されていた late callback が
-      // fire したとき、既に後続 probe が走っていれば誤爆で destroy してしまう。
-      // PeerJS の destroy() は JS event loop 上の pending event を即 cancel しない
-      // ので、ローカル `pm` と outer `probePm` を比較して自分が current か確認する。
-      probeTimeout = setTimeout(() => {
-        if (probePm !== pm) return;
-        // eslint-disable-next-line no-console
-        console.log("[PeerProvider] Self-verify probe timeout — assume OK");
-        cleanupProbe();
-      }, HOST_SELF_VERIFY_TIMEOUT_MS);
-
-      pm.onPeerStatusChange((status) => {
-        if (probePm !== pm) return; // stale
-        if (cancelled) {
-          cleanupProbe();
-          return;
-        }
-        if (status.status === "open") {
-          pm.connect(roomPeerId);
-        } else if (status.status === "error") {
-          cleanupProbe();
-        }
-      });
-
-      pm.onMessage("self_verify", (_senderId, msg) => {
-        if (probePm !== pm) return; // stale
-        if (!isRedirectMessage(msg)) return;
-        if (cancelled) return;
-        const realHostId = msg.hostId;
-        cleanupProbe();
-        if (!peerManager.getIsBeaconHolder()) return; // mid-probe で role 変化
-        if (realHostId === myId) return; // legit BH — verified
-
-        // eslint-disable-next-line no-console
-        console.log(
-          "[PeerProvider] Host split detected — real BH:",
-          realHostId,
-          "— demoting self",
-        );
-        performDemotion(peerManager, realHostId, () =>
-          setRoleVersion((v) => v + 1),
-        );
+          // eslint-disable-next-line no-console
+          console.log(
+            "[PeerProvider] Host split detected — real BH:",
+            realHostId,
+            "— demoting self",
+          );
+          performDemotion(peerManager, realHostId, () =>
+            setRoleVersion((v) => v + 1),
+          );
+        },
+        onInconclusive: () => {
+          cancelProbe = null;
+          // eslint-disable-next-line no-console
+          console.log("[PeerProvider] Self-verify probe inconclusive — assume OK");
+        },
       });
     };
 
@@ -1323,7 +1335,8 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
       cancelled = true;
       clearInterval(backupTimer);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
-      cleanupProbe();
+      cancelProbe?.();
+      cancelProbe = null;
     };
   }, [
     activeTransport,
