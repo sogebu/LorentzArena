@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 import * as THREE from "three";
-import { quatToYaw, type Vector4 } from "../../physics";
+import {
+  pastLightConeIntersectionWorldLine,
+  quatToYaw,
+  type Vector4,
+} from "../../physics";
 import {
   ARROW_BASE_LENGTH,
   ARROW_BASE_OFFSET,
@@ -87,37 +91,48 @@ export const OtherPlayerRenderer = ({
   const mainOpacity = PLAYER_MARKER_MAIN_OPACITY_OTHER * pulse * deathAlpha;
   const glowOpacity = PLAYER_MARKER_GLOW_OPACITY_OTHER * pulse * deathAlpha;
 
-  // Heading indicator (nose bar): 生存中のみ、phaseSpace.heading の yaw から算出した
-  // 方向に、sphere 半径より少し外へ伸びる細長い bar で他機の向きを可視化。heading が
-  // cross-peer で broadcast されていることの visible な proof でもある。
-  // NOTE: ここでの heading → display 方向は **observer boost の aberration を無視**
-  // した近似。static observer では正確、高速相対運動中は実方向からわずかに外れる。
-  // 物理正確を優先する場合は M-pattern (`buildApparentShapeMatrix`) 経由にする。
-  const yaw = quatToYaw(player.phaseSpace.heading);
-  const noseLength = size * 1.6;
-  const showNose = !player.isDead;
+  // Past-cone 交点で nose / 加速度矢印を描く (=「観測者に光が届いた時点の他機状態」)。
+  // sphere は gameplay 視認性のため current world pos のまま (二重表示的だが、"NOW の
+  // 位置" と "SEE している状態" を分離する意図: 空間オフセットが相対論的遅延の educational
+  // な指標にもなる)。死亡中は nose / 矢印 非表示 (sphere は past-cone fade で別途処理済)。
+  //
+  // worldLine history の各 sample には heading / alpha が Phase A-1/A-3 で同梱されており、
+  // pastLightConeIntersectionWorldLine は A-4 の `interpolateSegmentPhaseSpace` で
+  // heading を slerp、alpha を linear 補間した PhaseSpace を返す。
+  const pcIntersection =
+    !player.isDead && observerPos
+      ? pastLightConeIntersectionWorldLine(player.worldLine, observerPos)
+      : null;
+  const dpAnchor = pcIntersection
+    ? transformEventForDisplay(pcIntersection.pos, observerPos, observerBoost)
+    : null;
 
-  // Acceleration arrow: phaseSpace.alpha (world 4-vec) を displayMatrix で display
-  // frame に boost し、display spatial 方向 (x, y) の成分を矢印で可視化。
-  //   - 向き = atan2(disp α.y, disp α.x)
-  //   - 長さ = |disp α_xy| / PLAYER_ACCELERATION clamp [0, 1] → ARROW_BASE_LENGTH 比例
-  //   - display z (= display t) 成分は 2D 矢印では無視 (u·α=0 の 時間方向成分)
-  // smoothing は未実装 (tick ごとの re-render で変動、必要なら useFrame + useRef に昇格)。
-  const alphaWorldT = player.phaseSpace.alpha;
-  const alphaDispDir = new THREE.Vector4(
-    alphaWorldT.x,
-    alphaWorldT.y,
-    alphaWorldT.t,
-    0, // direction vector (translation 不作用)
-  ).applyMatrix4(displayMatrix);
-  const dispAx = alphaDispDir.x;
-  const dispAy = alphaDispDir.y;
+  // Heading indicator (nose bar): past-cone 交点の heading から yaw 抽出。
+  // display frame での z 軸 yaw rotation は aberration 近似 (static 観測者で正確)。
+  const yaw = pcIntersection ? quatToYaw(pcIntersection.heading) : 0;
+  const noseLength = size * 1.6;
+  const showNose = pcIntersection !== null && dpAnchor !== null;
+
+  // Acceleration arrow: past-cone 交点の alpha (world 4-vec) を displayMatrix で
+  // display frame に boost し、display spatial 方向 (x, y) を矢印で可視化。
+  const alphaWorldT = pcIntersection?.alpha ?? null;
+  const alphaDispDir = alphaWorldT
+    ? new THREE.Vector4(
+        alphaWorldT.x,
+        alphaWorldT.y,
+        alphaWorldT.t,
+        0, // direction vector (translation 不作用)
+      ).applyMatrix4(displayMatrix)
+    : null;
+  const dispAx = alphaDispDir?.x ?? 0;
+  const dispAy = alphaDispDir?.y ?? 0;
   const alphaMag = Math.hypot(dispAx, dispAy);
   const alphaFrac = Math.min(1, alphaMag / PLAYER_ACCELERATION);
   const showArrow =
-    !player.isDead && alphaFrac > EXHAUST_VISIBILITY_THRESHOLD && alphaMag > 1e-6;
-  // Arrow orientation: native geometry の tip は +Y、(dispAx, dispAy) 方向に向けるには
-  // atan2 - π/2 で z 軸まわり rotation。
+    pcIntersection !== null &&
+    dpAnchor !== null &&
+    alphaFrac > EXHAUST_VISIBILITY_THRESHOLD &&
+    alphaMag > 1e-6;
   const arrowYaw = showArrow ? Math.atan2(dispAy, dispAx) - Math.PI / 2 : 0;
   const arrowLen = ARROW_BASE_LENGTH * alphaFrac;
   const arrowCenterOffset = size + ARROW_BASE_OFFSET + 0.5 * arrowLen;
@@ -153,39 +168,46 @@ export const OtherPlayerRenderer = ({
             opacity={glowOpacity}
           />
         </mesh>
-        {showNose && (
-          <group rotation={[0, 0, yaw]}>
+      </group>
+      {/* Past-cone 交点位置の nose / 加速度矢印。sphere とは空間的にオフセットし得る
+          (他機が光速に近い相対速度で動いてる時、我々が "見ている" 位置は現在位置より遅れ、
+          sphere との差が相対論的遅延そのもの)。 */}
+      {(showNose || showArrow) && dpAnchor && (
+        <group position={[dpAnchor.x, dpAnchor.y, dpAnchor.t]}>
+          {showNose && (
+            <group rotation={[0, 0, yaw]}>
+              <mesh
+                position={[size * 0.9, 0, 0]}
+                scale={[noseLength, size * 0.25, size * 0.25]}
+                geometry={sharedGeometries.playerSphere}
+              >
+                <meshBasicMaterial
+                  color={color}
+                  transparent
+                  depthWrite={false}
+                  opacity={PLAYER_MARKER_MAIN_OPACITY_OTHER * pulse * 0.9}
+                />
+              </mesh>
+            </group>
+          )}
+          {showArrow && (
             <mesh
-              position={[size * 0.9, 0, 0]}
-              scale={[noseLength, size * 0.25, size * 0.25]}
-              geometry={sharedGeometries.playerSphere}
+              position={[arrowX, arrowY, 0]}
+              rotation={[0, 0, arrowYaw]}
+              scale={[ARROW_BASE_WIDTH * alphaFrac, arrowLen, 1]}
+              geometry={sharedGeometries.accelerationArrowFlat}
             >
               <meshBasicMaterial
                 color={color}
                 transparent
                 depthWrite={false}
-                opacity={mainOpacity * 0.9}
+                opacity={ARROW_MAX_OPACITY * alphaFrac}
+                side={THREE.DoubleSide}
               />
             </mesh>
-          </group>
-        )}
-        {showArrow && (
-          <mesh
-            position={[arrowX, arrowY, 0]}
-            rotation={[0, 0, arrowYaw]}
-            scale={[ARROW_BASE_WIDTH * alphaFrac, arrowLen, 1]}
-            geometry={sharedGeometries.accelerationArrowFlat}
-          >
-            <meshBasicMaterial
-              color={color}
-              transparent
-              depthWrite={false}
-              opacity={ARROW_MAX_OPACITY * alphaFrac}
-              side={THREE.DoubleSide}
-            />
-          </mesh>
-        )}
-      </group>
+          )}
+        </group>
+      )}
       {deathEventPosForMarker && (
         <DeathMarker
           deathEventPos={deathEventPosForMarker}
