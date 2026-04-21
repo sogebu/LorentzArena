@@ -1,82 +1,153 @@
 # 2026-04-21: 2+1 次元 物体描画 (apparent shape pattern)
 
-観測者 O が見る、被観測者 A (灯台 / 自機 / 他機) の 3D モデル描画を物理整合に行うための
-spec と実装メモ。元ネタ論文: [Nakayama & Oda, "Relativity for games", PTEP 2017 (113J01)](../docs/references/Nakayama-Oda-2017-relativity-for-games-PTEP.pdf)
+観測者 O が見る、被観測者 A (灯台 / 自機 / 他機) の 3D モデル描画 spec と実装メモ。
+元ネタ論文: [Nakayama & Oda, "Relativity for games", PTEP 2017 (113J01)](../docs/references/Nakayama-Oda-2017-relativity-for-games-PTEP.pdf)
 eq (136)–(137)。
+
+並走する設計書として [`2026-04-21-ship-apparent-shape-M-matrix.md`](2026-04-21-ship-apparent-shape-M-matrix.md)
+(ship 用 M matrix 提案、M_3 = u + tangent plane 投影 M_1/M_2) がある。現実装の塔軸
+(M_3 系) はそちら準拠、底面 (M_1/M_2 系) は本文書 §現採用 spec の stylization を採用。
 
 ## TL;DR
 
-**物理 spec** (eq 136/137 ベース、v4):
-- A の世界線 ∩ O の過去光円錐を anchor `xA`
-- model 頂点の xy 部分は **A 中心静止系で O の過去光円錐面上に置く** (各頂点ごとに `XV_t = XO_t − |XV.spatial − XO.spatial|`)
-- model 頂点の z 部分 (2+1 では物理的意味は持たない toy 軸) は L(-uA) で線形に世界系へ boost
+**現実装** ([apparentShape.ts](../src/components/game/apparentShape.ts)、LH 適用済、ship 対応 generic):
 
-**実装**: v1 (接平面近似) を [`src/components/game/apparentShape.ts`](../src/components/game/apparentShape.ts) に pure helper として実装、`mesh.matrix` 1 発で済ませる。v4 厳密との誤差は `O(r²/ρ)` (r = 物体半径、ρ = 観測者-anchor 距離) で、LorentzArena 典型値 (r ≲ 0.5, ρ ≳ 2) では **視覚的に無視可能** (< 1% の time 次元シフト)。
+- **底面 (m.z=0)**: display xy plane 上の flat 楕円 (x_∥^O 軸 `r√2`、x_⊥^O 軸 `r`)
+- **塔軸 (m.z>0)**: display frame で `L(uO) · L(−uA) · (0, 0, 1)` (= A の 4-velocity を O 静止系で観た向き)
+- **signature**: `buildApparentShapeMatrix(anchorPos, anchorU, observerPos, displayMatrix)` —
+  LH は `phaseSpace.u` (= 0) を渡す、ship は非零 u でそのまま動く
 
-**現適用範囲**: 灯台のみ (`LighthouseRenderer`)。ship 適用・回転行列 R / 4-加速度 state 整備は後回し。
+**設計の位置づけ**: 底面は物理厳密 (v4 Nakayama-Oda) / その接平面近似 (v1) を**捨てて
+stylization に振った** — O 静止系での視認性 (水平楕円) を優先、過去光円錐接平面の tilt を
+撤去。塔軸は eq (137) の `L(−uA)` を踏襲。詳細 §現採用 spec (stylization)、物理 ideal の
+参照点は §v4 物理 spec。歴代変遷は §歴代 spec 履歴。
 
 ---
 
-## 物理 spec (v4)
+## 現採用 spec (stylization)
 
-0. 世界線に **向き (heading)** と **共変加速度ベクトル** を持たせる (灯台では不要、ship で導入)。
-1. 観測者 O の世界系での位置を `xO = (xO_x, xO_y, xO_t)`。
-2. 世界系で、A (被観測者中心) の世界線と O の過去光円錐との交点を `xA = (xA_x, xA_y, xA_t)`、そこでの 4-velocity 空間成分を `uA = (uA_x, uA_y)`。世界系 x と A 中心静止系 X の関係:
+### 底面 (m.z = 0)
+
+display xy plane (= O の simultaneity slice) 上の 2×2 線形変換 `S` で楕円化:
+
+```
+S = I + (√2 − 1) · x_∥^O ⊗ x_∥^O^T
+
+x_∥^O = (observerDisp.xy − anchorDisp.xy) / |…|
+      = display spatial 上で anchor → observer の単位ベクトル
+```
+
+model (m.x, m.y, 0) → display 変位 `(S · m.xy, 0)` (時間成分は常に 0)。world 系への
+back-solve:
+
+```
+M[:, 0]_world = displayMatrix^{-1} · (S.col0_display, 0, 0)_direction
+M[:, 1]_world = displayMatrix^{-1} · (S.col1_display, 0, 0)_direction
+```
+
+translation は direction vector (w=0) に効かないので inverse 1 発で OK。
+
+**k = √2 の物理的導出**: O 静止系で anchor 起点の過去光円錐頂点方向ベクトル
+`(x_∥^O, 1)` の Euclidean 長 √2 を display xy plane に 45° 回転で寝かせ、長さ保存する
+と x_∥^O 方向の成分が √2·r、x_⊥^O 方向は回転軸で不変のまま r。
+
+### 塔軸 (m.z = 1 方向)
+
+world 系での M 列:
+
+```
+M[:, 2]_world = L(−uA) · (0, 0, 1) = (uA.x, uA.y, γ(uA))  (in three.js (x, y, z=t))
+```
+
+displayMatrix = L(uO) と合成後、display での最終 z 列:
+
+```
+L(uO) · L(−uA) · (0, 0, 1)   (= A の 4-velocity を O 静止系で観た向き、M matrix doc §TL;DR の M_3 = u 項)
+```
+
+- LH (uA = 0): display で `L(uO) · (0, 0, 1)` — 観測者が動けば塔は観測者の motion 方向に傾く
+- ship (uA ≠ 0): A の worldline tangent を O 静止系に boost した方向
+
+### 合成 (呼出側から見える最終 matrix)
+
+```
+result = displayMatrix · tAnchor(world) · M
+```
+
+- `M`: 上記 3 列の 3×3 + identity w 行
+- `tAnchor`: anchor world 位置への translation
+- `displayMatrix`: `buildDisplayMatrix(observerPos, observerBoost)` (world → display)
+
+### Degenerate
+
+- `observerPos = null` → `buildMeshMatrix` (D pattern) に fallback
+- display spatial で anchor と観測者の xy 一致 (x_∥^O 不定) → 同上 fallback
+
+### 実装ファイル
+
+- [`src/components/game/apparentShape.ts`](../src/components/game/apparentShape.ts) — helper 本体
+- [`src/components/game/apparentShape.test.ts`](../src/components/game/apparentShape.test.ts) — Vitest (底面楕円方向、degenerate fallback、移動 A/O の塔軸)
+- [`src/components/game/LighthouseRenderer.tsx`](../src/components/game/LighthouseRenderer.tsx) — LH 呼出側
+
+---
+
+## v4 物理 spec (参照、Nakayama-Oda eq 136/137)
+
+物理整合の ideal。現実装 (stylization) は底面をここから逸脱しているが、将来 per-vertex
+shader 実装で昇格する際の参照点。
+
+0. 世界線に向き (heading) と共変加速度ベクトルを持たせる (灯台では不要、ship で導入)。
+1. 観測者 O の世界系位置 `xO = (xO_x, xO_y, xO_t)`。
+2. A (被観測者中心) の世界線 ∩ O の過去光円錐を anchor `xA = (xA_x, xA_y, xA_t)`、
+   そこでの 4-velocity 空間成分 `uA = (uA_x, uA_y)`。世界系 x と A 中心静止系 X:
 
    ```
-   X =  L(uA) (x − xA)
+   X = L(uA) (x − xA)
    x = xA + L(−uA) X
    ```
 
 3. A 中心静止系での O の位置: `XO = L(uA) (xO − xA)`。
-4. A model 系での頂点 V の空間座標を `vertex = (vertex_x, vertex_y)`。
-5. V の A 中心静止系空間位置は `XV.spatial = R · vertex` (R は model 内部回転; 灯台では I、ship では heading に応じて)。V の時間座標は eq (136) の精神で:
+4. A model 系で頂点 V の空間座標 `vertex = (vertex_x, vertex_y)`。
+5. V の A 静止系空間位置 `XV.spatial = R · vertex` (R は model 内部回転; 灯台では I)。
+   V の時間座標は eq (136):
 
    ```
    XV_t = XO_t − |XV.spatial − XO.spatial|
    ```
 
-   (= V が発した光が O に到達する時刻を XO_t に揃える条件 = V を O の過去光円錐上に置く)
-6. この頂点座標 XV を世界系へ戻す (eq (137) と同等):
+   (= V が発した光が O に到達する時刻を XO_t に揃える = V を O の過去光円錐上に置く)
+6. 世界系へ戻す (eq 137):
 
    ```
    xV = xA + L(−uA) XV
    ```
 
-### z 方向 (2+1 model の toy 軸) の扱い
+### z 方向 (2+1 model の toy 軸)
 
-LorentzArena の model は THREE.js 慣例で `(x, y, z)` の 3 軸を持つが、2+1 では x, y のみが物理的空間方向で、z はオモチャ。そこで model 頂点 `(x, y, z)` を以下に分解:
+LorentzArena の model は THREE.js 慣例で `(x, y, z)` の 3 軸を持つが、2+1 では x, y
+のみが物理空間方向で、z はオモチャ。v4 原案では model 頂点 `(x, y, z)` を分解:
 
 ```
-xi       = (x, y, 0)    物理的空間成分
-temporal = (0, 0, z)    時間方向っぽいお気持ち軸
+xi       = (x, y, 0)    物理的空間成分 (step 1–6 に従う)
+temporal = (0, 0, z)    A 静止系の時間っぽい軸
 ```
 
-- `xi` は上述 spec (step 1–6) に従い `xV(xi)` を算出
-- `temporal` は A 静止系の時間っぽい軸なので `L(−uA) · temporal` で世界系へ線形に伸ばす
+最終世界位置 = `xV(xi) + L(−uA) · temporal`。静止 A (uA = 0) では `L(−uA) = I` なので
+temporal は z_world にそのまま載る。
 
-最終:
-```
-world_pos = xV(xi) + L(−uA) · temporal
-O 静止系 = L(uO) (world_pos − xO)     (= 既存 displayMatrix)
-```
+この z 処理 (`L(−uA) · (0, 0, 1)`) は**現実装の塔軸列と一致**、v4 → stylization の差分は
+底面 (xi の処理) のみに現れる。
 
-静止 A (uA = 0) では `L(−uA) = I` なので temporal は z_world にそのまま載る (灯台が塔として "未来へ向かって" 立つ描画)。
+### v1 接平面近似 (v4 の Taylor 展開、参考)
 
----
-
-## 実装: v1 (接平面近似)
-
-### v1 ≈ v4 equivalence
-
-v4 の `XV_t = XO_t − |XV.spatial − XO.spatial|` を A 中心静止系で XV.spatial = 0 (= anchor) 回りに Taylor 展開し、`xO` と `xA` が世界光円錐条件 (`XO_t = |XO.spatial| = ρ_A`) を満たすことを使うと:
+v4 を `XV.spatial = 0` (anchor) 回りで Taylor 展開し線形項のみ:
 
 ```
 v4.XV_t = (XO.spatial · XV.spatial) / ρ_A  −  (x² + y²)/(2ρ_A)  +  O(r³/ρ²)
-v1.XV_t = (XO.spatial · XV.spatial) / ρ_A                                          ← 接平面のみ取る
+v1.XV_t = (XO.spatial · XV.spatial) / ρ_A    ← 接平面のみ
 ```
 
-誤差は **r² / (2ρ)**。LorentzArena 典型値での評価:
+誤差 `r² / (2ρ)` は LorentzArena 典型値で視覚的に無視可能:
 
 | シナリオ | r | ρ | 誤差 | 塔高 1.62 比 |
 |---|---|---|---|---|
@@ -84,76 +155,35 @@ v1.XV_t = (XO.spatial · XV.spatial) / ρ_A                                     
 | LH 遠距離 | 0.3 | 10 | 0.0045 | 0.3% |
 | LH 至近 | 0.3 | 2 | 0.022 | 1.4% |
 | LH 超至近 | 0.3 | 0.5 | 0.09 | 5.6% |
-| ship 典型 | 0.5 | 5-10 | 0.012-0.025 | — |
+| ship 典型 | 0.5 | 5–10 | 0.012–0.025 | — |
 
-ρ < 1 (観測者が灯台の足元) 以外、**視覚的にほぼ認識不可**。LorentzArena のアリーナ半径 ~10 で観測者が物体に 1 単位以下に密着するシチュは稀。**v1 で実装、v4 への昇格は (a) 至近描画の厳密性が欲しくなったら、または (b) ship apparent shape の歪みが気になったら、に defer**。
-
-### v1 の具体形 (静止 A = 灯台限定)
-
-静止 A (uA = 0) + 回転 R = I で、model 頂点 `(x, y, z)` を以下で world に写す:
-
-```
-world_pos.x = xA.x + x
-world_pos.y = xA.y + y
-world_pos.t = xA.t + (x · x_∥.x + y · x_∥.y) + z
-  where x_∥ = (xO − xA).spatial / |...|    = anchor から観測者に向かう単位ベクトル
-```
-
-これは `mesh.matrix` 1 発で表せるので per-vertex 計算不要。ship 拡張時は x_∥ を A 静止系で取り直し (aberration 補正)、z 列に `L(−uA)` を掛ける。
-
-### 実装ファイル
-
-- [`src/components/game/apparentShape.ts`](../src/components/game/apparentShape.ts) — `buildApparentShapeMatrix(anchorPos, observerPos, displayMatrix)` pure helper
-- [`src/components/game/apparentShape.test.ts`](../src/components/game/apparentShape.test.ts) — Vitest (接平面 tilt 方向、degenerate fallback、v4 との誤差上限)
-- [`src/components/game/LighthouseRenderer.tsx`](../src/components/game/LighthouseRenderer.tsx) — LH 呼出側
-
-### Degenerate ケース
-
-- `observerPos = null` (観測者未設定) → `buildMeshMatrix` (既存 D pattern) に fallback
-- `ρ = |observer.spatial − anchor.spatial| → 0` (観測者が anchor の真上 / 真下、x_∥ 未定義) → 同上 fallback
+v1 は mesh.matrix 1 発で表現可能。2026-04-21 夕方までは v1 実装、以降 stylization に
+置換された (§歴代 spec 履歴)。
 
 ---
 
-## 歴代 spec の履歴 (参考)
+## 歴代 spec 履歴
 
-spec は odakin ↔ Claude のやり取りで以下の通り進化した。最終採用は **v4 の v1 近似**:
-
-| 版 | 方針 | 採用? |
+| 版 | 方針 | 状態 |
 |---|---|---|
-| v1 | 接平面近似 (この文書) | **採用 (実装)** |
-| v2 | 混成 spec: x_∥ を boost、x_⊥ は非 boost。partial 非 Lorentz | 不採用 (step 5 の x_⊥ 非 boost が 2+1 一般運動で破綻) |
-| v3 | 純 Lorentz (`displayMatrix · T · L(−u_P) · R_q`)。rest frame の断面をそのまま O-rest に boost。過去光円錐 placement なし | 一時採用 → 破棄 (物理 apparent shape としては P-rest 断面より past-cone 厳密のほうが正直) |
-| v4 | 過去光円錐厳密 (per-vertex `XV_t = XO_t − |Δspatial|`) | **物理 spec として採用、実装は v1 近似** |
+| v1 | v4 の Taylor 線形近似 (底面は過去光円錐接平面の tilt) | 2026-04-21 夕方までは実装、以降 stylization に置換 |
+| v2 | 混成 spec: x_∥ を boost、x_⊥ は非 boost (partial 非 Lorentz) | 不採用 (x_⊥ 非 boost が 2+1 一般運動で破綻) |
+| v3 | 純 Lorentz (`displayMatrix · T · L(−u_P) · R_q`)、P-rest 断面を O-rest へ boost、過去光円錐 placement 無し | 一時採用 → 破棄 (物理 apparent shape としては past-cone 厳密の方が正直) |
+| v4 | 過去光円錐厳密 (per-vertex `XV_t = XO_t − |Δspatial|`) | **物理 spec 参照** (per-vertex 実装は defer) |
+| **stylization (現)** | 底面 O-rest 水平楕円 (k=√2) + 塔軸 `L(uO)·L(−uA)·(0,0,1)` | **実装採用** |
 
 ---
-
-## 実装更新 (2026-04-21 夕方)
-
-v1 接平面を破棄し、odakin spec「底面は O の静止系時間軸に垂直 (= display xy plane に
-flat)、塔軸は L(uO)·L(−uA)·(0,0,1) (= display frame で見た A の 4-velocity 方向)」
-+ ship 対応 generic 化。現 [`apparentShape.ts`](../src/components/game/apparentShape.ts)
-は復元 plan `2026-04-21-ship-apparent-shape-M-matrix.md` の M_3 = u spec を実装:
-
-- **底面 (m.z=0)**: display xy plane 上の楕円 (x_∥^O 軸 r√2、x_⊥^O 軸 r)、時間軸
-  成分は常に 0 (= O の simultaneity slice 上に載る)。`k = √2` は「O の rest frame で
-  anchor 起点の過去光円錐頂点方向ベクトル (x_∥^O, 1) の Euclidean 長 √2 を display
-  xy に寝かせて保存」という物理的導出で確定値。world 系へは `displayMatrix^{-1}` で
-  back-solve (translation は direction vec に効かない)。
-- **塔軸 (m.z>0)**: M[:,2] world = `L(−uA)·(0,0,1)` = `(uA.x, uA.y, γ(uA))` in
-  three.js。displayMatrix = L(uO) と合成され、**display frame で最終的に
-  L(uO)·L(−uA)·(0,0,1) 方向** (= O rest frame で見た A の 4-velocity)。LH (uA=0) は
-  display で L(uO)·(0,0,1) (O の motion 方向に傾く、A static でも O が動けば傾く)、
-  ship (uA≠0) は A の worldline tangent を O rest frame に boost した向き。
-- **x_∥^O**: display spatial 上で anchor から O への単位ベクトル。観測者 rest 表示
-  (`observerBoost` 有り) では display 原点が O、世界系表示では world の x_∥ と
-  一致 (translation のみ)。
-- **signature**: `(anchorPos, anchorU, observerPos, displayMatrix)`。LH 呼出側は
-  `player.phaseSpace.u` を渡す、ship 拡張は call site 変更不要。
 
 ## Future work
 
-- **ship renderer 側で実利用**: `OtherPlayerRenderer` / `SelfShipRenderer` を D pattern →
-  `buildApparentShapeMatrix` 呼び出しに切替。signature は ship 対応済。
-- **回転行列 R**: step 0 の heading state を `phaseSpace` に追加 (2+1 では yaw 1 スカラー) → `R_q` を M に合成。
-- **共変加速度**: step 0 の加速度ベクトル state を追加。M では未使用、2 次補正 / `AccelerationArrow` の D pattern 整合に備える。
-- **v4 厳密化**: per-vertex shader か CPU 計算で `XV_t = XO_t − |Δspatial|` を実装。必要性が出たら (至近描画 or 大サイズ物体)。
+- **ship renderer に展開**: `OtherPlayerRenderer` / `SelfShipRenderer` を D pattern →
+  `buildApparentShapeMatrix` 呼出に切替。signature は ship 対応済。段階導入は M-matrix
+  doc §E-5 (他機 only から) 参考。
+- **回転行列 R**: step 0 の heading state を `phaseSpace` に追加 (2+1 では yaw 1 スカラー)
+  → 底面 stretch の前段に `R_q` を合成。
+- **共変加速度**: step 0 の加速度ベクトル state 追加。現 M には未使用、2 次補正 /
+  `AccelerationArrow` の D pattern 整合に備える。
+- **v4 per-vertex 厳密化**: shader or CPU で `XV_t = XO_t − |Δspatial|` を実装。
+  現 stylization で十分見えていれば不要、至近描画や大サイズ物体で歪みが気になったら。
+- **stylization の妥当性確認**: 物理 ideal (v4) との視覚差を本番で観察、必要なら k を
+  調整 (ρ 依存化も選択肢)。

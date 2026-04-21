@@ -2,7 +2,15 @@
 
 ship 3D model を「**観測者が瞬間に見る apparent shape**」(Penrose-Terrell 一次近似) として描画する
 新パターンの設計検討。odakin の発案 (2026-04-21、深掘りせず conversation 中で記録のみ)。
-**未実装、深く考える時間が取れた時に再開**。
+
+**現状 (2026-04-21 夕)**: LH に部分実装済 ([`apparentShape.ts`](../src/components/game/apparentShape.ts))。
+- **塔軸 (M_3)**: 本文書 §TL;DR の `M_3 = u` を採用 (displayMatrix 合成で display 上
+  `L(uO)·L(−uA)·(0,0,1)` 方向、= A の 4-velocity を O 静止系で観た向き)。
+- **底面 (M_1/M_2)**: 本文書の「tangent plane 内 shear」提案 (`M_i = ê_i − (n·ê_i)/(n·û)·û`) は**不採用**。代わりに並走 plan
+  [`2026-04-21-ship-apparent-shape-pattern.md`](2026-04-21-ship-apparent-shape-pattern.md) §現採用 spec の **stylization 版** (display xy plane 水平楕円、k=√2) を採用。過去光円錐接平面 tilt を撤去した視認性優先の非物理的選択。
+
+ship (OtherPlayerRenderer / SelfShipRenderer) への展開 + 本文書 §Open questions (B-1..B-3、
+C-2、E-5) の最終決着は未着手。以下は当時の設計検討の記録 (そのまま保存)。
 
 ## TL;DR
 
