@@ -40,3 +40,4 @@ pnpm run format                # 2+1 の Biome formatter
 - `CONVENTIONS.md` → `~/Claude/claude-config/CONVENTIONS.md`（symlink）
 - `docs/NETWORKING.md` — ネットワーク設定の詳細
 - `docs/ARCHITECTURE.md` — アーキテクチャ概要
+- `docs/references/` — 元ネタ論文の PDF archive (CC BY 4.0 Open Access 自著 + 引用 BibTeX)

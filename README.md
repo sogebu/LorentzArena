@@ -36,6 +36,7 @@ Full development guide: [2+1/CLAUDE.md](2+1/CLAUDE.md).
 - **[docs/NETWORKING.md](docs/NETWORKING.md)** — P2P vs WS relay, TURN setup, restrictive-network troubleshooting
 - **[2+1/DESIGN.md](2+1/DESIGN.md)** — design decisions with rationale
 - **[2+1/README.md](2+1/README.md)** — controls, derivations, parameter reference
+- **[docs/references/](docs/references/)** — physics paper this project is based on (self-authored, CC BY 4.0)
 
 ## Core concepts
 

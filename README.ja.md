@@ -36,6 +36,7 @@ cd 2+1 && pnpm install && pnpm dev
 - **[docs/NETWORKING.ja.md](docs/NETWORKING.ja.md)** — P2P vs WS relay、TURN 設定、制限ネットワーク下のトラブル対処
 - **[2+1/DESIGN.md](2+1/DESIGN.md)** — 設計判断の根拠
 - **[2+1/README.md](2+1/README.md)** — 操作・数式導出・パラメータ一覧
+- **[docs/references/](docs/references/)** — 元ネタ論文の PDF archive (自著、CC BY 4.0 Open Access)
 
 ## Core concepts
 
