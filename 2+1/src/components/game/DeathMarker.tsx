@@ -15,12 +15,13 @@ import { sharedGeometries } from "./threeCache";
  * LH / 自機 / 他機 共通。`computePastConeDisplayState` が返す `deathMarkerAlpha` を
  * そのまま `alpha` に渡す (null なら描画スキップ)。
  *
- * 2026-04-21 統一: sphere + ring を **両方 past-cone surface anchor** に配置。
- * (旧: sphere は world event t で fixed → 観測者進行で sink し「実際の過去光円錐上の
- *      死亡位置より過去側に見える」違和感があった)。
- * 現: sphere も ring も spatial = death event、t = `observer.t - ρ` (= past-cone 交点)。
- * 物理解釈: 「死亡の光子が届く球面」が観測者に入る瞬間の点で、sphere (solid core) +
- * ring (外周) の bullseye 的マーカーとして観測者時刻と共に動く (display.t = -ρ 固定)。
+ * 2 つの marker は **anchor 方針が異なる**:
+ *   - **Sphere**: world event 位置 (= 時空点 deathT で fixed) → 観測者進行で sink する。
+ *     「死亡 event がどこ・いつ起きたか」を時空内に literal に示す不動の点。
+ *   - **Ring**: 過去光円錐 surface 上 (= death event の spatial 位置 × `observer.t - ρ`)。
+ *     観測者進行で anchorT も `+Δt` 足されて動く → display.t = -ρ で推移。静止観測者なら
+ *     display.t 一定で「沈まない」。physics 的には「死亡の光子が届く球面が時間と共に広がる、
+ *     その球面が死亡 event の spatial 位置と交わる点」。
  */
 export const DeathMarker = ({
   deathEventPos,
@@ -35,23 +36,26 @@ export const DeathMarker = ({
   const { observerPos, observerBoost } = useDisplayFrame();
   if (alpha == null || alpha <= 0) return null;
 
-  // Past-cone anchor: spatial = death event、t = observer.t - ρ (= 観測者過去光円錐が
-  // death event の spatial 位置と交わる瞬間の時刻)。観測者進行で anchor.t も同等に進み、
-  // display.t は常に -ρ (静止観測者なら「沈まない」)。
-  let pastConeAnchor = deathEventPos;
+  // Sphere: world event 位置に C pattern で並進 (沈む = 観測者進行で display.t < 0)。
+  const sphereDp = transformEventForDisplay(deathEventPos, observerPos, observerBoost);
+
+  // Ring: 過去光円錐 surface anchor。spatial 位置は death event、時刻は観測者の
+  // 過去光円錐と交差する時刻 (= observer.t - ρ) に更新。観測者時刻が進むと anchor の
+  // 世界時刻も足され、display.t = -ρ で推移 (静止観測者なら沈まない)。
+  let ringAnchor = deathEventPos;
   if (observerPos) {
     const dx = deathEventPos.x - observerPos.x;
     const dy = deathEventPos.y - observerPos.y;
     const rho = Math.sqrt(dx * dx + dy * dy);
-    pastConeAnchor = { ...deathEventPos, t: observerPos.t - rho };
+    ringAnchor = { ...deathEventPos, t: observerPos.t - rho };
   }
-  const dp = transformEventForDisplay(pastConeAnchor, observerPos, observerBoost);
+  const ringDp = transformEventForDisplay(ringAnchor, observerPos, observerBoost);
 
   return (
     <>
       <mesh
         geometry={sharedGeometries.killSphere}
-        position={[dp.x, dp.y, dp.t]}
+        position={[sphereDp.x, sphereDp.y, sphereDp.t]}
       >
         <meshBasicMaterial
           color={color}
@@ -62,7 +66,7 @@ export const DeathMarker = ({
       </mesh>
       <mesh
         geometry={sharedGeometries.killRing}
-        position={[dp.x, dp.y, dp.t]}
+        position={[ringDp.x, ringDp.y, ringDp.t]}
       >
         <meshBasicMaterial
           color={color}
