@@ -1,57 +1,60 @@
 import * as THREE from "three";
-import { inverseLorentzBoost, type Vector3, type Vector4 } from "../../physics";
+import type { Vector4 } from "../../physics";
+import { buildMeshMatrix } from "./DisplayFrameContext";
 
 /**
- * v3 apparent-shape matrix。plan `2026-04-21-ship-apparent-shape-pattern.md` §v3 参照。
+ * Apparent shape matrix (v1 接平面版)。plan `2026-04-21-ship-apparent-shape-pattern.md` 参照。
  *
- *   display = displayMatrix · T(anchorPos) · L(-u_P) · R_q · (a, b, c)
+ * 各 model vertex (x, y, z) を以下に render:
  *
- * - `R_q`          model を P 静止系内で yaw (2+1 なら z 軸回転、3+1 では quaternion)
- * - `L(-u_P)`      P 静止系 → world の Lorentz boost = `inverseLorentzBoost(u_P)`
- * - `T(anchorPos)` world 原点を P の過去光円錐 ∩ worldline event へ
- * - `displayMatrix`  world → display (rest frame は `Λ(u_O) · T(-observerPos)`、世界系は
- *                    `T(0, 0, -observerPos.t)`)
+ *   world_pos.xy = anchorPos.spatial + (x, y)
+ *   world_pos.t  = anchorPos.t + (x·x_∥.x + y·x_∥.y) + z
  *
- * 静止 P (u_P = 0) + heading = 0 では `displayMatrix · T(anchorPos)` に reduce し、既存
- * `buildMeshMatrix(anchorPos, displayMatrix)` と厳密一致する (灯台は u_P = 0 なので視覚変化
- * なし。ship 展開時に M に L(-u_P) が入り始める)。
+ * x_∥ = (観測者 − anchor).spatial の単位ベクトル = anchor から観測者へ向かう方向。
+ * xy 断面は O の過去光円錐の **接平面** に載る。厳密な光円錐 (v4) からの誤差は
+ * O(r²/ρ) (r = 物体半径、ρ = 観測者-anchor 距離) で、典型 LorentzArena スケール
+ * (r ≲ 0.5, ρ ≳ 2) では視覚的に無視可能 (< 1% の時間次元シフト)。
+ *
+ * 現 LH (u_A = 0 静止、回転対称) のみを想定。ship (u_A ≠ 0) に広げる際は
+ * x_∥ を A-rest frame で取る (aberration 補正) + z 列に L(-u_A) を掛ける
+ * 拡張が必要。
+ *
+ * Degenerate (観測者が anchor の真上・真下): x_∥ 未定義 → `buildMeshMatrix` に fallback。
  */
 export const buildApparentShapeMatrix = (
   anchorPos: Vector4,
-  uShip: Vector3,
-  headingAngle: number,
+  observerPos: Vector4 | null,
   displayMatrix: THREE.Matrix4,
 ): THREE.Matrix4 => {
-  const m = new THREE.Matrix4().multiplyMatrices(
-    displayMatrix,
-    new THREE.Matrix4().makeTranslation(anchorPos.x, anchorPos.y, anchorPos.t),
-  );
-  m.multiply(inverseBoostThree(uShip));
-  if (headingAngle !== 0) {
-    m.multiply(new THREE.Matrix4().makeRotationZ(headingAngle));
-  }
-  return m;
-};
+  if (!observerPos) return buildMeshMatrix(anchorPos, displayMatrix);
 
-/**
- * `inverseLorentzBoost(u)` (P-rest → world、row-major (t, x, y, z)) を THREE.Matrix4
- * (column-major、display axes (x, y, z=t)) に axis 並べ替えて変換。translation なし。
- *
- * physics の spatial z 次元は 2+1 では常に 0 なので drop し、THREE 側の行列も 3×3 部分のみ
- * 埋めて z_THREE 入力は 0 と扱う (4 列目 identity)。
- */
-const inverseBoostThree = (uShip: Vector3): THREE.Matrix4 => {
-  const L = inverseLorentzBoost(uShip);
-  const g = (r: number, c: number) => L.data[r * 4 + c];
-  const m = new THREE.Matrix4();
-  // physics row: 0=t, 1=x, 2=y, 3=z (unused in 2+1)
-  // physics col: 0=t, 1=x, 2=y, 3=z (unused in 2+1)
-  // THREE display axis: row/col 0=x, 1=y, 2=z(=world t), 3=homogeneous
-  m.set(
-    g(1, 1), g(1, 2), g(1, 0), 0,
-    g(2, 1), g(2, 2), g(2, 0), 0,
-    g(0, 1), g(0, 2), g(0, 0), 0,
+  const dx = observerPos.x - anchorPos.x;
+  const dy = observerPos.y - anchorPos.y;
+  const rho2 = dx * dx + dy * dy;
+  if (rho2 < 1e-12) return buildMeshMatrix(anchorPos, displayMatrix);
+
+  const invRho = 1 / Math.sqrt(rho2);
+  const xParX = dx * invRho;
+  const xParY = dy * invRho;
+
+  // M (3×3 linear in (x, y, z) model coords、出力も (x, y, z=t)):
+  //   x_out = x
+  //   y_out = y
+  //   t_out = x_∥.x · x + x_∥.y · y + z
+  //
+  // THREE.set() は row-major 受け取り、rows = output axes (x, y, z=t)。
+  const M = new THREE.Matrix4().set(
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    xParX, xParY, 1, 0,
     0, 0, 0, 1,
   );
-  return m;
+  const tAnchor = new THREE.Matrix4().makeTranslation(
+    anchorPos.x,
+    anchorPos.y,
+    anchorPos.t,
+  );
+  const result = new THREE.Matrix4().multiplyMatrices(displayMatrix, tAnchor);
+  result.multiply(M);
+  return result;
 };

@@ -150,7 +150,9 @@ z ∈ [1.30, 1.52] roof cone
 z ∈ [1.52, 1.62] spire
 ```
 
-世界系で静止、観測者 rest frame に切り替えると D pattern (per-vertex Lorentz) で塔が傾く/縮む (静止 LH でも観測者加速で視覚的に歪んで見える = 特殊相対論的効果の可視化)。camera.up = (0, 0, 1) なので display 上では塔がまっすぐ上に立つ。
+世界系で静止、観測者 rest frame に切り替えると per-vertex Lorentz で塔が傾く/縮む (静止 LH でも観測者加速で視覚的に歪んで見える = 特殊相対論的効果の可視化)。camera.up = (0, 0, 1) なので display 上では塔がまっすぐ上に立つ。
+
+**描画 matrix は v1 apparent shape pattern** (2026-04-21、[`plans/2026-04-21-ship-apparent-shape-pattern.md`](../plans/2026-04-21-ship-apparent-shape-pattern.md)): 基底断面が O の過去光円錐 **接平面** に tilt するよう per-vertex の world t に `(x · x_∥.x + y · x_∥.y)` を加える (x_∥ = anchor→観測者の世界空間単位ベクトル)。厳密な Penrose-Terrell (v4) との誤差は `O(r²/ρ)`、LH 典型で 1% 未満で視覚無視可能。v4 exact へ昇格は per-vertex 計算が必要で defer。pure helper: [`src/components/game/apparentShape.ts`](../src/components/game/apparentShape.ts)。ship 展開時は x_∥ を A 静止系で取り直し + z 列 `L(−uA)` を掛ける拡張が要。
 
 **過去光円錐 anchor**: 塔の底 (z=0) は `anchorT = min(observer.t − |Δxy|, wp.t)` に配置 (spawn pillar と同じ pattern、§Spawn エフェクト)。これにより:
 
