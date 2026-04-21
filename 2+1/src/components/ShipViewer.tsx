@@ -48,6 +48,7 @@ export const ShipViewer = () => {
   const [autoRotate, setAutoRotate] = useState(true);
   const [showGrid, setShowGrid] = useState(true);
   const [bgColor, setBgColor] = useState("#0a0a0f");
+  const [cannonStyle, setCannonStyle] = useState<"gun" | "laser">("laser");
 
   return (
     <div style={{ position: "fixed", inset: 0 }}>
@@ -58,6 +59,7 @@ export const ShipViewer = () => {
         interactive
         thrustAccelRef={thrustAccelRef}
         cameraYawRef={cameraYawRef}
+        cannonStyle={cannonStyle}
       />
 
       <div
@@ -116,6 +118,22 @@ export const ShipViewer = () => {
             <option value="#444">mid gray</option>
             <option value="#aaa">light gray</option>
             <option value="#000">pure black</option>
+          </select>
+        </label>
+        <label style={{ display: "block", marginBottom: 8 }}>
+          {"Cannon: "}
+          <select
+            value={cannonStyle}
+            onChange={(e) => setCannonStyle(e.target.value as "gun" | "laser")}
+            style={{
+              background: "#222",
+              color: "#ddd",
+              border: "1px solid #555",
+              padding: "2px 6px",
+            }}
+          >
+            <option value="gun">gun (古典大砲)</option>
+            <option value="laser">laser (エネルギー兵器)</option>
           </select>
         </label>
 

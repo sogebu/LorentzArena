@@ -95,6 +95,8 @@ export interface ShipPreviewProps {
    *  省略時は静止 + yaw 0 で固定。 */
   thrustAccelRef?: React.MutableRefObject<Vector3>;
   cameraYawRef?: React.MutableRefObject<number>;
+  /** 懸架砲デザイン。'gun' (既存、古典大砲) / 'laser' (2026-04-22 新規、エネルギー兵器)。 */
+  cannonStyle?: "gun" | "laser";
 }
 
 export const ShipPreview = ({
@@ -106,6 +108,7 @@ export const ShipPreview = ({
   cameraTarget = [0, 0, 0],
   thrustAccelRef,
   cameraYawRef,
+  cannonStyle = "gun",
 }: ShipPreviewProps = {}) => {
   const defaultThrustRef = useRef<Vector3>(createVector3(0, 0, 0));
   const defaultYawRef = useRef<number>(0);
@@ -156,6 +159,7 @@ export const ShipPreview = ({
           thrustAccelRef={thrustRef}
           observerPos={stubPlayer.phaseSpace.pos}
           observerBoost={null}
+          cannonStyle={cannonStyle}
         />
 
         <Orbit autoRotate={autoRotate} interactive={interactive} target={cameraTarget} />

@@ -60,6 +60,7 @@ import {
   SHIP_NOZZLE_THROAT_RADIUS,
 } from "./constants";
 import { transformEventForDisplay } from "./displayTransform";
+import { LaserCannonRenderer } from "./LaserCannonRenderer";
 import { getThreeColor, sharedGeometries } from "./threeCache";
 import type { lorentzBoost } from "../../physics";
 
@@ -94,6 +95,7 @@ export const SelfShipRenderer = ({
   thrustAccelRef,
   observerPos,
   observerBoost,
+  cannonStyle = "gun",
 }: {
   player: {
     id: string;
@@ -103,6 +105,9 @@ export const SelfShipRenderer = ({
   thrustAccelRef: React.RefObject<Vector3>;
   observerPos: Vector4 | null;
   observerBoost: ReturnType<typeof lorentzBoost> | null;
+  /** 懸架砲のデザイン。'gun': 古典機械式大砲 (SHIP_GUN_*)、'laser': エネルギー兵器
+   *  (SHIP_LASER_*、LaserCannonRenderer)。default 'gun' で既存挙動保持。 */
+  cannonStyle?: "gun" | "laser";
 }) => {
   const groupRef = useRef<THREE.Group>(null);
   // 4 cardinal nozzle に対応する exhaust ペア (outer + inner)。各 nozzle は独立に
@@ -428,7 +433,11 @@ export const SelfShipRenderer = ({
           3. cannon group は +π/4 回転で +x → forward+down 方向に向ける。
           4. cannon 各 segment は group 内で x=0 から始まる (HULL_R offset なし)。
           結果: 砲は hull 真下にぶら下がり、そこから forward+down 45° に伸びる
-          → 後方視点でも常に hull 下に砲身が見える。 */}
+          → 後方視点でも常に hull 下に砲身が見える。
+          cannonStyle='laser' では LaserCannonRenderer で差替え (bracket は内部で同 spec 再描画)。 */}
+      {cannonStyle === "laser" && <LaserCannonRenderer />}
+      {cannonStyle === "gun" && (
+        <>
 
       {/* Bracket (hull 底面 → cannon mount point の垂直支柱)。色は SHIP_BRACKET_* 系列
           (steel-blue、nozzle 外面と同色) で hull/cannon (dark navy) と分離。 */}
@@ -587,6 +596,8 @@ export const SelfShipRenderer = ({
           />
         </mesh>
       </group>
+        </>
+      )}
 
       {/* Exhaust (4 nozzle 各々、旧 ExhaustCone と同 spec、2 層 cone + additive blending)。
           位置・向き・scale は useFrame で nozzle 個別に動的設定。

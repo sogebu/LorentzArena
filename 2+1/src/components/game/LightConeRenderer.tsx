@@ -10,7 +10,7 @@ import {
   LIGHT_CONE_HEIGHT,
   LIGHT_CONE_SURFACE_OPACITY,
   LIGHT_CONE_WIRE_OPACITY,
-  SHIP_LIGHT_CONE_INNER_HIDE_RADIUS,
+  SHIP_INNER_HIDE_RADIUS,
 } from "./constants";
 import { useDisplayFrame } from "./DisplayFrameContext";
 import { createInnerHideShader } from "./innerHideShader";
@@ -92,15 +92,12 @@ export const LightConeRenderer = ({
 
   const color = useMemo(() => getThreeColor(LIGHT_CONE_COLOR), []);
   // 自機本体・砲身周辺と被るのを抑制: 観測者 (observer.pos) からの世界座標距離が
-  // SHIP_LIGHT_CONE_INNER_HIDE_RADIUS 未満の vertex を alpha=0 に。timeFade と並列に
-  // shader chain。hideCenter は Vector3 ref を keep し、useFrame で observer.pos に更新
-  // (= 自機が動いても hide center が追従)。
-  // 2026-04-22 odakin 指示で worldLine 側 (= SHIP_INNER_HIDE_RADIUS、係数 9) の半分
-  // (係数 4.5) に分離。光円錐は機体の visible hull 範囲だけ抜けばよく、世界線のように
-  // past-cone 交点の gnomon 被りを広範に隠す必要がない。
+  // SHIP_INNER_HIDE_RADIUS 未満の vertex を alpha=0 に。timeFade と並列に shader chain。
+  // hideCenter は Vector3 ref を keep し、useFrame で observer.pos に更新 (= 自機が
+  // 動いても hide center が追従)。光円錐・世界線共用 (分離する意味無し)。
   const hideCenter = useMemo(() => new THREE.Vector3(), []);
   const onShader = useMemo(() => {
-    const hide = createInnerHideShader(SHIP_LIGHT_CONE_INNER_HIDE_RADIUS, hideCenter);
+    const hide = createInnerHideShader(SHIP_INNER_HIDE_RADIUS, hideCenter);
     return (s: THREE.WebGLProgramParametersWithUniforms) => {
       applyTimeFadeShader(s);
       hide(s);

@@ -352,15 +352,10 @@ export const SHIP_HULL_RADIUS = 0.32;
 // 自機本体・他機本体・LH の周辺で「過去光円錐 / 世界線」が砲身・LH 塔・他機 sphere 等と
 // 被って見えるのを抑制する inner-hide 半径。観測者の過去光円錐とその world line の
 // 交差点 (= gnomon が描かれる位置) を中心に world 距離 R 未満の vertex を alpha=0 に。
-// HULL_RADIUS 連動 = 機体サイズに比例して自動追従。
-export const SHIP_INNER_HIDE_RADIUS_COEFFICIENT = 9;
+// HULL_RADIUS 連動 = 機体サイズに比例して自動追従。光円錐・世界線共用 (分離する意味無し)。
+// 2026-04-22 odakin 指示で 9 → 4.5 に半減。
+export const SHIP_INNER_HIDE_RADIUS_COEFFICIENT = 4.5;
 export const SHIP_INNER_HIDE_RADIUS = SHIP_HULL_RADIUS * SHIP_INNER_HIDE_RADIUS_COEFFICIENT;
-// 自機周辺の光円錐を消す α=0 球の半径 (LightConeRenderer 専用)。世界線 inner-hide とは
-// 用途が別 (機体モデルとの被りではなく、自分の past-cone 頂点付近の視界確保)。
-// 2026-04-22 odakin 指示で worldLine 側 (係数 9) の半分に分離。
-export const SHIP_LIGHT_CONE_INNER_HIDE_RADIUS_COEFFICIENT = 4.5;
-export const SHIP_LIGHT_CONE_INNER_HIDE_RADIUS =
-  SHIP_HULL_RADIUS * SHIP_LIGHT_CONE_INNER_HIDE_RADIUS_COEFFICIENT;
 // LH は機体より小さく狭い範囲だけ隠す (LH 塔の半径は ~0.2 (LIGHTHOUSE_HIT_RADIUS) で
 // 機体より細い、過剰に隠さない)。HULL_RADIUS の数倍小さい係数。
 export const LH_INNER_HIDE_RADIUS_COEFFICIENT = 2.5;
@@ -426,20 +421,26 @@ export const SHIP_HULL_X_SCALE = 1.4;
 // 全長 (breech 含む visible extent): 旧 10.0 → 5.0、tip xy/z ≈ ±2.65 (cannon group 原点から)。
 // 2026-04-19 後半 第 2 段: BARREL_LENGTH 2.5 → 2.3 に短縮で第 1 ring が breech と接触。
 // 計算: 第 1 ring 近端 = BARREL * 1/(N+1) - REAR_EXT - RING_LEN/2 = 2.3/4 - 0.25 - 0.075 = 0.25 = breech 末端 ✓
+// 2026-04-22 odakin 指示「銃っぽく」再調整:
+//   - MUZZLE_BRAKE を BARREL より明確に太く (flared 砲口)
+//   - TIP を短い step section に (針状の whip 感を解消)
+//   - BREECH をやや chunky に (housing 感)
+//   - RING の存在感 up
+// 戦車主砲 / 艦砲の silhouette (chunky breech → slender barrel with bands → flared muzzle brake)。
 export const SHIP_GUN_BARREL_RADIUS = 0.025;
-export const SHIP_GUN_BARREL_LENGTH = 2.5;
-export const SHIP_GUN_TIP_RADIUS = 0.0125;
-export const SHIP_GUN_TIP_LENGTH = 1.25;
+export const SHIP_GUN_BARREL_LENGTH = 2.0;
+export const SHIP_GUN_TIP_RADIUS = 0.018; // 0.0125 → 0.018 (針→軽い step に)
+export const SHIP_GUN_TIP_LENGTH = 0.3; // 0.8 → 0.3 (独立 section ではなく「step」程度の短さに)
 // Breech (砲尾): hull edge から伸びる主砲身を包む chunky cylinder、「ここから砲が
 // 生えている」感を出す。Bofors / 戦車主砲の breech ハウジング風。
-export const SHIP_GUN_BREECH_RADIUS = 0.075;
+export const SHIP_GUN_BREECH_RADIUS = 0.08; // 0.075 → 0.08 (やや chunky に)
 export const SHIP_GUN_BREECH_LENGTH = 0.5;
 // 補強リング (主砲身に 3 本、Bofors 40mm / 古典艦砲の reinforcement bands 風)
-export const SHIP_GUN_RING_RADIUS = 0.04;
-export const SHIP_GUN_RING_LENGTH = 0.075;
+export const SHIP_GUN_RING_RADIUS = 0.045; // 0.04 → 0.045 (存在感 up)
+export const SHIP_GUN_RING_LENGTH = 0.09; // 0.075 → 0.09
 export const SHIP_GUN_RING_COUNT = 3;
 // Muzzle brake (砲口、TIP 末端に取り付く軽い拡大部、flash hider / brake 風)
-export const SHIP_GUN_MUZZLE_BRAKE_RADIUS = 0.025;
+export const SHIP_GUN_MUZZLE_BRAKE_RADIUS = 0.04; // 0.025 → 0.04 (BARREL/TIP より明確に flared)
 export const SHIP_GUN_MUZZLE_BRAKE_LENGTH = 0.2;
 // Three.js Y-axis rotation by +π/4: +X → (cos, 0, -sin) = (√2/2, 0, -√2/2)。
 // このシーンは Z up なので -Z = down → +π/4 で +X が下に倒れる (forward + down)。
@@ -471,6 +472,64 @@ export const SHIP_GUN_EMISSIVE_INTENSITY = 0.45;
 export const SHIP_BRACKET_COLOR = "hsl(220, 25%, 38%)";
 export const SHIP_BRACKET_EMISSIVE_COLOR = "hsl(220, 30%, 40%)";
 export const SHIP_BRACKET_EMISSIVE_INTENSITY = 0.7;
+
+// === Laser cannon v2 (2026-04-22 redesign: chin pod 一体型) ===
+// 旧 v1 の「capacitor + fins + pylon + collar」構成は cannon が pylon に埋もれる問題
+// があった。v2 は Y-wing chin turret 風の整流 pod を hull 底面にビルトイン、砲身は
+// pod 下端から 45° 下前方に「生える」形にして構造的一体感を出す。
+//
+// Silhouette (hull 底 → 砲身先端):
+//   1. Chin pod (hull 底面 の elongated 整流 blister) — 電源 pack / 基盤を視覚的に吸収
+//   2. Barrel (pod 下極から伸びる slender cylinder) — 主砲身
+//   3. Crystal bulge (barrel 中途の emissive 膨らみ)  — focus crystal
+//   4. Lens stack (3 段 narrowing torus)              — 焦点絞り
+//   5. Emitter disc (lens 最奥の bright plate)         — 発射孔
+
+// Chin pod (hull 底面の整流 blister、vertical 高さ 0.55 で cannon mount まで届く)
+export const SHIP_LASER_POD_FORE_AFT = 0.6;   // 全長 (fore-aft)
+export const SHIP_LASER_POD_LATERAL = 0.26;   // 全幅 (lateral)
+export const SHIP_LASER_POD_VERTICAL = 0.55;  // 全高 (hull 底面 → cannon mount)
+export const SHIP_LASER_POD_X_OFFSET = 0.05;  // hull 中央から僅か前方シフト (chin 向き強調)
+
+// Barrel (主砲身、cannon group 内 x=0 から +x 方向に伸びる)
+export const SHIP_LASER_BARREL_RADIUS = 0.045;
+export const SHIP_LASER_BARREL_LENGTH = 1.5;
+
+// Crystal bulge (barrel 中途の cyan 発光 accent、prismatic crystal 風)
+export const SHIP_LASER_CRYSTAL_RADIUS = 0.055;
+export const SHIP_LASER_CRYSTAL_LENGTH = 0.1;
+export const SHIP_LASER_CRYSTAL_POS_FRAC = 0.55;
+
+// Lens stack (3 段の nested torus rings、narrowing forward)
+export const SHIP_LASER_LENS_COUNT = 3;
+export const SHIP_LASER_LENS_TUBE = 0.012;
+export const SHIP_LASER_LENS_OUTER_R_BACK = 0.068;
+export const SHIP_LASER_LENS_OUTER_R_FRONT = 0.046;
+export const SHIP_LASER_LENS_SPACING = 0.04;
+
+// Emitter disc (lens 最奥の発光 plate)
+export const SHIP_LASER_EMITTER_RADIUS = 0.032;
+export const SHIP_LASER_EMITTER_THICKNESS = 0.016;
+
+// Mount x 位置 (cannon 部品 group の local x を -OFFSET シフト、0 なら barrel 後端を mount に)。
+// barrel が pod 底極から生える見せ方なので OFFSET = 0 (barrel rear = cannon mount) で自然。
+export const SHIP_LASER_MOUNT_X_OFFSET = 0;
+
+// Colors
+export const SHIP_LASER_POD_COLOR = "hsl(210, 28%, 22%)";       // hull より僅か darker で blister 感
+export const SHIP_LASER_POD_EMISSIVE_COLOR = "hsl(210, 30%, 28%)";
+export const SHIP_LASER_POD_EMISSIVE_INTENSITY = 0.3;
+export const SHIP_LASER_BARREL_COLOR = "hsl(200, 22%, 20%)";
+export const SHIP_LASER_BARREL_EMISSIVE_COLOR = "hsl(200, 25%, 28%)";
+export const SHIP_LASER_BARREL_EMISSIVE_INTENSITY = 0.35;
+export const SHIP_LASER_LENS_COLOR = "hsl(200, 18%, 42%)";       // brighter steel for contrast
+export const SHIP_LASER_LENS_EMISSIVE_COLOR = "hsl(185, 80%, 55%)";
+export const SHIP_LASER_LENS_EMISSIVE_INTENSITY_BASE = 0.6;
+export const SHIP_LASER_LENS_EMISSIVE_INTENSITY_FRONT = 1.5;
+// 発光部 (crystal + emitter): bright cyan
+export const SHIP_LASER_GLOW_COLOR = "hsl(185, 100%, 70%)";
+export const SHIP_LASER_GLOW_EMISSIVE_COLOR = "hsl(185, 100%, 65%)";
+export const SHIP_LASER_GLOW_EMISSIVE_INTENSITY = 2.3;
 
 // --- Player marker opacity (C pattern、時間 fade 非対象、pulse で無敵点滅) ---
 export const PLAYER_MARKER_MAIN_OPACITY_SELF = 1.0;

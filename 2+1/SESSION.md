@@ -2,35 +2,38 @@
 
 ## 現在のステータス
 
-対戦可能。**`43a33b6` デプロイ済** (build `2026/04/21 23:50:10 JST`)。本番: https://sogebu.github.io/LorentzArena/
-(ただし `43a33b6` (revert) は pushed のみで本番 deploy は `cf5b262` 時刻、コード的に同義)。
+対戦可能。**`17363bd` デプロイ済** (build `2026/04/22 07:25:50 JST`)。本番: https://sogebu.github.io/LorentzArena/
 
-**Phase A (PhaseSpace 拡張) + Phase B (renderer 移行) 完了**。PhaseSpace を `(pos, u, heading, alpha)` に拡張して network 配管、他機も ship 3D model (SelfShipRenderer 流用) で past-cone 交点に描画。debris / laser past-cone marker 色を universal 化。**2026-04-22 未 commit**: 過去光円錐 worldline マーカー廃止 + 世界線太さ/不透明度を灯台 (0.06 / 0.4) と統一。**未解決 regression: DeathMarker が出ないことがある + sphere sinking 設計通りに動かない報告** (`plans/2026-04-21-deathmarker-regression.md` に引継ぎメモ)。
+**2026-04-22 の主要進捗**:
+1. **死亡 event 表示を (x_D, u_D, τ_0) 統一アルゴリズムに刷新** — DEBRIS_MAX_LAMBDA linear fade + ad-hoc ring anchor を全廃、`W_D(τ) = x_D + u_D·τ` と観測者過去光円錐の交点 τ_0 で全描画 (DeathMarker / DeadShipRenderer / LH) を駆動 (`8c019e3`)。DeathMarker が「出ない / 固まる」regression は構造的に解消。
+2. **瞬時消失バグ解消** — 死亡瞬間に ship モデルが消え小 sphere に置換される問題。pre-death 期は OtherShipRenderer (live worldLine past-cone 交点) で routing、past-cone 到達後は DeadShipRenderer (ship モデル @ x_D で opacity fade) で routing (`bbae2b7` + `8c019e3`)。
+3. **他機 worldLine 未来側末端 sphere 復活** — 3d1831d の ship-model 移行で消えていた「世界時刻 now 位置のドット」を復活 (pedagogical marker、ship との空間ずれ = 光速遅延の可視化、`17363bd`)。
+4. **inner-hide 半径 9 → 4.5 に半減** — 光円錐・世界線共用、gun 時代より機体が slim なので半径は小さくてよいとの判断 (`17363bd`)。
+5. **レーザー砲 v2 設計 (未 commit)** — gun とは別 design の「chin pod 一体型」レーザー砲。ShipViewer の Cannon プルダウンで gun/laser 切替可能。ゲーム側は default 'gun' で既存挙動保持。
+
+**未 commit (WIP)**: 砲 design iterate の途中。完成したら commit + deploy 予定。詳細は末尾「## 未 commit WIP / 次セッション申し送り」参照。
 
 ## 本日 (2026-04-22) の主要 entry
 
-**死亡 event 表示を (x_D, u_D, τ_0) の統一アルゴリズムに刷新** (odakin 設計、未 commit): 旧実装 (DEBRIS_MAX_LAMBDA linear fade + ad-hoc ring anchor、DeathMarker が出ない/固まる regression 含む) を全廃、以下に統一。
-- **中核** ([deathWorldLine.ts](src/components/game/deathWorldLine.ts), 116/116 tests pass): 死者の extrapolated 世界線 `W_D(τ) = x_D + u_D·τ` と観測者過去光円錐の交点 τ_0 を二次方程式 `τ² − 2Bτ + C = 0` (B/C = Minkowski 内積/ノルム²) で解く helper `pastLightConeIntersectionDeathWorldLine`。過去側解は `B − √(B²−C)`。τ_0 < 0 は past-cone 未到達、null は spacelike 分離 (防御的)。
-- **表示窓** (constants.ts): `DEATH_TAU_MAX = 5` (body fade 完了)、`DEATH_TAU_EFFECT_MAX = 2` (sphere+ring 打ち切り)。単位は死者 proper time、高速死亡者ほど observer wall-clock で fade 窓が長引く (relativistic 不変)。
-- **DeathMarker**: `{xD, uD, color}` 受取、内部で τ_0 計算、`τ_0 ∈ [0, DEATH_TAU_EFFECT_MAX]` のみ on (flash 演出)。sphere @ x_D (沈む)、ring @ `x_D + u_D·τ_0` (C pattern 並進)。静止系 ring は Stage 2 で再検討 (今は C pattern のまま)。
-- **OtherPlayerRenderer**: body sphere @ x_D (固定、沈む)、opacity = `a_0·(DEATH_TAU_MAX − τ_0) / DEATH_TAU_MAX`。他者は `player.phaseSpace.{pos,u}` (死亡時刻 freeze)、自機は SceneContent から `myDeathEvent.{pos,u}` を override で注入。
-- **LighthouseRenderer**: 同じ (x_D, u_D) path。生存中の spawn past-cone visibility のみ `computePastConeDisplayState` に残し、fade 分岐を削除。
-- **SceneContent routing**: 死者 routing を τ_0 sign 駆動へ。`τ_0 < 0` → OtherShipRenderer (live 世界線の past-cone 交点で pre-death ship)、`τ_0 ∈ [0, DEATH_TAU_MAX]` → OtherPlayerRenderer、`> DEATH_TAU_MAX` → null。自機は observer swap `myPlayer.phaseSpace ← myDeathEvent.ghostPhaseSpace` で ghost を追従。
-- **ghost 非 broadcast**: useGameLoop ghost branch の `fresh.setPlayers(... phaseSpace: ghostPs)` を削除。`players[myId].phaseSpace` は死亡時刻で凍結されたまま (= 他者 snapshot と同値、host に ghost 位置がリークしない)。観測者 frame (camera / past-cone / Radar / HUD) は `myDeathEvent.ghostPhaseSpace` に swap (SceneContent / Radar / HUD で同 pattern)。
-- **debris 無変更**: user 指示「デブリやレーザー煙は昔の実装から何も変える必要はない」に従い、昨日の DebrisRenderer past-cone gate は revert 済。debris 粒子寿命 `DEBRIS_MAX_LAMBDA` は DeathMarker 窓と完全分離、debris 専用定数に降格。
-- **`pastConeDisplay.ts` slimming**: 死亡 branch + alpha / deathMarkerAlpha フィールドを削除、生存 spawn past-cone visibility のみを残す (`anchorPos` + `visible` の 2 フィールド)。
-- **typecheck + 116/116 tests pass**、Claude Preview clean reload。設計提案: `plans/死亡イベント.md` (odakin 原文)。
+`17363bd` **他機 worldLine 未来側末端 sphere 復活 + 光円錐/世界線 inner-hide 半径半減**: `3d1831d` で消失した「他機の世界時刻 now 位置」sphere (phaseSpace.pos に配置、playerSphere × PLAYER_MARKER_SIZE_OTHER、main + glow ×1.8 の 2 mesh) を復活、3d1831d 以前の alive-branch 仕様と完全一致 (color/opacity/depthWrite まで)。ship 3D model (past-cone 交点) と新 sphere (世界時刻 now) の空間ずれが光速遅延の教育的可視化。ついでに `SHIP_INNER_HIDE_RADIUS_COEFFICIENT` を 9 → 4.5 に半減、光円錐・世界線共用 (分離する意味無しとの方針)。一時的に `SHIP_LIGHT_CONE_INNER_HIDE_RADIUS` を分離したが odakin 指示で再統合。
 
-**過去光円錐 worldline マーカー廃止 + 世界線太さ/不透明度を灯台と統一** (odakin 指定、未 commit):
-- 他プレイヤー世界線 × 自機過去光円錐 交点の sphere+core+ring gnomon (`worldLineIntersections`)
-  を削除。視覚情報は同交点に描画される ship 3D model (`OtherShipRenderer`) と DeathMarker
-  が既に担うので冗長。`PAST_CONE_WORLDLINE_RING_OPACITY` 定数 + `intersectionCore` geometry
-  も退場。レーザー過去光円錐マーカー / 世界線 × 未来光円錐 gnomon は残置 (別用途)。
-- `WorldLineRenderer` の default `tubeRadius` を 0.03 → 0.06 (= 灯台の override 値) に、
-  SceneContent の LH-only override (`{tubeRadius: 0.06, tubeOpacity: LIGHTHOUSE_WORLDLINE_OPACITY}`)
-  を撤去。`LIGHTHOUSE_WORLDLINE_OPACITY` 定数 (= 0.4 で `PLAYER_WORLDLINE_OPACITY` と同値だった)
-  も退場。frozenWorldLines / 他機 / 自機 / 灯台すべてが `tubeRadius=0.06`, `tubeOpacity=0.4`
-  で統一。typecheck + 109/109 tests pass。
+`8c019e3` **死亡 event を (x_D, u_D, τ_0) の統一アルゴリズムに刷新**: 旧実装 (DEBRIS_MAX_LAMBDA linear fade + ad-hoc ring anchor、DeathMarker が出ない/固まる regression 含む) を全廃、以下に統一。
+- **中核** ([deathWorldLine.ts](src/components/game/deathWorldLine.ts)): 死者 extrapolated 世界線 `W_D(τ) = x_D + u_D·τ` と観測者過去光円錐の交点 τ_0 を二次方程式 `τ² − 2Bτ + C = 0` (B = Minkowski 内積 (+,-,-,-) of u_D and Δ、C = Minkowski norm² of Δ、Δ = observer − x_D) で解く helper `pastLightConeIntersectionDeathWorldLine`。過去側解は `B − √(B²−C)`。τ_0 < 0 は past-cone 未到達、null は discriminant 負 (spacelike 分離、防御的)。`deathWorldLine.test.ts` で stationary / ρ=5 / v=0.8c 含む 7 ケース検証。
+- **表示窓** (constants.ts): `DEATH_TAU_MAX = 5` (body fade 完了)、`DEATH_TAU_EFFECT_MAX = 2` (sphere+ring 打ち切り)。単位は死者 proper time、高速死亡者ほど observer wall-clock で fade 窓が長引く (relativistic 不変)。
+- **DeathMarker**: `{xD, uD, color}` 受取、内部で τ_0 計算、`τ_0 ∈ [0, DEATH_TAU_EFFECT_MAX]` のみ on。sphere @ x_D (沈む)、ring @ `x_D + u_D·τ_0` (C pattern 並進)。
+- **DeadShipRenderer** 新設: SelfShipRenderer を仮想 player (pos=x_D, heading=heading_D) で wrap、useFrame で group traverse + material.opacity 上書き (transparent=true + depthWrite=false) で **ship 全体に opacity fade** を適用。opacity = `(DEATH_TAU_MAX − τ_0) / DEATH_TAU_MAX`。OtherPlayerRenderer の小 sphere path は廃止 (「model is the ship」の odakin 指摘)。
+- **LighthouseRenderer**: 同じ (x_D, u_D) path。生存中の spawn past-cone visibility のみ `computePastConeDisplayState` に残し、fade 分岐を削除。
+- **SceneContent routing**: 死者 routing を τ_0 sign 駆動へ。`τ_0 < 0` → OtherShipRenderer (live 世界線の past-cone 交点で pre-death ship)、`τ_0 ∈ [0, DEATH_TAU_MAX]` → DeadShipRenderer + DeathMarker、`> DEATH_TAU_MAX` → null。self/other 統一 (`player.phaseSpace` から x_D/u_D/heading_D 導出、dead self の phaseSpace も自 broadcast 停止で凍結済)。
+- **ghost 非 broadcast**: useGameLoop ghost branch の `fresh.setPlayers(... phaseSpace: ghostPs)` を削除。`players[myId].phaseSpace` は死亡時刻で凍結、観測者 frame (camera / past-cone / Radar / HUD) は `myDeathEvent.ghostPhaseSpace` に swap (SceneContent / Radar / HUD で同 pattern)。「他者から見える phaseSpace == worldline データ」= odakin の設計原則。
+- **DeathEvent 型**: `pos, u, heading, ghostPhaseSpace` で死亡時 snapshot + 動的 ghost 分離。
+- **`pastConeDisplay.ts` slimming**: 死亡 branch + alpha / deathMarkerAlpha を削除、生存 spawn past-cone visibility のみ残す。
+- 設計 doc: `plans/死亡イベント.md` (odakin 原文)。
+
+`bbae2b7` **kill 瞬間の相手消失を past-cone 遅延で延期 (暫定)**: `player.isDead` 即 switch → OtherShipRenderer を past-cone 未到達期 (pastConeT < deathT) に継続使用、到達後に OtherPlayerRenderer に routing。死亡光子が観測者に届くまで相手が「まだ生きて見える」ようにする暫定修正。`8c019e3` の統一アルゴリズムに吸収された (τ_0 < 0 で OtherShipRenderer、τ_0 ≥ 0 で DeadShipRenderer + DeathMarker)。
+
+`d840a23` **過去光円錐 worldline マーカー廃止 + 世界線太さ/不透明度を灯台と統一**:
+- 他プレイヤー世界線 × 自機過去光円錐 交点の sphere+core+ring gnomon (`worldLineIntersections`) を削除。視覚情報は同交点に描画される ship 3D model (`OtherShipRenderer`) と DeathMarker が既に担うので冗長。`PAST_CONE_WORLDLINE_RING_OPACITY` 定数 + `intersectionCore` geometry も退場 (ただし 17363bd で未来側末端 sphere 復活時に intersectionCore は不要になったので `17363bd` では playerSphere 系に統一)。
+- `WorldLineRenderer` の default `tubeRadius` を 0.03 → 0.06 (= 灯台の override 値) に、SceneContent の LH-only override を撤去。`LIGHTHOUSE_WORLDLINE_OPACITY` 定数 (= PLAYER と同値 0.4) も退場。frozenWorldLines / 他機 / 自機 / 灯台すべてが `tubeRadius=0.06`, `tubeOpacity=0.4` で統一。
 
 ## 本日 (2026-04-21) の主要 entry
 
@@ -130,35 +133,73 @@
 
 ### 低優先リスク / 未検証
 
-- **DeathMarker が出ないことがある + sphere sinking 設計通り動かない (odakin 報告、未解決、最優先)**: 調査メモ
-  [`plans/2026-04-21-deathmarker-regression.md`](plans/2026-04-21-deathmarker-regression.md)。
-  仮説 4 つ (myDeathEvent.pos 不意の更新 / snapshot が dead phaseSpace 上書き /
-  `DEBRIS_MAX_LAMBDA=2.5s` の窓が短い / 生存→死亡 routing の副作用) を次セッション
-  で実機再現して eliminate する順序を記載。誤 fix `f494986` は `43a33b6` で revert 済。
+- **DeathMarker regression (2026-04-21 報告)**: `8c019e3` の統一アルゴリズム (x_D, u_D, τ_0) で構造的に解消したと推定。「出ないことがある」は `DEATH_TAU_EFFECT_MAX = 2` proper sec の窓で十分カバー、「固まる」は `players[myId].phaseSpace` ghost leak 停止で解消。実機 multi-tab 追試で最終確認予定。調査メモ [`plans/2026-04-21-deathmarker-regression.md`](plans/2026-04-21-deathmarker-regression.md) は歴史資料として保持。
 - **リスポーン時に世界線が繋がる** (2026-04-14 Stage F-1 後再発): 最有力は F-1 snapshot で `frozenWorldLines` 未 serialize → respawn 時 `appendWorldLine` で連結。何 peer 視点で出るか未調査
 - localId PeerJS ID 衝突 (tab-hidden 復帰時)、PeerServer ネットワークエラー stack (WS Relay 未設定時)
 - モバイルハイスコア (iOS Safari ホーム画面復帰時保存)
 
+## 未 commit WIP / 次セッション申し送り
+
+### 進行中: cannon design iterate
+
+**gun**: 「銃として固定」状態 (sci-fi refine 適用後 odakin 合意版、`constants.ts` の SHIP_GUN_*):
+- BARREL: R=**0.025**, L=**2.0** (旧 2.5 から 0.8x)
+- TIP: R=**0.018** (旧 0.0125 → 太く)、L=**0.3** (旧 1.25 → 短い step に)
+- BREECH: R=**0.08** (旧 0.075 → chunky)、L=**0.5**
+- RING: R=**0.045** (旧 0.04)、L=**0.09** (旧 0.075)、COUNT=3
+- MUZZLE_BRAKE: R=**0.04** (旧 0.025 → flared、BARREL/TIP より太く)、L=**0.2**
+- BRACKET: tapered cone 0.05→0.02, H=0.55 (無変更)
+
+iterate 経緯は SESSION.md の直前 session 部分参照 (BARREL/TIP length 調整を往復した後、odakin が「銃っぽくなくなった」指摘 → sci-fi refine で「銃として固定」合意)。gameplay 側は引き続き `cannonStyle='gun'` default で既存見た目保持。
+
+**laser (v2、`LaserCannonRenderer.tsx`)**: 全く別 design として `cannonStyle='laser'` path に wire、ShipViewer のプルダウンで live 切替。**現在の構成** (`constants.ts` の SHIP_LASER_*):
+- Chin pod (hull 底面の半埋没 ellipsoid、fore-aft 0.6 × lateral 0.26 × vertical 0.55) を bracket/pylon 代わりに設置。pod 下極が cannon mount、world origin を通る制約維持。
+- Barrel (R=0.045, L=1.5) slender cylinder、pod から 45° 下前方。
+- Crystal bulge (R=0.055, L=0.1) barrel 55% 位置、cyan emissive。
+- Lens stack 3 段 nested torus (outer 0.068 → 0.046、emissive 0.6 → 1.5)、barrel 前端。
+- Emitter disc (R=0.032, L=0.016) lens 最奥、bright cyan。
+
+**v1 → v2 の iterate 経緯** (参考): v0 (sphere + casing + 2 torus cooling + cone + disc、2.3 長) → v1 (sci-fi ref: chunky capacitor + bands + coupling + fins + crystal + lens + emitter、3 部構成 mount: root fairing + oval pylon + collar) → **v1 は cannon が pylon に埋もれる問題で却下** → v2 (chin pod 一体型、cannon は slender barrel のみ、pod が power pack 機能を吸収) で odakin 合意。詳細 history は [`plans/2026-04-22-laser-cannon.md`](plans/2026-04-22-laser-cannon.md)。
+
+**cannonStyle prop アーキテクチャ**:
+- `SelfShipRenderer` に `cannonStyle?: 'gun' | 'laser'` prop 追加 (default 'gun')。
+- gun の既存 JSX ブロック (bracket + cannon group + parts) は条件分岐で温存、`cannonStyle === 'laser'` なら `<LaserCannonRenderer />` 単独 render。
+- `ShipPreview` → `ShipViewer` に prop 通し、ShipViewer で `<select>` toggle。
+- ゲーム本体 (SceneContent の SelfShipRenderer 呼出し) は prop 未指定 → default 'gun' で既存挙動。
+
+**uncommitted files** (2026-04-22 session 終了時点):
+- `2+1/src/components/game/constants.ts` (gun tuning + laser v2 constants + inner-hide 再統合)
+- `2+1/src/components/game/LightConeRenderer.tsx` (inner-hide 再統合、SHIP_LIGHT_CONE_INNER_HIDE_RADIUS → SHIP_INNER_HIDE_RADIUS に戻し)
+- `2+1/src/components/game/SelfShipRenderer.tsx` (cannonStyle prop + LaserCannonRenderer import + 条件分岐)
+- `2+1/src/components/ShipPreview.tsx` (cannonStyle prop 通し)
+- `2+1/src/components/ShipViewer.tsx` (Cannon toggle UI 追加、default 'laser')
+- **新規**: `2+1/src/components/game/LaserCannonRenderer.tsx`
+- **新規**: [`2+1/plans/2026-04-22-laser-cannon.md`](plans/2026-04-22-laser-cannon.md) (v0/v1/v2 iterate 経緯 + cannonStyle architecture + 残課題)
+
+### 次セッション冒頭でやること
+
+1. **レーザー砲 v2 の視覚的確認完了判断**: http://localhost:5174/LorentzArena/#viewer または本番 `#viewer` で最終確認、odakin OK なら commit + deploy。commit メッセージ案: `feat(laser-cannon): cannonStyle prop + v2 chin pod 一体型デザイン新設` 等。
+2. **ゲーム本体で laser を default にするか判断**: 現状 `cannonStyle='gun'` default。将来的に `cannonStyle='laser'` で本番移行するか、player の選択性にするか、本番ビルドでは laser でプレイ、など方針決定が必要。
+3. **DeathMarker regression 最終検証**: multi-tab 実機で「出ない / 固まる」が `8c019e3` 以降発生しないか odakin に確認依頼。解決確認後 [`plans/2026-04-21-deathmarker-regression.md`](plans/2026-04-21-deathmarker-regression.md) を「closed」として末尾に status 追記。
+4. **他の「次にやること」**: 以下。
+
 ## 次にやること
 
-- **(最優先) DeathMarker regression 解決**: 上記「低優先リスク / 未検証」の最上段、および
-  [`plans/2026-04-21-deathmarker-regression.md`](plans/2026-04-21-deathmarker-regression.md) の仮説 1-4 を
-  multi-tab 実機で順に eliminate。仮説 3 (DEATH_MARKER_LAMBDA 導入で窓長く) は quick win
-  候補として先に試す価値あり (physics ではなく UX 改善)。
+- **自機・他機 ship にプレイヤー色を埋め込む**: hull 材質が固定 navy (`SHIP_HULL_*`
+  定数) なので自機/他機ともに識別手がかりが薄い。accent stripe / fin / turret emissive
+  など、モデルのデザインのどこかに player color を load する material variant が必要。
+  自機側の色は他機視点 (= OtherShipRenderer は SelfShipRenderer 流用) で初めて意味を
+  持つので、SelfShipRenderer に color prop を通す設計で揃える。
 - **Phase B-5 (他機 exhaust) 再設計**: `phaseSpace.alpha = thrust + friction` が
   thrust 単独信号でないため、他機への ship 3D model exhaust 展開は pure thrust を
   新 wire field で broadcast する必要あり。別 plan 起こし時に対応。
 - **Phase C-1 (wire format 厳格化)**: 新 build (heading/alpha 送信) のみの混在期間
   確認後、受信 optional → required に厳格化して shim を削除。タイミングは
   `plans/2026-04-21-phaseSpace-heading-accel.md` 参照。
-- **自機・他機 ship にプレイヤー色を埋め込む**: hull 材質が固定 navy (`SHIP_HULL_*`
-  定数) なので自機/他機ともに識別手がかりが薄い。accent stripe / fin / turret emissive
-  など、モデルのデザインのどこかに player color を load する material variant が必要。
-  自機側の色は他機視点 (= OtherShipRenderer は SelfShipRenderer 流用) で初めて意味を
-  持つので、SelfShipRenderer に color prop を通す設計で揃える。
-- **本番実戦観察**: 多機能が 1 日で入ったので (Phase A + B + color + ship model)、
-  multi-tab 本番テストで regression 探索と UX 確認。DeathMarker 調査はその一環。
+- **本番実戦観察**: 死亡 event 統一アルゴリズム + future-pt sphere + inner-hide 半減
+  がデプロイ済。multi-tab 本番テストで regression / UX 確認。
 - **進行方向可視化 分岐 B/C**: sphere + heading-dart (案 14) / star aberration skybox (案 16)、default frame 選択。詳細: `EXPLORING.md §進行方向・向きの認知支援`
 - **フルチュートリアル** (必須、初見 UX、B3 とは別)
 - 各プレイヤー固有時刻表示 / スマホ UI 残 / 用語再考 / 音楽の時間同期
 - **レーザー以外の世界線 × 未来光円錐の表示**: 現 sphere 0.15 + ring 0.12 薄い、opacity 上げ or gnomon/pulse 昇格
+- **DeathMarker ring を (x_D0, u_D) 静止系で描画** (Stage 2、2026-04-22 統一アルゴリズム): 現在 C pattern 並進のみ。きっちりやると u_D 方向に contracted な楕円 (= 進行方向に潰れた ring、relativistic apparent shape)。`buildApparentShapeMatrix` 相当の ring 版が必要。
