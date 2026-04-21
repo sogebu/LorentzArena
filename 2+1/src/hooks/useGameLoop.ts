@@ -1,5 +1,11 @@
 import { useEffect, useRef, type MutableRefObject, type RefObject } from "react";
-import { vector3Zero, type createPhaseSpace, type Vector3, type Vector4 } from "../physics";
+import {
+  vector3Zero,
+  type createPhaseSpace,
+  type Vector3,
+  type Vector4,
+  yawToQuat,
+} from "../physics";
 import {
   DEBRIS_MAX_LAMBDA,
   DEFAULT_CAMERA_PITCH,
@@ -150,7 +156,13 @@ export function useGameLoop({
         const store = useGameStore.getState();
         const me = store.players.get(myId);
         if (me && !me.isDead) {
-          const newPhaseSpace = ballisticCatchupPhaseSpace(me.phaseSpace, dTau);
+          const evolved = ballisticCatchupPhaseSpace(me.phaseSpace, dTau);
+          // 自機 heading = 現カメラ yaw (ballistic 中も yaw は入力で変化し得る)。
+          // alpha は catchup 内の友動摩擦しかないので evolvePhaseSpace が既に格納済。
+          const newPhaseSpace = {
+            ...evolved,
+            heading: yawToQuat(cameraYawRef.current),
+          };
           store.setPlayers((prev) => {
             const cur = prev.get(myId);
             if (!cur) return prev;
@@ -388,15 +400,19 @@ export function useGameLoop({
             thrustRequestedThisTick = physics.thrustRequested;
             thrustAccelerationThisTick = physics.thrustAcceleration;
 
-            fresh.setMyDeathEvent({
-              ...de,
-              ghostPhaseSpace: physics.newPhaseSpace,
-            });
+            // 自機 heading は現カメラ yaw を source of truth とする。
+            // physics.newPhaseSpace.heading は前 tick の値が preserve されているので、
+            // ここで現 yaw に上書き (alpha は physics 側で既に world 4-accel に設定済)。
+            const ghostPs = {
+              ...physics.newPhaseSpace,
+              heading: yawToQuat(cameraYawRef.current),
+            };
+            fresh.setMyDeathEvent({ ...de, ghostPhaseSpace: ghostPs });
             fresh.setPlayers((prev) => {
               const me = prev.get(myId);
               if (!me || !me.isDead) return prev;
               const next = new Map(prev);
-              next.set(myId, { ...me, phaseSpace: physics.newPhaseSpace });
+              next.set(myId, { ...me, phaseSpace: ghostPs });
               return next;
             });
           }
@@ -429,15 +445,23 @@ export function useGameLoop({
             thrustRequestedThisTick = physics.thrustRequested;
             thrustAccelerationThisTick = physics.thrustAcceleration;
 
+            // 自機 heading = 現カメラ yaw (source of truth)。physics.newPhaseSpace は
+            // 前 tick の heading を preserve しているので上書き。
+            // worldLine history にも同じ heading で格納したいが、physics.updatedWorldLine
+            // は既に appendWorldLine 済 (前 heading 入り)。renderer 側は latest phaseSpace
+            // を読むので実害は小さい (履歴 replay 精度のみ影響、角速度無しの現仕様で顕在化せず)。
+            const newPs = {
+              ...physics.newPhaseSpace,
+              heading: yawToQuat(cameraYawRef.current),
+            };
             fresh.setPlayers((prev) => {
               const me = prev.get(myId);
               if (!me) return prev;
-              // Guard: respawn が間に入って worldLine が変わっていたら skip
               if (me.worldLine !== freshMe.worldLine) return prev;
               const next = new Map(prev);
               next.set(myId, {
                 ...me,
-                phaseSpace: physics.newPhaseSpace,
+                phaseSpace: newPs,
                 worldLine: physics.updatedWorldLine,
               });
               return next;
@@ -447,10 +471,10 @@ export function useGameLoop({
             sendToNetwork({
               type: "phaseSpace" as const,
               senderId: myId,
-              position: physics.newPhaseSpace.pos,
-              velocity: physics.newPhaseSpace.u,
-              heading: physics.newPhaseSpace.heading,
-              alpha: physics.newPhaseSpace.alpha,
+              position: newPs.pos,
+              velocity: newPs.u,
+              heading: newPs.heading,
+              alpha: newPs.alpha,
             });
           }
         }
