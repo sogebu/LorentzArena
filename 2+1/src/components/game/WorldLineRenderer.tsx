@@ -18,7 +18,7 @@ export const WorldLineRenderer = ({
   color,
   observerPos,
   observerBoost,
-  tubeRadius = 0.03,
+  tubeRadius = 0.06,
   tubeOpacity = PLAYER_WORLDLINE_OPACITY,
   innerHideRadius,
 }: WorldLineRendererProps) => {

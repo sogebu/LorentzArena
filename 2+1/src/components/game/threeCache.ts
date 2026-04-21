@@ -16,7 +16,6 @@ export const getThreeColor = (hslString: string): THREE.Color => {
 export const sharedGeometries = {
   playerSphere: new THREE.SphereGeometry(0.5, 8, 8),
   intersectionSphere: new THREE.SphereGeometry(0.225, 16, 16),
-  intersectionCore: new THREE.SphereGeometry(0.075, 12, 12),
   intersectionRing: new THREE.TorusGeometry(0.35, 0.035, 12, 24),
   laserIntersectionDot: new THREE.SphereGeometry(0.125, 12, 12),
   // レーザー × 光円錐 交差: 同時刻面 (local xy) 上の細長い三角形、tip が +x（回転で進行方向へ向ける）

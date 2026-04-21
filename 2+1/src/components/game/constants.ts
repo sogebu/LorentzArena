@@ -315,7 +315,6 @@ export const STARDUST_FLASH_FUTURE_BOOST = 0.75;
 
 // --- Worldline / laser opacity ---
 export const PLAYER_WORLDLINE_OPACITY = 0.4;
-export const LIGHTHOUSE_WORLDLINE_OPACITY = 0.4;
 // 2026-04-19: 0.2 だと self-ship の機体マスに対してビーム本体が薄く見えない →
 // 0.55 に bump で「光線」感強化 (per-vertex time fade で先端は自然に減衰するため
 // 全体厚塗りにはならない)。
@@ -467,8 +466,6 @@ export const PLAYER_MARKER_GLOW_OPACITY_SELF = 0.32;
 export const PLAYER_MARKER_GLOW_OPACITY_OTHER = 0.1;
 
 // --- Intersection marker opacity ---
-// 世界線 × 自機過去光円錐 ring (sphere + core は emissive、opacity 不要)。
-export const PAST_CONE_WORLDLINE_RING_OPACITY = 0.9;
 // 世界線 × 自機未来光円錐 sphere + ring (過去より控えめ、まだ届いていない event)。
 export const FUTURE_CONE_WORLDLINE_SPHERE_OPACITY = 0.15;
 export const FUTURE_CONE_WORLDLINE_RING_OPACITY = 0.12;

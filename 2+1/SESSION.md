@@ -5,7 +5,20 @@
 対戦可能。**`43a33b6` デプロイ済** (build `2026/04/21 23:50:10 JST`)。本番: https://sogebu.github.io/LorentzArena/
 (ただし `43a33b6` (revert) は pushed のみで本番 deploy は `cf5b262` 時刻、コード的に同義)。
 
-**Phase A (PhaseSpace 拡張) + Phase B (renderer 移行) 完了**。PhaseSpace を `(pos, u, heading, alpha)` に拡張して network 配管、他機も ship 3D model (SelfShipRenderer 流用) で past-cone 交点に描画。debris / laser past-cone marker 色を universal 化。**未解決 regression: DeathMarker が出ないことがある + sphere sinking 設計通りに動かない報告** (`plans/2026-04-21-deathmarker-regression.md` に引継ぎメモ)。
+**Phase A (PhaseSpace 拡張) + Phase B (renderer 移行) 完了**。PhaseSpace を `(pos, u, heading, alpha)` に拡張して network 配管、他機も ship 3D model (SelfShipRenderer 流用) で past-cone 交点に描画。debris / laser past-cone marker 色を universal 化。**2026-04-22 未 commit**: 過去光円錐 worldline マーカー廃止 + 世界線太さ/不透明度を灯台 (0.06 / 0.4) と統一。**未解決 regression: DeathMarker が出ないことがある + sphere sinking 設計通りに動かない報告** (`plans/2026-04-21-deathmarker-regression.md` に引継ぎメモ)。
+
+## 本日 (2026-04-22) の主要 entry
+
+**過去光円錐 worldline マーカー廃止 + 世界線太さ/不透明度を灯台と統一** (odakin 指定、未 commit):
+- 他プレイヤー世界線 × 自機過去光円錐 交点の sphere+core+ring gnomon (`worldLineIntersections`)
+  を削除。視覚情報は同交点に描画される ship 3D model (`OtherShipRenderer`) と DeathMarker
+  が既に担うので冗長。`PAST_CONE_WORLDLINE_RING_OPACITY` 定数 + `intersectionCore` geometry
+  も退場。レーザー過去光円錐マーカー / 世界線 × 未来光円錐 gnomon は残置 (別用途)。
+- `WorldLineRenderer` の default `tubeRadius` を 0.03 → 0.06 (= 灯台の override 値) に、
+  SceneContent の LH-only override (`{tubeRadius: 0.06, tubeOpacity: LIGHTHOUSE_WORLDLINE_OPACITY}`)
+  を撤去。`LIGHTHOUSE_WORLDLINE_OPACITY` 定数 (= 0.4 で `PLAYER_WORLDLINE_OPACITY` と同値だった)
+  も退場。frozenWorldLines / 他機 / 自機 / 灯台すべてが `tubeRadius=0.06`, `tubeOpacity=0.4`
+  で統一。typecheck + 109/109 tests pass。
 
 ## 本日 (2026-04-21) の主要 entry
 
@@ -126,9 +139,11 @@
 - **Phase C-1 (wire format 厳格化)**: 新 build (heading/alpha 送信) のみの混在期間
   確認後、受信 optional → required に厳格化して shim を削除。タイミングは
   `plans/2026-04-21-phaseSpace-heading-accel.md` 参照。
-- **他機 ship color 差別化**: hull 材質が固定 navy なので peer ごとに分かりづらい。
-  各 player color を hull emissive / accent に反映する material variant が必要
-  (現状 `SHIP_HULL_*` 固定定数の分岐設計)。
+- **自機・他機 ship にプレイヤー色を埋め込む**: hull 材質が固定 navy (`SHIP_HULL_*`
+  定数) なので自機/他機ともに識別手がかりが薄い。accent stripe / fin / turret emissive
+  など、モデルのデザインのどこかに player color を load する material variant が必要。
+  自機側の色は他機視点 (= OtherShipRenderer は SelfShipRenderer 流用) で初めて意味を
+  持つので、SelfShipRenderer に color prop を通す設計で揃える。
 - **本番実戦観察**: 多機能が 1 日で入ったので (Phase A + B + color + ship model)、
   multi-tab 本番テストで regression 探索と UX 確認。DeathMarker 調査はその一環。
 - **進行方向可視化 分岐 B/C**: sphere + heading-dart (案 14) / star aberration skybox (案 16)、default frame 選択。詳細: `EXPLORING.md §進行方向・向きの認知支援`

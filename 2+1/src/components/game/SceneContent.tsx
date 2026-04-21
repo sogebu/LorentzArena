@@ -30,9 +30,7 @@ import {
   FUTURE_CONE_WORLDLINE_RING_OPACITY,
   FUTURE_CONE_WORLDLINE_SPHERE_OPACITY,
   LASER_PAST_CONE_MARKER_COLOR,
-  LIGHTHOUSE_WORLDLINE_OPACITY,
   LH_INNER_HIDE_RADIUS,
-  PAST_CONE_WORLDLINE_RING_OPACITY,
   SHIP_INNER_HIDE_RADIUS,
 } from "./constants";
 import {
@@ -176,51 +174,6 @@ export const SceneContent = ({
     camera.up.set(0, 0, 1);
   });
 
-  // 世界線の過去光円錐交差（他プレイヤーの現在の worldLine + 凍結世界線）。
-  // Lighthouse は LighthouseRenderer が塔の底面を過去光円錐交点に anchor 済なので
-  // 球+リングマーカーは冗長 (重なって rendering される) → 除外。
-  const worldLineIntersections = useMemo(() => {
-    if (!myPlayer || !myId) return [];
-
-    const results: { playerId: string; color: string; pos: Vector4 }[] = [];
-
-    // 他プレイヤーの現在の worldLine を検索
-    for (const player of playerList) {
-      if (player.id === myId) continue;
-      if (isLighthouse(player.id)) continue;
-      const intersection = pastLightConeIntersectionWorldLine(
-        player.worldLine,
-        myPlayer.phaseSpace.pos,
-      );
-      if (intersection) {
-        results.push({
-          playerId: player.id,
-          color: player.color,
-          pos: intersection.pos, // world frame
-        });
-      }
-    }
-
-    // 凍結世界線も検索 (灯台は LighthouseRenderer の塔で代替するので除外)
-    for (let fi = 0; fi < frozenWorldLines.length; fi++) {
-      const fw = frozenWorldLines[fi];
-      if (isLighthouse(fw.playerId)) continue;
-      const intersection = pastLightConeIntersectionWorldLine(
-        fw.worldLine,
-        myPlayer.phaseSpace.pos,
-      );
-      if (intersection) {
-        results.push({
-          playerId: `frozen-${fi}-${fw.worldLine.history[0]?.pos.t ?? 0}`,
-          color: fw.color,
-          pos: intersection.pos, // world frame
-        });
-      }
-    }
-
-    return results;
-  }, [myPlayer, myId, playerList, frozenWorldLines]);
-
   const laserIntersections = useMemo(() => {
     if (!myPlayer || !myId) return [];
     return lasers
@@ -343,7 +296,6 @@ export const SceneContent = ({
           innerHideRadius={
             isLighthouse(player.id) ? LH_INNER_HIDE_RADIUS : SHIP_INNER_HIDE_RADIUS
           }
-          {...(isLighthouse(player.id) ? { tubeRadius: 0.06, tubeOpacity: LIGHTHOUSE_WORLDLINE_OPACITY } : {})}
         />
       ))}
 
@@ -403,31 +355,6 @@ export const SceneContent = ({
           まで延伸 (ρ(θ) 依存)、ray が円柱を外す方向は LIGHT_CONE_HEIGHT にフォールバック。
           geometry / in-place update / shader 適用の詳細は LightConeRenderer 内 JSDoc 参照。 */}
       {myPlayer && <LightConeRenderer observerPos={myPlayer.phaseSpace.pos} />}
-
-      {/* 世界線の過去光円錐交差マーカー（球+コア=位置のみ / リング=D pattern） */}
-      {worldLineIntersections.map(({ playerId, color: colorText, pos }) => {
-        const c = getThreeColor(colorText);
-        const dp = transformEventForDisplay(pos, observerPos, observerBoost);
-        return (
-          <group key={`intersection-${playerId}`}>
-            <group position={[dp.x, dp.y, dp.t]}>
-              <mesh geometry={sharedGeometries.intersectionSphere}>
-                <meshStandardMaterial color={c} emissive={c} emissiveIntensity={1.15} />
-              </mesh>
-              <mesh geometry={sharedGeometries.intersectionCore}>
-                <meshBasicMaterial color="#ffffff" />
-              </mesh>
-            </group>
-            <mesh
-              geometry={sharedGeometries.intersectionRing}
-              matrix={buildMeshMatrix(pos, displayMatrix)}
-              matrixAutoUpdate={false}
-            >
-              <meshBasicMaterial color={c} transparent opacity={PAST_CONE_WORLDLINE_RING_OPACITY} side={THREE.DoubleSide} />
-            </mesh>
-          </group>
-        );
-      })}
 
       {/* レーザー過去光円錐交差マーカー（円錐接平面に貼り付いた三角形、tip=laser.direction の接平面射影）
           色は 2026-04-21 odakin 指定で universal `LASER_PAST_CONE_MARKER_COLOR` (silver) に。
