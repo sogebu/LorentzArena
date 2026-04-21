@@ -1,6 +1,13 @@
 import { useMemo } from "react";
+import * as THREE from "three";
 import { quatToYaw, type Vector4 } from "../../physics";
 import {
+  ARROW_BASE_LENGTH,
+  ARROW_BASE_OFFSET,
+  ARROW_BASE_WIDTH,
+  ARROW_MAX_OPACITY,
+  EXHAUST_VISIBILITY_THRESHOLD,
+  PLAYER_ACCELERATION,
   PLAYER_MARKER_GLOW_OPACITY_OTHER,
   PLAYER_MARKER_MAIN_OPACITY_OTHER,
   PLAYER_MARKER_SIZE_OTHER,
@@ -45,7 +52,7 @@ export const OtherPlayerRenderer = ({
    */
   deathEventOverride?: Vector4;
 }) => {
-  const { observerPos, observerBoost } = useDisplayFrame();
+  const { observerPos, observerBoost, displayMatrix } = useDisplayFrame();
   const color = useMemo(() => getThreeColor(player.color), [player.color]);
   const size = PLAYER_MARKER_SIZE_OTHER;
 
@@ -89,6 +96,33 @@ export const OtherPlayerRenderer = ({
   const yaw = quatToYaw(player.phaseSpace.heading);
   const noseLength = size * 1.6;
   const showNose = !player.isDead;
+
+  // Acceleration arrow: phaseSpace.alpha (world 4-vec) を displayMatrix で display
+  // frame に boost し、display spatial 方向 (x, y) の成分を矢印で可視化。
+  //   - 向き = atan2(disp α.y, disp α.x)
+  //   - 長さ = |disp α_xy| / PLAYER_ACCELERATION clamp [0, 1] → ARROW_BASE_LENGTH 比例
+  //   - display z (= display t) 成分は 2D 矢印では無視 (u·α=0 の 時間方向成分)
+  // smoothing は未実装 (tick ごとの re-render で変動、必要なら useFrame + useRef に昇格)。
+  const alphaWorldT = player.phaseSpace.alpha;
+  const alphaDispDir = new THREE.Vector4(
+    alphaWorldT.x,
+    alphaWorldT.y,
+    alphaWorldT.t,
+    0, // direction vector (translation 不作用)
+  ).applyMatrix4(displayMatrix);
+  const dispAx = alphaDispDir.x;
+  const dispAy = alphaDispDir.y;
+  const alphaMag = Math.hypot(dispAx, dispAy);
+  const alphaFrac = Math.min(1, alphaMag / PLAYER_ACCELERATION);
+  const showArrow =
+    !player.isDead && alphaFrac > EXHAUST_VISIBILITY_THRESHOLD && alphaMag > 1e-6;
+  // Arrow orientation: native geometry の tip は +Y、(dispAx, dispAy) 方向に向けるには
+  // atan2 - π/2 で z 軸まわり rotation。
+  const arrowYaw = showArrow ? Math.atan2(dispAy, dispAx) - Math.PI / 2 : 0;
+  const arrowLen = ARROW_BASE_LENGTH * alphaFrac;
+  const arrowCenterOffset = size + ARROW_BASE_OFFSET + 0.5 * arrowLen;
+  const arrowX = showArrow ? (dispAx / alphaMag) * arrowCenterOffset : 0;
+  const arrowY = showArrow ? (dispAy / alphaMag) * arrowCenterOffset : 0;
 
   return (
     <group>
@@ -134,6 +168,22 @@ export const OtherPlayerRenderer = ({
               />
             </mesh>
           </group>
+        )}
+        {showArrow && (
+          <mesh
+            position={[arrowX, arrowY, 0]}
+            rotation={[0, 0, arrowYaw]}
+            scale={[ARROW_BASE_WIDTH * alphaFrac, arrowLen, 1]}
+            geometry={sharedGeometries.accelerationArrowFlat}
+          >
+            <meshBasicMaterial
+              color={color}
+              transparent
+              depthWrite={false}
+              opacity={ARROW_MAX_OPACITY * alphaFrac}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
         )}
       </group>
       {deathEventPosForMarker && (
