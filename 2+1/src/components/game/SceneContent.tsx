@@ -16,6 +16,7 @@ import { LightConeRenderer } from "./LightConeRenderer";
 import { LighthouseRenderer } from "./LighthouseRenderer";
 import { isLighthouse } from "./lighthouse";
 import { OtherPlayerRenderer } from "./OtherPlayerRenderer";
+import { OtherShipRenderer } from "./OtherShipRenderer";
 import { SelfShipRenderer } from "./SelfShipRenderer";
 import { SpawnRenderer } from "./SpawnRenderer";
 import { StardustRenderer } from "./StardustRenderer";
@@ -343,7 +344,9 @@ export const SceneContent = ({
       {/* 各プレイヤーのマーカー。
           Lighthouse: 専用の塔モデル (LighthouseRenderer、past-cone anchor + death fade)。
           自機 (人間) 生存中: SelfShipRenderer (六角 hull + 4 RCS + 懸架砲、deadpan SF)。
-          他機 (人間) 生存中 + 任意死亡: OtherPlayerRenderer (sphere + glow、死亡中は
+          他機 (人間) 生存中: OtherShipRenderer (SelfShipRenderer 流用、past-cone 交点に
+            ship 3D model を配置、heading/alpha は worldLine 各 sample から補間取得)。
+          他機 (人間) 死亡中 + 自機死亡中: OtherPlayerRenderer (sphere + glow + DeathMarker、
             LH と同じ past-cone fade を適用。self-dead 用に myDeathEvent.pos を override
             で渡す = ghost 追従で動く phaseSpace.pos ではなく実際の死亡 event を anchor に)。 */}
       {playerList.map((player) => {
@@ -379,7 +382,10 @@ export const SceneContent = ({
           );
         }
 
-        return <OtherPlayerRenderer key={`player-${player.id}`} player={player} />;
+        // 他機 (人間) 生存中: OtherShipRenderer (SelfShipRenderer 流用、past-cone
+        // 交点に ship 3D model を配置)。heading / alpha が worldLine に乗っているので
+        // 物理整合、自機と同じ visual language で識別容易。
+        return <OtherShipRenderer key={`player-${player.id}`} player={player} />;
       })}
 
       {/* 自機 exhaust + acceleration arrow は SelfShipRenderer の 8 RCS nozzle に
