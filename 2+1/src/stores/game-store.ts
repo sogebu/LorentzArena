@@ -10,6 +10,8 @@ import {
 } from "../physics";
 import {
   ENERGY_MAX,
+  EXPLOSION_DEBRIS_COLOR,
+  HIT_DEBRIS_COLOR,
   INVINCIBILITY_DURATION,
   MAX_DEBRIS,
   MAX_FROZEN_WORLDLINES,
@@ -213,12 +215,12 @@ export const useGameStore = create<GameState>()((set, get) => ({
       color: victim.color,
     };
 
-    // Generate debris
+    // Generate debris (2026-04-21 odakin: per-victim 色から universal EXPLOSION_DEBRIS_COLOR へ)
     const explosionParticles = generateExplosionParticles(victim.phaseSpace.u);
     const newDebris: DebrisRecord = {
       deathPos: hitPos,
       particles: explosionParticles,
-      color: victim.color,
+      color: EXPLOSION_DEBRIS_COLOR,
       type: "explosion",
     };
 
@@ -357,16 +359,15 @@ export const useGameStore = create<GameState>()((set, get) => ({
     };
     const nextHitLog = [...state.hitLog, hitEntry].slice(-MAX_HIT_LOG);
 
-    // 被弾デブリは lethal / non-lethal 問わず生成し、**撃った人の色** で出す
-    // (2026-04-18 odakin 指定)。killer が未登録 (切断・ID 不整合) の fallback は
-    // victim color (少なくとも描画が可視になる保険)。lethal path では
-    // handleKill が追加で victim 色の explosion デブリを重ねる (二層)。
-    const killerColor = state.players.get(killerId)?.color ?? victim.color;
+    // 被弾デブリは lethal / non-lethal 問わず生成。2026-04-21 odakin 指定で
+    // per-killer 色から universal `HIT_DEBRIS_COLOR` (warm silver) へ移行。
+    // lethal path では handleKill が追加で EXPLOSION_DEBRIS_COLOR の explosion を重ねる
+    // (hit = 明るい軽煙 / explosion = 暗い重煙で視覚区別)。
     const hitParticles = generateHitParticles(victim.phaseSpace.u, laserDir);
     const hitDebris: DebrisRecord = {
       deathPos: hitPos,
       particles: hitParticles,
-      color: killerColor,
+      color: HIT_DEBRIS_COLOR,
       type: "hit",
     };
     const nextDebris = [...state.debrisRecords, hitDebris].slice(-MAX_DEBRIS);

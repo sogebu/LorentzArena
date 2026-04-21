@@ -126,11 +126,27 @@ export const MAX_WORLDLINE_HISTORY = 1000;
 // 爆発パーティクル数
 export const EXPLOSION_PARTICLE_COUNT = 30;
 
+/**
+ * 煙 (debris) の共通色。hit / explosion で別色、player 色差別化は廃止
+ * (2026-04-21 odakin 指定)。
+ *
+ * - `HIT_DEBRIS_COLOR` = hit smoke (laser 被弾、killer 起因): 明るい warm silver、
+ *   fresh spark / 軽い煙の質感。
+ * - `EXPLOSION_DEBRIS_COLOR` = explosion smoke (death、victim 起因): 暗めの warm
+ *   gray、ash / 重い死煙の質感。
+ *
+ * どちらも飽和した player 色と衝突しない warm gray 系で universal、brightness 差で
+ * hit=軽い / explosion=重い の semantic 区別。識別は HUD / kill log で行うので
+ * debris 色自体は中立に。
+ */
+export const HIT_DEBRIS_COLOR = "hsl(40, 12%, 80%)";
+export const EXPLOSION_DEBRIS_COLOR = "hsl(15, 8%, 65%)";
+
 // Phase C1: 被弾デブリ (hit、lethal/non-lethal 両方) 用パラメータ。
 // 設計コンセプト (2026-04-18 夜 UX 統一後): 「広さ・粒・1 粒の派手さは爆発と同じ、
 // 個数 + opacity だけ半分にして density 控えめ」。半分なのは count と opacity のみ、
 // kick / size / max_lambda は explosion と同値 (Phase C1 着地時の「全パラ半分」から再定義)。
-// 色は **撃った人 (killer)** の色 (2026-04-18 odakin 指定、第 2 次改訂)。
+// 色は `HIT_DEBRIS_COLOR` (2026-04-21 universal smoke 化、per-killer 色は廃止)。
 // 生成方向: レーザー 4-vec (null) + victim 4-velocity の時空和の spatial 部分を
 // baseU として使う (`generateHitParticles`、design/physics.md §被弾デブリ)。
 // lethal hit では hit + explosion の 2 層が降る (handleDamage → handleKill)。
@@ -236,6 +252,15 @@ export const LIGHT_CONE_WIRE_OPACITY = 0.02;
 // アリーナ `hsl(180,40%,70%)` と hue 20° 差の薄い空色 neutral。
 // 彩度低めで背景寄り、パステル化時に再調整前提。
 export const LIGHT_CONE_COLOR = "hsl(200, 35%, 85%)";
+
+/**
+ * レーザー過去光円錐マーカー (`laserIntersections` 内の接平面貼付三角) の共通色。
+ * 2026-04-21 odakin 指定: player / laser 色だと撃った相手が誰か UX 的に識別ノイズ
+ * (kill log / hit flash と重複情報) なので、マーカー自体は neutral な銀色に。
+ * 彩度低めの cool silver で metal instrument のような「物理マーカー」感、
+ * debris smoke (warm) と対を成して視覚的に分離しつつ両者ともプレイヤー色と衝突しない。
+ */
+export const LASER_PAST_CONE_MARKER_COLOR = "hsl(210, 20%, 85%)";
 
 // --- Time-distance opacity fade (Lorentzian, 2026-04-17) ---
 // fade = r² / (r² + Δt²)、r = TIME_FADE_SCALE = LIGHT_CONE_HEIGHT。

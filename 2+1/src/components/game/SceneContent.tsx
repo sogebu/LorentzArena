@@ -29,6 +29,7 @@ import {
   FUTURE_CONE_LASER_TRIANGLE_OPACITY,
   FUTURE_CONE_WORLDLINE_RING_OPACITY,
   FUTURE_CONE_WORLDLINE_SPHERE_OPACITY,
+  LASER_PAST_CONE_MARKER_COLOR,
   LIGHTHOUSE_WORLDLINE_OPACITY,
   LH_INNER_HIDE_RADIUS,
   PAST_CONE_WORLDLINE_RING_OPACITY,
@@ -145,6 +146,11 @@ export const SceneContent = ({
     () =>
       showInRestFrame && myPlayer ? lorentzBoost(myPlayer.phaseSpace.u) : null,
     [showInRestFrame, myPlayer],
+  );
+  // Laser past-cone marker の共通 silver color (2026-04-21 odakin 指定)。
+  const pastConeMarkerColor = useMemo(
+    () => getThreeColor(LASER_PAST_CONE_MARKER_COLOR),
+    [],
   );
   // カメラ制御
   useFrame(({ camera }) => {
@@ -423,9 +429,12 @@ export const SceneContent = ({
         );
       })}
 
-      {/* レーザー過去光円錐交差マーカー（円錐接平面に貼り付いた三角形、tip=laser.direction の接平面射影） */}
+      {/* レーザー過去光円錐交差マーカー（円錐接平面に貼り付いた三角形、tip=laser.direction の接平面射影）
+          色は 2026-04-21 odakin 指定で universal `LASER_PAST_CONE_MARKER_COLOR` (silver) に。
+          player / laser 色は kill log + beam 本体で識別されるので、このマーカーは中立 metal 銀で
+          「物理マーカー」表現。*/}
       {observerPos && laserIntersections.map(({ laser, pos }) => {
-        const c = getThreeColor(laser.color);
+        const c = pastConeMarkerColor;
         const rot = computeConeTangentWorldRotation(pos, observerPos, laser.direction);
         if (!rot) return null;
         const m = buildMeshMatrix(pos, displayMatrix);
