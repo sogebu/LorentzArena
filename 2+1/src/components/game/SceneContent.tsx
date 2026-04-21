@@ -34,6 +34,9 @@ import {
   FUTURE_CONE_WORLDLINE_SPHERE_OPACITY,
   LASER_PAST_CONE_MARKER_COLOR,
   LH_INNER_HIDE_RADIUS,
+  PLAYER_MARKER_GLOW_OPACITY_OTHER,
+  PLAYER_MARKER_MAIN_OPACITY_OTHER,
+  PLAYER_MARKER_SIZE_OTHER,
   SHIP_INNER_HIDE_RADIUS,
 } from "./constants";
 import { pastLightConeIntersectionDeathWorldLine } from "./deathWorldLine";
@@ -189,6 +192,32 @@ export const SceneContent = ({
     camera.lookAt(targetX, targetY, targetT);
     camera.up.set(0, 0, 1);
   });
+
+  // 他プレイヤー worldLine の **未来側末端** (= `phaseSpace.pos`、player の世界時刻
+  // 現在位置) に sphere+core の小ドット。過去光円錐より未来側 (= 観測者からはまだ
+  // 光が届いていない世界時刻位置) を示す pedagogical marker。3d1831d の ship-model
+  // 移行でこの marker が消えたが、odakin 指摘で復活 (ship は past-cone 交点、
+  // sphere は世界時刻 now = 相対論的遅延の可視化)。
+  //
+  // 対象:
+  //   - alive non-LH non-self: player.phaseSpace.pos
+  //   LH: LighthouseRenderer 側で同じ marker (dpNow sphere) を出しているので重複回避。
+  //   frozen: 末端 = death event 位置、DeathMarker/DeadShipRenderer がすでに描画。
+  //   self alive: SelfShipRenderer 自体が observer 位置 (= phaseSpace.pos) にある。
+  const worldLineFuturePoints = useMemo(() => {
+    const results: { key: string; color: string; pos: Vector4 }[] = [];
+    for (const player of playerList) {
+      if (player.id === myId) continue;
+      if (isLighthouse(player.id)) continue;
+      if (player.isDead) continue;
+      results.push({
+        key: `future-pt-${player.id}`,
+        color: player.color,
+        pos: player.phaseSpace.pos,
+      });
+    }
+    return results;
+  }, [playerList, myId]);
 
   const laserIntersections = useMemo(() => {
     if (!myPlayer || !myId) return [];
@@ -473,6 +502,47 @@ export const SceneContent = ({
               matrixAutoUpdate={false}
             >
               <meshBasicMaterial color={c} transparent opacity={FUTURE_CONE_WORLDLINE_RING_OPACITY} depthWrite={false} />
+            </mesh>
+          </group>
+        );
+      })}
+
+      {/* 他プレイヤー世界線の **未来側末端 (= 世界時刻 now)** 位置ドット + glow halo。
+          観測者はまだ光が届いていない世界時刻位置を示す pedagogical marker。
+          ship (past-cone 交点) との空間的ずれ = 光速遅延の可視化。
+          サイズは 3d1831d 以前の old OtherPlayerRenderer alive sphere と同寸
+          (`playerSphere` × `PLAYER_MARKER_SIZE_OTHER` = 0.5 × 0.2 = effective radius 0.1)。 */}
+      {worldLineFuturePoints.map(({ key, color: colorText, pos }) => {
+        const c = getThreeColor(colorText);
+        const dp = transformEventForDisplay(pos, observerPos, observerBoost);
+        const size = PLAYER_MARKER_SIZE_OTHER;
+        return (
+          <group key={key} position={[dp.x, dp.y, dp.t]}>
+            <mesh
+              scale={[size, size, size]}
+              geometry={sharedGeometries.playerSphere}
+            >
+              <meshStandardMaterial
+                color={c}
+                emissive={c}
+                emissiveIntensity={0.4}
+                roughness={0.3}
+                metalness={0.1}
+                transparent
+                depthWrite={true}
+                opacity={PLAYER_MARKER_MAIN_OPACITY_OTHER}
+              />
+            </mesh>
+            <mesh
+              scale={[size * 1.8, size * 1.8, size * 1.8]}
+              geometry={sharedGeometries.playerSphere}
+            >
+              <meshBasicMaterial
+                color={c}
+                transparent
+                depthWrite={false}
+                opacity={PLAYER_MARKER_GLOW_OPACITY_OTHER}
+              />
             </mesh>
           </group>
         );

@@ -355,6 +355,12 @@ export const SHIP_HULL_RADIUS = 0.32;
 // HULL_RADIUS 連動 = 機体サイズに比例して自動追従。
 export const SHIP_INNER_HIDE_RADIUS_COEFFICIENT = 9;
 export const SHIP_INNER_HIDE_RADIUS = SHIP_HULL_RADIUS * SHIP_INNER_HIDE_RADIUS_COEFFICIENT;
+// 自機周辺の光円錐を消す α=0 球の半径 (LightConeRenderer 専用)。世界線 inner-hide とは
+// 用途が別 (機体モデルとの被りではなく、自分の past-cone 頂点付近の視界確保)。
+// 2026-04-22 odakin 指示で worldLine 側 (係数 9) の半分に分離。
+export const SHIP_LIGHT_CONE_INNER_HIDE_RADIUS_COEFFICIENT = 4.5;
+export const SHIP_LIGHT_CONE_INNER_HIDE_RADIUS =
+  SHIP_HULL_RADIUS * SHIP_LIGHT_CONE_INNER_HIDE_RADIUS_COEFFICIENT;
 // LH は機体より小さく狭い範囲だけ隠す (LH 塔の半径は ~0.2 (LIGHTHOUSE_HIT_RADIUS) で
 // 機体より細い、過剰に隠さない)。HULL_RADIUS の数倍小さい係数。
 export const LH_INNER_HIDE_RADIUS_COEFFICIENT = 2.5;
