@@ -87,6 +87,7 @@
 - **マルチプレイ state バグ 5 点 全解消**: symptom table の 1-5 全て修正済 marker 付き。次の state 系課題が出るまで本件は closed
 - **進行方向可視化 分岐 A**: 他機 exhaust (phaseSpace に共変 α^μ 同梱、`Λ(u_own)` boost / `Λ(u_obs)^{-1}` 戻し)、AccelerationArrow 他機展開 (要設計再考)
 - **進行方向可視化 分岐 B/C**: sphere + heading-dart (案 14) / star aberration skybox (案 16)、default frame 選択。詳細: `EXPLORING.md §進行方向・向きの認知支援`
+- **Ship apparent shape rendering (M matrix pattern)**: ship 3D model を Penrose-Terrell 一次近似で描く新パターン (model 軸 → worldline tangent u、断面 → past-cone tangent plane の楕円)。深く考える時間取れず deferred、設計検討全体を [`plans/2026-04-21-ship-apparent-shape-pattern.md`](plans/2026-04-21-ship-apparent-shape-pattern.md) に保存。再開時はそこから (Open questions テーブル参照)。既存 laser marker helper `computeConeTangentWorldRotation` ([SceneContent.tsx:57-91](src/components/game/SceneContent.tsx)) は本提案の axial 部分なし版 = 共通演算は再利用可能
 - **フルチュートリアル** (必須、初見 UX、B3 とは別)
 - 各プレイヤー固有時刻表示 / スマホ UI 残 / 用語再考 / 音楽の時間同期
 - **レーザー以外の世界線 × 未来光円錐の表示**: 現 sphere 0.15 + ring 0.12 薄い、opacity 上げ or gnomon/pulse 昇格
