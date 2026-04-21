@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { createVector3, createVector4, lorentzBoost } from "../../physics";
+import { createVector3, createVector4, gamma, lorentzBoost } from "../../physics";
 import { buildApparentShapeMatrix } from "./apparentShape";
 import { buildMeshMatrix } from "./DisplayFrameContext";
 import { buildDisplayMatrix } from "./displayTransform";
@@ -14,77 +14,78 @@ const matrixApproxEqual = (a: THREE.Matrix4, b: THREE.Matrix4, eps = 1e-9): void
   }
 };
 
-describe("buildApparentShapeMatrix (v1 接平面)", () => {
+const ZERO_U = createVector3(0, 0, 0);
+
+describe("buildApparentShapeMatrix (底面 display xy 楕円 + 塔軸 L(−uA)·(0,0,1))", () => {
   describe("fallback: degenerate ケース", () => {
-    it("observerPos = null → buildMeshMatrix と一致", () => {
+    it("observerPos = null → buildMeshMatrix", () => {
       const displayMatrix = buildDisplayMatrix(null, null);
-      const anchor = createVector4(-3, 2, 1, 0);
-      const v1 = buildApparentShapeMatrix(anchor, null, displayMatrix);
+      const anchor = createVector4(0, -3, 2, 1);
+      const v = buildApparentShapeMatrix(anchor, ZERO_U, null, displayMatrix);
       const d = buildMeshMatrix(anchor, displayMatrix);
-      matrixApproxEqual(v1, d);
+      matrixApproxEqual(v, d);
     });
 
-    it("観測者が anchor の真上 (ρ → 0) → buildMeshMatrix と一致 (tilt なし)", () => {
-      const observerPos = createVector4(0, 2, 1, 0); // 同 xy、時間だけズラす
-      const anchor = createVector4(-5, 2, 1, 0);
+    it("display spatial で ρ_O → 0 → buildMeshMatrix", () => {
+      const observerPos = createVector4(0, 0, 0, 0);
+      const anchor = createVector4(0, 0, 0, 0);
       const displayMatrix = buildDisplayMatrix(
         observerPos,
         lorentzBoost(createVector3(0, 0, 0)),
       );
-      const v1 = buildApparentShapeMatrix(anchor, observerPos, displayMatrix);
+      const v = buildApparentShapeMatrix(anchor, ZERO_U, observerPos, displayMatrix);
       const d = buildMeshMatrix(anchor, displayMatrix);
-      matrixApproxEqual(v1, d);
+      matrixApproxEqual(v, d);
     });
   });
 
-  describe("past-cone 接平面 tilt (静止 LH、観測者静止)", () => {
-    // observer 原点、anchor 空間 (-5, 0)、光円錐 t = -5 → anchorPos = (-5, 0, 0, -5)
-    // x_∥ = (観測者 − anchor).spatial の unit = (5, 0)/5 = (1, 0)
-    // v1 期待: t_out = x · 1 + y · 0 + z = x + z
+  describe("静止 A (uA=0) + 静止 O: 底面楕円 + 塔世界 t 軸", () => {
+    // observer (0,0,0,0)、anchor (t=-5, x=-5, y=0)、displayMatrix = identity
+    // x_∥^O = (観測者 − anchor) / ρ = (5, 0) / 5 = (1, 0)
     const observerPos = createVector4(0, 0, 0, 0);
     const displayMatrix = buildDisplayMatrix(
       observerPos,
       lorentzBoost(createVector3(0, 0, 0)),
     );
     const anchor = createVector4(-5, -5, 0, 0);
-    const m = buildApparentShapeMatrix(anchor, observerPos, displayMatrix);
+    const m = buildApparentShapeMatrix(anchor, ZERO_U, observerPos, displayMatrix);
 
-    it("前面 (model x=+0.3): 時刻 +0.3 (観測者に近い = 後で発光)", () => {
+    it("前面 (model x=+0.3): √2·0.3 stretch、display t 一定", () => {
       const out = apply(m, 0.3, 0, 0);
-      expect(out.x).toBeCloseTo(-5 + 0.3, 9); // world xy = anchor.xy + model xy
+      expect(out.x).toBeCloseTo(-5 + Math.SQRT2 * 0.3, 9);
       expect(out.y).toBeCloseTo(0, 9);
-      expect(out.z).toBeCloseTo(-5 + 0.3, 9); // world t = anchor.t + 0.3 (x_∥.x=1)
+      expect(out.z).toBeCloseTo(-5, 9);
     });
 
-    it("背面 (model x=-0.3): 時刻 -0.3 (観測者に遠い = 前に発光)", () => {
+    it("背面 (model x=-0.3): −√2·0.3 stretch", () => {
       const out = apply(m, -0.3, 0, 0);
-      expect(out.x).toBeCloseTo(-5 - 0.3, 9);
-      expect(out.y).toBeCloseTo(0, 9);
-      expect(out.z).toBeCloseTo(-5 - 0.3, 9);
+      expect(out.x).toBeCloseTo(-5 - Math.SQRT2 * 0.3, 9);
+      expect(out.z).toBeCloseTo(-5, 9);
     });
 
-    it("横 (model y=+0.3): 時刻シフトなし (x_∥.y = 0)", () => {
+    it("x_⊥ (model y=+0.3): stretch なし", () => {
       const out = apply(m, 0, 0.3, 0);
       expect(out.x).toBeCloseTo(-5, 9);
       expect(out.y).toBeCloseTo(0.3, 9);
-      expect(out.z).toBeCloseTo(-5, 9); // tilt 無、接平面上
+      expect(out.z).toBeCloseTo(-5, 9);
     });
 
-    it("塔の上 (model z=+1): 時刻 +1 (z は線形に世界 t に載る)", () => {
+    it("塔軸 (model z=1): world t 軸に +1 (uA=0 で L(−uA)=I)", () => {
       const out = apply(m, 0, 0, 1);
       expect(out.x).toBeCloseTo(-5, 9);
       expect(out.y).toBeCloseTo(0, 9);
-      expect(out.z).toBeCloseTo(-5 + 1, 9);
+      expect(out.z).toBeCloseTo(-4, 9);
     });
 
-    it("合成 (x=0.3, z=1): 前面が塔上で時刻 -5 + 0.3 + 1 = -3.7", () => {
+    it("合成 (x=0.3, z=1): 底面 stretch + 塔 1 段", () => {
       const out = apply(m, 0.3, 0, 1);
-      expect(out.z).toBeCloseTo(-3.7, 9);
+      expect(out.x).toBeCloseTo(-5 + Math.SQRT2 * 0.3, 9);
+      expect(out.z).toBeCloseTo(-4, 9);
     });
   });
 
-  describe("past-cone 方向が斜めのケース", () => {
-    it("x_∥ = (1, 1)/√2 で model (x=1, y=1, z=0) は t = (1+1)/√2 = √2", () => {
+  describe("静止 A + 静止 O、斜め x_∥^O = (1, 1)/√2", () => {
+    it("model (1, 1, 0): display spatial で x_∥ 方向に √2·√2 stretch", () => {
       const observerPos = createVector4(0, 0, 0, 0);
       const rho = Math.SQRT2 * 5;
       const anchor = createVector4(-rho, -5, -5, 0);
@@ -92,39 +93,83 @@ describe("buildApparentShapeMatrix (v1 接平面)", () => {
         observerPos,
         lorentzBoost(createVector3(0, 0, 0)),
       );
-      const m = buildApparentShapeMatrix(anchor, observerPos, displayMatrix);
+      const m = buildApparentShapeMatrix(anchor, ZERO_U, observerPos, displayMatrix);
       const out = apply(m, 1, 1, 0);
-      expect(out.x).toBeCloseTo(-5 + 1, 9);
-      expect(out.y).toBeCloseTo(-5 + 1, 9);
-      expect(out.z).toBeCloseTo(-rho + Math.SQRT2, 9);
+      // (1,1) の x_∥ 成分 = √2、S·(1,1) の x_∥ 成分 = √2·√2 = 2、x_⊥ 成分 = 0
+      //   → display spatial ずれ = 2·x_∥ = (√2, √2)、display t 不変
+      expect(out.x).toBeCloseTo(-5 + Math.SQRT2, 9);
+      expect(out.y).toBeCloseTo(-5 + Math.SQRT2, 9);
+      expect(out.z).toBeCloseTo(-rho, 9);
     });
   });
 
-  describe("v4 厳密との差 (接平面近似の誤差上限)", () => {
-    it("r=0.3, ρ=5 で誤差 ~0.009 (視覚無視可能範囲) を数値確認", () => {
+  describe("移動 A (ship case、uA ≠ 0) + 静止 O", () => {
+    it("塔軸 (model z=1): world 4-vel 方向 = (uA.x, uA.y, γ)", () => {
+      const uA = createVector3(0.6, 0, 0);
+      const gA = gamma(uA); // = √(1+0.36) = √1.36 ≈ 1.166
       const observerPos = createVector4(0, 0, 0, 0);
-      const rho = 5;
-      const anchor = createVector4(-rho, -rho, 0, 0);
+      const anchor = createVector4(-5, -5, 0, 0);
       const displayMatrix = buildDisplayMatrix(
         observerPos,
         lorentzBoost(createVector3(0, 0, 0)),
       );
-      const m = buildApparentShapeMatrix(anchor, observerPos, displayMatrix);
-      // v1 の塔前面 (model x=+0.3): world t = -rho + 0.3
-      const v1Out = apply(m, 0.3, 0, 0);
-      const v1T = v1Out.z;
-      // v4 厳密: world t = xO.t - |world_xy - xO.spatial| = 0 - |(-5+0.3, 0)| = -4.7
-      // で同じ、なぜならこの vertex は純 x_∥ 方向 → 2 次誤差なし
-      const v4T = -Math.hypot(-rho + 0.3, 0);
-      expect(Math.abs(v1T - v4T)).toBeLessThan(1e-12); // 純 ∥ 方向は厳密一致
+      const m = buildApparentShapeMatrix(anchor, uA, observerPos, displayMatrix);
+      const out = apply(m, 0, 0, 1);
+      expect(out.x).toBeCloseTo(-5 + uA.x, 9);
+      expect(out.y).toBeCloseTo(0 + uA.y, 9);
+      expect(out.z).toBeCloseTo(-5 + gA, 9);
+    });
 
-      // model (y=0.3) 横方向は誤差 O(r²/ρ) が出る
-      const v1OutY = apply(m, 0, 0.3, 0);
-      const v4TY = -Math.hypot(-rho, 0.3); // = -sqrt(25 + 0.09) ≈ -5.00899
-      expect(v1OutY.z).toBeCloseTo(-rho, 9); // v1: tilt 無 (y 方向)
-      const err = Math.abs(v1OutY.z - v4TY);
-      expect(err).toBeGreaterThan(0.008);
-      expect(err).toBeLessThan(0.01); // r²/(2ρ) = 0.09/10 = 0.009
+    it("底面 (model x=0.3): 静止 O で display = world、uA に無関係に √2 stretch flat", () => {
+      const uA = createVector3(0.6, 0, 0);
+      const observerPos = createVector4(0, 0, 0, 0);
+      const anchor = createVector4(-5, -5, 0, 0);
+      const displayMatrix = buildDisplayMatrix(
+        observerPos,
+        lorentzBoost(createVector3(0, 0, 0)),
+      );
+      const m = buildApparentShapeMatrix(anchor, uA, observerPos, displayMatrix);
+      const out = apply(m, 0.3, 0, 0);
+      expect(out.x).toBeCloseTo(-5 + Math.SQRT2 * 0.3, 9);
+      expect(out.y).toBeCloseTo(0, 9);
+      expect(out.z).toBeCloseTo(-5, 9);
+    });
+  });
+
+  describe("移動 O (静止系表示): 底面が display 水平に", () => {
+    it("静止 A + 移動 O、底面の display t は anchor と同じ (水平)", () => {
+      const uO = createVector3(0.5, 0, 0);
+      const observerPos = createVector4(5, 0, 0, 0);
+      // world past-cone: |observer.spatial - anchor.spatial| = observer.t - anchor.t
+      //   (5 - 0 - 0)² = 5² → anchor.t = 0, anchor.spatial = (-5, 0)
+      const anchor = createVector4(0, -5, 0, 0);
+      const displayMatrix = buildDisplayMatrix(observerPos, lorentzBoost(uO));
+      const m = buildApparentShapeMatrix(anchor, ZERO_U, observerPos, displayMatrix);
+
+      // display での anchor 位置を取得し、base 頂点の display t が一致することを確認
+      const anchorDisp = new THREE.Vector3(anchor.x, anchor.y, anchor.t).applyMatrix4(
+        displayMatrix,
+      );
+      const baseOut = apply(m, 0.3, 0, 0);
+      expect(baseOut.z).toBeCloseTo(anchorDisp.z, 9); // base flat in display t
+    });
+
+    it("静止 A + 移動 O、塔軸は world (0,0,1)、display で L(uO) により傾く", () => {
+      const uO = createVector3(0.5, 0, 0);
+      const observerPos = createVector4(5, 0, 0, 0);
+      const anchor = createVector4(0, -5, 0, 0);
+      const displayMatrix = buildDisplayMatrix(observerPos, lorentzBoost(uO));
+      const m = buildApparentShapeMatrix(anchor, ZERO_U, observerPos, displayMatrix);
+
+      const top = apply(m, 0, 0, 1);
+      const bottom = apply(m, 0, 0, 0);
+      // direction = top - bottom = displayMatrix · (0, 0, 1, 0)_world
+      // L(uO=(0.5,0)) の spatial rows: display x <- physics row 1 col (1,0) = -uO.x
+      //   display x = -0.5, display y = 0, display t = γ(uO) = √(1+0.25) = √1.25
+      const gO = gamma(uO);
+      expect(top.x - bottom.x).toBeCloseTo(-uO.x, 9);
+      expect(top.y - bottom.y).toBeCloseTo(-uO.y, 9);
+      expect(top.z - bottom.z).toBeCloseTo(gO, 9);
     });
   });
 });
