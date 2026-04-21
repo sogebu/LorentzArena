@@ -6,8 +6,9 @@ import {
   PLAYER_MARKER_MAIN_OPACITY_OTHER,
   PLAYER_MARKER_SIZE_OTHER,
 } from "./constants";
+import { buildApparentShapeMatrix } from "./apparentShape";
 import { DeathMarker } from "./DeathMarker";
-import { buildMeshMatrix, useDisplayFrame } from "./DisplayFrameContext";
+import { useDisplayFrame } from "./DisplayFrameContext";
 import { transformEventForDisplay } from "./displayTransform";
 import { computePastConeDisplayState } from "./pastConeDisplay";
 import { getLatestSpawnT } from "./respawnTime";
@@ -86,7 +87,7 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
     <>
     {visible && (
     <group
-      matrix={buildMeshMatrix(anchorPos, displayMatrix)}
+      matrix={buildApparentShapeMatrix(anchorPos, player.phaseSpace.u, 0, displayMatrix)}
       matrixAutoUpdate={false}
     >
     <group position={[0, 0, -LIGHTHOUSE_SINK * 0.5]} scale={0.5}>
