@@ -19,6 +19,8 @@ export const ja = {
   "hud.worldFrame": "世界系",
   "hud.orthographic": "正射影",
   "hud.perspective": "透視投影",
+  "hud.spacetime": "時空図",
+  "hud.plcSlice": "PLCスライス",
   // HUD - stats
   "hud.speed": "速さ",
   "hud.gamma": "ガンマ因子",

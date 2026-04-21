@@ -94,6 +94,7 @@ export type SceneContentProps = {
   myId: string | null;
   showInRestFrame: boolean;
   useOrthographic: boolean;
+  plc3d: boolean;
   cameraYawRef: React.RefObject<number>;
   cameraPitchRef: React.RefObject<number>;
   thrustAccelRef: React.RefObject<Vector3>;
@@ -105,6 +106,7 @@ export const SceneContent = ({
   myId,
   showInRestFrame,
   useOrthographic,
+  plc3d,
   cameraYawRef,
   cameraPitchRef,
   thrustAccelRef,
@@ -158,6 +160,20 @@ export const SceneContent = ({
     const targetT = playerPos.t;
 
     const yaw = cameraYawRef.current;
+    if (plc3d) {
+      const yaw = cameraYawRef.current;
+      const pitch = Math.PI / 8; // ~22°: x-y平面から若干z正方向
+      const distance = 22;
+      camera.position.set(
+        targetX + distance * Math.cos(pitch) * Math.cos(yaw + Math.PI),
+        targetY + distance * Math.cos(pitch) * Math.sin(yaw + Math.PI),
+        targetT + distance * Math.sin(pitch),
+      );
+      camera.lookAt(targetX, targetY, targetT);
+      camera.up.set(0, 0, 1);
+      return;
+    }
+
     const pitch = cameraPitchRef.current;
     const distance = useOrthographic ? CAMERA_DISTANCE_ORTHOGRAPHIC : CAMERA_DISTANCE_PERSPECTIVE;
     const camX = targetX + distance * Math.cos(pitch) * Math.cos(yaw + Math.PI);
@@ -293,6 +309,100 @@ export const SceneContent = ({
     }
     return positions.length > 0 ? positions : undefined;
   }, [playerList, observerPos, observerBoost]);
+
+  if (plc3d) {
+    // 世界系モード (boost=null) では transformEventForDisplay が x,y を世界座標のまま返す。
+    // 自機・参照リングは observerPos の世界座標に配置する必要がある。
+    const selfX = observerPos?.x ?? 0;
+    const selfY = observerPos?.y ?? 0;
+
+    // PLC 交差が確定しているプレイヤーの ID セット (位置表示の輝度調整用)
+    const plcPlayerIds = new Set(worldLineIntersections.map((wi) => wi.playerId));
+
+    return (
+      <DisplayFrameProvider
+        observerU={observerU}
+        observerBoost={observerBoost}
+        observerPos={observerPos}
+        displayMatrix={displayMatrix}
+      >
+        <GameLights positions={lightPositions} />
+        {/* 参照リング: 自機を中心に x-y平面 (z=0) 上 */}
+        <group position={[selfX, selfY, 0]}>
+          {[5, 10, 15, 20].map((r) => (
+            <mesh key={r}>
+              <ringGeometry args={[r - 0.06, r + 0.06, 64]} />
+              <meshBasicMaterial color="#1a3a1a" transparent opacity={0.6} side={THREE.DoubleSide} />
+            </mesh>
+          ))}
+        </group>
+        {/* 自機: SelfShipRenderer が transformEventForDisplay で world 座標に自己配置 */}
+        {myPlayer && !myPlayer.isDead && (
+          <SelfShipRenderer
+            player={myPlayer}
+            thrustAccelRef={thrustAccelRef}
+            cameraYawRef={cameraYawRef}
+            observerPos={observerPos}
+            observerBoost={observerBoost}
+          />
+        )}
+
+        {/* 全プレイヤー現在位置 (dim): PLC 交差未確定でも常に表示 */}
+        {playerList.map((player) => {
+          if (player.id === myId) return null;
+          if (player.isDead) return null;
+          const c = getThreeColor(player.color);
+          const px = player.phaseSpace.pos.x;
+          const py = player.phaseSpace.pos.y;
+          const hasPLC = plcPlayerIds.has(player.id);
+          return (
+            <mesh key={`cur-${player.id}`} position={[px, py, 0]}>
+              <circleGeometry args={[0.5, 32]} />
+              <meshBasicMaterial
+                color={c}
+                transparent
+                opacity={hasPLC ? 0.2 : 0.6}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+          );
+        })}
+
+        {/* PLC 交差位置 (bright): 過去光円錐が届いた実際の観測位置 */}
+        {worldLineIntersections.map(({ playerId, color: colorText, pos }) => {
+          const c = getThreeColor(colorText);
+          const dp = transformEventForDisplay(pos, observerPos, observerBoost);
+          return (
+            <group key={`plc3d-${playerId}`} position={[dp.x, dp.y, 0]}>
+              <mesh>
+                <circleGeometry args={[0.5, 32]} />
+                <meshBasicMaterial color={c} side={THREE.DoubleSide} />
+              </mesh>
+              <mesh>
+                <ringGeometry args={[0.6, 0.8, 32]} />
+                <meshBasicMaterial color={c} transparent opacity={0.45} side={THREE.DoubleSide} />
+              </mesh>
+            </group>
+          );
+        })}
+
+        {/* レーザー現在位置 (発射点 + 方向 × 経過時間, z=0) */}
+        {observerPos && lasers.map((laser) => {
+          const lambda = observerPos.t - laser.emissionPos.t;
+          if (lambda < 0 || lambda > laser.range) return null;
+          const lx = laser.emissionPos.x + laser.direction.x * lambda;
+          const ly = laser.emissionPos.y + laser.direction.y * lambda;
+          const c = getThreeColor(laser.color);
+          return (
+            <mesh key={`plc3d-laser-${laser.id}`} position={[lx, ly, 0]}>
+              <circleGeometry args={[0.18, 6]} />
+              <meshBasicMaterial color={c} side={THREE.DoubleSide} />
+            </mesh>
+          );
+        })}
+      </DisplayFrameProvider>
+    );
+  }
 
   return (
     <DisplayFrameProvider
