@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { Vector4 } from "../../physics";
+import { quatToYaw, type Vector4 } from "../../physics";
 import {
   PLAYER_MARKER_GLOW_OPACITY_OTHER,
   PLAYER_MARKER_MAIN_OPACITY_OTHER,
@@ -80,6 +80,16 @@ export const OtherPlayerRenderer = ({
   const mainOpacity = PLAYER_MARKER_MAIN_OPACITY_OTHER * pulse * deathAlpha;
   const glowOpacity = PLAYER_MARKER_GLOW_OPACITY_OTHER * pulse * deathAlpha;
 
+  // Heading indicator (nose bar): 生存中のみ、phaseSpace.heading の yaw から算出した
+  // 方向に、sphere 半径より少し外へ伸びる細長い bar で他機の向きを可視化。heading が
+  // cross-peer で broadcast されていることの visible な proof でもある。
+  // NOTE: ここでの heading → display 方向は **observer boost の aberration を無視**
+  // した近似。static observer では正確、高速相対運動中は実方向からわずかに外れる。
+  // 物理正確を優先する場合は M-pattern (`buildApparentShapeMatrix`) 経由にする。
+  const yaw = quatToYaw(player.phaseSpace.heading);
+  const noseLength = size * 1.6;
+  const showNose = !player.isDead;
+
   return (
     <group>
       <group position={[dp.x, dp.y, dp.t]}>
@@ -109,6 +119,22 @@ export const OtherPlayerRenderer = ({
             opacity={glowOpacity}
           />
         </mesh>
+        {showNose && (
+          <group rotation={[0, 0, yaw]}>
+            <mesh
+              position={[size * 0.9, 0, 0]}
+              scale={[noseLength, size * 0.25, size * 0.25]}
+              geometry={sharedGeometries.playerSphere}
+            >
+              <meshBasicMaterial
+                color={color}
+                transparent
+                depthWrite={false}
+                opacity={mainOpacity * 0.9}
+              />
+            </mesh>
+          </group>
+        )}
       </group>
       {deathEventPosForMarker && (
         <DeathMarker
