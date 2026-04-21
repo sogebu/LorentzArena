@@ -4,41 +4,68 @@ import {
   addVector4,
   createVector4,
   getVelocity4,
+  quatIdentity,
+  type Quaternion,
   scaleVector3,
   scaleVector4,
   spatialVector4,
   type Vector3,
   type Vector4,
+  vector4Zero,
 } from "./vector";
 
 /**
  * Relativistic mechanics utilities.
  *
  * English:
- *   - `PhaseSpace` stores 4-position and (spatial part of) 4-velocity.
- *   - `evolvePhaseSpace` integrates motion in **proper time** dτ using proper acceleration.
+ *   - `PhaseSpace` stores 4-position, spatial part of 4-velocity, orientation
+ *     quaternion, and world-frame 4-acceleration.
+ *   - `evolvePhaseSpace` integrates motion in **proper time** dτ using proper
+ *     acceleration. Heading is transported unchanged (no angular integration
+ *     in current spec; caller sets heading externally e.g. from camera yaw).
  *
  * 日本語:
- *   - `PhaseSpace` は 4元位置と4元速度の空間成分を保持します。
- *   - `evolvePhaseSpace` は固有時間 dτ で固有加速度を積分します。
+ *   - `PhaseSpace` は 4元位置 + 4元速度の空間成分 + 姿勢 quaternion + 世界系
+ *     4元加速度を保持します。
+ *   - `evolvePhaseSpace` は固有時間 dτ で固有加速度を積分します。heading は
+ *     そのまま運搬 (角速度統合は現仕様外、呼び出し側が camera yaw 等から設定)。
  */
 
 /**
- * Phase space (4-position + spatial part of 4-velocity).
- * JP: 相対論的位相空間（4元位置 + 4元速度の空間成分）。
+ * Phase space (4-position + spatial part of 4-velocity + orientation + 4-acceleration).
+ *
+ * - `heading`: 姿勢 quaternion。2+1 では yaw 1 自由度 (`yawToQuat(θ)`)、3+1 移行時
+ *   そのまま全姿勢へ拡張。
+ * - `alpha`: world 系 4-acceleration `α^μ` (制約 `u·α = 0` は構築時に保証)。
+ *   rest 系の proper acceleration `a^i` を `L(−u)·(0, a)` で世界系に boost した値。
+ *   静止 / 無加速で `(0, 0, 0, 0)`。
+ *
+ * 型拡張は 2026-04-21 から (plan `2026-04-21-phaseSpace-heading-accel.md`)。
+ * 旧呼出サイトは heading/alpha の default 引数で救済 (identity / zero)。
+ *
+ * JP: 相対論的位相空間 (位置 + 速度 + 姿勢 + 加速度)。
  */
 export type PhaseSpace = {
   readonly pos: Vector4;
   readonly u: Vector3;
+  readonly heading: Quaternion;
+  readonly alpha: Vector4;
 };
 
 /**
- * Create a PhaseSpace.
- * JP: PhaseSpace を作成。
+ * Create a PhaseSpace。heading/alpha は省略時に identity / zero。
+ * JP: PhaseSpace を作成。heading/alpha は省略可。
  */
-export const createPhaseSpace = (pos: Vector4, u: Vector3): PhaseSpace => ({
+export const createPhaseSpace = (
+  pos: Vector4,
+  u: Vector3,
+  heading: Quaternion = quatIdentity(),
+  alpha: Vector4 = vector4Zero(),
+): PhaseSpace => ({
   pos,
   u,
+  heading,
+  alpha,
 });
 
 /**
@@ -84,6 +111,9 @@ export const evolvePhaseSpace = (
   // JP: 位置の更新（dx/dτ = u^μ、semi-implicit Euler: 加速後の newU を使用）。
   const newPos = addVector4(ps.pos, scaleVector4(getVelocity4(newU), dTau));
 
-  return createPhaseSpace(newPos, newU);
+  // 5) heading は角速度統合なしで運搬、alpha は今回計算した world 系 4-加速度を格納。
+  //    制約 u·α=0 は rest 系 (0, a) を Lorentz 変換しただけなので自動で満たされる。
+  // JP: heading は保持、alpha は今ステップの world 4-加速度を格納。
+  return createPhaseSpace(newPos, newU, ps.heading, accel4World);
 };
 

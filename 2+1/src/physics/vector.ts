@@ -301,3 +301,119 @@ export const futureLightConeIntersectionSegment = (
   observerPos: Vector4,
 ): Vector4 | null =>
   lightConeIntersectionSegmentImpl(start, delta, observerPos, "future");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quaternion (3+1 互換の姿勢表現)。
+//
+// 2+1 ゲームでは yaw 1 自由度しか使わないが、3+1 移行時の spec 再書きを避けるため
+// 4 成分の quaternion で保持する。2+1 限定で使う場合の慣例:
+//   - 回転軸は display z 軸 (= world t 軸 = camera.up)、つまり xy spatial plane 内 rotation
+//   - `yawToQuat(θ) = (cos(θ/2), 0, 0, sin(θ/2))` (w, x, y, z)
+//
+// 四元数の乗法は `a * b` = 「先に b、次に a を適用」(Hamilton convention)。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 3D 回転の四元数表現 `q = w + x·i + y·j + z·k`。
+ * JP: 3D 回転を表す四元数。
+ */
+export type Quaternion = {
+  readonly w: number;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+};
+
+/** 単位四元数 (回転なし)。 */
+export const quatIdentity = (): Quaternion => ({ w: 1, x: 0, y: 0, z: 0 });
+
+/**
+ * 2+1 の yaw → quaternion。回転軸は `(0, 0, 1)` (display z、= world t 軸まわり)。
+ */
+export const yawToQuat = (yaw: number): Quaternion => ({
+  w: Math.cos(yaw / 2),
+  x: 0,
+  y: 0,
+  z: Math.sin(yaw / 2),
+});
+
+/**
+ * 2+1 限定: z 軸まわりの pure rotation quaternion から yaw を復元。
+ * x / y 成分があっても無視される (3D 一般回転は対象外、2+1 では z 軸成分のみ使う)。
+ */
+export const quatToYaw = (q: Quaternion): number => 2 * Math.atan2(q.z, q.w);
+
+/**
+ * Quaternion 乗法 (Hamilton 規約: `a · b` は「先に b、次に a」)。
+ */
+export const multiplyQuat = (a: Quaternion, b: Quaternion): Quaternion => ({
+  w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+  x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+  y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+  z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+});
+
+/**
+ * 共役 (逆回転を与える、単位四元数なら inverse と一致)。
+ */
+export const conjugateQuat = (q: Quaternion): Quaternion => ({
+  w: q.w,
+  x: -q.x,
+  y: -q.y,
+  z: -q.z,
+});
+
+/**
+ * ノルム 1 に正規化。数値誤差蓄積対策で broadcast 直前や integration 後に呼ぶ。
+ * ゼロ四元数は identity に fallback (drawing を死なせない最小防衛)。
+ */
+export const normalizeQuat = (q: Quaternion): Quaternion => {
+  const n2 = q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z;
+  if (n2 === 0) return quatIdentity();
+  const inv = 1 / Math.sqrt(n2);
+  return { w: q.w * inv, x: q.x * inv, y: q.y * inv, z: q.z * inv };
+};
+
+/**
+ * Spherical linear interpolation。履歴 replay や他機姿勢補間に使う。
+ * `t ∈ [0, 1]` で a→b。近接時は linear lerp + 正規化に fallback (数値安定)。
+ */
+export const slerpQuat = (
+  a: Quaternion,
+  b: Quaternion,
+  t: number,
+): Quaternion => {
+  let dot = a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z;
+  let bx = b.x;
+  let by = b.y;
+  let bz = b.z;
+  let bw = b.w;
+  // 二重被覆 (q と -q は同じ回転) — 短経路を取るため dot<0 なら b を反転
+  if (dot < 0) {
+    dot = -dot;
+    bw = -bw;
+    bx = -bx;
+    by = -by;
+    bz = -bz;
+  }
+  if (dot > 0.9995) {
+    // 近接時は lerp + 正規化
+    return normalizeQuat({
+      w: a.w + t * (bw - a.w),
+      x: a.x + t * (bx - a.x),
+      y: a.y + t * (by - a.y),
+      z: a.z + t * (bz - a.z),
+    });
+  }
+  const theta0 = Math.acos(dot);
+  const sinTheta0 = Math.sin(theta0);
+  const theta = theta0 * t;
+  const s1 = Math.sin(theta) / sinTheta0;
+  const s0 = Math.cos(theta) - dot * s1;
+  return {
+    w: s0 * a.w + s1 * bw,
+    x: s0 * a.x + s1 * bx,
+    y: s0 * a.y + s1 * by,
+    z: s0 * a.z + s1 * bz,
+  };
+};
