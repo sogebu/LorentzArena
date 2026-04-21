@@ -1,8 +1,11 @@
 import { createPhaseSpace, type PhaseSpace } from "./mechanics";
 import {
+  addVector4,
   createVector4,
   gamma,
   lorentzDotVector4,
+  scaleVector4,
+  slerpQuat,
   subVector4,
   type Vector4,
 } from "./vector";
@@ -238,7 +241,29 @@ const pastLightConeIntersectionHalfLine = (
   const intersectionPos = positionAlongStraightWorldLine(origin, s);
   if (intersectionPos.t > observerPosition.t) return null;
 
-  return createPhaseSpace(intersectionPos, origin.u);
+  return createPhaseSpace(intersectionPos, origin.u, origin.heading, origin.alpha);
+};
+
+/**
+ * 線分 [prev, curr] 上の tParam ∈ [0, 1] における補間 PhaseSpace を構築する。
+ * - pos: linear (既存どおり、呼出側で計算済の interpPos を渡す)
+ * - u  : prev の値を採用 (既存慣例、segment 内で u は semi-constant)
+ * - heading: spherical linear (slerp)
+ * - alpha  : linear
+ */
+const interpolateSegmentPhaseSpace = (
+  prev: PhaseSpace,
+  curr: PhaseSpace,
+  tParam: number,
+  interpPos: Vector4,
+): PhaseSpace => {
+  const t1 = 1 - tParam;
+  const headingAt = slerpQuat(prev.heading, curr.heading, tParam);
+  const alphaAt = addVector4(
+    scaleVector4(prev.alpha, t1),
+    scaleVector4(curr.alpha, tParam),
+  );
+  return createPhaseSpace(interpPos, prev.u, headingAt, alphaAt);
 };
 
 /**
@@ -292,7 +317,7 @@ export const pastLightConeIntersectionWorldLineLinear = (
         prevState.pos.y * t1 + state.pos.y * tParam,
         prevState.pos.z * t1 + state.pos.z * tParam,
       );
-      return createPhaseSpace(interpPos, prevState.u);
+      return interpolateSegmentPhaseSpace(prevState, state, tParam, interpPos);
     }
   }
 
@@ -304,7 +329,7 @@ export const pastLightConeIntersectionWorldLineLinear = (
         observerPosition,
       );
       if (tParam >= 0 && tParam <= 1) {
-        return createPhaseSpace(wl.origin.pos, wl.origin.u);
+        return createPhaseSpace(wl.origin.pos, wl.origin.u, wl.origin.heading, wl.origin.alpha);
       }
     }
     return pastLightConeIntersectionHalfLine(wl.origin, observerPosition);
@@ -438,7 +463,7 @@ export const pastLightConeIntersectionWorldLine = (
         prevState.pos.y * t1 + state.pos.y * tParam,
         prevState.pos.z * t1 + state.pos.z * tParam,
       );
-      return createPhaseSpace(interpPos, prevState.u);
+      return interpolateSegmentPhaseSpace(prevState, state, tParam, interpPos);
     }
   }
 
@@ -450,7 +475,7 @@ export const pastLightConeIntersectionWorldLine = (
         observerPosition,
       );
       if (tParam >= 0 && tParam <= 1) {
-        return createPhaseSpace(wl.origin.pos, wl.origin.u);
+        return createPhaseSpace(wl.origin.pos, wl.origin.u, wl.origin.heading, wl.origin.alpha);
       }
     }
     return pastLightConeIntersectionHalfLine(wl.origin, observerPosition);
@@ -493,7 +518,7 @@ export const futureLightConeIntersectionWorldLineLinear = (
         prevState.pos.y * t1 + state.pos.y * tParam,
         prevState.pos.z * t1 + state.pos.z * tParam,
       );
-      return createPhaseSpace(interpPos, prevState.u);
+      return interpolateSegmentPhaseSpace(prevState, state, tParam, interpPos);
     }
   }
 
@@ -605,7 +630,7 @@ export const futureLightConeIntersectionWorldLine = (
         prevState.pos.y * t1 + state.pos.y * tParam,
         prevState.pos.z * t1 + state.pos.z * tParam,
       );
-      return createPhaseSpace(interpPos, prevState.u);
+      return interpolateSegmentPhaseSpace(prevState, state, tParam, interpPos);
     }
   }
 

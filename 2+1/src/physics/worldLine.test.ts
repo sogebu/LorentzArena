@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createPhaseSpace, type PhaseSpace } from "./mechanics";
-import { createVector3, createVector4 } from "./vector";
+import { createVector3, createVector4, vector4Zero, yawToQuat } from "./vector";
 import {
   appendWorldLine,
   createWorldLine,
@@ -292,5 +292,71 @@ describe("binary search gives identical result under extreme conditions", () => 
       const fb = futureLightConeIntersectionWorldLineLinear(wl, obs);
       expect(phaseSpacesClose(fa, fb), `future trial=${trial} ${diagnostic(fa, fb)}`).toBe(true);
     }
+  });
+});
+
+describe("past/future cone 交点で heading (slerp) / alpha (linear) を補間", () => {
+  // 静止 worldline: prev (t=0) heading yaw=0、curr (t=2) heading yaw=π/2、
+  // alpha: prev (0, 0, 0, 0)、curr (0, 1, 0, 0)。観測者 (t=2, x=1) で交点
+  // 計算 → 2 点区間の tParam 依存で補間される heading / alpha を観測する。
+  it("中点で yaw 補間 (slerp) と alpha linear 補間", () => {
+    const prev = createPhaseSpace(
+      createVector4(0, 0, 0, 0),
+      createVector3(0, 0, 0),
+      yawToQuat(0),
+      vector4Zero(),
+    );
+    const curr = createPhaseSpace(
+      createVector4(2, 0, 0, 0),
+      createVector3(0, 0, 0),
+      yawToQuat(Math.PI / 2),
+      createVector4(0, 1, 0, 0),
+    );
+    const wl: WorldLine = {
+      history: [prev, curr],
+      maxHistorySize: 10,
+      origin: null,
+      version: 0,
+    };
+    // 静止 worldline で観測者が (t=2, x=1, y=0) → 区間中点 t=1、x=0 で光円錐交点
+    // (観測者から見て Δt=1、|Δx|=1 で lightlike separation)
+    const obs = createVector4(2, 1, 0, 0);
+    const result = pastLightConeIntersectionWorldLine(wl, obs);
+    expect(result).not.toBeNull();
+    if (!result) return;
+    expect(result.pos.t).toBeCloseTo(1, 9);
+    expect(result.pos.x).toBeCloseTo(0, 9);
+    // tParam = 0.5 → heading は yaw(π/4)、alpha は (0, 0.5, 0, 0)
+    expect(result.heading.w).toBeCloseTo(Math.cos(Math.PI / 8), 6);
+    expect(result.heading.z).toBeCloseTo(Math.sin(Math.PI / 8), 6);
+    expect(result.alpha.x).toBeCloseTo(0.5, 9);
+    expect(result.alpha.t).toBeCloseTo(0, 9);
+  });
+
+  it("linear reference も同じ補間を返す (binary と一致)", () => {
+    const prev = createPhaseSpace(
+      createVector4(0, 0, 0, 0),
+      createVector3(0, 0, 0),
+      yawToQuat(0),
+      vector4Zero(),
+    );
+    const curr = createPhaseSpace(
+      createVector4(2, 0, 0, 0),
+      createVector3(0, 0, 0),
+      yawToQuat(Math.PI / 2),
+      createVector4(0, 1, 0, 0),
+    );
+    const wl: WorldLine = {
+      history: [prev, curr],
+      maxHistorySize: 10,
+      origin: null,
+      version: 0,
+    };
+    const obs = createVector4(2, 1, 0, 0);
+    const b = pastLightConeIntersectionWorldLine(wl, obs);
+    const l = pastLightConeIntersectionWorldLineLinear(wl, obs);
+    expect(b?.heading.w).toBeCloseTo(l?.heading.w ?? NaN, 9);
+    expect(b?.heading.z).toBeCloseTo(l?.heading.z ?? NaN, 9);
+    expect(b?.alpha.x).toBeCloseTo(l?.alpha.x ?? NaN, 9);
   });
 });
