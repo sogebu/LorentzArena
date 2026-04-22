@@ -40,6 +40,7 @@
 ### 低優先リスク / 未検証
 
 - **リスポーン時に世界線が繋がる** (2026-04-14 Stage F-1 後再発): F-1 snapshot で `frozenWorldLines` 未 serialize → respawn 時 `appendWorldLine` で連結が有力
+- **灯台死亡描画の即時消失 (未解決)**: LH が死んだ瞬間、観測者の過去光円錐がまだ死亡 event に届いていないのに LH の描画が消える。SR 原則では人間プレイヤー (OtherShipRenderer の past-cone intersection ルール) と同じく「過去光円錐が死亡 event に到達するまで生存時姿で描画、到達後は DeadShipRenderer + DeathMarker」となるべき。統一アルゴリズム (`8c019e3` + `bbae2b7` + `8098032`) で DeadShipRenderer/DeathMarker/LH 一元駆動にしたはずだが、**LH 側の生存→死亡 gate で past-cone 判定が抜けている箇所が残存**している可能性。要調査: `LighthouseRenderer.tsx` と SceneContent で LH 生存中描画を打ち切るトリガー (多分 `isDead` 直読) が past-cone 到達前に発火している
 - localId PeerJS ID 衝突 (tab-hidden 復帰時)、PeerServer ネットワークエラー stack
 - モバイルハイスコア (iOS Safari ホーム画面復帰時保存)
 
