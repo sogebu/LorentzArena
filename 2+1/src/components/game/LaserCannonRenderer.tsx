@@ -7,6 +7,7 @@ import {
   SHIP_LASER_BARREL_EMISSIVE_INTENSITY,
   SHIP_LASER_BARREL_LENGTH,
   SHIP_LASER_BARREL_RADIUS,
+  SHIP_LASER_BARREL_REAR_EXTENSION,
   SHIP_LASER_CRYSTAL_LENGTH,
   SHIP_LASER_CRYSTAL_POS_FRAC,
   SHIP_LASER_CRYSTAL_RADIUS,
@@ -138,17 +139,22 @@ export const LaserCannonRenderer = () => {
         rotation={[0, SHIP_GUN_PITCH_DOWN_RAD, 0]}
       >
         <group position={[-SHIP_LASER_MOUNT_X_OFFSET, 0, 0]}>
-          {/* (2) Barrel: slender cylinder、x=0 (mount) から +x 前方に。
+          {/* (2) Barrel: slender cylinder、rear を REAR_EXTENSION 分 pod 内に埋没させる。
+                 mesh range: local x ∈ [-REAR_EXT, BARREL_LENGTH]、mesh center x = (BARREL_LENGTH - REAR_EXT)/2。
                  rotZ=-π/2 で cylinderGeometry (default +Y 軸) を +x 軸に寝かせる。 */}
           <mesh
-            position={[SHIP_LASER_BARREL_LENGTH / 2, 0, 0]}
+            position={[
+              (SHIP_LASER_BARREL_LENGTH - SHIP_LASER_BARREL_REAR_EXTENSION) / 2,
+              0,
+              0,
+            ]}
             rotation={[0, 0, -Math.PI / 2]}
           >
             <cylinderGeometry
               args={[
                 SHIP_LASER_BARREL_RADIUS,
                 SHIP_LASER_BARREL_RADIUS,
-                SHIP_LASER_BARREL_LENGTH,
+                SHIP_LASER_BARREL_LENGTH + SHIP_LASER_BARREL_REAR_EXTENSION,
                 18,
               ]}
             />
