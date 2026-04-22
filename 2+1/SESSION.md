@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-**`41f4741` デプロイ済** (build `2026/04/22 10:30:50 JST`)。本番: https://sogebu.github.io/LorentzArena/
+**`33be004` デプロイ済** (build `2026/04/22 19:33:27 JST`)。本番: https://sogebu.github.io/LorentzArena/
 
 ### 最近の進捗 (2026-04-22)
 
