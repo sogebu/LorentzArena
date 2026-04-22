@@ -276,12 +276,11 @@ export const SceneContent = ({
   );
 
   // 光源位置: 各灯台の過去光円錐交差点 (= LighthouseRenderer が塔を置く位置) の
-  // display 座標。灯台がゼロ / 観測者未設定なら undefined を渡して GameLights の
-  // DEFAULT にフォールバック。複数灯台なら複数灯。
-  const lightPositions = useMemo<
-    readonly [number, number, number][] | undefined
-  >(() => {
-    if (!observerPos) return undefined;
+  // 各 LH の past-cone 交差点を光源として渡す。**死亡観測済み** (= past-cone が worldLine
+  // 末端 = x_D を超えて intersection が null) の LH は除外 → 全 LH が死亡観測済みなら []
+  // (= 真の消灯)。観測者未設定 (pre-game) も [] (= 暗黙)、game 開始まで game scene は暗い。
+  const lightPositions = useMemo<readonly [number, number, number][]>(() => {
+    if (!observerPos) return [];
     const positions: [number, number, number][] = [];
     for (const player of playerList) {
       if (!isLighthouse(player.id)) continue;
@@ -289,11 +288,11 @@ export const SceneContent = ({
         player.worldLine,
         observerPos,
       );
-      const anchorWorld = intersection ? intersection.pos : player.phaseSpace.pos;
-      const dp = transformEventForDisplay(anchorWorld, observerPos, observerBoost);
+      if (!intersection) continue; // 死亡 event を観測済み → 光源消灯
+      const dp = transformEventForDisplay(intersection.pos, observerPos, observerBoost);
       positions.push([dp.x, dp.y, dp.t]);
     }
-    return positions.length > 0 ? positions : undefined;
+    return positions;
   }, [playerList, observerPos, observerBoost]);
 
   return (

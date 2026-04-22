@@ -62,34 +62,32 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
 
   const wp = player.phaseSpace.pos;
 
-  // 2026-04-22 統一アルゴリズム: 描画判定は「死亡 event 世界線分 [0, τ_max] が観測者
-  // 過去光円錐に引っかかっているか否か」の 1 boolean に還元 (plans/死亡イベント.md §2-7)。
-  //   - τ_0 ∈ [0, τ_max]         → 死亡 routing: x_D 固定 + α fade + DeathMarker
-  //   - それ以外 (未到達 / 不在 / 通過後) → 生存 routing: past-cone ∩ player.worldLine
+  // 2026-04-22 統一アルゴリズム: 描画判定は「観測者の過去光円錐が live worldLine を
+  // 交差するか否か」の 1 boolean に還元:
+  //   - intersection != null → 生存 routing (past-cone ∩ worldLine を anchor)
+  //   - intersection == null → 死亡 routing (x_D 固定 + α fade、死亡 event 観測済み)
   //
-  // 生存 routing の anchor には `pastLightConeIntersectionWorldLine` を使う。非 LH player と
-  // 同じ唯一の source of truth:
-  //   - 生存中: past-cone ∩ 現在世界線
-  //   - 死亡 pre-cone (τ_0 < 0): past-cone ∩ pre-death 世界線 (worldLine は kill 時点で freeze)
-  //   - 死亡 post-fade (τ_0 > τ_max): worldLine 末端超過で null → 非描画
-  //   - spawn 光未到達: history[0] より過去で null → 非描画
+  // LH の worldLine は kill 時点で freeze (gameLoop が dead LH スキップ)、末端 = x_D。
+  // past-cone が x_D 到達前は intersection が末端を指す (生存表示)、到達後は null 返却
+  // (死亡表示)。α fade 値は τ_0 = past-cone ∩ W_D(τ) を使って `(τ_max − τ_0) / τ_max` を
+  // `[0, 1]` に clamp → τ_max 後は自動的に 0 = 非表示。追加の窓チェック不要。
   const uD = useMemo(() => getVelocity4(player.phaseSpace.u), [player.phaseSpace.u]);
-  const tau0 =
-    player.isDead && observerPos
-      ? pastLightConeIntersectionDeathWorldLine(wp, uD, observerPos)
-      : null;
-  const useDeathRouting = tau0 != null && tau0 >= 0 && tau0 <= DEATH_TAU_MAX;
-
   const aliveIntersection = observerPos
     ? pastLightConeIntersectionWorldLine(player.worldLine, observerPos)
     : null;
+  const isObservedDead = player.isDead && aliveIntersection == null;
 
-  const alpha = useDeathRouting ? (DEATH_TAU_MAX - tau0!) / DEATH_TAU_MAX : 1;
-  const towerAnchor = useDeathRouting ? wp : (aliveIntersection?.pos ?? null);
+  let alpha = 1;
+  if (isObservedDead && observerPos) {
+    const tau0 = pastLightConeIntersectionDeathWorldLine(wp, uD, observerPos);
+    alpha =
+      tau0 != null ? Math.max(0, (DEATH_TAU_MAX - tau0) / DEATH_TAU_MAX) : 0;
+  }
+  const towerAnchor = isObservedDead ? wp : (aliveIntersection?.pos ?? null);
 
   // 現在世界時刻位置の球マーカー: 死亡 routing 中は非表示 (塔 fade + DeathMarker が担う)、
   // それ以外は wp の display 並進で表示 (alive: 世界時刻 now、dead-pre-cone: x_D)。
-  const showSphere = !useDeathRouting;
+  const showSphere = !isObservedDead;
   const dpNow = transformEventForDisplay(wp, observerPos, observerBoost);
   const sphereSize = PLAYER_MARKER_SIZE_OTHER;
 

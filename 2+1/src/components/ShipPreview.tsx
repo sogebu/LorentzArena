@@ -10,8 +10,12 @@ import {
   type Vector4,
   yawToQuat,
 } from "../physics";
-import { GameLights } from "./game/GameLights";
+import { GameLights, type LightPosition } from "./game/GameLights";
 import { SelfShipRenderer } from "./game/SelfShipRenderer";
+
+// 機体プレビュー用の固定 stage 光源 (旧 GameLights の DEFAULT_POSITIONS と同位置)。
+// ゲーム本体は LH の past-cone 交差点で照らすため、ここでも 1 灯のみで陰影が出る程度に。
+const SHIP_PREVIEW_LIGHT_POSITIONS: readonly LightPosition[] = [[-5, -5, -5]];
 
 /**
  * 機体のみを Canvas に描画する共有プレビュー。ShipViewer (#viewer モード、UI つき) と
@@ -155,7 +159,7 @@ export const ShipPreview = ({
       }}
     >
       <Canvas camera={{ position: cameraPosition, up: [0, 0, 1], fov: 45 }}>
-        <GameLights />
+        <GameLights positions={SHIP_PREVIEW_LIGHT_POSITIONS} />
 
         {showGrid && (
           <gridHelper
