@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import * as THREE from "three";
+import type { Vector4 } from "../../physics";
 import { getVelocity4 } from "../../physics/vector";
 import { pastLightConeIntersectionWorldLine } from "../../physics/worldLine";
 import {
@@ -62,28 +63,30 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
 
   const wp = player.phaseSpace.pos;
 
-  // 2026-04-22 統一アルゴリズム: 描画判定は「観測者の過去光円錐が live worldLine を
-  // 交差するか否か」の 1 boolean に還元:
-  //   - intersection != null → 生存 routing (past-cone ∩ worldLine を anchor)
-  //   - intersection == null → 死亡 routing (x_D 固定 + α fade、死亡 event 観測済み)
+  // Tower 描画 referent は 2 ケース、どちらでもなければ描画しない (M23 存在論 gate):
+  //   (i) 生存 routing: past-cone ∩ live worldLine が存在 → anchor = intersection.pos, α = 1
+  //   (ii) 死亡 routing: aliveIntersection null (= past-cone が worldLine 末端 x_D を通過)
+  //        かつ τ_0 = past-cone ∩ W_D(τ) が fade 窓 [0, DEATH_TAU_MAX] 内 → anchor = x_D, α = fade
+  // どちらでもない (respawn 光未到達 / 死亡 fade 完了) なら towerAnchor = null → 塔 group
+  // 丸ごと非描画 (透明 mesh の draw call も出さない)。
   //
   // LH の worldLine は kill 時点で freeze (gameLoop が dead LH スキップ)、末端 = x_D。
-  // past-cone が x_D 到達前は intersection が末端を指す (生存表示)、到達後は null 返却
-  // (死亡表示)。α fade 値は τ_0 = past-cone ∩ W_D(τ) を使って `(τ_max − τ_0) / τ_max` を
-  // `[0, 1]` に clamp → τ_max 後は自動的に 0 = 非表示。追加の窓チェック不要。
   const uD = useMemo(() => getVelocity4(player.phaseSpace.u), [player.phaseSpace.u]);
   const aliveIntersection = observerPos
     ? pastLightConeIntersectionWorldLine(player.worldLine, observerPos)
     : null;
-  const isObservedDead = player.isDead && aliveIntersection == null;
 
+  let towerAnchor: Vector4 | null = null;
   let alpha = 1;
-  if (isObservedDead && observerPos) {
+  if (aliveIntersection) {
+    towerAnchor = aliveIntersection.pos;
+  } else if (player.isDead && observerPos) {
     const tau0 = pastLightConeIntersectionDeathWorldLine(wp, uD, observerPos);
-    alpha =
-      tau0 != null ? Math.max(0, (DEATH_TAU_MAX - tau0) / DEATH_TAU_MAX) : 0;
+    if (tau0 != null && tau0 >= 0 && tau0 <= DEATH_TAU_MAX) {
+      towerAnchor = wp;
+      alpha = (DEATH_TAU_MAX - tau0) / DEATH_TAU_MAX;
+    }
   }
-  const towerAnchor = isObservedDead ? wp : (aliveIntersection?.pos ?? null);
 
   // 球マーカーは 2 種類の責務を分離して並存:
   //   (A) pastConeSpherePos: worldLine の過去光円錐交差点。観測者が「今まさに
