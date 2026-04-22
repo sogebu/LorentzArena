@@ -76,4 +76,66 @@ describe("pastLightConeIntersectionDeathWorldLine", () => {
     expect(W.y).toBe(2 + 0 * 3);
     expect(W.z).toBe(0);
   });
+
+  // --- 自機 ghost 観測者シナリオ (2026-04-22 self-death-marker regression の物理確認)。
+  // SceneContent の myPlayer swap で observer = ghost.pos、xD = 凍結死亡時空点、
+  // DeathMarker/DeadShipRenderer は tau_0 の窓 [0, DEATH_TAU_EFFECT_MAX=2] / [0, DEATH_TAU_MAX=3]
+  // で on/off を制御する想定。以下はその窓で発火するはずの典型点を pure 関数 side で保証する。
+  describe("自機 ghost シナリオ (static correctness)", () => {
+    it("死亡直後 (ghost ≈ xD、同地点 dt=0.01): tau_0 ≈ 0、marker [0,2] / ship [0,3] 窓内", () => {
+      const xD = createVector4(100, 5, -3, 0);
+      const ghost = createVector4(100.01, 5, -3, 0);
+      const tau = pastLightConeIntersectionDeathWorldLine(xD, uStill, ghost);
+      expect(tau).not.toBeNull();
+      expect(tau!).toBeCloseTo(0.01, 8);
+      expect(tau!).toBeGreaterThanOrEqual(0);
+      expect(tau!).toBeLessThanOrEqual(2); // DEATH_TAU_EFFECT_MAX
+    });
+
+    it("死亡後 ghost が同地点で coord time 1.5s 経過 (静止死): tau_0 = 1.5、marker on, ship on", () => {
+      const xD = createVector4(100, 0, 0, 0);
+      const ghost = createVector4(101.5, 0, 0, 0);
+      const tau = pastLightConeIntersectionDeathWorldLine(xD, uStill, ghost);
+      expect(tau!).toBeCloseTo(1.5, 10);
+      expect(tau!).toBeLessThanOrEqual(2); // marker 窓内
+    });
+
+    it("死亡後 ghost が同地点で 2.5s 経過: tau_0 = 2.5、marker off, ship on", () => {
+      const xD = createVector4(100, 0, 0, 0);
+      const ghost = createVector4(102.5, 0, 0, 0);
+      const tau = pastLightConeIntersectionDeathWorldLine(xD, uStill, ghost);
+      expect(tau!).toBeCloseTo(2.5, 10);
+      expect(tau!).toBeGreaterThan(2); // marker 窓外
+      expect(tau!).toBeLessThanOrEqual(3); // ship 窓内
+    });
+
+    it("死亡後 ghost が同地点で 3.5s 経過: tau_0 = 3.5、marker + ship 両方 off", () => {
+      const xD = createVector4(100, 0, 0, 0);
+      const ghost = createVector4(103.5, 0, 0, 0);
+      const tau = pastLightConeIntersectionDeathWorldLine(xD, uStill, ghost);
+      expect(tau!).toBeCloseTo(3.5, 10);
+      expect(tau!).toBeGreaterThan(3); // ship 窓外
+    });
+
+    it("静止死亡 + ghost が x 方向に ρ=1.0 離れる位置で Δt=1.2: tau_0 = 0.2 (光遅延 1.0 分差し引き)", () => {
+      // ghost 自身が加速した結果 dx=1.0, dt=1.2 で静止しているシーン。
+      // past-cone: obs.t - W.t = |W.xy - obs.xy|、W = xD = (100,0,0,0), 観測者 = (101.2, 1.0, 0, 0)
+      // u_D = (1,0,0,0) なので tau = Δt - ρ = 1.2 - 1.0 = 0.2
+      const xD = createVector4(100, 0, 0, 0);
+      const ghost = createVector4(101.2, 1.0, 0, 0);
+      const tau = pastLightConeIntersectionDeathWorldLine(xD, uStill, ghost);
+      expect(tau!).toBeCloseTo(0.2, 10);
+      expect(tau!).toBeGreaterThanOrEqual(0);
+      expect(tau!).toBeLessThanOrEqual(2);
+    });
+
+    it("discriminant guard: ghost と xD が完全同一 (dt=0, ρ=0) でも null にならず tau_0=0", () => {
+      // 理論上は disc = B^2 - C = 0 - 0 = 0、B=0、→ tau = 0。早期 return しない。
+      const xD = createVector4(100, 5, -3, 0);
+      const ghost = createVector4(100, 5, -3, 0);
+      const tau = pastLightConeIntersectionDeathWorldLine(xD, uStill, ghost);
+      expect(tau).not.toBeNull();
+      expect(tau!).toBe(0);
+    });
+  });
 });

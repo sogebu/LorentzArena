@@ -44,6 +44,16 @@ import {
 } from "./displayTransform";
 import { buildMeshMatrix, DisplayFrameProvider } from "./DisplayFrameContext";
 import { GameLights } from "./GameLights";
+
+// DEBUG-SELF-DEATH-MARKER (2026-04-22): 自機 dead player 分岐に入っているか切り分け用。
+// 症状特定後にこの debug block 全体を削除する。per-key 500ms スロットル。
+const _dbgSelfDeathLast: Record<string, number> = {};
+const _dbgSelfDeath = (key: string, msg: string) => {
+  const now = Date.now();
+  if (now - (_dbgSelfDeathLast[key] ?? 0) < 500) return;
+  _dbgSelfDeathLast[key] = now;
+  console.debug(`[SELF-DEATH] ${msg}`);
+};
 import { futureLightConeIntersectionLaser, pastLightConeIntersectionLaser } from "./laserPhysics";
 import {
   getThreeColor,
@@ -142,10 +152,24 @@ export const SceneContent = ({
     [players, myId],
   );
   const myPlayer = useMemo(
-    () =>
-      rawMyPlayer?.isDead && myDeathEvent
-        ? { ...rawMyPlayer, phaseSpace: myDeathEvent.ghostPhaseSpace }
-        : rawMyPlayer,
+    () => {
+      const swapped =
+        rawMyPlayer?.isDead && myDeathEvent
+          ? { ...rawMyPlayer, phaseSpace: myDeathEvent.ghostPhaseSpace }
+          : rawMyPlayer;
+      // DEBUG-SELF-DEATH-MARKER (2026-04-22)
+      if (rawMyPlayer?.isDead) {
+        _dbgSelfDeath(
+          `sc-swap`,
+          `myPlayer swap: isDead=${rawMyPlayer.isDead} myDeathEvent=${myDeathEvent ? "set" : "null"} ` +
+            `swappedTo=${myDeathEvent ? "ghostPhaseSpace" : "rawMyPlayer (NO SWAP — xD==observer, tau0==0 but observer won't advance)"} ` +
+            `raw.t=${rawMyPlayer.phaseSpace.pos.t.toFixed(2)} ` +
+            `ghost.t=${myDeathEvent?.ghostPhaseSpace.pos.t.toFixed(2) ?? "n/a"} ` +
+            `xD.t=${myDeathEvent?.pos.t.toFixed(2) ?? "n/a"}`,
+        );
+      }
+      return swapped;
+    },
     [rawMyPlayer, myDeathEvent],
   );
   const observerPos = myPlayer?.phaseSpace.pos ?? null;
@@ -386,6 +410,15 @@ export const SceneContent = ({
           const uD = getVelocity4(player.phaseSpace.u);
           const headingD = player.phaseSpace.heading;
           const deadColor = getThreeColor(player.color);
+          // DEBUG-SELF-DEATH-MARKER (2026-04-22): 症状特定後に削除。
+          if (isMe) {
+            _dbgSelfDeath(
+              `sc-self-dead`,
+              `SceneContent isMe+isDead: push DeadShipRenderer+DeathMarker ` +
+                `xD.t=${xD.t.toFixed(2)} observer.t=${observerPos?.t?.toFixed(2) ?? "null"} ` +
+                `myDeathEvent=${useGameStore.getState().myDeathEvent ? "set" : "null"}`,
+            );
+          }
           items.push(
             <DeadShipRenderer
               key={`${key}-dead-ship`}
