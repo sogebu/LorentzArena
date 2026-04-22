@@ -161,8 +161,8 @@ export const EXPLOSION_DEBRIS_COLOR = "hsl(25, 25%, 82%)";
 // lethal hit では hit + explosion の 2 層が降る (handleDamage → handleKill)。
 export const HIT_DEBRIS_PARTICLE_COUNT = 15;
 export const HIT_DEBRIS_KICK = 0.8;
-// opacity は explosion の半分 (DEBRIS_WORLDLINE_OPACITY=0.1 / DEBRIS_MARKER_OPACITY=0.7 に対して 0.05 / 0.35)
-export const HIT_DEBRIS_WORLDLINE_OPACITY = 0.05;
+// opacity は explosion の半分 (DEBRIS_WORLDLINE_OPACITY=0.07 / DEBRIS_MARKER_OPACITY=0.7 に対して 0.035 / 0.35)
+export const HIT_DEBRIS_WORLDLINE_OPACITY = 0.035;
 export const HIT_DEBRIS_MARKER_OPACITY = 0.35;
 // hit デブリの世界線長さ (= maxLambda)。
 export const HIT_DEBRIS_MAX_LAMBDA = 2.5;
@@ -330,7 +330,8 @@ export const LASER_WORLDLINE_OPACITY = 0.55;
 
 // --- Debris opacity ---
 // InstancedMesh 全 instance 共通 (per-vertex 時間 fade が shader で乗算される)。
-export const DEBRIS_WORLDLINE_OPACITY = 0.1;
+// 2026-04-22: 0.1 → 0.07 (odakin 指示、世界線部分を少し目立たなく)
+export const DEBRIS_WORLDLINE_OPACITY = 0.07;
 // 過去光円錐との交差時に出現する球マーカーの透明度 (C pattern、fade 非適用)。
 export const DEBRIS_MARKER_OPACITY = 0.7;
 
