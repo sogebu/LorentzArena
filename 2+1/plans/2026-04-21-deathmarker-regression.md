@@ -1,6 +1,8 @@
-# 2026-04-21: DeathMarker regression 調査メモ (未解決、次セッション引継ぎ)
+# 2026-04-21: DeathMarker regression 調査メモ (21 版、22 版 plan に引継ぎ)
 
-## 問題
+> **⚠️ このメモの仮説 (1-4) は 2026-04-22 統一アルゴリズム (`8c019e3` + `bbae2b7` + `8098032`) **前の構造** に対するもの。統一後は `pastConeDisplay.ts` / `OtherPlayerRenderer.tsx` / `DEBRIS_MAX_LAMBDA` 共用などの前提が消えているため、下記仮説は **現コードには直接適用できない**。自機側の類似症状 (2026-04-22 odakin 報告) は [`plans/2026-04-22-self-death-marker.md`](2026-04-22-self-death-marker.md) で改めて切り分け中。本メモは history 保存として残す。
+
+## 問題 (21 版時点)
 
 odakin 報告: **DeathMarker が出ないことがある** + **sphere の sinking 設計通りに働かなくなった (regression)**。
 
