@@ -87,7 +87,7 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
         }}
       >
         <Suspense fallback={null}>
-          <ShipPreview bgColor="transparent" />
+          <ShipPreview bgColor="transparent" cannonStyle="laser" />
         </Suspense>
       </div>
 
