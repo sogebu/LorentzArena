@@ -443,7 +443,7 @@ export const SelfShipRenderer = ({
           結果: 砲は hull 真下にぶら下がり、そこから forward+down 45° に伸びる
           → 後方視点でも常に hull 下に砲身が見える。
           cannonStyle='laser' では LaserCannonRenderer で差替え (bracket は内部で同 spec 再描画)。 */}
-      {cannonStyle === "laser" && <LaserCannonRenderer />}
+      {cannonStyle === "laser" && <LaserCannonRenderer color={player.color} />}
       {cannonStyle === "gun" && (
         <>
 

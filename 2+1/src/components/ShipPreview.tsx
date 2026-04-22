@@ -97,6 +97,9 @@ export interface ShipPreviewProps {
   cameraYawRef?: React.MutableRefObject<number>;
   /** 懸架砲デザイン。'gun' (既存、古典大砲) / 'laser' (2026-04-22 新規、エネルギー兵器)。 */
   cannonStyle?: "gun" | "laser";
+  /** Player 識別色 (hsl)。laser cannon の crystal / emitter / lens emissive を焼き込む。
+   *  未指定 (undefined) は従来の cyan glow。 */
+  playerColor?: string;
 }
 
 export const ShipPreview = ({
@@ -109,6 +112,7 @@ export const ShipPreview = ({
   thrustAccelRef,
   cameraYawRef,
   cannonStyle = "gun",
+  playerColor,
 }: ShipPreviewProps = {}) => {
   const defaultThrustRef = useRef<Vector3>(createVector3(0, 0, 0));
   const defaultYawRef = useRef<number>(0);
@@ -131,6 +135,8 @@ export const ShipPreview = ({
     },
     color: "#ffffff",
   }).current;
+  // stubPlayer は singleton ref、再 mount しない限り固定。playerColor 変更は毎 render で適用。
+  stubPlayer.color = playerColor ?? "#ffffff";
 
   return (
     <div

@@ -49,6 +49,20 @@ export const ShipViewer = () => {
   const [showGrid, setShowGrid] = useState(true);
   const [bgColor, setBgColor] = useState("#0a0a0f");
   const [cannonStyle, setCannonStyle] = useState<"gun" | "laser">("laser");
+  // Laser cannon の glow を player 識別色で着色する実機プレビュー用。"default" は従来の
+  // cyan glow (ShipPreview の stubPlayer.color="#ffffff" fallback と同等)。
+  const playerColorOptions: { label: string; value: string }[] = [
+    { label: "default (cyan)", value: "" },
+    { label: "red", value: "hsl(0, 85%, 55%)" },
+    { label: "orange", value: "hsl(30, 85%, 55%)" },
+    { label: "yellow", value: "hsl(60, 85%, 55%)" },
+    { label: "green", value: "hsl(120, 85%, 55%)" },
+    { label: "teal", value: "hsl(170, 85%, 55%)" },
+    { label: "blue", value: "hsl(220, 85%, 55%)" },
+    { label: "purple", value: "hsl(275, 85%, 55%)" },
+    { label: "magenta", value: "hsl(320, 85%, 55%)" },
+  ];
+  const [playerColor, setPlayerColor] = useState<string>("");
 
   return (
     <div style={{ position: "fixed", inset: 0 }}>
@@ -60,6 +74,7 @@ export const ShipViewer = () => {
         thrustAccelRef={thrustAccelRef}
         cameraYawRef={cameraYawRef}
         cannonStyle={cannonStyle}
+        playerColor={playerColor || undefined}
       />
 
       <div
@@ -134,6 +149,25 @@ export const ShipViewer = () => {
           >
             <option value="gun">gun (古典大砲)</option>
             <option value="laser">laser (エネルギー兵器)</option>
+          </select>
+        </label>
+        <label style={{ display: "block", marginBottom: 8 }}>
+          {"Player color (glow): "}
+          <select
+            value={playerColor}
+            onChange={(e) => setPlayerColor(e.target.value)}
+            style={{
+              background: "#222",
+              color: "#ddd",
+              border: "1px solid #555",
+              padding: "2px 6px",
+            }}
+          >
+            {playerColorOptions.map((opt) => (
+              <option key={opt.label} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
           </select>
         </label>
 

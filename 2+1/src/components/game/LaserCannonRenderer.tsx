@@ -16,11 +16,7 @@ import {
   SHIP_LASER_GLOW_COLOR,
   SHIP_LASER_GLOW_EMISSIVE_COLOR,
   SHIP_LASER_GLOW_EMISSIVE_INTENSITY,
-  SHIP_LASER_LENS_COLOR,
   SHIP_LASER_LENS_COUNT,
-  SHIP_LASER_LENS_EMISSIVE_COLOR,
-  SHIP_LASER_LENS_EMISSIVE_INTENSITY_BASE,
-  SHIP_LASER_LENS_EMISSIVE_INTENSITY_FRONT,
   SHIP_LASER_LENS_OUTER_R_BACK,
   SHIP_LASER_LENS_OUTER_R_FRONT,
   SHIP_LASER_LENS_SPACING,
@@ -54,7 +50,26 @@ import { getThreeColor } from "./threeCache";
  *       gun と共用。cannon mount (cannon group origin) が world origin に着地、cannon 軸が
  *       origin を通る。pod 高 0.55 で mount まで届くよう pod 垂直寸法を設定。
  */
-export const LaserCannonRenderer = () => {
+/**
+ * @param color プレイヤー識別色 (hsl(H, S%, L%) 文字列)。指定時は crystal bulge / lens stack /
+ *   emitter disc の三点 (全 glow 部品) の color + emissive を player 色に統一、intensity は
+ *   1.0 (R+G 両ch強い orange/yellow 系が 2.3× で 1.0 クリップ → 白飛びするため下げる)。
+ *   hsl format 以外 (ShipPreview の "#ffffff" stub 等) or 未指定 時は従来の cyan glow + intensity 2.3
+ *   (HDR bloom 維持)。Pod / barrel の structural 色は常に dark navy で固定。
+ */
+export const LaserCannonRenderer = ({ color }: { color?: string } = {}) => {
+  // hsl() 以外 (ShipPreview "#ffffff" stub 等) は default cyan に fall back。
+  const playerGlowColor = useMemo(
+    () => (color?.startsWith("hsl(") ? color : null),
+    [color],
+  );
+  // Glow 強度を crystal / emitter / lens ring 全てで単一値に統一 (odakin 指摘:
+  // 「先端 3 連と真ん中で色変えてるの？いちばん煌々とした色に合わせて一緒でいい」)。
+  // - default cyan: 2.3 (従来 crystal 値、HDR bloom 維持)
+  // - player 色: 1.0 (orange hsl 30 / yellow hsl 60 のように R+G 両ch強い hue は 2.3×
+  //   で両 ch が 1.0 にクリップ → 白飛びで hue 消失するため、intensity を下げて色素を保持)。
+  const glowIntensity = playerGlowColor ? 1.0 : SHIP_LASER_GLOW_EMISSIVE_INTENSITY;
+
   const podColor = useMemo(() => getThreeColor(SHIP_LASER_POD_COLOR), []);
   const podEmissive = useMemo(
     () => getThreeColor(SHIP_LASER_POD_EMISSIVE_COLOR),
@@ -65,15 +80,13 @@ export const LaserCannonRenderer = () => {
     () => getThreeColor(SHIP_LASER_BARREL_EMISSIVE_COLOR),
     [],
   );
-  const glowColor = useMemo(() => getThreeColor(SHIP_LASER_GLOW_COLOR), []);
-  const glowEmissive = useMemo(
-    () => getThreeColor(SHIP_LASER_GLOW_EMISSIVE_COLOR),
-    [],
+  const glowColor = useMemo(
+    () => getThreeColor(playerGlowColor ?? SHIP_LASER_GLOW_COLOR),
+    [playerGlowColor],
   );
-  const lensColor = useMemo(() => getThreeColor(SHIP_LASER_LENS_COLOR), []);
-  const lensEmissive = useMemo(
-    () => getThreeColor(SHIP_LASER_LENS_EMISSIVE_COLOR),
-    [],
+  const glowEmissive = useMemo(
+    () => getThreeColor(playerGlowColor ?? SHIP_LASER_GLOW_EMISSIVE_COLOR),
+    [playerGlowColor],
   );
 
   // Chin pod 寸法 (sphere base R=1 を scale して ellipsoid 化)。
@@ -84,9 +97,11 @@ export const LaserCannonRenderer = () => {
   const podScaleY = SHIP_LASER_POD_LATERAL / 2;
   const podScaleZ = SHIP_LASER_POD_VERTICAL / 2;
 
-  // Lens stack: N 段、rear → front で outer R が narrowing、x 等間隔、emissive 強化。
+  // Lens stack: N 段、rear → front で outer R が narrowing、x 等間隔。
+  // emissive は従来 BASE(0.6) → FRONT(1.5) の gradient だったが、crystal / emitter と
+  // 色味が揃わなかった ため、全 ring 共通の `glowIntensity` で統一。
   const lensRings = useMemo(() => {
-    const arr: { x: number; outerR: number; emissive: number }[] = [];
+    const arr: { x: number; outerR: number }[] = [];
     const denom = Math.max(1, SHIP_LASER_LENS_COUNT - 1);
     for (let i = 0; i < SHIP_LASER_LENS_COUNT; i++) {
       const frac = i / denom;
@@ -97,12 +112,7 @@ export const LaserCannonRenderer = () => {
       const outerR =
         SHIP_LASER_LENS_OUTER_R_BACK +
         (SHIP_LASER_LENS_OUTER_R_FRONT - SHIP_LASER_LENS_OUTER_R_BACK) * frac;
-      const emissive =
-        SHIP_LASER_LENS_EMISSIVE_INTENSITY_BASE +
-        (SHIP_LASER_LENS_EMISSIVE_INTENSITY_FRONT -
-          SHIP_LASER_LENS_EMISSIVE_INTENSITY_BASE) *
-          frac;
-      arr.push({ x, outerR, emissive });
+      arr.push({ x, outerR });
     }
     return arr;
   }, []);
@@ -187,14 +197,16 @@ export const LaserCannonRenderer = () => {
             <meshStandardMaterial
               color={glowColor}
               emissive={glowEmissive}
-              emissiveIntensity={SHIP_LASER_GLOW_EMISSIVE_INTENSITY * 1.0}
+              emissiveIntensity={glowIntensity}
               roughness={0.3}
               metalness={0.2}
               toneMapped={false}
             />
           </mesh>
 
-          {/* (4) Lens stack: 3 段 nested torus rings、rotY=π/2 で torus 軸を +x に向ける */}
+          {/* (4) Lens stack: 3 段 nested torus rings、rotY=π/2 で torus 軸を +x に向ける。
+                 色・emissive 強度とも crystal / emitter と統一 (全 glow 部品で単一の
+                 `glowColor` + `glowIntensity`)。 */}
           {lensRings.map((ring, i) => (
             <mesh
               // biome-ignore lint/suspicious/noArrayIndexKey: lens ring 固定
@@ -211,16 +223,17 @@ export const LaserCannonRenderer = () => {
                 ]}
               />
               <meshStandardMaterial
-                color={lensColor}
-                emissive={lensEmissive}
-                emissiveIntensity={ring.emissive}
-                roughness={0.4}
-                metalness={0.7}
+                color={glowColor}
+                emissive={glowEmissive}
+                emissiveIntensity={glowIntensity}
+                roughness={0.3}
+                metalness={0.2}
+                toneMapped={false}
               />
             </mesh>
           ))}
 
-          {/* (5) Recessed emitter disc: lens 最奥の bright cyan plate */}
+          {/* (5) Recessed emitter disc: lens 最奥の plate (crystal / lens と同色・同強度) */}
           <mesh position={[emitterX, 0, 0]} rotation={[0, 0, -Math.PI / 2]}>
             <cylinderGeometry
               args={[
@@ -233,7 +246,7 @@ export const LaserCannonRenderer = () => {
             <meshStandardMaterial
               color={glowColor}
               emissive={glowEmissive}
-              emissiveIntensity={SHIP_LASER_GLOW_EMISSIVE_INTENSITY * 1.4}
+              emissiveIntensity={glowIntensity}
               toneMapped={false}
             />
           </mesh>
