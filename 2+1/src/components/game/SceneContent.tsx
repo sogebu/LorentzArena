@@ -190,39 +190,46 @@ export const SceneContent = ({
     camera.up.set(0, 0, 1);
   });
 
-  // 他プレイヤー worldLine の **過去光円錐交差点** (= 観測者が「今まさに見ている」
-  // 位置) に sphere+core の小ドット。旧実装は `phaseSpace.pos` (= 世界時刻 now) に
-  // 描画して「光速遅延の可視化」を狙っていたが、respawn 直後に past-cone 未到達でも
-  // 球が先行露出する regression + 死亡後に球が x_D から past-cone まで display z
-  // 軸に沿って「降りてくる」物理的に曖昧な挙動を招いていた。過去光円錐交差点に
-  // anchor することで ship (past-cone anchor) と同位置で一貫し、SpawnRenderer の
-  // ring と同タイミングで出現する。
-  //
-  // 対象:
-  //   - alive non-LH non-self: past-cone ∩ worldLine
-  //   LH: LighthouseRenderer 側で同じ marker を出しているので重複回避。
-  //   frozen: DeathMarker/DeadShipRenderer がすでに描画。
-  //   self alive: SelfShipRenderer 自体が observer 位置にある。
-  const worldLinePastConePoints = useMemo(() => {
-    const results: { key: string; color: string; pos: Vector4 }[] = [];
-    if (!observerPos) return results;
+  // 他プレイヤーの observable marker を 2 種類の責務に分離して並存:
+  //   (A) worldLinePastConePoints: past-cone ∩ worldLine (観測者が今見ている位置)。
+  //       ship (OtherShipRenderer) と同位置、sphere の小さな halo で補強。
+  //       gate: aliveIntersection != null — 観測者が光を受信済のフレームのみ表示。
+  //   (B) worldLineFuturePoints: worldLine 未来側末端 = `phaseSpace.pos` (world-now)。
+  //       **神の視点** の pedagogical marker (光速遅延を視覚化)。観測者が物理的に
+  //       見える/見えないに関わらず、player が新しい世界点を獲得した瞬間から
+  //       常時マーク。未来光円錐と同じ omniscient view カテゴリ。
+  //       gate: `!player.isDead` のみ — 死亡中は wp が x_D に freeze し未来情報
+  //       (死亡位置) が先行露出するため抑止。
+  const worldLineMarkerEntries = useMemo(() => {
+    const pastCone: { key: string; color: string; pos: Vector4 }[] = [];
+    const future: { key: string; color: string; pos: Vector4 }[] = [];
+    if (!observerPos) return { pastCone, future };
     for (const player of playerList) {
       if (player.id === myId) continue;
       if (isLighthouse(player.id)) continue;
       if (player.isDead) continue;
+      // (B) future-most は常時 push (光到達を待たない神の視点 marker)。
+      future.push({
+        key: `future-pt-${player.id}`,
+        color: player.color,
+        pos: player.phaseSpace.pos,
+      });
+      // (A) past-cone は光が届いたときのみ push。
       const intersection = pastLightConeIntersectionWorldLine(
         player.worldLine,
         observerPos,
       );
       if (!intersection) continue;
-      results.push({
+      pastCone.push({
         key: `past-cone-pt-${player.id}`,
         color: player.color,
         pos: intersection.pos,
       });
     }
-    return results;
+    return { pastCone, future };
   }, [playerList, myId, observerPos]);
+  const worldLinePastConePoints = worldLineMarkerEntries.pastCone;
+  const worldLineFuturePoints = worldLineMarkerEntries.future;
 
   const laserIntersections = useMemo(() => {
     if (!myPlayer || !myId) return [];
@@ -504,12 +511,51 @@ export const SceneContent = ({
         );
       })}
 
-      {/* 他プレイヤー世界線の **過去光円錐交差点** に dot + glow halo。観測者が
-          「今まさに見ている」LH/他機位置に anchor (ship と同位置)。aliveIntersection
-          が null のフレーム (respawn 光未到達 / worldLine 空) は出さない。
+      {/* (A) 他プレイヤー世界線 **過去光円錐交差点** に dot + glow halo。観測者が
+          「今まさに見ている」他機位置に anchor (ship と同位置)。aliveIntersection
+          null のフレーム (respawn 光未到達 / worldLine 空) は出さない。 */}
+      {worldLinePastConePoints.map(({ key, color: colorText, pos }) => {
+        const c = getThreeColor(colorText);
+        const dp = transformEventForDisplay(pos, observerPos, observerBoost);
+        const size = PLAYER_MARKER_SIZE_OTHER;
+        return (
+          <group key={key} position={[dp.x, dp.y, dp.t]}>
+            <mesh
+              scale={[size, size, size]}
+              geometry={sharedGeometries.playerSphere}
+            >
+              <meshStandardMaterial
+                color={c}
+                emissive={c}
+                emissiveIntensity={0.4}
+                roughness={0.3}
+                metalness={0.1}
+                transparent
+                depthWrite={true}
+                opacity={PLAYER_MARKER_MAIN_OPACITY_OTHER}
+              />
+            </mesh>
+            <mesh
+              scale={[size * 1.8, size * 1.8, size * 1.8]}
+              geometry={sharedGeometries.playerSphere}
+            >
+              <meshBasicMaterial
+                color={c}
+                transparent
+                depthWrite={false}
+                opacity={PLAYER_MARKER_GLOW_OPACITY_OTHER}
+              />
+            </mesh>
+          </group>
+        );
+      })}
+
+      {/* (B) 他プレイヤー世界線 **未来側末端 = world-now** dot + glow halo。
+          ship (past-cone 交点) との display gap = 光速遅延の pedagogical 可視化。
+          同じ aliveIntersection gate を通るので pre-past-cone の先行露出は無し。
           サイズは 3d1831d 以前の old OtherPlayerRenderer alive sphere と同寸
           (`playerSphere` × `PLAYER_MARKER_SIZE_OTHER` = 0.5 × 0.2 = effective radius 0.1)。 */}
-      {worldLinePastConePoints.map(({ key, color: colorText, pos }) => {
+      {worldLineFuturePoints.map(({ key, color: colorText, pos }) => {
         const c = getThreeColor(colorText);
         const dp = transformEventForDisplay(pos, observerPos, observerBoost);
         const size = PLAYER_MARKER_SIZE_OTHER;

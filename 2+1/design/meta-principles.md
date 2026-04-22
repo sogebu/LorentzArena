@@ -305,3 +305,35 @@ spec (例: `plans/死亡イベント.md` の死亡 event 描画) が「(x_D, u_D
 
 ---
 
+### M22. marker / indicator は「観測者視点」か「神の視点」かをまず決めてから gate を書く
+
+2+1 時空ゲームの特性上、**同じ physical object に対して 2 種類の異なる視点層の marker を並存させる**ことがある:
+
+- **観測者視点 (observer view)**: 観測者の過去光円錐が既に光を届けた位置を示す marker。ship / tower base / past-cone sphere 等。**anchor は past-cone ∩ worldLine (等) で、gate は「交差が non-null」**。光未到達のフレームは描画しない — さもないと観測者が「まだ見ていない」はずの情報 (respawn 新位置 / 死亡 event) を pre-light で露出する。
+- **神の視点 (god's view、比喩)**: 観測者の光円錐に関係なく「world で今何が起きているか」を描く pedagogical helper。future-most sphere (= `phaseSpace.pos`) / future light cone intersection / future cone laser triangle 等。**anchor は world-now や future-cone で、past-cone gate は絶対にかけない**。その marker の存在意義が「光がまだ届いていない事象を神視点で示す」ことだから。光を待つと光速遅延 gap が見えなくなり pedagogy が消える。
+
+両層を**同じ object について同時に描く**と、display 上の 2 marker 間の gap がそのまま「光速遅延」の視覚化になる (= このゲーム最大の pedagogical 価値)。どちらか一方に統合したくなるが、**2 層は原理的に別物で、混ぜると両方が壊れる**:
+
+- 神の視点 marker に past-cone gate をかける → gap が見えない (respawn 直後〜光到達までの「光が追いついてくる」過程を観察できない)。
+- 観測者視点 marker を world-now anchor に動かす → 死亡後 wp が x_D に freeze しているのに past-cone が追いかけるため、marker が x_D から past-cone まで display z 軸を「降りてくる」曖昧な軌跡になる + respawn 新位置が光到達前に露出する。
+
+**Dead state の扱いも層で非対称**:
+- 観測者視点: `aliveIntersection = pastLightConeIntersectionWorldLine(frozen worldLine)` で gate。past-cone が x_D を通過した瞬間 null に → marker 消失、DeathMarker が以降を担当。
+- 神の視点: `!player.isDead` で除外。death 後は wp が x_D に freeze し続けるため、描くと「観測者は死を見ていないのに死亡位置が神視点で分かる」という **未来情報の先行露出** になる (respawn と対称な regression)。
+
+**実例 (2026-04-23、commit cfcd5af + 0113413 + 後続)**:
+- 旧実装は他機 / LH の sphere を 1 つだけ world-now anchor で描画し、観測者視点と神の視点を曖昧に兼ねていた。respawn 直後に pre-light 露出する regression (= SpawnRenderer ring の視覚的意味喪失) が発生。
+- 初期 fix は「sphere を past-cone anchor に一本化」→ 観測者視点側は正しくなったが神の視点 marker を丸ごと失い、光速遅延の pedagogical gap が消えた。
+- 最終形は **2 sphere 並存**。past-cone anchor の球 (aliveIntersection gate) + world-now anchor の球 (`!isDead` gate) を同色・同サイズで重畳、display 上の gap が光速遅延そのもの。
+
+**Hybrid case — SpawnRenderer**: ring は D pattern で spawn event の world frame 位置に直接描画 (神の視点) だが、**fire trigger 自体は `isInPastLightCone(spawnPos, myPos)` で観測者視点 gate**。これは「光が届いた瞬間に爆発演出を始める」= 観測者ベースの時系列で fire 判定し、fire 後 ring が神視点で (world 座標基準で) 演出される、という正常な混成。同じ object でも「いつ fire するか」と「どこに描くか」は別レイヤーで決めてよい。
+
+**適用手順**:
+1. 描こうとしている marker が **「観測者が物理的に見えるはずの位置」** を示すのか、**「観測者に光が届いていなくても world で起きている事象」** を示すのかをまず決める。
+2. 前者なら past-cone 系 anchor + past-cone 交差 non-null gate。後者なら world-now / future-cone 系 anchor + dead 除外のみ (past-cone gate を絶対にかけない)。
+3. 両方必要なら両方描く。統合を試みない。
+
+関連: `design/rendering.md §marker 2 層 (observer / god view)` (描画実装の具体箇所)。
+
+---
+

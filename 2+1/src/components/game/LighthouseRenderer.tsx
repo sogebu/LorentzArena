@@ -85,16 +85,21 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
   }
   const towerAnchor = isObservedDead ? wp : (aliveIntersection?.pos ?? null);
 
-  // 球マーカーは **worldLine の過去光円錐交差点** に固定 (world-now ではない)。
-  // つまり観測者が「今まさに見ている」LH 位置。aliveIntersection == null のフレーム
-  // (respawn 光未到達 / 死亡 fade 完了 / worldLine 空) は描画しない。
-  //
-  // 旧実装 (wp = world-now で描画) では、LH 死亡後 wp は x_D に freeze するのに対し
-  // past-cone は |r| 遅れて追いつくため、sphere が x_D から past-cone まで display z
-  // 軸に沿って「降りてくる」軌跡になり物理的意味が曖昧だった。past-cone 交差点に
-  // anchor することで tower base と同位置に収まり、観測者視点で一貫する。
-  const spherePos = aliveIntersection
+  // 球マーカーは 2 種類の責務を分離して並存:
+  //   (A) pastConeSpherePos: worldLine の過去光円錐交差点。観測者が「今まさに
+  //       見ている」LH 位置で、tower base と同位置に載る。aliveIntersection null
+  //       のフレーム (respawn 光未到達 / 死亡 fade 完了 / worldLine 空) は非表示。
+  //   (B) futureMostSpherePos: worldLine の未来側末端 = `phaseSpace.pos` (= 世界
+  //       時刻 now)。観測者からはまだ光が届いていない「現在」位置を示し、(A)
+  //       との display gap が光速遅延の pedagogical 可視化となる。respawn した
+  //       瞬間から光到達を待たず常時表示 (= 新しい世界点の獲得と同時にマーク開始)。
+  //       gate は `!player.isDead` のみ — 死亡中は wp が x_D に freeze するので
+  //       描くと未来情報 (死亡位置) が先行露出するため抑止。
+  const pastConeSpherePos = aliveIntersection
     ? transformEventForDisplay(aliveIntersection.pos, observerPos, observerBoost)
+    : null;
+  const futureMostSpherePos = !player.isDead
+    ? transformEventForDisplay(wp, observerPos, observerBoost)
     : null;
   const sphereSize = PLAYER_MARKER_SIZE_OTHER;
 
@@ -210,9 +215,9 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
     </group>
     )}
 
-    {/* 過去光円錐 ∩ 世界線マーカー (C pattern)。aliveIntersection null 時は非表示。 */}
-    {spherePos && (
-      <group position={[spherePos.x, spherePos.y, spherePos.t]}>
+    {/* (A) 過去光円錐 ∩ 世界線マーカー (C pattern)。観測者が見ている LH 位置。 */}
+    {pastConeSpherePos && (
+      <group position={[pastConeSpherePos.x, pastConeSpherePos.y, pastConeSpherePos.t]}>
         <mesh
           renderOrder={-1}
           scale={[sphereSize, sphereSize, sphereSize]}
@@ -226,6 +231,41 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
             metalness={0.1}
             transparent
             depthWrite={false}
+            opacity={PLAYER_MARKER_MAIN_OPACITY_OTHER}
+          />
+        </mesh>
+        <mesh
+          renderOrder={-1}
+          scale={[sphereSize * 1.8, sphereSize * 1.8, sphereSize * 1.8]}
+          geometry={sharedGeometries.playerSphere}
+        >
+          <meshBasicMaterial
+            color={mainColor}
+            transparent
+            depthWrite={false}
+            opacity={PLAYER_MARKER_GLOW_OPACITY_OTHER}
+          />
+        </mesh>
+      </group>
+    )}
+
+    {/* (B) 世界線未来側末端 = world-now マーカー (C pattern)。光速遅延の pedagogical
+        可視化 (past-cone marker との display gap = 光が観測者に届くまでの距離)。 */}
+    {futureMostSpherePos && (
+      <group position={[futureMostSpherePos.x, futureMostSpherePos.y, futureMostSpherePos.t]}>
+        <mesh
+          renderOrder={-1}
+          scale={[sphereSize, sphereSize, sphereSize]}
+          geometry={sharedGeometries.playerSphere}
+        >
+          <meshStandardMaterial
+            color={mainColor}
+            emissive={mainColor}
+            emissiveIntensity={0.4}
+            roughness={0.3}
+            metalness={0.1}
+            transparent
+            depthWrite={true}
             opacity={PLAYER_MARKER_MAIN_OPACITY_OTHER}
           />
         </mesh>

@@ -565,3 +565,34 @@ opacity = baseOpacity × fade
 
 ---
 
+### marker 2 層 (observer / god view、2026-04-23)
+
+思想・gate 判断の原則は `design/meta-principles.md §M22`。ここでは描画実装の該当箇所を列挙:
+
+**観測者視点 marker** (past-cone ∩ worldLine 等を anchor、交差 non-null で gate):
+- `OtherShipRenderer` ship (`pastLightConeIntersectionWorldLine`)
+- `LighthouseRenderer` tower (D pattern、`towerAnchor = isObservedDead ? wp : aliveIntersection?.pos`) / past-cone sphere (`pastConeSpherePos`)
+- `SceneContent.worldLinePastConePoints` (他機 sphere @ past-cone、`OtherShipRenderer` と同位置の halo)
+- `SceneContent` laser past-cone triangle (`pastLightConeIntersectionLaser`)
+- `DebrisRenderer` marker (`pastLightConeIntersectionDebris`)
+- `Radar` 他機 dot / laser triangle (`pastLightConeIntersectionWorldLine` / `Laser`)
+- `WorldLineRenderer` inner-hide center (past-cone 中心の tube マスク)
+- `DeathMarker` sphere + ring (`pastLightConeIntersectionDeathWorldLine` で τ_0 計算、`τ_0 ∈ [0, DEATH_TAU_EFFECT_MAX]` window)
+
+**神の視点 marker** (world-now / future-cone 等を anchor、past-cone gate を**かけない**):
+- `LighthouseRenderer` future-most sphere (`futureMostSpherePos = !isDead ? transformEventForDisplay(wp) : null`)
+- `SceneContent.worldLineFuturePoints` (他機 sphere @ world-now、`!isDead` のみ)
+- `SceneContent` future light cone intersection sphere + ring (`futureLightConeIntersectionWorldLine`)
+- `SceneContent` laser future-cone triangle (`futureLightConeIntersectionLaser`)
+- `SpawnRenderer` ring (D pattern で spawn event world frame に直描画)
+
+**Hybrid**:
+- `SpawnRenderer` fire trigger は観測者視点 (`isInPastLightCone(spawnPos, myPos)` 成立で `firePendingSpawnEvents` が ring を start)、以後の ring 演出自体は神の視点。「光が届いた瞬間に爆発開始」の意図通り。
+
+**設計制約**:
+- LH / 他機は **両層の sphere を並存**。display gap = 光速遅延の pedagogical 可視化。統合しない (§M22 の regression 例参照)。
+- 自機 (observer 自身) は両層が同一点に重なるので 1 個でよい。`SelfShipRenderer` は `phaseSpace.pos` anchor。
+- 死亡中は神の視点 marker を `!isDead` で除外 (wp が x_D freeze のまま描くと死亡位置が先行露出)。観測者視点 marker は aliveIntersection (frozen worldLine に past-cone が touch する限り) で延命 → 末端通過で null → DeathMarker が以降を担当。
+
+---
+
