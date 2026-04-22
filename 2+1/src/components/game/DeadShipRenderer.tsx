@@ -12,16 +12,6 @@ import { pastLightConeIntersectionDeathWorldLine } from "./deathWorldLine";
 import { useDisplayFrame } from "./DisplayFrameContext";
 import { SelfShipRenderer } from "./SelfShipRenderer";
 
-// DEBUG-SELF-DEATH-MARKER (2026-04-22): 自機 DeadShipRenderer 非表示症状の切り分け用。
-// 症状特定後にこの debug block 全体を削除する。per-key 500ms スロットル。
-const _dbgLast: Record<string, number> = {};
-const _dbg = (key: string, msg: string) => {
-  const now = Date.now();
-  if (now - (_dbgLast[key] ?? 0) < 500) return;
-  _dbgLast[key] = now;
-  console.debug(`[SELF-DEATH] ${msg}`);
-};
-
 /**
  * **死亡プレイヤー用** の ship モデル描画 (plans/死亡イベント.md §5 準拠)。
  *
@@ -66,14 +56,6 @@ export const DeadShipRenderer = ({
     tau0 != null && tau0 >= 0 && tau0 <= DEATH_TAU_MAX
       ? (DEATH_TAU_MAX - tau0) / DEATH_TAU_MAX
       : null;
-
-  // DEBUG-SELF-DEATH-MARKER
-  _dbg(
-    `dsr-${playerId.slice(0, 6)}`,
-    `DeadShipRenderer[${playerId.slice(0, 6)}] obs.t=${observerPos?.t?.toFixed(2) ?? "null"} ` +
-      `xD.t=${xD.t.toFixed(2)} tau0=${tau0?.toFixed(3) ?? "null"} ` +
-      `fadeAlpha=${fadeAlpha?.toFixed(3) ?? "null (return null)"} window=[0,${DEATH_TAU_MAX}]`,
-  );
 
   const virtualPlayer = useMemo(
     () => ({

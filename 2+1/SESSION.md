@@ -62,8 +62,8 @@
 
 ### 既存 (優先順未決定)
 
-- **自機 DeathMarker / DeadShipRenderer 発火しない regression** (2026-04-22 odakin 報告): 統一アルゴリズム後に自機死亡で 3D marker + 死亡機体が出ない。設計上は ghost.pos を observer に、xD を凍結死亡時空点にしてτ_0 窓判定の経路が通っているはず (`SceneContent.tsx:144-159` swap + `DeathMarker.tsx:50`)。静的読みでは汚染経路全て否定済、動的に何かが壊れている。debug log 仕込み済 (`[SELF-DEATH]` prefix、3 層 SceneContent/DeadShipRenderer/DeathMarker)、localhost multi-tab で Console 観察すれば早期 return 理由が判明する。詳細: [`plans/2026-04-22-self-death-marker.md`](plans/2026-04-22-self-death-marker.md)
-- **DeathMarker regression 最終検証**: `8c019e3` + `8098032` 統一で構造解消した推定、実機 multi-tab で reprodue 試行 (↑ self-death regression の検証と合流する可能性)
+- ~~**自機 DeathMarker / DeadShipRenderer 発火しない regression** (2026-04-22 odakin 報告)~~: **2026-04-22 実機検証で再現せず closed**。debug log 3 層 + handleKill entry log で確認した結果、swap / xD 凍結 / ghost 前進 / τ_0 窓判定すべて設計通り動作。初回症状は myId 再接続期間中の transient race 可能性、code base に defensive fix 不要と判断。post-mortem + 知見 (`console.debug` は DevTools Default 非表示 ほか) + 再仕込み手順は [`plans/2026-04-22-self-death-marker.md`](plans/2026-04-22-self-death-marker.md) §post-mortem。再発時は同 plan の再仕込み手順に沿って診断。
+- **DeathMarker regression 最終検証**: `8c019e3` + `8098032` 統一で構造解消した推定、自機側は↑ で closed。他機側も実機で出なければ併せて close 候補。
 - **Phase B-5 (他機 exhaust) 再設計**: `phaseSpace.alpha = thrust + friction` が thrust 単独信号でない → pure thrust 用 wire field 新設が必要 ([`plans/2026-04-21-phaseSpace-heading-accel.md`](plans/2026-04-21-phaseSpace-heading-accel.md))
 - **Phase C-1 (wire format 厳格化)**: 混在期間確認後、受信 optional → required、shim 削除
 - **本番実戦観察**: 死亡 routing refactor + fade 3s + laser default がすべて deployed。multi-tab 実戦テストで regression / UX 確認

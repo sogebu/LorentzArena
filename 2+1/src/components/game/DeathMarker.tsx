@@ -13,16 +13,6 @@ import { useDisplayFrame } from "./DisplayFrameContext";
 import { transformEventForDisplay } from "./displayTransform";
 import { sharedGeometries } from "./threeCache";
 
-// DEBUG-SELF-DEATH-MARKER (2026-04-22): 自機死亡 marker 非表示症状の切り分け用。
-// 症状特定後にこの debug block 全体を削除する。per-key 500ms スロットル。
-const _dbgLast: Record<string, number> = {};
-const _dbg = (key: string, msg: string) => {
-  const now = Date.now();
-  if (now - (_dbgLast[key] ?? 0) < 500) return;
-  _dbgLast[key] = now;
-  console.debug(`[SELF-DEATH] ${msg}`);
-};
-
 /**
  * 死亡 marker (sphere + ring): 2026-04-22 統一アルゴリズム。
  *
@@ -55,27 +45,10 @@ export const DeathMarker = ({
   color: THREE.Color;
 }) => {
   const { observerPos, observerBoost } = useDisplayFrame();
-  if (!observerPos) {
-    // DEBUG-SELF-DEATH-MARKER
-    _dbg(`dm-noobs-${xD.t.toFixed(1)}`, `DeathMarker: observerPos=null (xD.t=${xD.t.toFixed(2)})`);
-    return null;
-  }
+  if (!observerPos) return null;
 
   const tau0 = pastLightConeIntersectionDeathWorldLine(xD, uD, observerPos);
-  // DEBUG-SELF-DEATH-MARKER
-  _dbg(
-    `dm-${xD.t.toFixed(1)}`,
-    `DeathMarker obs.t=${observerPos.t.toFixed(2)} xD.t=${xD.t.toFixed(2)} ` +
-      `dt=${(observerPos.t - xD.t).toFixed(3)} uD=(${uD.t.toFixed(2)},${uD.x.toFixed(2)},${uD.y.toFixed(2)}) ` +
-      `tau0=${tau0?.toFixed(3) ?? "null"} window=[0,${DEATH_TAU_EFFECT_MAX}]`,
-  );
-  if (tau0 == null || tau0 < 0 || tau0 > DEATH_TAU_EFFECT_MAX) {
-    _dbg(
-      `dm-oow-${xD.t.toFixed(1)}`,
-      `DeathMarker early-return: tau0=${tau0} out of [0, ${DEATH_TAU_EFFECT_MAX}]`,
-    );
-    return null;
-  }
+  if (tau0 == null || tau0 < 0 || tau0 > DEATH_TAU_EFFECT_MAX) return null;
 
   // Sphere @ x_D (C pattern、観測者進行で沈む)。
   const sphereDp = transformEventForDisplay(xD, observerPos, observerBoost);

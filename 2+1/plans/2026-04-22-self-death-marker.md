@@ -68,3 +68,45 @@ odakin 報告 (2026-04-22 午後): **自機が死亡したときに 3D 死亡 ma
 2. 真因を修正
 3. unit test / integration test 追加で regression 防止
 4. この plan に post-mortem を追記して closed としてマーク
+
+---
+
+## 2026-04-22 post-mortem (closed, 再現せず)
+
+odakin と同日中に実機検証した結果、**症状は再現しなかった**。debug log を仕込んだ localhost `#room=test` multi-tab で灯台に撃たれて死亡したところ、以下のように全経路が設計通りに動作していた:
+
+```
+[SELF-DEATH] myPlayer swap: isDead=true myDeathEvent=set swappedTo=ghostPhaseSpace raw.t=145.66 ghost.t=146.29 xD.t=145.66
+[SELF-DEATH] SceneContent isMe+isDead: push DeadShipRenderer+DeathMarker xD.t=145.66 observer.t=146.29 myDeathEvent=set
+[SELF-DEATH] DeathMarker obs.t=145.66 xD.t=145.66 dt=0.000 tau0=0.000 window=[0,2]
+[SELF-DEATH] DeadShipRenderer[g1bd6b] obs.t=147.01 xD.t=145.66 tau0=0.925 fadeAlpha=0.692 window=[0,3]
+...
+[SELF-DEATH] DeathMarker early-return: tau0=2.091 out of [0, 2]
+[SELF-DEATH] DeadShipRenderer[g1bd6b] obs.t=149.31 xD.t=145.66 tau0=3.233 fadeAlpha=null (return null) window=[0,3]
+```
+
+- myPlayer swap 成立、ghost.t が 146.29 → 147.01 → 148.23 → 149.31 と連続前進
+- xD.t=145.66 で完全に凍結 (store.players[myId].phaseSpace 汚染なし)
+- DeathMarker tau_0 が 0.000 → 0.448 → 0.925 → 1.341 → 2.091 で窓超過 → 仕様通り on/off
+- DeadShipRenderer fadeAlpha が 0.851 → 0.692 → 0.515 → ... → null (fade 完了) で仕様通り
+
+設計上の全経路が contractually 通っている + 実動作が log で確認できた → **現 code base は仕様通り動作している**と確定。初回観察された「発火しない」症状は、おそらく以下のいずれかの transient state:
+
+- **myId 再接続期間中の race**: 起動時 `[init] myId= null` が 2 回出てから `[init] myId= XXX isBeaconHolder= true` に落ち着く。この null 期間中に kill が relay で届くと、victimId が古い or 未登録 peerId を指して handleKill が早期 return する可能性
+- **PeerJS WebSocket 失敗 + migration**: `WebSocket connection to ... failed: WebSocket is closed before the connection is established.` が observed。再接続時の store state 混濁
+- **StrictMode re-mount で zustand singleton が再利用**: PeerProvider 再マウントで `localIdRef` が再生成されるが store.players は残存 (2+1/CLAUDE.md §HMR の Provider 再マウント副作用 で既知パターン)
+
+いずれも **production で持続する構造的 bug ではない** ため、現時点で defensive fix を入れず closed とする。
+
+## 知見 (次回類似症状の時に使う)
+
+1. **`console.debug` は Chrome DevTools の Default levels で非表示**。「Default levels ▾」→ **Verbose を有効化** しないと一切出ない。次回 debug log を仕込むなら:
+   - `console.info` / `console.log` / `console.warn` のいずれかを使う (Default で visible)
+   - または plan の「検証手順」冒頭に **「Console の Default levels に Verbose を加える」** を明記する
+2. **3 層 debug log のパターンは有効だった**: SceneContent (swap) / DeathMarker (早期 return) / DeadShipRenderer (fadeAlpha) の 3 箇所に per-key 500ms throttle + `[PREFIX]` 付き `console.debug` を仕込むと、経路を辿って早期 return 地点を特定できる。再発時はこの plan の diff を git show `0304c5b` で参照して再仕込み可能。
+3. **HMR 反映判定**: ファイル mtime (`ls -la`) + grep で実ファイルに log が入ってるか確認 → Cmd+Shift+R でハードリロード → Verbose 有効化、の 3 ステップで **HMR/表示レベル/race** のどれが原因か切り分けできる。
+4. **「再現しない」も正当な closure**: 静的読みで全経路否定済 + 実動作 log で設計通り確認 → 原因未特定でも code base に手を入れない方が安全。trace の仕方だけ documenting して closed にする。
+
+## 再仕込み手順 (再発時)
+
+`git show 0304c5b -- 2+1/src/components/game/DeathMarker.tsx 2+1/src/components/game/DeadShipRenderer.tsx 2+1/src/components/game/SceneContent.tsx` および `git show <後続 commit>` で handleKill entry log を含めて復元可能。その際 `console.debug` → `console.info` に置換してから仕込むと Verbose 有効化不要になる。
