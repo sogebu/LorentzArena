@@ -52,6 +52,8 @@
 
 ### 既存 (優先順未決定)
 
+- **燃料枯渇をもっと目立たせる**: 現状は Speedometer の energy bar 以外に枯渇通知が無く、ゲーム中「撃てない」理由が分かりにくい。枯渇時の画面フラッシュ / HUD pulse / 効果音 / バー自体の色 flash 等を検討。既存の `handleKill` / `setDeathFlash` のような瞬発的視覚エフェクトの patern を流用可能
+- **グローバル leaderboard から "odakin" エントリ削除** (2026-04-22 TODO 化): 本番 `https://lorentz-turn.odakin.workers.dev/leaderboard` の 50 件中 24 件が odakin (他は Lighthouse AI 22 + 他 4 名)。Worker に DELETE endpoint が無いため Cloudflare KV を直接書き換える必要。filter 済 JSON の生成までは確認済み。手順: `cd 2+1/turn-worker && npx wrangler login` (ブラウザ OAuth) → `curl -s .../leaderboard | jq '[.[] | select(.name != "odakin")]' > /tmp/after.json` → `npx wrangler kv key put --namespace-id=2f4ffaba9ba44e4384700893780e801a --remote top --path=/tmp/after.json`。TURN 用 API token (Worker secret) は KV write scope 外なので `wrangler login` 必須
 - **DeathMarker regression 他機側の実機確認**: 自機側は 2026-04-22 検証で再現せず closed ([`plans/2026-04-22-self-death-marker.md`](plans/2026-04-22-self-death-marker.md) §post-mortem)、他機側が同じく出なければ「最終検証」項目は閉じる。再発時は同 plan の再仕込み手順で診断。
 - **Phase B-5 (他機 exhaust) 再設計**: `phaseSpace.alpha = thrust + friction` が thrust 単独信号でない → pure thrust 用 wire field 新設が必要 ([`plans/2026-04-21-phaseSpace-heading-accel.md`](plans/2026-04-21-phaseSpace-heading-accel.md))
 - **Phase C-1 (wire format 厳格化)**: 混在期間確認後、受信 optional → required、shim 削除
