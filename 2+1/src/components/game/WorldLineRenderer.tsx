@@ -91,14 +91,15 @@ export const WorldLineRenderer = ({
     <>
       {tubeGeo && (
         <mesh ref={tubeRef} geometry={tubeGeo}>
-          <meshStandardMaterial
+          {/* 2026-04-22: PBR (MeshStandardMaterial + roughness/metalness/emissive) →
+              unlit (MeshBasicMaterial) に切替。ライティング起因の specular highlight で
+              「ツヤツヤ」な実体感が出ていたのを、視点に寄らず均一な translucent flat で
+              「半透明の幽霊」的外観に。depthWrite=false で前後関係による自己遮蔽を抑制。 */}
+          <meshBasicMaterial
             color={threeColor}
-            emissive={threeColor}
-            emissiveIntensity={0.4}
-            roughness={0.4}
-            metalness={0.1}
             transparent
             opacity={tubeOpacity}
+            depthWrite={false}
             onBeforeCompile={onShader}
           />
         </mesh>

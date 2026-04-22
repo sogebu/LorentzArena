@@ -326,7 +326,8 @@ export const PLAYER_WORLDLINE_OPACITY = 0.4;
 // 2026-04-19: 0.2 だと self-ship の機体マスに対してビーム本体が薄く見えない →
 // 0.55 に bump で「光線」感強化 (per-vertex time fade で先端は自然に減衰するため
 // 全体厚塗りにはならない)。
-export const LASER_WORLDLINE_OPACITY = 0.55;
+// 2026-04-22: 0.55 → 0.4 (odakin 指示、世界線がやや主張強すぎた)
+export const LASER_WORLDLINE_OPACITY = 0.4;
 
 // --- Debris opacity ---
 // InstancedMesh 全 instance 共通 (per-vertex 時間 fade が shader で乗算される)。
