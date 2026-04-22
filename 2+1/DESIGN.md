@@ -132,3 +132,52 @@ useEffect(() => {
 - [ ] 現時点で物理デモとして価値のあるタスク (チュートリアル・固有時刻表示・スマホ UI 等) がこれより優先されないか?
 - [ ] 修正による regression リスク (特に race / timing 系) は受容可能か?
 - [ ] lint + tsc + preview 2 タブテストで検証可能な単位で 1 コミットに収まるか?
+
+
+## § Build / Bundle 判断
+
+### 単一 vendor chunk を維持する (2026-04-22 規約化)
+
+**決定**: `vite.config.ts` の `manualChunks` は `node_modules` 全体を単一 `vendor` chunk に束ねる。細分割しない。
+
+```ts
+manualChunks: (id) => (id.includes("node_modules") ? "vendor" : undefined),
+```
+
+**Why — 2026-04-22 の真っ白 regression**:
+
+`4928c98` で vendor を `three` / `react` (react + react-dom + react-reconciler + scheduler) / `peer` / `fiber` (@react-three/fiber) に 4 分割したところ、**react chunk と fiber chunk が ESM レベルで循環 import** になり、ブラウザの module loader が TDZ (Temporal Dead Zone) error を throw して本番サイトが真っ白になった。
+
+根本原因: `@react-three/fiber` は `react-reconciler` の関数を import し、`react-reconciler` は `@react-three/fiber` の内部 helper を import する (React renderer ↔ reconciler の architectural bond)。単一 bundle では隠れていたこの循環が、chunk 境界を引いた瞬間に chunk 間循環 import として顕在化する。
+
+**検出失敗の理由**:
+
+- `pnpm run build` ✓ / `typecheck` ✓ / `test 116/116` ✓ / `pnpm preview` ✓ / chunk HTTP 200 ✓ すべて通った
+- `pnpm preview` は dist/ 静的配信で TDZ error を throw することはあるが、Claude Preview (MCP) の `document.hidden=true` 問題と混同しやすく、error を見逃した
+- 本番 URL を実ブラウザで踏んで console error を見るまで regression が確認できない性質の事故
+
+**Trade-off**:
+
+- Lose: 巨大 vendor (1.2 MB) chunk の内部キャッシュ granularity。例えば three.js だけ update した時も vendor 全体が invalidate
+- Keep: vendor と app (20 KB) の分離 — app コード変更の deploy で vendor cache は hit する (= 実害はほぼない。three.js 等は version bump で同時に他も更新されがち)
+- 副産物: chunk hash 1 個増えるだけなので HTTP/2 では DL オーバーヘッドほぼ無し
+
+**vendor 細分割を再考する条件**:
+
+- three.js を単独で頻繁に bump する運用に変わった場合 (現状ほぼなし)
+- vendor 1.2 MB の初期 DL がモバイル UX で実測ボトルネック化した場合
+- 再実施時は `grep -rn "react-reconciler\|scheduler" node_modules/@react-three/` 等で相互参照を事前確認してから chunk 境界を引く
+
+**関連**: `src/App.tsx` / `src/components/Lobby.tsx` の `lazy(() => import(...))` による route / subtree 単位の code-split は **維持**。これは chunk 間循環を生まない。ShipViewer (#viewer) / GameSession (PeerProvider + RelativisticGame) / ShipPreview (Lobby 背景 3D) を lazy 化することで、Lobby 初期描画 bundle から ~100 KB 程度を defer できる (main chunk 20 KB + vendor 1,178 KB で合計 1,198 KB / 337 KB gzip)。
+
+**incident 詳細 narrative**: `odakin-prefs/staging-incidents.md §2026-04-22 Vite manualChunks 細分割で循環 import`。
+
+### 関連: AVG quarantine 事件 (2026-04-19)
+
+`@react-three/drei` bundle が AVG antivirus に誤検知される事件 (`design/rendering.md §AVG 誤検知事件` 参照) を機に drei 依存は完全撤去済 (`4928c98` で package.json からも除去)。OrbitControls は `three/examples/jsm/controls/OrbitControls.js` から直 import。**単機能のために重い meta-package を入れない**という教訓は bundle 管理全般に適用。
+
+### build と typecheck を分離 (既存決定)
+
+`package.json` で `build = vite build` と `typecheck = tsc -b` を別 script に分離。deploy pipeline (`build → gh-pages`) は tsc を blocking step に含めず、type error があっても build 通過させて deploy できる。明示的に `pnpm run typecheck` を走らせる運用。
+
+**Why**: 型 error の「報告」と「deploy 阻止」を分離。deploy は「UI が壊れていない」ことを最速で確認する用途、type error は視覚に現れないので別軸で監視。CI で並列実行できる。
