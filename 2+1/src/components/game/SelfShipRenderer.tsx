@@ -67,6 +67,8 @@ import {
   SHIP_NOZZLE_THROAT_RADIUS,
 } from "./constants";
 import { transformEventForDisplay } from "./displayTransform";
+import { AntennaBeaconRenderer } from "./AntennaBeaconRenderer";
+import { DorsalPodRenderer } from "./DorsalPodRenderer";
 import { LaserCannonRenderer } from "./LaserCannonRenderer";
 import { getThreeColor, sharedGeometries } from "./threeCache";
 import type { lorentzBoost } from "../../physics";
@@ -103,6 +105,7 @@ export const SelfShipRenderer = ({
   observerPos,
   observerBoost,
   cannonStyle = "gun",
+  dorsalStyle = "antenna",
   cameraYawRef,
   alpha4,
 }: {
@@ -117,6 +120,9 @@ export const SelfShipRenderer = ({
   /** 懸架砲のデザイン。'gun': 古典機械式大砲 (SHIP_GUN_*)、'laser': エネルギー兵器
    *  (SHIP_LASER_*、LaserCannonRenderer)。default 'gun' で既存挙動保持。 */
   cannonStyle?: "gun" | "laser";
+  /** 上面構造物。'pod': 扁平楕円体 + player 色 stripe (案 B)、'antenna': アンテナ + player 色
+   *  beacon 球 (案 A)、'none': 何も描かない。default 'pod'。 */
+  dorsalStyle?: "pod" | "antenna" | "none";
   /** 時空加速度矢印用の 4-加速度 (world frame)。内部で observerBoost により観測者静止系に
    *  変換されて表示される。未指定 or 零ベクトルなら矢印非表示。自機は phaseSpace.alpha
    *  (前 tick の stored value、1 tick 遅延)、他機は OtherShipRenderer が intersection.alpha を pass。 */
@@ -374,6 +380,10 @@ export const SelfShipRenderer = ({
           metalness={0.4}
         />
       </mesh>
+
+      {/* 上面構造物 (案 A/B 切替可能、player 色で識別性を付与)。 */}
+      {dorsalStyle === "pod" && <DorsalPodRenderer color={player.color} />}
+      {dorsalStyle === "antenna" && <AntennaBeaconRenderer color={player.color} />}
 
       {/* 4 RCS nozzle hardware (常時可視、de Laval ベル型)。同 geometry を 2 pass 描画
           で外面 (FrontSide、明るい hardware 色) と内面 (BackSide、影に沈んだ暗い色) を

@@ -97,6 +97,8 @@ export interface ShipPreviewProps {
   cameraYawRef?: React.MutableRefObject<number>;
   /** 懸架砲デザイン。'gun' (既存、古典大砲) / 'laser' (2026-04-22 新規、エネルギー兵器)。 */
   cannonStyle?: "gun" | "laser";
+  /** 上面構造物デザイン。'pod' (案 B、扁平 ellipsoid + stripe) / 'antenna' (案 A、棒 + 球) / 'none'。 */
+  dorsalStyle?: "pod" | "antenna" | "none";
   /** Player 識別色 (hsl)。laser cannon の crystal / emitter / lens emissive を焼き込む。
    *  未指定 (undefined) は従来の cyan glow。 */
   playerColor?: string;
@@ -115,6 +117,7 @@ export const ShipPreview = ({
   thrustAccelRef,
   cameraYawRef,
   cannonStyle = "gun",
+  dorsalStyle = "pod",
   playerColor,
   alpha4,
 }: ShipPreviewProps = {}) => {
@@ -170,6 +173,7 @@ export const ShipPreview = ({
           observerPos={stubPlayer.phaseSpace.pos}
           observerBoost={null}
           cannonStyle={cannonStyle}
+          dorsalStyle={dorsalStyle}
           alpha4={alpha4}
         />
 

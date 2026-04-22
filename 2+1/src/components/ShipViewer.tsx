@@ -49,6 +49,7 @@ export const ShipViewer = () => {
   const [showGrid, setShowGrid] = useState(true);
   const [bgColor, setBgColor] = useState("#0a0a0f");
   const [cannonStyle, setCannonStyle] = useState<"gun" | "laser">("laser");
+  const [dorsalStyle, setDorsalStyle] = useState<"pod" | "antenna" | "none">("antenna");
   // Laser cannon の glow を player 識別色で着色する実機プレビュー用。"default" は従来の
   // cyan glow (ShipPreview の stubPlayer.color="#ffffff" fallback と同等)。
   const playerColorOptions: { label: string; value: string }[] = [
@@ -84,6 +85,7 @@ export const ShipViewer = () => {
         thrustAccelRef={thrustAccelRef}
         cameraYawRef={cameraYawRef}
         cannonStyle={cannonStyle}
+        dorsalStyle={dorsalStyle}
         playerColor={playerColor || undefined}
         alpha4={alpha4Preview}
       />
@@ -160,6 +162,23 @@ export const ShipViewer = () => {
           >
             <option value="gun">gun (古典大砲)</option>
             <option value="laser">laser (エネルギー兵器)</option>
+          </select>
+        </label>
+        <label style={{ display: "block", marginBottom: 8 }}>
+          {"Dorsal: "}
+          <select
+            value={dorsalStyle}
+            onChange={(e) => setDorsalStyle(e.target.value as "pod" | "antenna" | "none")}
+            style={{
+              background: "#222",
+              color: "#ddd",
+              border: "1px solid #555",
+              padding: "2px 6px",
+            }}
+          >
+            <option value="pod">pod (案 B、stripe)</option>
+            <option value="antenna">antenna (案 A、ビーコン球)</option>
+            <option value="none">none</option>
           </select>
         </label>
         <label style={{ display: "block", marginBottom: 8 }}>

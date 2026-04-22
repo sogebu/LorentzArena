@@ -534,6 +534,28 @@ export const SHIP_LASER_MOUNT_X_OFFSET = 0;
 export const SHIP_LASER_POD_COLOR = "hsl(210, 30%, 28%)";
 export const SHIP_LASER_POD_EMISSIVE_COLOR = "hsl(210, 35%, 35%)";
 export const SHIP_LASER_POD_EMISSIVE_INTENSITY = 0.35;
+
+// --- Dorsal antenna + beacon (案 A、最小構造でシルエット維持、beacon 球で player 色) ---
+export const SHIP_DORSAL_ANTENNA_RADIUS = 0.014;
+export const SHIP_DORSAL_ANTENNA_LENGTH = 0.38;       // hull 上面から beacon 底までの rod 長
+export const SHIP_DORSAL_BEACON_RADIUS = 0.055;       // 球 radius
+export const SHIP_DORSAL_BEACON_EMISSIVE_INTENSITY_PLAYER = 1.0;
+export const SHIP_DORSAL_BEACON_EMISSIVE_INTENSITY_DEFAULT = 2.0;
+
+// --- Dorsal pod (案 B、chin pod の鏡像、hull 上面に埋め込み、player 色 stripe で識別性付与) ---
+// 扁平楕円体で、下面は hull 内部に 30% 埋没、上面 70% 可視。pod 表面の「赤道」(center z)
+// 辺りを torus stripe で一周させて player 色 emissive。
+// Dim は chin pod より小さい (sensor/comms 役で砲ほど主張させない)。
+export const SHIP_DORSAL_POD_FORE_AFT = 0.45;
+export const SHIP_DORSAL_POD_LATERAL = 0.22;
+export const SHIP_DORSAL_POD_VERTICAL = 0.22;
+export const SHIP_DORSAL_POD_X_OFFSET = 0.0;          // 左右対称・前後中央
+export const SHIP_DORSAL_POD_SUBMERGE_RATIO = 0.3;    // pod 下側の埋没率 (0=全可視, 1=完全埋没)
+// Stripe: torus を pod 赤道に一周、scale で pod の xy 楕円断面に合わせる。
+export const SHIP_DORSAL_STRIPE_TUBE_RADIUS = 0.014;
+export const SHIP_DORSAL_STRIPE_EMISSIVE_INTENSITY_PLAYER = 1.0;  // player 色指定時 (R+G 両ch強い hue クリップ回避)
+export const SHIP_DORSAL_STRIPE_EMISSIVE_INTENSITY_DEFAULT = 1.8; // 未指定時 (cyan 系で HDR bloom 許容)
+export const SHIP_DORSAL_STRIPE_DEFAULT_COLOR = "hsl(185, 100%, 65%)";  // laser glow と揃える (cyan)
 export const SHIP_LASER_BARREL_COLOR = "hsl(210, 30%, 28%)";
 export const SHIP_LASER_BARREL_EMISSIVE_COLOR = "hsl(210, 35%, 35%)";
 export const SHIP_LASER_BARREL_EMISSIVE_INTENSITY = 0.35;

@@ -59,6 +59,8 @@
 - **Phase C-1 (wire format 厳格化)**: 混在期間確認後、受信 optional → required、shim 削除
 - **本番実戦観察**: 死亡 routing refactor + fade 3s + laser default がすべて deployed。multi-tab 実戦テストで regression / UX 確認
 - **進行方向可視化 分岐 B/C**: sphere + heading-dart (案 14) / star aberration skybox (案 16)、default frame 選択 ([`EXPLORING.md §進行方向・向きの認知支援`](EXPLORING.md))
+- **操作系検討**: 現状 WASD + マウス yaw + 射撃トリガーの組み合わせを見直し。キーリマップ / ゲームパッド / スマホタッチの統一感・直感性を洗い直す (具体スコープは未定、アイデア出しから)
+- **LH 死亡中は点光源を消す**: `SceneContent` の `lightPositions` (GameLights に渡す) に各 LH の past-cone 交差点を入れているが、LH 死亡中は光源も消した方が「灯台が落ちた」感が出る。`isLighthouse(player.id) && player.isDead` を除外条件に追加。死亡 routing の τ_0 窓中は仄かに残す等の調整余地あり
 - **フルチュートリアル** (必須、初見 UX)
 - 各プレイヤー固有時刻表示 / スマホ UI 残 / 用語再考 / 音楽の時間同期
 - **レーザー以外の世界線 × 未来光円錐の表示**: 現 sphere 0.15 + ring 0.12 薄い
