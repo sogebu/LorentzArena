@@ -564,7 +564,9 @@ export const SceneContent = ({
         );
         const quat = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
         const pos = transformEventForDisplay(myPlayer.phaseSpace.pos, observerPos, observerBoost);
-        const c = getThreeColor(myPlayer.color);
+        // Aim arrow 色は player 色ではなく laser past-cone marker と同じ silver に統一
+        // (odakin 指定: 「射撃中」text / marker と同系統で視覚統合)
+        const c = pastConeMarkerColor;
         const spacing = 1.2; // 矢印の全長 (tip 0.75 + base 0.45) と一致させ tip↔base を接合
         // 0s→1個, 0.05s→2個, 0.1s→3個（ループなし、トリガー押し始めから）
         const elapsed = Date.now() - firingStartRef.current;

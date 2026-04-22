@@ -83,7 +83,6 @@ export const HUD = ({
         deathFlash={deathFlash}
         killGlow={killGlow}
         isFiring={isFiring}
-        myLaserColor={myLaserColor}
         killNotification={killNotification}
         myDeathEvent={myDeathEvent}
       />

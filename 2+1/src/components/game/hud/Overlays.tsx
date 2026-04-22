@@ -1,10 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../../../i18n";
 import { useGameStore } from "../../../stores/game-store";
-import { RESPAWN_DELAY } from "../constants";
+import { LASER_PAST_CONE_MARKER_COLOR, RESPAWN_DELAY } from "../constants";
 import { isLighthouse } from "../lighthouse";
 import type { DeathEvent } from "../types";
 import { hslToComponents } from "./utils";
+
+// 「射撃中」text は past-cone marker と同じ silver で統一 (odakin 指定)。hslToComponents は
+// "hue, sat%, light%" 成分形式を返し、textShadow の hsla() 式に挿入して使う。
+const FIRING_TEXT_HSL = hslToComponents(LASER_PAST_CONE_MARKER_COLOR);
 
 const RespawnCountdown = () => {
   const { t } = useI18n();
@@ -47,7 +51,6 @@ type OverlaysProps = {
   deathFlash: boolean;
   killGlow: boolean;
   isFiring: boolean;
-  myLaserColor: string;
   killNotification: { victimId: string; victimName: string; color: string } | null;
   myDeathEvent?: DeathEvent | null;
 };
@@ -99,11 +102,9 @@ export const Overlays = ({
   deathFlash,
   killGlow,
   isFiring,
-  myLaserColor,
   killNotification,
   myDeathEvent,
 }: OverlaysProps) => {
-  const laserHsl = hslToComponents(myLaserColor);
   const { t } = useI18n();
   const displayVictimName = killNotification
     ? isLighthouse(killNotification.victimId)
@@ -172,7 +173,7 @@ export const Overlays = ({
               inset: 0,
               zIndex: 198,
               pointerEvents: "none",
-              boxShadow: `inset 0 0 60px hsla(${laserHsl}, 0.5), inset 0 0 25px hsla(${laserHsl}, 0.35)`,
+              boxShadow: `inset 0 0 60px hsla(${FIRING_TEXT_HSL}, 0.5), inset 0 0 25px hsla(${FIRING_TEXT_HSL}, 0.35)`,
               animation: "firing-blink 100ms step-end infinite",
             }}
           />
@@ -187,8 +188,8 @@ export const Overlays = ({
               fontSize: "24px",
               fontWeight: "bold",
               fontFamily: "monospace",
-              color: myLaserColor,
-              textShadow: `0 0 15px hsla(${laserHsl}, 0.8), 0 0 30px hsla(${laserHsl}, 0.4)`,
+              color: LASER_PAST_CONE_MARKER_COLOR,
+              textShadow: `0 0 15px hsla(${FIRING_TEXT_HSL}, 0.8), 0 0 30px hsla(${FIRING_TEXT_HSL}, 0.4)`,
               animation: "firing-blink 100ms step-end infinite",
             }}
           >

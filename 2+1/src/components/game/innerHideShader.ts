@@ -22,13 +22,21 @@ import type * as THREE from "three";
  *   <meshStandardMaterial onBeforeCompile={(s) => { applyTimeFadeShader(s); hide(s); }} />
  *   // useFrame で毎 tick: center.set(player.pos.x, player.pos.y, player.pos.t);
  */
+/**
+ * @param upperShrink 上方向 (+z、display frame の「未来側」) の非対称伸長。delta.z > 0 の
+ *   vertex について z 成分に掛けるスケール係数。< 1 で上側の effective radius が拡大 (=
+ *   hide 領域が上に伸びる)。default 1.0 で従来の対称 sphere 挙動を保持。
+ *   e.g. 0.75 → 上側の effective radius が radius / 0.75 ≈ 1.33× に。
+ */
 export const createInnerHideShader = (
   radius: number,
   centerWorld: THREE.Vector3,
+  upperShrink: number = 1.0,
 ) => {
   return (shader: THREE.WebGLProgramParametersWithUniforms): void => {
     shader.uniforms.uInnerHideRadius = { value: radius };
     shader.uniforms.uInnerHideCenter = { value: centerWorld };
+    shader.uniforms.uInnerHideUpperShrink = { value: upperShrink };
     shader.vertexShader = injectVertex(shader.vertexShader);
     shader.fragmentShader = injectFragment(shader.fragmentShader);
   };
@@ -55,7 +63,8 @@ const injectVertex = (src: string): string => {
       `${VERTEX_DECL_KEY}
 varying float vInnerDist;
 uniform float uInnerHideRadius;
-uniform vec3 uInnerHideCenter;`,
+uniform vec3 uInnerHideCenter;
+uniform float uInnerHideUpperShrink;`,
     )
     .replace(
       VERTEX_COMPUTE_KEY,
@@ -65,7 +74,11 @@ uniform vec3 uInnerHideCenter;`,
   #ifdef USE_INSTANCING
     ihLocalPos = (instanceMatrix * vec4(transformed, 1.0)).xyz;
   #endif
-  vInnerDist = length(ihLocalPos - uInnerHideCenter);
+  vec3 ihDelta = ihLocalPos - uInnerHideCenter;
+  // 上方向 (+z、display frame で未来側) の z 成分を縮めて effective radius を拡大。
+  // upperShrink=1 で対称、<1 で上側の hide 領域が伸びる。
+  if (ihDelta.z > 0.0) ihDelta.z *= uInnerHideUpperShrink;
+  vInnerDist = length(ihDelta);
 }`,
     );
 };

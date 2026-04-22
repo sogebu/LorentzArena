@@ -2,7 +2,7 @@ import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { pastLightConeIntersectionWorldLine } from "../../physics";
-import { PLAYER_WORLDLINE_OPACITY } from "./constants";
+import { PLAYER_WORLDLINE_OPACITY, SHIP_WORLDLINE_HIDE_UPPER_SHRINK } from "./constants";
 import { buildDisplayMatrix } from "./displayTransform";
 import { createInnerHideShader } from "./innerHideShader";
 import { getThreeColor } from "./threeCache";
@@ -79,7 +79,11 @@ export const WorldLineRenderer = ({
   // 交差点 (= player が「今見える」位置) を中心に world 距離 R 未満を hide。
   const onShader = useMemo(() => {
     if (innerHideRadius == null) return applyTimeFadeShader;
-    const hide = createInnerHideShader(innerHideRadius, hideCenter);
+    const hide = createInnerHideShader(
+      innerHideRadius,
+      hideCenter,
+      SHIP_WORLDLINE_HIDE_UPPER_SHRINK,
+    );
     return (s: THREE.WebGLProgramParametersWithUniforms) => {
       applyTimeFadeShader(s);
       hide(s);

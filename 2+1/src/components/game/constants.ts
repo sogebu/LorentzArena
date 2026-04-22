@@ -364,6 +364,11 @@ export const SHIP_FUTURE_CONE_HIDE_RADIUS = SHIP_HULL_RADIUS * SHIP_FUTURE_CONE_
 // 世界線の hide 半径。光円錐より小さく、gnomon マーカー周辺のみ隠す。
 export const SHIP_WORLDLINE_HIDE_RADIUS_COEFFICIENT = 1.5;
 export const SHIP_WORLDLINE_HIDE_RADIUS = SHIP_HULL_RADIUS * SHIP_WORLDLINE_HIDE_RADIUS_COEFFICIENT;
+// 世界線 hide 領域の上方向 (+z、display 未来側) 非対称伸長。< 1 で上側が伸びる。
+// 1 / 0.4 = 2.5 倍 → 上側の effective radius が 2.5 倍に (下側は不変)。
+// 過去光円錐交点から ship 現在位置までの worldline tube が ship body に食い込むのを
+// 防ぐため、intersection からかなり上まで非表示にする。
+export const SHIP_WORLDLINE_HIDE_UPPER_SHRINK = 0.4;
 // LH は機体より小さく狭い範囲だけ隠す (LH 塔の半径は ~0.2 (LIGHTHOUSE_HIT_RADIUS) で
 // 機体より細い、過剰に隠さない)。HULL_RADIUS の数倍小さい係数。
 export const LH_INNER_HIDE_RADIUS_COEFFICIENT = 2.5;
