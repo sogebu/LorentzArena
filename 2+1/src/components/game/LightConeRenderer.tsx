@@ -10,7 +10,10 @@ import {
   LIGHT_CONE_HEIGHT,
   LIGHT_CONE_SURFACE_OPACITY,
   LIGHT_CONE_WIRE_OPACITY,
+  SHIP_FUTURE_CONE_HIDE_RADIUS,
   SHIP_INNER_HIDE_RADIUS,
+  SHIP_LIFT_Z,
+  SHIP_MODEL_SCALE,
 } from "./constants";
 import { useDisplayFrame } from "./DisplayFrameContext";
 import { createInnerHideShader } from "./innerHideShader";
@@ -96,7 +99,18 @@ export const LightConeRenderer = ({
   // hideCenter は Vector3 ref を keep し、useFrame で observer.pos に更新 (= 自機が
   // 動いても hide center が追従)。光円錐・世界線共用 (分離する意味無し)。
   const hideCenter = useMemo(() => new THREE.Vector3(), []);
-  const onShader = useMemo(() => {
+  // Future cone と past cone で半径を分離:
+  //   - future: SHIP_FUTURE_CONE_HIDE_RADIUS (大きめ、hull 上方を広範に hide)
+  //   - past:   SHIP_INNER_HIDE_RADIUS (baseline、hull 下方のみ)
+  // hideCenter は共通 (hull 中心)。
+  const onFutureShader = useMemo(() => {
+    const hide = createInnerHideShader(SHIP_FUTURE_CONE_HIDE_RADIUS, hideCenter);
+    return (s: THREE.WebGLProgramParametersWithUniforms) => {
+      applyTimeFadeShader(s);
+      hide(s);
+    };
+  }, [hideCenter]);
+  const onPastShader = useMemo(() => {
     const hide = createInnerHideShader(SHIP_INNER_HIDE_RADIUS, hideCenter);
     return (s: THREE.WebGLProgramParametersWithUniforms) => {
       applyTimeFadeShader(s);
@@ -141,9 +155,9 @@ export const LightConeRenderer = ({
   useFrame(() => {
     const pos = observerPosRef.current;
     if (!pos) return;
-    // Inner hide center を観測者位置に追従。三次元の uniform で世界座標 → shader 内で
-    // 各 vertex との距離計算。
-    hideCenter.set(pos.x, pos.y, pos.t);
+    // Inner hide center を hull 中心に置く。
+    // Hull 中心 world z = SHIP_LIFT_Z * SHIP_MODEL_SCALE (apex から +offset)。
+    hideCenter.set(pos.x, pos.y, pos.t + SHIP_LIFT_Z * SHIP_MODEL_SCALE);
     const { futurePositions, futureAttr, pastPositions, pastAttr } = geo;
     const N = ARENA_RADIAL_SEGMENTS;
 
@@ -198,7 +212,7 @@ export const LightConeRenderer = ({
           opacity={LIGHT_CONE_SURFACE_OPACITY}
           side={THREE.DoubleSide}
           depthWrite={false}
-          onBeforeCompile={onShader}
+          onBeforeCompile={onFutureShader}
         />
       </mesh>
       <mesh
@@ -213,7 +227,7 @@ export const LightConeRenderer = ({
           opacity={LIGHT_CONE_WIRE_OPACITY}
           wireframe
           depthWrite={false}
-          onBeforeCompile={onShader}
+          onBeforeCompile={onFutureShader}
         />
       </mesh>
       {/* Past surface + wire */}
@@ -229,7 +243,7 @@ export const LightConeRenderer = ({
           opacity={LIGHT_CONE_SURFACE_OPACITY}
           side={THREE.DoubleSide}
           depthWrite={false}
-          onBeforeCompile={onShader}
+          onBeforeCompile={onPastShader}
         />
       </mesh>
       <mesh
@@ -244,7 +258,7 @@ export const LightConeRenderer = ({
           opacity={LIGHT_CONE_WIRE_OPACITY}
           wireframe
           depthWrite={false}
-          onBeforeCompile={onShader}
+          onBeforeCompile={onPastShader}
         />
       </mesh>
     </>

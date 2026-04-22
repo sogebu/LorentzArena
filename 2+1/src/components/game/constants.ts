@@ -352,14 +352,23 @@ export const SHIP_HULL_RADIUS = 0.32;
 // 自機本体・他機本体・LH の周辺で「過去光円錐 / 世界線」が砲身・LH 塔・他機 sphere 等と
 // 被って見えるのを抑制する inner-hide 半径。観測者の過去光円錐とその world line の
 // 交差点 (= gnomon が描かれる位置) を中心に world 距離 R 未満の vertex を alpha=0 に。
-// HULL_RADIUS 連動 = 機体サイズに比例して自動追従。光円錐・世界線共用 (分離する意味無し)。
-// 2026-04-22 odakin 指示で 9 → 4.5 に半減。
-export const SHIP_INNER_HIDE_RADIUS_COEFFICIENT = 4.5;
+// HULL_RADIUS 連動 = 機体サイズに比例して自動追従。
+// Past cone (過去光円錐) の hide 半径。baseline。
+export const SHIP_INNER_HIDE_RADIUS_COEFFICIENT = 3.0;
 export const SHIP_INNER_HIDE_RADIUS = SHIP_HULL_RADIUS * SHIP_INNER_HIDE_RADIUS_COEFFICIENT;
+// Future cone (未来光円錐) の hide 半径。hull より上に大きく広げて自機周辺を広範に隠す。
+export const SHIP_FUTURE_CONE_HIDE_RADIUS_COEFFICIENT = 5.0;
+export const SHIP_FUTURE_CONE_HIDE_RADIUS = SHIP_HULL_RADIUS * SHIP_FUTURE_CONE_HIDE_RADIUS_COEFFICIENT;
+// 世界線の hide 半径。光円錐より小さく、gnomon マーカー周辺のみ隠す。
+export const SHIP_WORLDLINE_HIDE_RADIUS_COEFFICIENT = 1.5;
+export const SHIP_WORLDLINE_HIDE_RADIUS = SHIP_HULL_RADIUS * SHIP_WORLDLINE_HIDE_RADIUS_COEFFICIENT;
 // LH は機体より小さく狭い範囲だけ隠す (LH 塔の半径は ~0.2 (LIGHTHOUSE_HIT_RADIUS) で
 // 機体より細い、過剰に隠さない)。HULL_RADIUS の数倍小さい係数。
 export const LH_INNER_HIDE_RADIUS_COEFFICIENT = 2.5;
 export const LH_INNER_HIDE_RADIUS = SHIP_HULL_RADIUS * LH_INNER_HIDE_RADIUS_COEFFICIENT;
+// 機体モデル全体の表示スケール。物理値 (hit 判定・laser 発射点等) は触らず、
+// 見た目の 3D モデルのみ一括拡縮する。SelfShipRenderer 最外層 group に適用。
+export const SHIP_MODEL_SCALE = 0.75;
 export const SHIP_HULL_HEIGHT = 0.16;
 // Hull 色は **固定** (プレイヤー色を使わない)。deadpan 軍用機の dark steel-navy。
 // 自機識別は「機体形状そのもの」(他機 sphere との対比) + 観測者 = 自機 (rest frame で
@@ -520,11 +529,11 @@ export const SHIP_LASER_EMITTER_THICKNESS = 0.016;
 export const SHIP_LASER_MOUNT_X_OFFSET = 0;
 
 // Colors
-export const SHIP_LASER_POD_COLOR = "hsl(210, 28%, 22%)";       // hull より僅か darker で blister 感
-export const SHIP_LASER_POD_EMISSIVE_COLOR = "hsl(210, 30%, 28%)";
-export const SHIP_LASER_POD_EMISSIVE_INTENSITY = 0.3;
-export const SHIP_LASER_BARREL_COLOR = "hsl(200, 22%, 20%)";
-export const SHIP_LASER_BARREL_EMISSIVE_COLOR = "hsl(200, 25%, 28%)";
+export const SHIP_LASER_POD_COLOR = "hsl(210, 30%, 28%)";
+export const SHIP_LASER_POD_EMISSIVE_COLOR = "hsl(210, 35%, 35%)";
+export const SHIP_LASER_POD_EMISSIVE_INTENSITY = 0.35;
+export const SHIP_LASER_BARREL_COLOR = "hsl(210, 30%, 28%)";
+export const SHIP_LASER_BARREL_EMISSIVE_COLOR = "hsl(210, 35%, 35%)";
 export const SHIP_LASER_BARREL_EMISSIVE_INTENSITY = 0.35;
 export const SHIP_LASER_LENS_COLOR = "hsl(200, 18%, 42%)";       // brighter steel for contrast
 export const SHIP_LASER_LENS_EMISSIVE_COLOR = "hsl(185, 80%, 55%)";

@@ -253,6 +253,35 @@ cannon 全体を navy にしたのは「兵器を hardware として独立させ
 
 **AVG 誤検知事件 (2026-04-19)**: `@react-three/drei` bundle が AVG antivirus に `JS:Prontexi-Z [Trj]` と誤検知され、Vite optimize 直後に bundle が quarantine 削除されて真っ白事故。**ShipViewer の OrbitControls を `three/examples/jsm/controls/OrbitControls.js` から直 import に切替** (drei 依存完全撤去) で回避。教訓: 単機能 (OrbitControls だけ) のために重い meta-package を入れない、native API で代替できるなら優先。
 
+### 見た目スケール `SHIP_MODEL_SCALE` (物理値と分離、2026-04-22)
+
+機体が大きすぎた印象を受け 3/4 倍したいが、**constants 一式 (hull / nozzle / bracket / cannon / pod / barrel / crystal / lens / emitter ≈ 20 個) を個別に 0.75 倍するのは変更面積が大きく保守も辛い**。代わりに `SHIP_MODEL_SCALE = 0.75` を 1 つだけ新設して **SelfShipRenderer 最外層 group の `scale` に適用** (1 箇所のみ)。
+
+**見た目 ↔ 物理の分離**:
+
+- 機体の 3D モデルは 0.75 倍表示
+- 物理値 (laser 発射点 = cannon mount = world origin、hit 判定半径 = `SHIP_HULL_RADIUS`、`SHIP_LIFT_Z`) は **constants 値そのまま**、scale の影響を受けない
+- Three.js の scale は group origin (= player world pos) 中心に効くため、cannon mount が origin に来る関係は保持 → laser 軸整合が維持
+
+**SelfShipRenderer 流用先への波及**: OtherShipRenderer / DeadShipRenderer / ShipViewer / ShipPreview もすべて SelfShipRenderer を流用しているため、`SHIP_MODEL_SCALE` は自機・他機・死亡 ship・preview で同時に効く (意図通り)。
+
+**hide 球側の連動**: 機体が縮んだ結果 hull 中心の world z が `SHIP_LIFT_Z * SHIP_MODEL_SCALE` になるため、LightConeRenderer の hide center もこの offset を反映 (`SHIP_LIFT_Z * SHIP_MODEL_SCALE`)。定数導入 = 唯一変更すれば連動して正しい場所を隠す。
+
+### 色 palette 更新 (laser v2 統合、2026-04-22)
+
+`SHIP_LASER_POD_*` / `SHIP_LASER_BARREL_*` を hull 同値に寄せて機体の色帯を hull 系に収束:
+
+| 層 | HSL | 用途 |
+|---|---|---|
+| Navy (hull 同値) | `hsl(210, 30%, 28%)` | hull + laser pod + laser barrel |
+| Navy emissive | `hsl(210, 35%, 35%)` | 上記の emissive |
+| Steel-blue | `hsl(220, 25%, 38%)` | bracket / nozzle hardware / nozzle mount pylon |
+| Dark mid | `hsl(220, 30%, 26%)` | nozzle 内壁 |
+| Steel | `hsl(200, 18%, 42%)` | laser lens body |
+| Cyan | `hsl(185, 80-100%, 55-70%)` | laser lens emissive / crystal bulge / emitter glow |
+
+**判断**: 旧実装では laser pod/barrel が hull より僅か暗い独自の dark navy (`210, 28%, 22%` / `200, 22%, 20%`) で「砲は独立パーツ」感を出していたが、実機で「黒すぎて見えない」問題 + LaserCannonRenderer の設計コメント (「pod から生える形で構造的一体感」) に忠実化するため hull 同色に統合。pod material も barrel と同一 (roughness 0.5 / metalness 0.72 / emissive intensity 0.35) にして「hull の延長の単一塊」として読ませる。プレイヤー色の焼き込みは別タスク (SESSION.md §次にやること) で accent 層を加える方向。
+
 ### Inner-hide shader (LightCone × cannon の被り解消、2026-04-20)
 
 **動機**: 自機の belly-mounted cannon (origin を貫く軸) と、自機自身の **過去光円錐 / 自機の世界線 tube** が origin 近傍で完全に重なる → cannon が past-cone surface に埋もれて見えない。同様に「他プレイヤーが自機の過去光円錐と交わる時、相手の cannon 周りに自機の past-cone wireframe が乗ってきて視覚汚染する」。
@@ -271,24 +300,30 @@ cannon 全体を navy にしたのは「兵器を hardware として独立させ
 
 | 対象 mesh | hide center | 理由 |
 |---|---|---|
-| 自機の自分の過去光円錐 (`LightConeRenderer`) | `observer.pos` (= 自機 event) | 光円錐の apex そのもの |
-| 自機の自分の worldline tube | past-cone intersection (= worldline tip) | 自機の現在位置 (= apex でもある) |
+| 自機の自分の過去光円錐 (`LightConeRenderer` past) | `observer.pos + (0,0, SHIP_LIFT_Z * SHIP_MODEL_SCALE)` | **rescaled hull 中心**。apex (observer) より +offset した world 時間軸点 (rest frame で display +z と一致) |
+| 自機の自分の未来光円錐 (`LightConeRenderer` future) | 同上 (hull 中心) | past と center 共通、**radius のみ大きめ** にして未来側を広範に隠す (future cone は hull から離れて伸びる) |
 | **他プレイヤー / LH の worldline tube** | `pastLightConeIntersectionWorldLine(wl, observerPos)` | **観測者が「今見ている」spacetime 点** (gnomon マーカーが描かれる位置)。**最終 vertex (= 相手の現在 world 位置) ではない** ← 一度ここを間違えて odakin に訂正された |
 
 「観測者から相手はどこに見えるか」 = 過去光円錐との交差点。worldline の最終 vertex は相手の現在 world 位置で、観測者には光速遅延で **過去の位置** に見えるため、最終 vertex を hide center にすると「見えている相手の周りに hide が効かず、未来の相手の周りに hide が効く」というズレ事故になる。
 
-**半径**: hull radius と連動した形式で
+光円錐側の hide center が apex (observer) から hull 中心へ +SHIP_LIFT_Z × SHIP_MODEL_SCALE 浮いているのは、`SHIP_MODEL_SCALE` 適用で機体が hull 中心まわりに縮んだ結果、apex 中心の球だと hull 全体をカバーしきれない + 未来光円錐の「hull を突き抜ける上方」を隠せない非対称が生じたため。rest-frame 前提での計算 (動いている観測者は world ↔ display 軸がずれるが実害は無視)。
+
+**半径: 3 系統に分離**
+
+光円錐の future と past、および worldline とで要求が違うので半径を別定数に分けた:
 
 ```
-SHIP_INNER_HIDE_RADIUS = SHIP_HULL_RADIUS × SHIP_INNER_HIDE_RADIUS_COEFFICIENT
-                       = 0.32 × 9 = 2.88
-LH_INNER_HIDE_RADIUS   = SHIP_HULL_RADIUS × LH_INNER_HIDE_RADIUS_COEFFICIENT
-                       = 0.32 × 2.5 = 0.8
+SHIP_FUTURE_CONE_HIDE_RADIUS = SHIP_HULL_RADIUS × 5.0   // 自機上方の未来光円錐を広範に隠す
+SHIP_INNER_HIDE_RADIUS       = SHIP_HULL_RADIUS × 3.0   // 過去光円錐 (baseline)
+SHIP_WORLDLINE_HIDE_RADIUS   = SHIP_HULL_RADIUS × 1.5   // gnomon マーカー周辺のみ
+LH_INNER_HIDE_RADIUS         = SHIP_HULL_RADIUS × 2.5   // LH は砲身が無いので小さめ
 ```
 
-LH は塔モデルが小さい + 砲身がないので小さめ。係数は 3 → 4 → 5 → 6 → 7 → 8 → 9 とインタラクティブ tuning で着地。当初 `SHIP_INNER_HIDE_RADIUS = 8.5` リテラルで試して「おおきすぎやろ。自機の大きさぐらいじゃないの。自機の適当な半径の適当な係数倍、とかして連動するようにしたら」フィードバック → hull 連動式に切替。
+- Future cone は apex から上方へ無限に広がり、radius 1 程度では hull の上側しか隠せない → 5.0 で広めに
+- Past cone は対称に下方へ広がるが「hull の直下に自機の残像が少し覗く」程度で十分 (大きすぎるとゲームの前方視界が曇る) → 3.0
+- Worldline tube は gnomon マーカー周辺の細い領域 1 箇所だけ隠せばよい (=「今見ている相手位置」の被り解消) → 機体輪郭近くの 1.5 で最小限に
 
-**SceneContent routing**: 全 worldline (生存中: 自機 / 他機 / LH、凍結) に `innerHideRadius` prop を渡す。LH は `LH_INNER_HIDE_RADIUS`、それ以外は `SHIP_INNER_HIDE_RADIUS`。`LightConeRenderer` (= self past cone) は常に `SHIP_INNER_HIDE_RADIUS` 適用。
+**SceneContent routing**: 全 worldline (生存中: 自機 / 他機 / LH、凍結) に `innerHideRadius` prop を渡す。LH は `LH_INNER_HIDE_RADIUS`、それ以外は `SHIP_WORLDLINE_HIDE_RADIUS`。`LightConeRenderer` は future mesh / past mesh で別 shader (`onFutureShader` / `onPastShader`、hideCenter 共通 + radius のみ差) を適用。
 
 ### worldLine.history サイズ: 5000 → 1000 (FPS 対策、2026-04-17)
 

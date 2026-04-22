@@ -45,6 +45,7 @@ import {
   SHIP_HULL_EMISSIVE_COLOR,
   SHIP_HULL_EMISSIVE_INTENSITY,
   SHIP_HULL_HEIGHT,
+  SHIP_MODEL_SCALE,
   SHIP_HULL_RADIUS,
   SHIP_NOZZLE_EMISSIVE_COLOR,
   SHIP_NOZZLE_EMISSIVE_INTENSITY,
@@ -96,6 +97,7 @@ export const SelfShipRenderer = ({
   observerPos,
   observerBoost,
   cannonStyle = "gun",
+  cameraYawRef,
 }: {
   player: {
     id: string;
@@ -108,6 +110,10 @@ export const SelfShipRenderer = ({
   /** 懸架砲のデザイン。'gun': 古典機械式大砲 (SHIP_GUN_*)、'laser': エネルギー兵器
    *  (SHIP_LASER_*、LaserCannonRenderer)。default 'gun' で既存挙動保持。 */
   cannonStyle?: "gun" | "laser";
+  /** 自機専用: heading の source として phaseSpace.heading (store 経由、re-render 遅延あり)
+   *  の代わりに cameraYawRef を直読して useFrame 内で最新値を使う。未指定なら
+   *  phaseSpace.heading を使う (他機流用時)。Phase A の re-render 遅延起因のカクカク対策。 */
+  cameraYawRef?: React.RefObject<number>;
 }) => {
   const groupRef = useRef<THREE.Group>(null);
   // 4 cardinal nozzle に対応する exhaust ペア (outer + inner)。各 nozzle は独立に
@@ -188,10 +194,12 @@ export const SelfShipRenderer = ({
     );
     group.position.set(dp.x, dp.y, dp.t);
 
-    // Rotation: phaseSpace.heading (quaternion) から yaw を抽出 (2+1 では 1 自由度)。
-    // 自機の heading は useGameLoop 側で毎 tick `yawToQuat(cameraYaw)` がセットされる
-    // ので従来の cameraYawRef 直読と等価。Phase B migration の一環。
-    const yaw = quatToYaw(player.phaseSpace.heading);
+    // Rotation: 自機 (cameraYawRef 渡し) は ref 直読で rAF 毎に最新値取得、
+    // store subscribe 経由の re-render 遅延を避ける。他機流用時 (OtherShipRenderer /
+    // DeadShipRenderer) は phaseSpace.heading (past-cone 交点補間済) を読む。
+    const yaw = cameraYawRef
+      ? cameraYawRef.current
+      : quatToYaw(player.phaseSpace.heading);
     group.rotation.set(0, 0, yaw);
 
     // 4 cardinal nozzle 各々の独立噴射 (RCS の真面目な合成)。
@@ -300,7 +308,7 @@ export const SelfShipRenderer = ({
   });
 
   return (
-    <group ref={groupRef}>
+    <group ref={groupRef} scale={SHIP_MODEL_SCALE}>
       {/* === Lift wrapper: 全体を +SHIP_LIFT_Z 持ち上げて cannon mount を world origin に着地。
             これで cannon 軸が origin (= 過去光円錐の交点 = laser 発射点) を通る。
             exhausts / arrow も lift wrapper 内、座標系は lifted frame (z=0 は world z=+SHIP_LIFT_Z)。 */}

@@ -12,6 +12,8 @@
 - **レーザー砲 v2** (`b7c75b4` + `5dc8952`): chin pod 一体型、barrel rear 0.15 食い込みで mount 浮き解消
 - **Bundle 効率化** (`4928c98` + `af79e80`): drei 削除 + vendor 単一 chunk + lazy-load。初期 Lobby ロード 1,308 → 332 KB (-75%)。vendor 細分割の循環 import 事故は [`DESIGN.md §Build / Bundle 判断`](DESIGN.md) に記録
 - **DEATH_TAU_MAX 5 → 3** + **laser cannon default 切替** (`fc40254` + `41f4741`): body fade 3 秒化、自機/他機/死亡 ship を cannonStyle="laser" 明示
+- **機体見た目調整 (scale 3/4 + laser 色/材質 hull 統合 + hide 球 split)**: `SHIP_MODEL_SCALE = 0.75` を SelfShipRenderer 最外層 group に適用し物理値 (hit / laser 発射点) 不変のまま機体だけ 3/4 倍。laser pod/barrel を hull と同色・同 emissive + pod material を barrel (roughness 0.5 / metalness 0.72 / intensity 0.35) に揃えて「hull から生える」一体感を強化。Inner hide 球は中心を observer apex → hull 中心 (`pos.t + SHIP_LIFT_Z * SHIP_MODEL_SCALE`) に移し、future/past で radius 分離 (`SHIP_FUTURE_CONE_HIDE_RADIUS_COEFFICIENT = 5.0` / `SHIP_INNER_HIDE_RADIUS_COEFFICIENT = 3.0`)、世界線は独立 coefficient (`SHIP_WORLDLINE_HIDE_RADIUS_COEFFICIENT = 1.5`)
+- **自機 heading カクカク解消**: Phase A で heading source が `cameraYawRef` 直読 → `player.phaseSpace.heading` (store 経由) に移った結果、zustand subscribe → React re-render 遅延 + game tick 60Hz vs rAF 120Hz の quantize でカクカク化。SelfShipRenderer に optional `cameraYawRef` prop を追加し、自機描画時のみ useFrame 内で ref 直読、他機/DeadShip 流用時は従来通り `phaseSpace.heading` を読む fallback。詳細 rationale: [`design/state-ui.md §自機 heading source`](design/state-ui.md)
 
 ## 既知の課題
 
@@ -46,8 +48,7 @@
 ### 優先 (次回最初に検討)
 
 - **Phase A/B で実装した worldline 向き・加速度の思想・コード対称性 audit**: `PhaseSpace = (pos, u, heading, alpha)` 拡張 + past-cone 交点補間 (A-4) + SelfShipRenderer heading source 切替 (B-2) 以降、bug が散見 (DeathMarker regression / 3D モデル消失 / etc)。**そろそろ思想に立ち返って対称性・クリーンさを深く追求するタイミング**。具体候補: (a) component 間の「fade / gate / routing」責務配置の統一 (M21 を広域適用)、(b) Phase B-5 (他機 exhaust の pure thrust broadcast) の再設計、(c) Phase C-1 (wire format 厳格化、heading/alpha optional → required) と整合、(d) 世界線データと描画機構の「対応関係」を DESIGN.md に書き下し。plan 化検討: `plans/2026-04-22-symmetry-audit.md` など
-- **プレイヤー色を ship model のパーツに合成**: hull 固定 navy で識別弱い。accent stripe / fin / chin pod の emissive / barrel glow 等、パーツのどれかに player color を焼き込む material variant を追加。SelfShipRenderer に color prop 追加、OtherShipRenderer + DeadShipRenderer で流用。Phase B-5 と独立、先行可能
-- **レーザー砲を短くする**: 現 `SHIP_LASER_BARREL_LENGTH = 1.5` は長めの印象。0.9〜1.2 あたりに短縮して見た目調整。lens stack / emitter 位置も追従させる定数調整
+- **プレイヤー色を ship model のパーツに合成**: hull 固定 navy で識別弱い。機体本体 (hull + nozzle + pod + barrel) の色が全て H=200〜220 の navy 帯に統一 (laser cannon 側も今回 hull 同値化したため system-wide に 12 色が狭いレンジに収束)、cyan 発光 3 点のみがアクセント → player 識別は形状依存。accent stripe / fin / pod or barrel の emissive 等、パーツのどれかに player color を焼き込む material variant を追加する方向。SelfShipRenderer に color prop 追加、OtherShipRenderer + DeadShipRenderer で流用。Phase B-5 と独立、先行可能
 
 ### 既存 (優先順未決定)
 

@@ -223,5 +223,33 @@ KILL テキストが出るのと同じタイミングでスコアが増えるの
 
 **境界**: respawn 瞬間に energy バーが復活、bar 描画ロジックは `isDead` 判定 1 箇所だけで分岐するので追加 state 不要。Phase C1 の post-hit i-frame / kill 5s 無敵などとは独立。
 
+### 自機 heading source: `cameraYawRef` 直読 fallback (2026-04-22)
+
+**背景**: Phase A-1〜B-2 で自機 heading source を `cameraYawRef` 直読 → `player.phaseSpace.heading` (store 経由) に切替した結果、120Hz ディスプレイ環境で自機回転が 2 frame 量子化されてカクカクする事象が発生。
+
+**原因の分解**:
+
+- Game loop は `setInterval(gameLoop, GAME_LOOP_INTERVAL)` = **60Hz tick** で store を更新
+- SelfShipRenderer の `useFrame` は rAF = **display refresh rate (60/120Hz)**
+- 120Hz rAF に対して store 更新 60Hz → **2 rAF frame ごとに 1 回しか heading が更新されない** → 同じ yaw が 2 frame 連続で読まれる量子化ジッター
+- さらに zustand subscribe → React re-render の遅延が 1 rAF 分上乗せされるケースがある
+
+Phase A 以前 (= `cameraYawRef` 直読) では、ref は subscribe 経路を通らず `useFrame` 内で毎 rAF 即時読めていた。store 更新頻度自体は同じ 60Hz でも「最新値を取り逃す」タイミングが存在しない分、体感ジッターが軽かった。
+
+**対処**: SelfShipRenderer に optional prop `cameraYawRef?: React.RefObject<number>` を追加し、**渡されていれば `useFrame` 内で `cameraYawRef.current` を直読**、渡されていなければ従来通り `quatToYaw(player.phaseSpace.heading)` を使う。SceneContent の自機 path のみ `cameraYawRef` を渡し、OtherShipRenderer / DeadShipRenderer (SelfShipRenderer 流用先) は prop 省略 → 他機は引き続き past-cone 交点補間された `phaseSpace.heading` を読む。
+
+**なぜ A 案 (ref 直読 fallback) を選んだか** (対話ログ凝縮):
+
+| 案 | 更新頻度 | 読取りパス | 備考 |
+|---|---|---|---|
+| A (ref 直読) | 60Hz (game tick) | ref.current | Phase A 以前と同等、最小変更 |
+| B (store 即時) | 60Hz (game tick) | store | subscribe 経由の遅延だけ消える、ref 同頻度 |
+| C (rAF 駆動) | 60/120Hz (rAF) | store or ref | game loop 全体の影響大 |
+| D (`getState()` 直読) | 60Hz (game tick) | store via `getState()` | B の簡易版、subscribe skip |
+
+A と B は **tick 60Hz 由来の量子化**に対しては同じだが、B/D は store subscribe に起因する re-render 遅延分だけ追加ジッターが残る可能性があった。Phase A 以前に戻せる最小修正 = A。他機は store subscribe が本質 (自機と heading の source が違う) なので fallback path で従来通り。
+
+**境界**: 自機の heading は引き続き game tick 内で store `phaseSpace.heading` にも書き込まれている (useGameLoop が毎 tick `yawToQuat(cameraYawRef.current)` を setPhaseSpace)。これは snapshot / wire 送信 / 世界線 history append のため。render path のみが ref 直読に戻ったというのが正確な差分。
+
 ---
 

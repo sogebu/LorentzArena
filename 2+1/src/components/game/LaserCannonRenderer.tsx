@@ -127,7 +127,7 @@ export const LaserCannonRenderer = () => {
           emissive={podEmissive}
           emissiveIntensity={SHIP_LASER_POD_EMISSIVE_INTENSITY}
           roughness={0.5}
-          metalness={0.65}
+          metalness={0.72}
         />
       </mesh>
 

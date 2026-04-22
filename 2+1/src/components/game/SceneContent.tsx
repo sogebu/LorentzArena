@@ -36,7 +36,7 @@ import {
   PLAYER_MARKER_GLOW_OPACITY_OTHER,
   PLAYER_MARKER_MAIN_OPACITY_OTHER,
   PLAYER_MARKER_SIZE_OTHER,
-  SHIP_INNER_HIDE_RADIUS,
+  SHIP_WORLDLINE_HIDE_RADIUS,
 } from "./constants";
 import {
   buildDisplayMatrix,
@@ -321,7 +321,7 @@ export const SceneContent = ({
           observerPos={observerPos}
           observerBoost={observerBoost}
           innerHideRadius={
-            isLighthouse(fw.playerId) ? LH_INNER_HIDE_RADIUS : SHIP_INNER_HIDE_RADIUS
+            isLighthouse(fw.playerId) ? LH_INNER_HIDE_RADIUS : SHIP_WORLDLINE_HIDE_RADIUS
           }
         />
       ))}
@@ -336,7 +336,7 @@ export const SceneContent = ({
           observerPos={observerPos}
           observerBoost={observerBoost}
           innerHideRadius={
-            isLighthouse(player.id) ? LH_INNER_HIDE_RADIUS : SHIP_INNER_HIDE_RADIUS
+            isLighthouse(player.id) ? LH_INNER_HIDE_RADIUS : SHIP_WORLDLINE_HIDE_RADIUS
           }
         />
       ))}
@@ -371,6 +371,7 @@ export const SceneContent = ({
               observerPos={observerPos}
               observerBoost={observerBoost}
               cannonStyle="laser"
+              cameraYawRef={cameraYawRef}
             />,
           );
         } else if (!isMe) {
