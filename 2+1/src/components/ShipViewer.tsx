@@ -49,7 +49,7 @@ export const ShipViewer = () => {
   const [showGrid, setShowGrid] = useState(true);
   const [bgColor, setBgColor] = useState("#0a0a0f");
   const [cannonStyle, setCannonStyle] = useState<"gun" | "laser">("laser");
-  const [dorsalStyle, setDorsalStyle] = useState<"pod" | "antenna" | "none">("antenna");
+  const [dorsalStyle, setDorsalStyle] = useState<"pod" | "antenna" | "none">("pod");
   // Laser cannon の glow を player 識別色で着色する実機プレビュー用。"default" は従来の
   // cyan glow (ShipPreview の stubPlayer.color="#ffffff" fallback と同等)。
   const playerColorOptions: { label: string; value: string }[] = [

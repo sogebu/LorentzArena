@@ -105,7 +105,7 @@ export const SelfShipRenderer = ({
   observerPos,
   observerBoost,
   cannonStyle = "gun",
-  dorsalStyle = "antenna",
+  dorsalStyle = "pod",
   cameraYawRef,
   alpha4,
 }: {
