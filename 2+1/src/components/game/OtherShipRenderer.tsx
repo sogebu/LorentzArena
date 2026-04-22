@@ -73,6 +73,7 @@ export const OtherShipRenderer = ({
       thrustAccelRef={thrustRef}
       observerPos={observerPos}
       observerBoost={observerBoost}
+      cannonStyle="laser"
     />
   );
 };

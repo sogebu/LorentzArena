@@ -93,6 +93,7 @@ export const DeadShipRenderer = ({
         thrustAccelRef={zeroThrustRef}
         observerPos={observerPos}
         observerBoost={observerBoost}
+        cannonStyle="laser"
       />
     </group>
   );

@@ -370,6 +370,7 @@ export const SceneContent = ({
               thrustAccelRef={thrustAccelRef}
               observerPos={observerPos}
               observerBoost={observerBoost}
+              cannonStyle="laser"
             />,
           );
         } else if (!isMe) {
