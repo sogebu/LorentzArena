@@ -372,6 +372,7 @@ export const SceneContent = ({
               observerBoost={observerBoost}
               cannonStyle="laser"
               cameraYawRef={cameraYawRef}
+              alpha4={player.phaseSpace.alpha}
             />,
           );
         } else if (!isMe) {

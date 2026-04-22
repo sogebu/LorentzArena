@@ -100,6 +100,9 @@ export interface ShipPreviewProps {
   /** Player 識別色 (hsl)。laser cannon の crystal / emitter / lens emissive を焼き込む。
    *  未指定 (undefined) は従来の cyan glow。 */
   playerColor?: string;
+  /** spacetime 加速度矢印用の 4-加速度 (world frame)。未指定時は矢印非表示。
+   *  preview では u=0 前提なので (0, thrust.x, thrust.y, 0) を渡せば spatial 矢印として表示。 */
+  alpha4?: Vector4;
 }
 
 export const ShipPreview = ({
@@ -113,6 +116,7 @@ export const ShipPreview = ({
   cameraYawRef,
   cannonStyle = "gun",
   playerColor,
+  alpha4,
 }: ShipPreviewProps = {}) => {
   const defaultThrustRef = useRef<Vector3>(createVector3(0, 0, 0));
   const defaultYawRef = useRef<number>(0);
@@ -166,6 +170,7 @@ export const ShipPreview = ({
           observerPos={stubPlayer.phaseSpace.pos}
           observerBoost={null}
           cannonStyle={cannonStyle}
+          alpha4={alpha4}
         />
 
         <Orbit autoRotate={autoRotate} interactive={interactive} target={cameraTarget} />

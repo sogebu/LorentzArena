@@ -1,7 +1,13 @@
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
-import { quatToYaw, type Quaternion, type Vector3, type Vector4 } from "../../physics";
+import {
+  multiplyVector4Matrix4,
+  quatToYaw,
+  type Quaternion,
+  type Vector3,
+  type Vector4,
+} from "../../physics";
 import {
   ARROW_BASE_LENGTH,
   ARROW_BASE_OFFSET,
@@ -98,6 +104,7 @@ export const SelfShipRenderer = ({
   observerBoost,
   cannonStyle = "gun",
   cameraYawRef,
+  alpha4,
 }: {
   player: {
     id: string;
@@ -110,6 +117,10 @@ export const SelfShipRenderer = ({
   /** 懸架砲のデザイン。'gun': 古典機械式大砲 (SHIP_GUN_*)、'laser': エネルギー兵器
    *  (SHIP_LASER_*、LaserCannonRenderer)。default 'gun' で既存挙動保持。 */
   cannonStyle?: "gun" | "laser";
+  /** 時空加速度矢印用の 4-加速度 (world frame)。内部で observerBoost により観測者静止系に
+   *  変換されて表示される。未指定 or 零ベクトルなら矢印非表示。自機は phaseSpace.alpha
+   *  (前 tick の stored value、1 tick 遅延)、他機は OtherShipRenderer が intersection.alpha を pass。 */
+  alpha4?: Vector4;
   /** 自機専用: heading の source として phaseSpace.heading (store 経由、re-render 遅延あり)
    *  の代わりに cameraYawRef を直読して useFrame 内で最新値を使う。未指定なら
    *  phaseSpace.heading を使う (他機流用時)。Phase A の re-render 遅延起因のカクカク対策。 */
@@ -275,43 +286,78 @@ export const SelfShipRenderer = ({
       innerMat.opacity = smoothedI * EXHAUST_MAX_OPACITY;
     }
 
-    // AccelerationArrow: +thrust 方向 (resultant、4 nozzle の合成と一致)。
-    // 全体 magnitude (= thrustFrac) で smoothing。
+    // Spacetime acceleration arrow: 4-加速度 α_world を **観測者静止系** に boost し、
+    // display frame (three.js: x=x, y=y, z=t_obs_rest) 内で任意方向を向く 3D 矢印として描画。
+    // 時間成分が非ゼロになると矢印が time 軸方向に傾く → 相対論的に意味のある spacetime 矢印。
+    //   α_obs = observerBoost ? lorentzBoost(u_obs) · α_world : α_world
+    // 位置は ship 本体 group (= group.position, yaw'd) とは別の sibling arrow group に
+    // display 座標直 attach (hull 中心から α_obs 方向に hullOffset だけオフセット)。
     const arrowMesh = arrowMeshRef.current;
     const arrowMat = arrowMatRef.current;
-    if (arrowMesh && arrowMat) {
-      const arrowRawTarget = thrustFrac;
-      const arrowCurrent = arrowSmoothedMagRef.current;
-      const arrowTauMs =
-        arrowRawTarget > arrowCurrent ? EXHAUST_ATTACK_TIME : EXHAUST_RELEASE_TIME;
-      const arrowRate = 1 - Math.exp(-(delta * 1000) / arrowTauMs);
-      const arrowSmoothed = arrowCurrent + (arrowRawTarget - arrowCurrent) * arrowRate;
-      arrowSmoothedMagRef.current = arrowSmoothed;
+    if (arrowMesh && arrowMat && alpha4) {
+      const alphaObs = observerBoost
+        ? multiplyVector4Matrix4(observerBoost, alpha4)
+        : alpha4;
+      const ax4 = alphaObs.x;
+      const ay4 = alphaObs.y;
+      const at4 = alphaObs.t; // display z 軸 = observer rest frame time
+      const mag4 = Math.sqrt(ax4 * ax4 + ay4 * ay4 + at4 * at4);
+      // Smoothing (EMA): mag / PLAYER_ACCELERATION を attack/release 時定数で平滑化。
+      const rawTarget = mag4 / PLAYER_ACCELERATION;
+      const current = arrowSmoothedMagRef.current;
+      const tauMs =
+        rawTarget > current ? EXHAUST_ATTACK_TIME : EXHAUST_RELEASE_TIME;
+      const rate = 1 - Math.exp(-(delta * 1000) / tauMs);
+      const smoothed = current + (rawTarget - current) * rate;
+      arrowSmoothedMagRef.current = smoothed;
 
-      if (arrowSmoothed < EXHAUST_VISIBILITY_THRESHOLD || norm < 1e-6) {
+      if (smoothed < EXHAUST_VISIBILITY_THRESHOLD || mag4 < 1e-6) {
         arrowMesh.visible = false;
       } else {
         arrowMesh.visible = true;
-        const arrowDirX = localUx; // +thrust local
-        const arrowDirY = localUy;
-        const arrowQuat = new THREE.Quaternion();
-        arrowQuat.setFromUnitVectors(vecY, new THREE.Vector3(arrowDirX, arrowDirY, 0));
-        const arrowLen = ARROW_BASE_LENGTH * arrowSmoothed;
-        const arrowWidth = ARROW_BASE_WIDTH * arrowSmoothed;
-        const arrowCenterOffset = SHIP_HULL_RADIUS + ARROW_BASE_OFFSET + 0.5 * arrowLen;
-        arrowMesh.position.set(arrowDirX * arrowCenterOffset, arrowDirY * arrowCenterOffset, 0);
-        arrowMesh.quaternion.copy(arrowQuat);
-        arrowMesh.scale.set(arrowWidth, arrowLen, 1);
-        arrowMat.opacity = arrowSmoothed * ARROW_MAX_OPACITY;
+        const invMag = 1 / mag4;
+        const dirX = ax4 * invMag;
+        const dirY = ay4 * invMag;
+        const dirT = at4 * invMag;
+        // Arrow origin: ship hull 中心 (dp + lifted by SHIP_LIFT_Z·SCALE) から α_obs 方向に
+        // offset して**矢印の tail (local y=-0.5 · arrowLen) が hull 外側**に位置するよう配置
+        // (機体貫通防止)。元の flat 矢印では `SHIP_HULL_RADIUS + ARROW_BASE_OFFSET + 0.5·arrowLen`
+        // を local 距離として使っており、ship group が SHIP_MODEL_SCALE で縮むので世界距離は
+        // `(HULL_R + BASE_OFFSET) · SCALE + 0.5 · arrowLen` (後者は外側 frame の長さ)。
+        const arrowLen = ARROW_BASE_LENGTH * smoothed;
+        const originOffset =
+          (SHIP_HULL_RADIUS + ARROW_BASE_OFFSET) * SHIP_MODEL_SCALE +
+          0.5 * arrowLen;
+        const hullCenterT = dp.t + SHIP_LIFT_Z * SHIP_MODEL_SCALE;
+        arrowMesh.position.set(
+          dp.x + dirX * originOffset,
+          dp.y + dirY * originOffset,
+          hullCenterT + dirT * originOffset,
+        );
+        // Orient: local +y → (dirX, dirY, dirT) in display frame
+        vecDir.set(dirX, dirY, dirT);
+        tmpQuat.setFromUnitVectors(vecY, vecDir);
+        arrowMesh.quaternion.copy(tmpQuat);
+        // Scale: 元の flat 2D 矢印と同じ比率 (x=幅 / y=長さ / z=1)。
+        arrowMesh.scale.set(
+          ARROW_BASE_WIDTH * smoothed,
+          arrowLen,
+          1,
+        );
+        arrowMat.opacity = smoothed * ARROW_MAX_OPACITY;
       }
+    } else if (arrowMesh) {
+      arrowMesh.visible = false;
     }
   });
 
   return (
+    <>
     <group ref={groupRef} scale={SHIP_MODEL_SCALE}>
       {/* === Lift wrapper: 全体を +SHIP_LIFT_Z 持ち上げて cannon mount を world origin に着地。
             これで cannon 軸が origin (= 過去光円錐の交点 = laser 発射点) を通る。
-            exhausts / arrow も lift wrapper 内、座標系は lifted frame (z=0 は world z=+SHIP_LIFT_Z)。 */}
+            exhausts は lift wrapper 内、座標系は lifted frame (z=0 は world z=+SHIP_LIFT_Z)。
+            Spacetime acceleration arrow は display frame 直 attach (ship body group の外、下方)。 */}
       <group position={[0, 0, SHIP_LIFT_Z]}>
       {/* Hull: 六角プリズム (CylinderGeometry segments=6) で +x に vertex (尖端)。
           X 方向 scale 1.4 で elongate → 前後に細長い nose 付きシルエット。
@@ -659,23 +705,28 @@ export const SelfShipRenderer = ({
         </group>
       ))}
 
-      {/* AccelerationArrow (旧 SceneContent から移植、+thrust 方向の前方に flat 矢印)。
-          位置/向き/scale は useFrame で local frame で動的設定 (group 内なので yaw 自動追従)。 */}
-      <mesh
-        ref={arrowMeshRef}
-        geometry={sharedGeometries.accelerationArrowFlat}
-        visible={false}
-      >
-        <meshBasicMaterial
-          ref={arrowMatRef}
-          color={arrowColor}
-          transparent
-          depthWrite={false}
-          toneMapped={false}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
       </group>{/* end lift wrapper */}
     </group>
+    {/* Spacetime acceleration arrow: display frame 直 attach (ship body group の外側、yaw/scale
+        非適用)。useFrame が observerBoost · α_world を計算して position + quaternion を直打ち。
+        時空 4-vector の可視化なので、位置は display 座標そのもの (機体 lifted frame ではなく)、
+        向きも任意 3D 方向 (時間軸に傾くこともあり)。geometry は元の flat 2D 矢印を流用、
+        setFromUnitVectors で +y 軸を α_obs 方向に向ける (edge-on 視点になる極限では潰れるが
+        通常のゲームカメラ角度では視認可能)。 */}
+    <mesh
+      ref={arrowMeshRef}
+      geometry={sharedGeometries.accelerationArrowFlat}
+      visible={false}
+    >
+      <meshBasicMaterial
+        ref={arrowMatRef}
+        color={arrowColor}
+        transparent
+        depthWrite={false}
+        toneMapped={false}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
+    </>
   );
 };

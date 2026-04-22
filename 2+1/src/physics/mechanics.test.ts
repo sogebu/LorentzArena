@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { lorentzBoost, multiplyVector4Matrix4 } from "./matrix";
 import { createPhaseSpace, evolvePhaseSpace } from "./mechanics";
 import {
   createVector3,
@@ -80,6 +81,21 @@ describe("PhaseSpace (heading / alpha 拡張)", () => {
         u.z * next.alpha.z -
         gamma * next.alpha.t;
       expect(inner).toBeCloseTo(0, 9);
+    });
+
+    it("lorentzBoost(u) · α_world で proper acceleration を復元 (OtherShipRenderer が exhaust 駆動に使う逆変換)", () => {
+      // evolvePhaseSpace は rest-frame proper accel を inverseLorentzBoost(u) で world frame に
+      // 持ち上げて alpha に格納。観測者側 (OtherShipRenderer) では逆変換 lorentzBoost(u) で
+      // rest frame に戻して proper accel 空間成分を取り出す。round-trip が恒等になることを確認。
+      const u = createVector3(0.6, 0.3, 0);
+      const properAcc = createVector3(0.5, -0.2, 0);
+      const ps = createPhaseSpace(createVector4(0, 0, 0, 0), u);
+      const next = evolvePhaseSpace(ps, properAcc, 0.0); // dτ=0 で u, alpha 計算のみ取り出し
+      const alphaRest = multiplyVector4Matrix4(lorentzBoost(u), next.alpha);
+      expect(alphaRest.t).toBeCloseTo(0, 9);
+      expect(alphaRest.x).toBeCloseTo(properAcc.x, 9);
+      expect(alphaRest.y).toBeCloseTo(properAcc.y, 9);
+      expect(alphaRest.z).toBeCloseTo(properAcc.z, 9);
     });
   });
 });

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { createVector3, type Vector3 } from "../physics";
+import { createVector3, createVector4, type Vector3 } from "../physics";
 import { ShipPreview } from "./ShipPreview";
 
 /**
@@ -64,6 +64,16 @@ export const ShipViewer = () => {
   ];
   const [playerColor, setPlayerColor] = useState<string>("");
 
+  // Preview は u=0 固定 (静止 stub player) なので α_world = (0, thrust.x, thrust.y, 0)。
+  // α_obs = α_world (observerBoost=null) で spatial 矢印として表示される。
+  const currentThrust = thrustOptions[thrustIdx].vec;
+  const alpha4Preview = createVector4(
+    0,
+    currentThrust.x,
+    currentThrust.y,
+    0,
+  );
+
   return (
     <div style={{ position: "fixed", inset: 0 }}>
       <ShipPreview
@@ -75,6 +85,7 @@ export const ShipViewer = () => {
         cameraYawRef={cameraYawRef}
         cannonStyle={cannonStyle}
         playerColor={playerColor || undefined}
+        alpha4={alpha4Preview}
       />
 
       <div
