@@ -44,7 +44,7 @@ export const DEBRIS_MAX_LAMBDA = 2.5;
 // `DEATH_TAU_MAX`: body (他者が見る死者モデル) の fade 完了時。opacity = a_0·(τ_max − τ_0)/τ_max。
 // `DEATH_TAU_EFFECT_MAX`: sphere + ring marker の表示打ち切り。短い flash 演出。
 // 設計 doc: plans/2026-04-22-death-event-unified.md (実装側で作成予定)。
-export const DEATH_TAU_MAX = 5;
+export const DEATH_TAU_MAX = 3;
 export const DEATH_TAU_EFFECT_MAX = 2;
 
 // 当たり判定の半径
