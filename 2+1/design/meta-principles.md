@@ -333,7 +333,34 @@ spec (例: `plans/死亡イベント.md` の死亡 event 描画) が「(x_D, u_D
 2. 前者なら past-cone 系 anchor + past-cone 交差 non-null gate。後者なら world-now / future-cone 系 anchor + dead 除外のみ (past-cone gate を絶対にかけない)。
 3. 両方必要なら両方描く。統合を試みない。
 
-関連: `design/rendering.md §marker 2 層 (observer / god view)` (描画実装の具体箇所)。
+関連: `design/rendering.md §marker 2 層 (observer / god view)` (描画実装の具体箇所)。M23 も参照 (gate 導出の一般原理)。
+
+---
+
+### M23. marker の gate は semantic referent から導く (defensive に書くな)
+
+marker (sphere / ring / arrow / 三角) は必ず具体的な **referent** (指し示す対象 — event / 位置 / 状態 / 存在) を持つ。gate (いつ描く / 描かない) を決めるとき、「regression が出るから」「情報が漏れるから」と **防御的に** 条件を追加する前に、「この marker の referent が今このフレームで現に存在するか?」を直接問う。referent が存在しなければ描かない、存在するなら描く。それだけ。
+
+**実例 1** (神の視点 future-most sphere、`!isDead` gate):
+- referent = 「player の現在の世界時刻上の存在」
+- 幽霊期間は player が世界時刻上に存在しない (wp は過去の x_D event を指すだけで「現在位置」ではない)
+- referent 無し → 描かない。**情報隠蔽ではなく、描く対象が無いから描かない**。
+
+**実例 2** (観測者視点 past-cone sphere、`aliveIntersection != null` gate):
+- referent = 「観測者の過去光円錐 ∩ player worldLine の交点」
+- 交差が存在しない (respawn 光未到達 / worldLine 末端通過) → referent 無し → 描かない
+- これも情報隠蔽ではなく referent 不在、直接的。
+
+**defensive gate の匂い (2026-04-23 このセッションの寄り道)**:
+- 一時期「respawn regression 防止のため future-most marker にも `aliveIntersection != null` を追加」していた。referent 再考で「神の視点 marker は光到達を待たない pedagogical helper だから、光円錐交差は referent の一部ではない」と判明 → gate 戻した。
+- 「死亡位置が先行露出しないように」と書きたくなったが、実質は「幽霊中は referent が存在しない」だけ。情報論的語り口では本質 (存在論) が見えなくなる。
+
+**導出手順**:
+1. この marker の referent は何か? (event / 位置 / 状態 / 存在のどれに分類されるか含め)
+2. その referent は各フレームでいつ存在 / 成立するか?
+3. それが gate。
+
+**診断ヒント**: 防御的 gate を書きたくなったら、referent 解析を飛ばしていないか疑う。「regression 回避」の条件を足しているなら、それは referent の定義自体に含まれるべきもの (含まれないなら regression ではなく設計ミス)。
 
 ---
 
