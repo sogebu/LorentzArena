@@ -59,7 +59,6 @@
 - **Phase A/B で実装した worldline 向き・加速度の思想・コード対称性 audit**: `PhaseSpace = (pos, u, heading, alpha)` 拡張 + past-cone 交点補間 (A-4) + SelfShipRenderer heading source 切替 (B-2) 以降、bug が散見 (DeathMarker regression / 3D モデル消失 / etc)。**そろそろ思想に立ち返って対称性・クリーンさを深く追求するタイミング**。具体候補: (a) component 間の「fade / gate / routing」責務配置の統一 (M21 を広域適用)、(b) Phase B-5 (他機 exhaust の pure thrust broadcast) の再設計、(c) Phase C-1 (wire format 厳格化、heading/alpha optional → required) と整合、(d) 世界線データと描画機構の「対応関係」を DESIGN.md に書き下し。plan 化検討: `plans/2026-04-22-symmetry-audit.md` など
 - **プレイヤー色を ship model のパーツに合成**: hull 固定 navy で識別弱い。accent stripe / fin / chin pod の emissive / barrel glow 等、パーツのどれかに player color を焼き込む material variant を追加。SelfShipRenderer に color prop 追加、OtherShipRenderer + DeadShipRenderer で流用。Phase B-5 と独立、先行可能
 - **レーザー砲を短くする**: 現 `SHIP_LASER_BARREL_LENGTH = 1.5` は長めの印象。0.9〜1.2 あたりに短縮して見た目調整。lens stack / emitter 位置も追従させる定数調整
-- **エンジンノズルの物理確認**: 現 nozzle は外に広がる形 (raster flare 状)。**この形状で噴射が収束する物理的理由はあるか?** 直感的には広がり形状は diverging nozzle (超音速域では圧力を落とし推力得る = ロケットの de Laval 後半) で収束しないのでは。要整理: 現実装が (i) 見た目優先で物理ゆるい spec、(ii) de Laval ノズルの後半 (converging-diverging の拡散部) を意識した設計、(iii) 本来は collimating 形状であるべき、のどれか。判断次第で形状変更または "fictional sci-fi nozzle" と割り切る
 
 ### 既存 (優先順未決定)
 
