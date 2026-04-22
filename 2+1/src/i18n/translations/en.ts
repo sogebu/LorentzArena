@@ -27,6 +27,7 @@ export const en: Record<TranslationKey, string> = {
   "hud.properTime": "Proper time",
   "hud.position": "Position",
   "hud.energy": "ENERGY",
+  "hud.fuelEmpty": "OUT OF FUEL",
   // HUD - scoreboard
   "hud.kills": "Kills",
   "hud.you": "You",

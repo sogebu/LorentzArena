@@ -25,6 +25,7 @@ export const ja = {
   "hud.properTime": "固有時間",
   "hud.position": "位置",
   "hud.energy": "エネルギー",
+  "hud.fuelEmpty": "燃料枯渇",
   // HUD - scoreboard
   "hud.kills": "撃破数",
   "hud.you": "自機",

@@ -33,33 +33,55 @@ export const Speedometer = ({
       }}
     >
       {/* エネルギーゲージ */}
-      {/* 枯渇時 (energy < ε): ENERGY ラベル表示。低エネルギー (< 0.2): バー赤化。
-          枯渇時はバー + ラベル共に点滅 (pulse) して強調。
+      {/* 枯渇時 (energy < ε): バー拡大 (width 120 → 220, height 8 → 18) + 赤枠 + 点滅 +
+          「燃料枯渇」大文字ラベル。低エネルギー (< 0.2): バー赤化。
           Ghost (死亡中) は燃料制約なしで常時フル加速できるためバー非表示。 */}
       {!player.isDead && (
         <div
           style={{
             position: "relative",
-            width: "120px",
-            height: "12px",
+            width: energy < 0.001 ? "220px" : "120px",
+            height: energy < 0.001 ? "52px" : "12px",
             marginBottom: "8px",
             marginLeft: "auto",
+            transition: "width 0.2s ease, height 0.2s ease",
           }}
         >
+          {energy < 0.001 && (
+            <div
+              style={{
+                position: "absolute",
+                top: 0,
+                right: 0,
+                fontSize: "22px",
+                fontWeight: "bold",
+                color: "rgba(255, 80, 80, 1)",
+                letterSpacing: "3px",
+                animation: "energy-empty-pulse 0.7s ease-in-out infinite",
+                pointerEvents: "none",
+                textShadow: "0 0 8px rgba(255, 80, 80, 0.8)",
+                lineHeight: 1,
+              }}
+            >
+              {t("hud.fuelEmpty")}
+            </div>
+          )}
           <div
             style={{
               width: "100%",
-              height: "8px",
+              height: energy < 0.001 ? "18px" : "8px",
               backgroundColor: "rgba(255, 255, 255, 0.15)",
               borderRadius: "4px",
               overflow: "hidden",
               position: "absolute",
-              top: "2px",
+              bottom: energy < 0.001 ? "0" : "auto",
+              top: energy < 0.001 ? "auto" : "2px",
               left: 0,
               outline:
-                energy < 0.001 ? "1px solid rgba(255, 80, 80, 0.9)" : "none",
+                energy < 0.001 ? "2px solid rgba(255, 80, 80, 0.9)" : "none",
               animation:
                 energy < 0.001 ? "energy-empty-pulse 0.7s ease-in-out infinite" : "none",
+              transition: "height 0.2s ease",
             }}
           >
             <div
@@ -73,23 +95,6 @@ export const Speedometer = ({
               }}
             />
           </div>
-          {energy < 0.001 && (
-            <div
-              style={{
-                position: "absolute",
-                top: "-2px",
-                right: 0,
-                fontSize: "10px",
-                fontWeight: "bold",
-                color: "rgba(255, 80, 80, 1)",
-                letterSpacing: "1px",
-                animation: "energy-empty-pulse 0.7s ease-in-out infinite",
-                pointerEvents: "none",
-              }}
-            >
-              {t("hud.energy")}
-            </div>
-          )}
         </div>
       )}
       <div>{t("hud.speed")}: {(speed * 100).toFixed(1)}% c</div>
