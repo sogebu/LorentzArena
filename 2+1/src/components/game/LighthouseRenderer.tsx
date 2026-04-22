@@ -85,9 +85,11 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
   }
   const towerAnchor = isObservedDead ? wp : (aliveIntersection?.pos ?? null);
 
-  // 現在世界時刻位置の球マーカー: 死亡 routing 中は非表示 (塔 fade + DeathMarker が担う)、
-  // それ以外は wp の display 並進で表示 (alive: 世界時刻 now、dead-pre-cone: x_D)。
-  const showSphere = !isObservedDead;
+  // 現在世界時刻位置の球マーカー: 世界線の過去光円錐交差が無ければ非表示 (観測者は
+  // まだ LH を観測していない = respawn 光未到達 / 死亡 fade 完了 / worldLine 空)。
+  // aliveIntersection != null でのみ描画することで、リスポーン時に SpawnRenderer が
+  // 発火するまで新位置に球が先行露出せず、spawn ring が意味を持つ順序で出る。
+  const showSphere = !isObservedDead && aliveIntersection != null;
   const dpNow = transformEventForDisplay(wp, observerPos, observerBoost);
   const sphereSize = PLAYER_MARKER_SIZE_OTHER;
 
