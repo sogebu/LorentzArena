@@ -288,3 +288,20 @@ distributed systems の古典 (Raft + Gossip ハイブリッド) の直接適用
 
 ---
 
+### M21. 描画 component は自己 gate、caller 側で routing しない
+
+spec (例: `plans/死亡イベント.md` の死亡 event 描画) が「(x_D, u_D) を受けて τ_0 で発火・fade・打ち切り」のように **component-local な入力 → 条件** で定義されている時、**caller (SceneContent 等) 側で τ_0 を計算して 3-way routing** するのは二重管理。各 component が自分の入力だけ受けて内部で τ_0 計算・自己 null 判定する構造が sprectに忠実で、caller の条件分岐を 1 つ減らせる。
+
+**実例 (2026-04-22、`8098032` 死亡 routing refactor)**: 旧実装は SceneContent で `if (player.isDead) { if (tau0 < 0) → OtherShip; if (tau0 > max) → null; else → Dead + Marker }` と 3-way 条件分岐。これを `DeadShipRenderer` と `DeathMarker` が内部で τ_0 計算し自己 gate する形に統一、SceneContent は `flatMap` で per-player に component を無条件 emit するだけ。副次効果として、OtherShipRenderer (past-cone ∩ worldline) と DeadShipRenderer (τ_0 fade) が **同時配置** でき、past-cone が worldLine 末端 (= xD) を通過する瞬間の継ぎ目問題 (片方が null を返しても他方が既に発火してる) が構造的に解消。
+
+**適用条件**:
+- component の描画条件が component-local なデータ (props + context) だけで計算できる
+- 複数 regime の描画を同じ caller が持っている (= caller で routing しがち)
+- regime 境界で 1 frame の null-gap が問題になる可能性あり
+
+**反対側の失敗例 (参考)**: component が caller の知識を要求する形 (例: 「自機死亡中なら特殊処理」みたいな isMe + isDead の組合せ) は gate を caller から剥がせず、routing 残る。その場合は caller 側で持つのが素直。
+
+診断ヒント: caller の routing が 3-way 以上になったら component 側に condition を移せないか疑う。`design/rendering.md §SelfShipRenderer / OtherShipRenderer / DeadShipRenderer / DeathMarker` 参照。
+
+---
+
