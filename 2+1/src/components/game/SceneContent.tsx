@@ -28,7 +28,6 @@ import {
   AIM_ARROW_OPACITY_STEP,
   CAMERA_DISTANCE_ORTHOGRAPHIC,
   CAMERA_DISTANCE_PERSPECTIVE,
-  DEATH_TAU_MAX,
   FUTURE_CONE_LASER_TRIANGLE_OPACITY,
   FUTURE_CONE_WORLDLINE_RING_OPACITY,
   FUTURE_CONE_WORLDLINE_SPHERE_OPACITY,
@@ -39,7 +38,6 @@ import {
   PLAYER_MARKER_SIZE_OTHER,
   SHIP_INNER_HIDE_RADIUS,
 } from "./constants";
-import { pastLightConeIntersectionDeathWorldLine } from "./deathWorldLine";
 import {
   buildDisplayMatrix,
   transformEventForDisplay,
@@ -351,71 +349,61 @@ export const SceneContent = ({
           他機 (人間) 死亡中 + 自機死亡中: DeadShipRenderer (ship モデル @ x_D、opacity
             `(τ_max − τ_0) / τ_max` で fade) + DeathMarker (sphere @ x_D + ring @ W_D(τ_0)、
             τ_0 < DEATH_TAU_EFFECT_MAX のみ)。2026-04-22 統一アルゴリズム。 */}
-      {playerList.map((player) => {
+      {playerList.flatMap((player) => {
+        const key = `player-${player.id}`;
         if (isLighthouse(player.id)) {
-          return <LighthouseRenderer key={`player-${player.id}`} player={player} />;
+          return [<LighthouseRenderer key={key} player={player} />];
         }
 
         const isMe = player.id === myId;
+        const items: React.JSX.Element[] = [];
 
-        if (player.isDead) {
-          // 2026-04-22 統一アルゴリズム:
-          //   死亡時のデータ (x_D, u_D, heading_D) は live 世界線データと完全同等で、
-          //   self / other 問わず `player.phaseSpace` から一本で導出する (self-dead は
-          //   useGameLoop の ghost branch で setPlayers を止めているので phaseSpace は
-          //   死亡時刻で凍結、other-dead は dead peer が broadcast 停止するので同じく凍結)。
-          //   (x_D, u_D) で τ_0 = past-cone ∩ W_D(τ) を計算し routing:
-          //   - τ_0 < 0: past-cone 未到達 → OtherShipRenderer (live worldline 交点で pre-death
-          //     ship、自機は observer 自身なので不要)。
-          //   - τ_0 ∈ [0, DEATH_TAU_MAX]: 死亡 event 観測中
-          //       DeadShipRenderer (ship @ x_D、opacity (τ_max−τ_0)/τ_max)
-          //       + DeathMarker (sphere @ x_D / ring @ x_D+u_D·τ_0、τ_effect_max で打ち切り)
-          //   - τ_0 > DEATH_TAU_MAX: fade 完了 → null
-          const xD = player.phaseSpace.pos;
-          const uD = getVelocity4(player.phaseSpace.u);
-          const headingD = player.phaseSpace.heading;
-
-          if (!observerPos) return null; // 世界系表示: 死亡 event は簡易に非表示
-          const tau0 = pastLightConeIntersectionDeathWorldLine(xD, uD, observerPos);
-          if (tau0 == null || tau0 < 0) {
-            if (isMe) return null;
-            return (
-              <OtherShipRenderer key={`player-${player.id}`} player={player} />
-            );
-          }
-          if (tau0 > DEATH_TAU_MAX) return null;
-          const fadeAlpha = (DEATH_TAU_MAX - tau0) / DEATH_TAU_MAX;
-          const deadColor = getThreeColor(player.color);
-          return (
-            <group key={`player-${player.id}`}>
-              <DeadShipRenderer
-                xD={xD}
-                headingD={headingD}
-                color={player.color}
-                playerId={player.id}
-                fadeAlpha={fadeAlpha}
-              />
-              <DeathMarker xD={xD} uD={uD} color={deadColor} />
-            </group>
-          );
-        }
-
-        if (isMe) {
-          return (
+        // 生存中の ship 描画 (alive / pre-death window で past-cone ∩ worldline を持つ間)。
+        // 他機は OtherShipRenderer が自己 null (past-cone が worldLine 末端超過で null)
+        // を返すので無条件配置 OK。自機は自身の position = observerPos なので past-cone
+        // 概念が効かない → isDead で除外 + SelfShipRenderer 直描画。
+        if (isMe && !player.isDead) {
+          items.push(
             <SelfShipRenderer
-              key={`player-${player.id}`}
+              key={key}
               player={player}
               thrustAccelRef={thrustAccelRef}
               observerPos={observerPos}
               observerBoost={observerBoost}
-            />
+            />,
+          );
+        } else if (!isMe) {
+          items.push(<OtherShipRenderer key={key} player={player} />);
+        }
+
+        // 死亡 event 描画 (spec: plans/死亡イベント.md §3-§7)。DeadShipRenderer と
+        // DeathMarker は (x_D, u_D) から内部で τ_0 = past-cone ∩ W_D(τ) を計算し、
+        // 自分の表示窓 (ship: [0, τ_max]、marker: [0, τ_max_effect]) の外では自身で null 返す。
+        // SceneContent 側での τ_0 routing は不要。
+        if (player.isDead) {
+          const xD = player.phaseSpace.pos;
+          const uD = getVelocity4(player.phaseSpace.u);
+          const headingD = player.phaseSpace.heading;
+          const deadColor = getThreeColor(player.color);
+          items.push(
+            <DeadShipRenderer
+              key={`${key}-dead-ship`}
+              xD={xD}
+              uD={uD}
+              headingD={headingD}
+              color={player.color}
+              playerId={player.id}
+            />,
+            <DeathMarker
+              key={`${key}-death-marker`}
+              xD={xD}
+              uD={uD}
+              color={deadColor}
+            />,
           );
         }
 
-        // 他機 (人間) 生存中: OtherShipRenderer (SelfShipRenderer 流用、past-cone
-        // 交点に ship 3D model を配置)。heading / alpha が worldLine に乗っているので
-        // 物理整合、自機と同じ visual language で識別容易。
-        return <OtherShipRenderer key={`player-${player.id}`} player={player} />;
+        return items;
       })}
 
       {/* 自機 exhaust + acceleration arrow は SelfShipRenderer の 8 RCS nozzle に
