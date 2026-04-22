@@ -1,10 +1,24 @@
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type FormEvent,
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useI18n, type Lang } from "../i18n";
 
 import { LIGHTHOUSE_DISPLAY_NAME } from "./game/lighthouse";
 import { getTopScores, type HighScoreEntry } from "../services/highScores";
 import { fetchLeaderboard } from "../services/leaderboard";
-import { ShipPreview } from "./ShipPreview";
+
+// ShipPreview (R3F + three.js、重い dep を引き込む) を lazy-load。Lobby のテキスト UI を
+// 先に描画し、3D ship 背景は three chunk 取得後に fade-in する。初期ロード payload から
+// ~738 KB (three) + ~36 KB (fiber) を外せる。
+const ShipPreview = lazy(() =>
+  import("./ShipPreview").then((m) => ({ default: m.ShipPreview })),
+);
 
 declare const __BUILD_TIME__: string;
 
@@ -72,7 +86,9 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
           zIndex: 0,
         }}
       >
-        <ShipPreview bgColor="transparent" />
+        <Suspense fallback={null}>
+          <ShipPreview bgColor="transparent" />
+        </Suspense>
       </div>
 
       <div

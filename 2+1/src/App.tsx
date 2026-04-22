@@ -1,11 +1,15 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import "./App.css";
-import Connect from "./components/Connect";
 import Lobby from "./components/Lobby";
-import RelativisticGame from "./components/RelativisticGame";
-import { ShipViewer } from "./components/ShipViewer";
-import { PeerProvider } from "./contexts/PeerProvider";
 import { useI18n, type Lang } from "./i18n";
+
+// 重い dep (three.js / R3F / peerjs) を含む subtree は lazy-load し、Lobby 画面の
+// 初回描画でこれらを読み込まないようにする。GameSession は PeerProvider + Connect +
+// RelativisticGame を束ねた wrapper、ShipViewer は named export なので default shape に変換。
+const GameSession = lazy(() => import("./components/GameSession"));
+const ShipViewer = lazy(() =>
+  import("./components/ShipViewer").then((m) => ({ default: m.ShipViewer })),
+);
 
 // URL ハッシュからルーム名を取得: #room=physics101 → "physics101", なし → "default"
 const getRoomName = (): string => {
@@ -87,7 +91,11 @@ const App = () => {
 
   // Viewer mode: ゲーム/言語選択を bypass、ShipViewer 単独で起動
   if (isViewerMode()) {
-    return <ShipViewer />;
+    return (
+      <Suspense fallback={null}>
+        <ShipViewer />
+      </Suspense>
+    );
   }
 
   const handleStart = () => {
@@ -114,10 +122,9 @@ const App = () => {
   }
 
   return (
-    <PeerProvider roomName={roomName}>
-      <Connect />
-      <RelativisticGame displayName={displayName} />
-    </PeerProvider>
+    <Suspense fallback={null}>
+      <GameSession roomName={roomName} displayName={displayName} />
+    </Suspense>
   );
 };
 
