@@ -85,12 +85,17 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
   }
   const towerAnchor = isObservedDead ? wp : (aliveIntersection?.pos ?? null);
 
-  // 現在世界時刻位置の球マーカー: 世界線の過去光円錐交差が無ければ非表示 (観測者は
-  // まだ LH を観測していない = respawn 光未到達 / 死亡 fade 完了 / worldLine 空)。
-  // aliveIntersection != null でのみ描画することで、リスポーン時に SpawnRenderer が
-  // 発火するまで新位置に球が先行露出せず、spawn ring が意味を持つ順序で出る。
-  const showSphere = !isObservedDead && aliveIntersection != null;
-  const dpNow = transformEventForDisplay(wp, observerPos, observerBoost);
+  // 球マーカーは **worldLine の過去光円錐交差点** に固定 (world-now ではない)。
+  // つまり観測者が「今まさに見ている」LH 位置。aliveIntersection == null のフレーム
+  // (respawn 光未到達 / 死亡 fade 完了 / worldLine 空) は描画しない。
+  //
+  // 旧実装 (wp = world-now で描画) では、LH 死亡後 wp は x_D に freeze するのに対し
+  // past-cone は |r| 遅れて追いつくため、sphere が x_D から past-cone まで display z
+  // 軸に沿って「降りてくる」軌跡になり物理的意味が曖昧だった。past-cone 交差点に
+  // anchor することで tower base と同位置に収まり、観測者視点で一貫する。
+  const spherePos = aliveIntersection
+    ? transformEventForDisplay(aliveIntersection.pos, observerPos, observerBoost)
+    : null;
   const sphereSize = PLAYER_MARKER_SIZE_OTHER;
 
   return (
@@ -205,9 +210,9 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
     </group>
     )}
 
-    {/* 現在世界時刻位置の球マーカー (C pattern)。死亡中は非表示。 */}
-    {showSphere && (
-      <group position={[dpNow.x, dpNow.y, dpNow.t]}>
+    {/* 過去光円錐 ∩ 世界線マーカー (C pattern)。aliveIntersection null 時は非表示。 */}
+    {spherePos && (
+      <group position={[spherePos.x, spherePos.y, spherePos.t]}>
         <mesh
           renderOrder={-1}
           scale={[sphereSize, sphereSize, sphereSize]}

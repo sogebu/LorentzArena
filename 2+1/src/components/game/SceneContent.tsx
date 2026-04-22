@@ -190,31 +190,39 @@ export const SceneContent = ({
     camera.up.set(0, 0, 1);
   });
 
-  // 他プレイヤー worldLine の **未来側末端** (= `phaseSpace.pos`、player の世界時刻
-  // 現在位置) に sphere+core の小ドット。過去光円錐より未来側 (= 観測者からはまだ
-  // 光が届いていない世界時刻位置) を示す pedagogical marker。3d1831d の ship-model
-  // 移行でこの marker が消えたが、odakin 指摘で復活 (ship は past-cone 交点、
-  // sphere は世界時刻 now = 相対論的遅延の可視化)。
+  // 他プレイヤー worldLine の **過去光円錐交差点** (= 観測者が「今まさに見ている」
+  // 位置) に sphere+core の小ドット。旧実装は `phaseSpace.pos` (= 世界時刻 now) に
+  // 描画して「光速遅延の可視化」を狙っていたが、respawn 直後に past-cone 未到達でも
+  // 球が先行露出する regression + 死亡後に球が x_D から past-cone まで display z
+  // 軸に沿って「降りてくる」物理的に曖昧な挙動を招いていた。過去光円錐交差点に
+  // anchor することで ship (past-cone anchor) と同位置で一貫し、SpawnRenderer の
+  // ring と同タイミングで出現する。
   //
   // 対象:
-  //   - alive non-LH non-self: player.phaseSpace.pos
-  //   LH: LighthouseRenderer 側で同じ marker (dpNow sphere) を出しているので重複回避。
-  //   frozen: 末端 = death event 位置、DeathMarker/DeadShipRenderer がすでに描画。
-  //   self alive: SelfShipRenderer 自体が observer 位置 (= phaseSpace.pos) にある。
-  const worldLineFuturePoints = useMemo(() => {
+  //   - alive non-LH non-self: past-cone ∩ worldLine
+  //   LH: LighthouseRenderer 側で同じ marker を出しているので重複回避。
+  //   frozen: DeathMarker/DeadShipRenderer がすでに描画。
+  //   self alive: SelfShipRenderer 自体が observer 位置にある。
+  const worldLinePastConePoints = useMemo(() => {
     const results: { key: string; color: string; pos: Vector4 }[] = [];
+    if (!observerPos) return results;
     for (const player of playerList) {
       if (player.id === myId) continue;
       if (isLighthouse(player.id)) continue;
       if (player.isDead) continue;
+      const intersection = pastLightConeIntersectionWorldLine(
+        player.worldLine,
+        observerPos,
+      );
+      if (!intersection) continue;
       results.push({
-        key: `future-pt-${player.id}`,
+        key: `past-cone-pt-${player.id}`,
         color: player.color,
-        pos: player.phaseSpace.pos,
+        pos: intersection.pos,
       });
     }
     return results;
-  }, [playerList, myId]);
+  }, [playerList, myId, observerPos]);
 
   const laserIntersections = useMemo(() => {
     if (!myPlayer || !myId) return [];
@@ -496,12 +504,12 @@ export const SceneContent = ({
         );
       })}
 
-      {/* 他プレイヤー世界線の **未来側末端 (= 世界時刻 now)** 位置ドット + glow halo。
-          観測者はまだ光が届いていない世界時刻位置を示す pedagogical marker。
-          ship (past-cone 交点) との空間的ずれ = 光速遅延の可視化。
+      {/* 他プレイヤー世界線の **過去光円錐交差点** に dot + glow halo。観測者が
+          「今まさに見ている」LH/他機位置に anchor (ship と同位置)。aliveIntersection
+          が null のフレーム (respawn 光未到達 / worldLine 空) は出さない。
           サイズは 3d1831d 以前の old OtherPlayerRenderer alive sphere と同寸
           (`playerSphere` × `PLAYER_MARKER_SIZE_OTHER` = 0.5 × 0.2 = effective radius 0.1)。 */}
-      {worldLineFuturePoints.map(({ key, color: colorText, pos }) => {
+      {worldLinePastConePoints.map(({ key, color: colorText, pos }) => {
         const c = getThreeColor(colorText);
         const dp = transformEventForDisplay(pos, observerPos, observerBoost);
         const size = PLAYER_MARKER_SIZE_OTHER;
