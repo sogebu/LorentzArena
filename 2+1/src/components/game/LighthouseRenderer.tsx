@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import * as THREE from "three";
 import { getVelocity4 } from "../../physics/vector";
+import { pastLightConeIntersectionWorldLine } from "../../physics/worldLine";
 import {
   DEATH_TAU_MAX,
   LIGHTHOUSE_COLOR,
@@ -9,17 +10,12 @@ import {
   PLAYER_MARKER_SIZE_OTHER,
 } from "./constants";
 import { buildApparentShapeMatrix } from "./apparentShape";
-import {
-  pastLightConeIntersectionDeathWorldLine,
-} from "./deathWorldLine";
+import { pastLightConeIntersectionDeathWorldLine } from "./deathWorldLine";
 import { DeathMarker } from "./DeathMarker";
 import { useDisplayFrame } from "./DisplayFrameContext";
 import { transformEventForDisplay } from "./displayTransform";
-import { computePastConeDisplayState } from "./pastConeDisplay";
-import { getLatestSpawnT } from "./respawnTime";
 import { getThreeColor, sharedGeometries } from "./threeCache";
 import type { RelativisticPlayer } from "./types";
-import { useGameStore } from "../../stores/game-store";
 
 // 灯台 (Lighthouse) のプロシージャル 3D モデル。
 //
@@ -65,53 +61,41 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
   const lampColor = useMemo(() => new THREE.Color("hsl(190, 100%, 92%)"), []);
 
   const wp = player.phaseSpace.pos;
-  // spawn / respawn 時刻は respawnLog 最新 entry から取得 (gap-reset で
-  // worldLine.history[0] が上書きされても spawnT が変動しないように)。詳細:
-  // `respawnTime.ts §getLatestSpawnT` の JSDoc。
-  const respawnLog = useGameStore((s) => s.respawnLog);
-  const spawnT = getLatestSpawnT(respawnLog, player);
 
-  // 生存中: 従来通り past-cone anchor + visible チェック (spawn 光未到達 → 非表示)。
-  // 死亡中: 2026-04-22 統一アルゴリズム。x_D = wp (death 時刻で freeze 済)、u_D = phaseSpace.u
-  // の 4-velocity (LH は通常静止なので u_D ≈ (1, 0, 0, 0))。τ_0 で body fade + marker 発火判定。
-  const { anchorPos, visible } = computePastConeDisplayState(
-    wp,
-    spawnT,
-    observerPos,
-  );
-
-  let towerAlpha = 1;
-  let showDeath = false;
+  // 2026-04-22 統一アルゴリズム: 描画判定は「死亡 event 世界線分 [0, τ_max] が観測者
+  // 過去光円錐に引っかかっているか否か」の 1 boolean に還元 (plans/死亡イベント.md §2-7)。
+  //   - τ_0 ∈ [0, τ_max]         → 死亡 routing: x_D 固定 + α fade + DeathMarker
+  //   - それ以外 (未到達 / 不在 / 通過後) → 生存 routing: past-cone ∩ player.worldLine
+  //
+  // 生存 routing の anchor には `pastLightConeIntersectionWorldLine` を使う。非 LH player と
+  // 同じ唯一の source of truth:
+  //   - 生存中: past-cone ∩ 現在世界線
+  //   - 死亡 pre-cone (τ_0 < 0): past-cone ∩ pre-death 世界線 (worldLine は kill 時点で freeze)
+  //   - 死亡 post-fade (τ_0 > τ_max): worldLine 末端超過で null → 非描画
+  //   - spawn 光未到達: history[0] より過去で null → 非描画
   const uD = useMemo(() => getVelocity4(player.phaseSpace.u), [player.phaseSpace.u]);
-  if (player.isDead && observerPos) {
-    const tau0 = pastLightConeIntersectionDeathWorldLine(wp, uD, observerPos);
-    if (tau0 == null || tau0 < 0 || tau0 > DEATH_TAU_MAX) {
-      // 未観測 or fade 完了 → 塔も marker も描画しない。
-      towerAlpha = 0;
-      showDeath = false;
-    } else {
-      towerAlpha = (DEATH_TAU_MAX - tau0) / DEATH_TAU_MAX;
-      showDeath = true;
-    }
-  }
-  // 生存中は塔そのまま、死亡中は死亡 fade 値。
-  const alpha = player.isDead ? towerAlpha : 1;
-  const towerVisible = player.isDead ? showDeath : visible;
+  const tau0 =
+    player.isDead && observerPos
+      ? pastLightConeIntersectionDeathWorldLine(wp, uD, observerPos)
+      : null;
+  const useDeathRouting = tau0 != null && tau0 >= 0 && tau0 <= DEATH_TAU_MAX;
 
-  // 現在世界時刻位置の球マーカー (C pattern: display 並進のみ、他プレイヤー sphere と同じ表現)。
-  // 塔の past-cone visibility とは独立: 生存中は常に表示 (リスポーン直後で塔がまだ
-  // 観測者の過去光円錐に入っていない期間でも「現在世界時刻」位置は即座に表示する)。
-  // 死亡中は非表示 (塔の沈み + フェードで位置が伝わるため)。
-  const showSphere = !player.isDead;
+  const aliveIntersection = observerPos
+    ? pastLightConeIntersectionWorldLine(player.worldLine, observerPos)
+    : null;
+
+  const alpha = useDeathRouting ? (DEATH_TAU_MAX - tau0!) / DEATH_TAU_MAX : 1;
+  const towerAnchor = useDeathRouting ? wp : (aliveIntersection?.pos ?? null);
+
+  // 現在世界時刻位置の球マーカー: 死亡 routing 中は非表示 (塔 fade + DeathMarker が担う)、
+  // それ以外は wp の display 並進で表示 (alive: 世界時刻 now、dead-pre-cone: x_D)。
+  const showSphere = !useDeathRouting;
   const dpNow = transformEventForDisplay(wp, observerPos, observerBoost);
   const sphereSize = PLAYER_MARKER_SIZE_OTHER;
 
-  // 死亡中は塔本体も x_D に固定 (past-cone sweep で anchorPos が変動しないよう)。
-  const towerAnchor = player.isDead ? wp : anchorPos;
-
   return (
     <>
-    {towerVisible && (
+    {towerAnchor && (
     <group
       matrix={buildApparentShapeMatrix(
         towerAnchor,
