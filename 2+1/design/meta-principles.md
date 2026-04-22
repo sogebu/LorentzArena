@@ -309,17 +309,17 @@ spec (例: `plans/死亡イベント.md` の死亡 event 描画) が「(x_D, u_D
 
 2+1 時空ゲームの特性上、**同じ physical object に対して 2 種類の異なる視点層の marker を並存させる**ことがある:
 
-- **観測者視点 (observer view)**: 観測者の過去光円錐が既に光を届けた位置を示す marker。ship / tower base / past-cone sphere 等。**anchor は past-cone ∩ worldLine (等) で、gate は「交差が non-null」**。光未到達のフレームは描画しない — さもないと観測者が「まだ見ていない」はずの情報 (respawn 新位置 / 死亡 event) を pre-light で露出する。
-- **神の視点 (god's view、比喩)**: 観測者の光円錐に関係なく「world で今何が起きているか」を描く pedagogical helper。future-most sphere (= `phaseSpace.pos`) / future light cone intersection / future cone laser triangle 等。**anchor は world-now や future-cone で、past-cone gate は絶対にかけない**。その marker の存在意義が「光がまだ届いていない事象を神視点で示す」ことだから。光を待つと光速遅延 gap が見えなくなり pedagogy が消える。
+- **観測者視点 (observer view)**: 観測者の過去光円錐が既に光を届けた位置を示す marker。referent = 「観測者が今まさに見ている (光を受信した) 事象」。ship / tower base / past-cone sphere 等。**anchor は past-cone ∩ worldLine (等) で、gate は「交差が non-null」**。光未到達のフレームは描画しない — referent が存在しないから (= 観測者はまだ光を受信していない)。
+- **神の視点 (god's view、比喩)**: 観測者の光円錐と独立に world frame での状況そのものを描く pedagogical helper。**player について言えば referent は「player の現在の世界時刻上の存在そのもの」** — 観測者が光を受信済かどうかとは無関係。future-most sphere (= `phaseSpace.pos`) / future light cone intersection / future cone laser triangle 等。**anchor は world-now / future-cone 等の world frame で、past-cone gate は絶対にかけない** (光を待つと光速遅延 gap が見えなくなり pedagogy が消える)。
 
 両層を**同じ object について同時に描く**と、display 上の 2 marker 間の gap がそのまま「光速遅延」の視覚化になる (= このゲーム最大の pedagogical 価値)。どちらか一方に統合したくなるが、**2 層は原理的に別物で、混ぜると両方が壊れる**:
 
 - 神の視点 marker に past-cone gate をかける → gap が見えない (respawn 直後〜光到達までの「光が追いついてくる」過程を観察できない)。
 - 観測者視点 marker を world-now anchor に動かす → 死亡後 wp が x_D に freeze しているのに past-cone が追いかけるため、marker が x_D から past-cone まで display z 軸を「降りてくる」曖昧な軌跡になる + respawn 新位置が光到達前に露出する。
 
-**Dead state の扱いも層で非対称**:
-- 観測者視点: `aliveIntersection = pastLightConeIntersectionWorldLine(frozen worldLine)` で gate。past-cone が x_D を通過した瞬間 null に → marker 消失、DeathMarker が以降を担当。
-- 神の視点: `!player.isDead` で除外。理由は **存在論的** — 死亡中 (幽霊期間) は player がこの世に居ないので god が見ても描くものが無い。wp は過去の x_D event を指し続けるだけで「player の現在位置」ではない (神の視点 marker が表すのは player の現在の存在そのもの)。情報隠蔽ではなく「表す対象が無い」。
+**Dead state の扱いも層で非対称** (各層の referent 定義から素直に導かれる):
+- 観測者視点: referent = past-cone ∩ worldLine の交点。frozen worldLine に past-cone が touch している間は交点が存在 → 描く。末端 (x_D) を past-cone が通過した瞬間に交点消失 → marker null → DeathMarker が以降を担当。`aliveIntersection` 非 null が gate。
+- 神の視点: referent = player の現在の世界時刻上の存在。**死亡中 (幽霊期間) は player がそもそもこの世に居ない** ので referent が存在しない (wp は過去の x_D event を指し続けるだけで「現在の位置」ではない、現在の player はどこにも居ない)。よって描かない — **情報隠蔽ではなく「描く対象が無い」**。`!player.isDead` が gate (= referent 存在条件そのまま)。
 
 **実例 (2026-04-23、commit cfcd5af + 0113413 + 後続)**:
 - 旧実装は他機 / LH の sphere を 1 つだけ world-now anchor で描画し、観測者視点と神の視点を曖昧に兼ねていた。respawn 直後に pre-light 露出する regression (= SpawnRenderer ring の視覚的意味喪失) が発生。
