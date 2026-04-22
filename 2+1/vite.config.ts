@@ -28,38 +28,22 @@ export default defineConfig({
     }),
   ],
   build: {
-    // vendor 分離: app コード変更時の deploy で巨大 three.js chunk を再 DL させない。
-    // - three: ~600 KB minified / ~150 KB gzip。version bump 以外で変化しない
-    // - react: react + react-dom + react-reconciler + scheduler。R3F の base で必須
-    // - peer: peerjs + webrtc-adapter + sdp + binarypack。network layer
-    // - fiber: @react-three/fiber。R3F 層
-    // chunkSizeWarningLimit: three chunk (~600 KB) が警告閾値 500 KB を越えるため緩和
+    // vendor を単一 chunk に束ねる。app コード変更時の deploy で vendor を再 DL
+    // させない cache 分離効果は維持しつつ、vendor 内細分割による循環 import を回避。
+    //
+    // **循環 import 事故 (2026-04-22、`4928c98` で導入 → `16b7f55` 後に発覚)**:
+    // react / @react-three/fiber / react-reconciler を別 chunk に分けたら
+    // react chunk と fiber chunk が相互に `import` し合い、ESM 循環で TDZ error
+    // → 本番真っ白。原因は react-reconciler が fiber の内部 helper を、fiber が
+    // react-reconciler を相互参照するため。vendor 細分割するなら循環の実在を
+    // 事前に確認する必要があり、確認コストより単一 chunk のシンプルさを優先。
     rollupOptions: {
       output: {
-        manualChunks: (id) => {
-          if (id.includes("node_modules")) {
-            if (id.includes("/three/")) return "three";
-            if (
-              id.includes("/react/") ||
-              id.includes("/react-dom/") ||
-              id.includes("/react-reconciler/") ||
-              id.includes("/scheduler/")
-            )
-              return "react";
-            if (
-              id.includes("/peerjs") ||
-              id.includes("/webrtc-adapter/") ||
-              id.includes("/sdp/")
-            )
-              return "peer";
-            if (id.includes("/@react-three/fiber/")) return "fiber";
-          }
-          return undefined;
-        },
+        manualChunks: (id) =>
+          id.includes("node_modules") ? "vendor" : undefined,
       },
     },
-    // three chunk は minified で ~740 KB (tree-shake 後の下限)。named import 化しない限り
-    // これ以上縮まないので警告閾値を 800 に緩和 (vendor なので通常 deploy で変化しない)。
-    chunkSizeWarningLimit: 800,
+    // vendor chunk は minified で ~1.2 MB (three.js 738 KB 支配)。warning 緩和。
+    chunkSizeWarningLimit: 1400,
   },
 });
