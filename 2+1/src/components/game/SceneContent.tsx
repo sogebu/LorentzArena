@@ -198,8 +198,9 @@ export const SceneContent = ({
   //       **神の視点** の pedagogical marker (光速遅延を視覚化)。観測者が物理的に
   //       見える/見えないに関わらず、player が新しい世界点を獲得した瞬間から
   //       常時マーク。未来光円錐と同じ omniscient view カテゴリ。
-  //       gate: `!player.isDead` のみ — 死亡中は wp が x_D に freeze し未来情報
-  //       (死亡位置) が先行露出するため抑止。
+  //       gate: `!player.isDead` のみ — 死亡中 (幽霊期間) は player がこの世に
+  //       居ないので描くものが無い (wp は過去の x_D event を指すだけで「現在の
+  //       位置」ではない)。存在論的に除外、情報隠蔽ではない。
   const worldLineMarkerEntries = useMemo(() => {
     const pastCone: { key: string; color: string; pos: Vector4 }[] = [];
     const future: { key: string; color: string; pos: Vector4 }[] = [];

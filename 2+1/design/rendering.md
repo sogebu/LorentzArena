@@ -592,7 +592,7 @@ opacity = baseOpacity × fade
 **設計制約**:
 - LH / 他機は **両層の sphere を並存**。display gap = 光速遅延の pedagogical 可視化。統合しない (§M22 の regression 例参照)。
 - 自機 (observer 自身) は両層が同一点に重なるので 1 個でよい。`SelfShipRenderer` は `phaseSpace.pos` anchor。
-- 死亡中は神の視点 marker を `!isDead` で除外 (wp が x_D freeze のまま描くと死亡位置が先行露出)。観測者視点 marker は aliveIntersection (frozen worldLine に past-cone が touch する限り) で延命 → 末端通過で null → DeathMarker が以降を担当。
+- 死亡中は神の視点 marker を `!isDead` で除外。理由は存在論的 — 幽霊期間は player がこの世に居ないので god が見ても描くものが無い (wp は過去の x_D event を指すだけで「player の現在位置」ではない)。観測者視点 marker は aliveIntersection (frozen worldLine に past-cone が touch する限り) で延命 → 末端通過で null → DeathMarker が以降を担当。
 
 ---
 

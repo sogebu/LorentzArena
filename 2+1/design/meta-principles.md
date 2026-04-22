@@ -319,7 +319,7 @@ spec (例: `plans/死亡イベント.md` の死亡 event 描画) が「(x_D, u_D
 
 **Dead state の扱いも層で非対称**:
 - 観測者視点: `aliveIntersection = pastLightConeIntersectionWorldLine(frozen worldLine)` で gate。past-cone が x_D を通過した瞬間 null に → marker 消失、DeathMarker が以降を担当。
-- 神の視点: `!player.isDead` で除外。death 後は wp が x_D に freeze し続けるため、描くと「観測者は死を見ていないのに死亡位置が神視点で分かる」という **未来情報の先行露出** になる (respawn と対称な regression)。
+- 神の視点: `!player.isDead` で除外。理由は **存在論的** — 死亡中 (幽霊期間) は player がこの世に居ないので god が見ても描くものが無い。wp は過去の x_D event を指し続けるだけで「player の現在位置」ではない (神の視点 marker が表すのは player の現在の存在そのもの)。情報隠蔽ではなく「表す対象が無い」。
 
 **実例 (2026-04-23、commit cfcd5af + 0113413 + 後続)**:
 - 旧実装は他機 / LH の sphere を 1 つだけ world-now anchor で描画し、観測者視点と神の視点を曖昧に兼ねていた。respawn 直後に pre-light 露出する regression (= SpawnRenderer ring の視覚的意味喪失) が発生。

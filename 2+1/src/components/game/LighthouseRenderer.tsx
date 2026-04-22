@@ -93,8 +93,9 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
   //       時刻 now)。観測者からはまだ光が届いていない「現在」位置を示し、(A)
   //       との display gap が光速遅延の pedagogical 可視化となる。respawn した
   //       瞬間から光到達を待たず常時表示 (= 新しい世界点の獲得と同時にマーク開始)。
-  //       gate は `!player.isDead` のみ — 死亡中は wp が x_D に freeze するので
-  //       描くと未来情報 (死亡位置) が先行露出するため抑止。
+  //       gate は `!player.isDead` のみ — 死亡中 (幽霊期間) は player がこの世に
+  //       居ないので描くものが無い (wp は過去の x_D event を指し続けるだけで
+  //       「現在の位置」ではない)。存在論的に除外、情報隠蔽ではない。
   const pastConeSpherePos = aliveIntersection
     ? transformEventForDisplay(aliveIntersection.pos, observerPos, observerBoost)
     : null;
