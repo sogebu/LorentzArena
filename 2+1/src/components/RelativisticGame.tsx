@@ -43,6 +43,8 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const [isFiring, setIsFiring] = useState(false);
   const [showInRestFrame, setShowInRestFrame] = useState(true);
   const [useOrthographic, setUseOrthographic] = useState(false);
+  const [showPLCSlice, setShowPLCSlice] = useState(false);
+  const [plcMode, setPlcMode] = useState<"2d" | "3d">("2d");
   const [fps, setFps] = useState(0);
   const [energy, setEnergy] = useState(ENERGY_MAX);
 
@@ -300,6 +302,10 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         setShowInRestFrame={setShowInRestFrame}
         useOrthographic={useOrthographic}
         setUseOrthographic={setUseOrthographic}
+        showPLCSlice={showPLCSlice}
+        setShowPLCSlice={setShowPLCSlice}
+        plcMode={plcMode}
+        setPlcMode={setPlcMode}
         cameraYawRef={cameraYawRef}
         energy={energy}
         isFiring={isFiring}
@@ -314,7 +320,20 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         getPlayerColor={getPlayerColor}
       />
 
-      {useOrthographic ? (
+      {showPLCSlice && plcMode === "3d" ? (
+        <Canvas key="plc3d" camera={{ position: [0, -12, 20], fov: 60 }}>
+          <SceneContent
+            myId={myId}
+            showInRestFrame={false}
+            useOrthographic={false}
+            plc3d={true}
+            cameraYawRef={cameraYawRef}
+            cameraPitchRef={cameraPitchRef}
+            thrustAccelRef={thrustAccelRef}
+            isFiring={isFiring}
+          />
+        </Canvas>
+      ) : useOrthographic ? (
         <Canvas
           key="ortho"
           orthographic
@@ -329,6 +348,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             myId={myId}
             showInRestFrame={showInRestFrame}
             useOrthographic={true}
+            plc3d={false}
             cameraYawRef={cameraYawRef}
             cameraPitchRef={cameraPitchRef}
             thrustAccelRef={thrustAccelRef}
@@ -341,6 +361,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             myId={myId}
             showInRestFrame={showInRestFrame}
             useOrthographic={false}
+            plc3d={false}
             cameraYawRef={cameraYawRef}
             cameraPitchRef={cameraPitchRef}
             thrustAccelRef={thrustAccelRef}

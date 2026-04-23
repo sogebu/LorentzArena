@@ -232,6 +232,7 @@ export const CAMERA_PITCH_MIN = (-Math.PI * 89.9) / 180;
 export const CAMERA_PITCH_MAX = (Math.PI * 89.9) / 180;
 export const CAMERA_DISTANCE_ORTHOGRAPHIC = 50;
 export const CAMERA_DISTANCE_PERSPECTIVE = 10;
+export const CAMERA_DISTANCE_PLC_SLICE = 50;
 export const DEFAULT_CAMERA_PITCH = Math.PI / 6;
 
 // --- Causality guard ---

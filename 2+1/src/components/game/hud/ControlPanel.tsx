@@ -92,6 +92,10 @@ type ControlPanelProps = {
   setShowInRestFrame: (v: boolean) => void;
   useOrthographic: boolean;
   setUseOrthographic: (v: boolean) => void;
+  showPLCSlice: boolean;
+  setShowPLCSlice: (v: boolean) => void;
+  plcMode: "2d" | "3d";
+  setPlcMode: (v: "2d" | "3d") => void;
   killGlow: boolean;
   getPlayerColor: (peerId: string) => string;
 };
@@ -105,6 +109,10 @@ export const ControlPanel = ({
   setShowInRestFrame,
   useOrthographic,
   setUseOrthographic,
+  showPLCSlice,
+  setShowPLCSlice,
+  plcMode,
+  setPlcMode,
   killGlow,
   getPlayerColor,
 }: ControlPanelProps) => {
@@ -136,7 +144,7 @@ export const ControlPanel = ({
         color: "white",
         fontSize: "14px",
         fontFamily: "monospace",
-        zIndex: 100,
+        zIndex: 10000,
       }}
     >
       <div>{t("hud.title")}</div>
@@ -167,6 +175,20 @@ export const ControlPanel = ({
           labelLeft={t("hud.orthographic")}
           labelRight={t("hud.perspective")}
         />
+        <ToggleSwitch
+          checked={showPLCSlice}
+          onChange={setShowPLCSlice}
+          labelLeft={t("hud.spacetime")}
+          labelRight={t("hud.plcSlice")}
+        />
+        {showPLCSlice && (
+          <ToggleSwitch
+            checked={plcMode === "3d"}
+            onChange={(v) => setPlcMode(v ? "3d" : "2d")}
+            labelLeft="2D"
+            labelRight="3D"
+          />
+        )}
       </ToggleGroup>
       <div
         style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}

@@ -21,6 +21,8 @@ export const en: Record<TranslationKey, string> = {
   "hud.worldFrame": "World frame",
   "hud.orthographic": "Orthographic",
   "hud.perspective": "Perspective",
+  "hud.spacetime": "Spacetime",
+  "hud.plcSlice": "PLC Slice",
   // HUD - stats
   "hud.speed": "Speed",
   "hud.gamma": "Gamma",
