@@ -82,6 +82,14 @@ export interface PhysicsResult {
    *  視覚 (exhaust) 用。energy 枯渇や非入力時はゼロベクトル。
    *  ゆくゆく phaseSpace に共変 α^μ を乗せる段階で boost(u_own) して 4-vector 化予定。 */
   thrustAcceleration: Vector3;
+  /**
+   * この tick で適用された effective heading yaw。
+   * - body-relative (現行): 引数 `yaw` をそのまま返す (yaw 不変)
+   * - screen-relative: WASD/touch の入力ベクトルから atan2 で導いた target yaw
+   *   (入力なしの場合は引数 `yaw` を維持)
+   * 呼び出し側は cameraYawRef.current にこの値を反映する (= heading 同期)。
+   */
+  newYaw: number;
 }
 
 export function processPlayerPhysics(
@@ -92,17 +100,46 @@ export function processPlayerPhysics(
   dTau: number,
   otherPositions: Vector4[],
   availableEnergy: number,
+  viewMode: "classic" | "shooter" = "classic",
 ): PhysicsResult {
   let forwardAccel = 0;
   let lateralAccel = 0;
+  let effectiveYaw = yaw;
 
-  if (keys.has("w")) forwardAccel += PLAYER_ACCELERATION;
-  if (keys.has("s")) forwardAccel -= PLAYER_ACCELERATION;
-  if (keys.has("a")) lateralAccel += PLAYER_ACCELERATION;
-  if (keys.has("d")) lateralAccel -= PLAYER_ACCELERATION;
-
-  if (touch.thrust !== 0) {
-    forwardAccel += PLAYER_ACCELERATION * touch.thrust;
+  if (viewMode === "classic") {
+    // Classic: WASD = 機体相対 thrust (前後左右)、yaw は別経路 (矢印キー / processCamera) で操作。
+    // 旧来挙動 (= 機体本体が回り、camera が heading 追従)。
+    if (keys.has("w")) forwardAccel += PLAYER_ACCELERATION;
+    if (keys.has("s")) forwardAccel -= PLAYER_ACCELERATION;
+    if (keys.has("a")) lateralAccel += PLAYER_ACCELERATION;
+    if (keys.has("d")) lateralAccel -= PLAYER_ACCELERATION;
+    if (touch.thrust !== 0) {
+      forwardAccel += PLAYER_ACCELERATION * touch.thrust;
+    }
+  } else {
+    // Shooter (twin-stick): WASD = 画面相対の進みたい方向 → 砲 (heading) + thrust 即時。
+    //   shooter mode の camera は yaw=0 固定 + pitch 下向き、画面 forward = world +x、
+    //   画面 right = world -y (camera right = forward × up = +x × +z = -y)。
+    //   W=画面前 (world +x), S=画面後 (-x), A=画面左 (world +y), D=画面右 (world -y)。
+    //   PC は WASD 押下で 8 方向 (W=0, A=π/2, D=-π/2, WA=π/4, ...) に自然に discrete。
+    //   Touch は touch.thrust 1 軸のみなので heading は前後限定 (将来 2D stick で改善)。
+    //   慣性 (velocity ≠ heading) は physics 側で保たれる。
+    let sx = 0; // world +x 成分 (= 画面前方)
+    let sy = 0; // world +y 成分 (= 画面左)
+    if (keys.has("w")) sx += 1;
+    if (keys.has("s")) sx -= 1;
+    if (keys.has("a")) sy += 1;
+    if (keys.has("d")) sy -= 1;
+    if (touch.thrust !== 0) {
+      sx += touch.thrust;
+    }
+    const mag = Math.sqrt(sx * sx + sy * sy);
+    if (mag > 1e-6) {
+      const norm = Math.min(1, mag);
+      effectiveYaw = Math.atan2(sy, sx);
+      forwardAccel = norm * PLAYER_ACCELERATION;
+      lateralAccel = 0;
+    }
   }
 
   const rawLen = Math.sqrt(forwardAccel * forwardAccel + lateralAccel * lateralAccel);
@@ -131,8 +168,8 @@ export function processPlayerPhysics(
     lateralAccel *= scale;
   }
 
-  const ax = Math.cos(yaw) * forwardAccel + Math.cos(yaw + Math.PI / 2) * lateralAccel;
-  const ay = Math.sin(yaw) * forwardAccel + Math.sin(yaw + Math.PI / 2) * lateralAccel;
+  const ax = Math.cos(effectiveYaw) * forwardAccel + Math.cos(effectiveYaw + Math.PI / 2) * lateralAccel;
+  const ay = Math.sin(effectiveYaw) * forwardAccel + Math.sin(effectiveYaw + Math.PI / 2) * lateralAccel;
 
   const thrustAcceleration = createVector3(ax, ay, 0);
 
@@ -149,6 +186,7 @@ export function processPlayerPhysics(
     thrustEnergyConsumed,
     thrustRequested,
     thrustAcceleration,
+    newYaw: effectiveYaw,
   };
 }
 

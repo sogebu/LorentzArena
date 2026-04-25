@@ -45,6 +45,7 @@
 
 ### 優先 (次回最初に検討)
 
+- **視点・操作系の再設計**: camera mode (`heading-follow` / `world-fixed`) と control mode (`body-relative` / `screen-relative`) を直交軸として設定切替可、heading を未来光円錐の母線で描画。動機: 自機が永遠に背中、進行方向が直感しにくい、camera が機体周りで回ると認知負荷高い。4 stage 一気に plan 化済: [`plans/2026-04-25-viewpoint-controls.md`](plans/2026-04-25-viewpoint-controls.md)。Stage 1 (heading 線) から着手。
 - **Phase A/B で実装した worldline 向き・加速度の思想・コード対称性 audit**: `PhaseSpace = (pos, u, heading, alpha)` 拡張 + past-cone 交点補間 (A-4) + SelfShipRenderer heading source 切替 (B-2) 以降、bug が散見 (DeathMarker regression / 3D モデル消失 / etc)。**そろそろ思想に立ち返って対称性・クリーンさを深く追求するタイミング**。具体候補: (a) component 間の「fade / gate / routing」責務配置の統一 (M21 を広域適用、2026-04-22 夜の LighthouseRenderer τ_0 簡素化と GameLights API 二重意味性解消はこの方向の先行)、(b) Phase B-5 (他機 exhaust の pure thrust broadcast) の再設計、(c) Phase C-1 (wire format 厳格化、heading/alpha optional → required) と整合、(d) 世界線データと描画機構の「対応関係」を DESIGN.md に書き下し。plan 化検討: `plans/2026-04-22-symmetry-audit.md` など
 
 ### 既存 (優先順未決定)

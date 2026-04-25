@@ -111,6 +111,8 @@ export const ControlPanel = ({
   const { t } = useI18n();
   const displayNames = useGameStore((s) => s.displayNames);
   const killLog = useGameStore((s) => s.killLog);
+  const viewMode = useGameStore((s) => s.viewMode);
+  const setViewMode = useGameStore((s) => s.setViewMode);
   const sortedScores = useMemo(
     () => Object.entries(scores).sort(([, a], [, b]) => b - a),
     [scores],
@@ -166,6 +168,12 @@ export const ControlPanel = ({
           onChange={(v) => setUseOrthographic(!v)}
           labelLeft={t("hud.orthographic")}
           labelRight={t("hud.perspective")}
+        />
+        <ToggleSwitch
+          checked={viewMode === "shooter"}
+          onChange={(v) => setViewMode(v ? "shooter" : "classic")}
+          labelLeft={t("hud.viewMode.classic")}
+          labelRight={t("hud.viewMode.shooter")}
         />
       </ToggleGroup>
       <div

@@ -19,6 +19,11 @@ export const ja = {
   "hud.worldFrame": "世界系",
   "hud.orthographic": "正射影",
   "hud.perspective": "透視投影",
+  // 視点・操作系切替 (plans/2026-04-25-viewpoint-controls.md)
+  // classic: 旧挙動 (camera は heading 追従、機体本体が回る、WASD は機体相対 thrust)
+  // shooter: twin-stick 風 (camera 固定、機体 hull 固定、砲だけ入力方向に向く、heading 線も砲方向)
+  "hud.viewMode.classic": "従来",
+  "hud.viewMode.shooter": "シューター",
   // HUD - stats
   "hud.speed": "速さ",
   "hud.gamma": "ガンマ因子",

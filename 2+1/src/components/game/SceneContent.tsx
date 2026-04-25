@@ -12,6 +12,7 @@ import {
 import { useGameStore } from "../../stores/game-store";
 import { ArenaRenderer } from "./ArenaRenderer";
 import { DebrisRenderer } from "./DebrisRenderer";
+import { HeadingMarkerRenderer } from "./HeadingMarkerRenderer";
 import { LaserBatchRenderer } from "./LaserBatchRenderer";
 import { LightConeRenderer } from "./LightConeRenderer";
 import { DeadShipRenderer } from "./DeadShipRenderer";
@@ -99,7 +100,9 @@ export type SceneContentProps = {
   myId: string | null;
   showInRestFrame: boolean;
   useOrthographic: boolean;
-  cameraYawRef: React.RefObject<number>;
+  /** heading の唯一の source of truth。SelfShipRenderer の砲塔 / HeadingMarkerRenderer /
+   *  Radar 等で参照。camera 計算でも (classic mode で) 同じ値を使う。 */
+  headingYawRef: React.RefObject<number>;
   cameraPitchRef: React.RefObject<number>;
   thrustAccelRef: React.RefObject<Vector3>;
   isFiring: boolean;
@@ -110,7 +113,7 @@ export const SceneContent = ({
   myId,
   showInRestFrame,
   useOrthographic,
-  cameraYawRef,
+  headingYawRef,
   cameraPitchRef,
   thrustAccelRef,
   isFiring,
@@ -166,7 +169,13 @@ export const SceneContent = ({
     () => getThreeColor(LASER_PAST_CONE_MARKER_COLOR),
     [],
   );
-  // カメラ制御
+  // カメラ制御 (plans/2026-04-25-viewpoint-controls.md):
+  //   - viewMode 'classic': camera yaw = headingYawRef (即時、heading に同期して回る、旧挙動)
+  //   - viewMode 'shooter': camera yaw = 0 固定 (world basis)、camera と heading が完全独立。
+  //     機体 hull も回らないため、camera 視点は常に同方向、自機は画面内で同位置・同方向で表示。
+  // 機体 hull の rotation は SelfShipRenderer 側で viewMode 判定して固定 / 回転を切替。
+  // 砲塔・heading 線は両 mode で常に headingYawRef を参照して回る。
+  const viewMode = useGameStore((s) => s.viewMode);
   useFrame(({ camera }) => {
     if (!myPlayer) return;
     const playerPos = transformEventForDisplay(
@@ -178,7 +187,7 @@ export const SceneContent = ({
     const targetY = playerPos.y;
     const targetT = playerPos.t;
 
-    const yaw = cameraYawRef.current;
+    const yaw = viewMode === "shooter" ? 0 : headingYawRef.current;
     const pitch = cameraPitchRef.current;
     const distance = useOrthographic ? CAMERA_DISTANCE_ORTHOGRAPHIC : CAMERA_DISTANCE_PERSPECTIVE;
     const camX = targetX + distance * Math.cos(pitch) * Math.cos(yaw + Math.PI);
@@ -386,8 +395,15 @@ export const SceneContent = ({
               observerPos={observerPos}
               observerBoost={observerBoost}
               cannonStyle="laser"
-              cameraYawRef={cameraYawRef}
+              cameraYawRef={headingYawRef}
               alpha4={player.phaseSpace.alpha}
+            />,
+            // heading 線 (未来光円錐母線) — 自機の進行方向を時空に貼る
+            // (plans/2026-04-25-viewpoint-controls.md Stage 1)
+            <HeadingMarkerRenderer
+              key={`${key}-heading`}
+              player={player}
+              cameraYawRef={headingYawRef}
             />,
           );
         } else if (!isMe) {

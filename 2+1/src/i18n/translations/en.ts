@@ -21,6 +21,11 @@ export const en: Record<TranslationKey, string> = {
   "hud.worldFrame": "World frame",
   "hud.orthographic": "Orthographic",
   "hud.perspective": "Perspective",
+  // View mode (plans/2026-04-25-viewpoint-controls.md)
+  // classic: legacy (chase camera, ship body rotates, body-relative thrust)
+  // shooter: twin-stick (fixed camera, ship hull stationary, cannon points to input dir)
+  "hud.viewMode.classic": "Classic",
+  "hud.viewMode.shooter": "Shooter",
   // HUD - stats
   "hud.speed": "Speed",
   "hud.gamma": "Gamma",

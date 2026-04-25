@@ -50,6 +50,28 @@ type PlayersUpdater = (prev: Map<string, RelativisticPlayer>) => Map<string, Rel
 type LasersUpdater = (prev: Laser[]) => Laser[];
 type SpawnsUpdater = (prev: SpawnEffect[]) => SpawnEffect[];
 
+/**
+ * 視点・操作系の mode (plans/2026-04-25-viewpoint-controls.md)。
+ * - 'classic': 旧来挙動 = camera が heading に追従 (Chase)、機体本体が heading 方向に回り、
+ *   WASD は機体相対 thrust (前後左右)、矢印キーで heading 連続旋回
+ * - 'shooter': twin-stick shooter 風 = camera world 基底固定、機体 hull は回らず常に
+ *   world basis で表示、砲塔だけが heading 方向に向く。WASD 入力ベクトルが heading
+ *   (= 砲方向 = 射撃方向) を即時決定 + thrust。heading 線も砲方向に伸びる。
+ */
+export type ViewMode = "classic" | "shooter";
+
+const VIEW_MODE_LS_KEY = "la-view-mode";
+
+const loadViewMode = (): ViewMode => {
+  if (typeof localStorage === "undefined") return "shooter";
+  const v = localStorage.getItem(VIEW_MODE_LS_KEY);
+  // default = shooter (twin-stick)。明示的に classic を選んだ場合のみ classic。
+  return v === "classic" ? "classic" : "shooter";
+};
+const saveViewMode = (mode: ViewMode) => {
+  if (typeof localStorage !== "undefined") localStorage.setItem(VIEW_MODE_LS_KEY, mode);
+};
+
 export interface GameState {
   // --- Reactive state (components subscribe via selectors) ---
   players: Map<string, RelativisticPlayer>;
@@ -85,6 +107,9 @@ export interface GameState {
    * の trigger に使う。lethal / non-lethal 問わず append、tail slice で cap。
    */
   hitLog: HitEventRecord[];
+
+  // --- 視点・操作系設定 (plans/2026-04-25-viewpoint-controls.md) ---
+  viewMode: ViewMode;
 
   // --- Actions: state setters ---
   setPlayers: (updater: PlayersUpdater) => void;
@@ -146,6 +171,9 @@ export interface GameState {
   setDisplayName: (playerId: string, name: string) => void;
   addProcessedLaser: (laserId: string) => void;
   cleanupProcessedLasers: (threshold: number) => void;
+
+  // --- 視点・操作系 setters ---
+  setViewMode: (mode: ViewMode) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -172,6 +200,9 @@ export const useGameStore = create<GameState>()((set, get) => ({
   killLog: [],
   respawnLog: [],
   hitLog: [],
+
+  // 視点・操作系 default は localStorage から復元 (未保存時は classic = 旧挙動)。
+  viewMode: loadViewMode(),
 
   // -----------------------------------------------------------------------
   // State setters
@@ -433,6 +464,11 @@ export const useGameStore = create<GameState>()((set, get) => ({
     if (state.processedLasers.size > threshold) {
       state.processedLasers.clear();
     }
+  },
+
+  setViewMode: (viewMode) => {
+    saveViewMode(viewMode);
+    set({ viewMode });
   },
 }));
 

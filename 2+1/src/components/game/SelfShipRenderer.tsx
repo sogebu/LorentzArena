@@ -71,6 +71,7 @@ import { AntennaBeaconRenderer } from "./AntennaBeaconRenderer";
 import { DorsalPodRenderer } from "./DorsalPodRenderer";
 import { LaserCannonRenderer } from "./LaserCannonRenderer";
 import { getThreeColor, sharedGeometries } from "./threeCache";
+import { useGameStore } from "../../stores/game-store";
 import type { lorentzBoost } from "../../physics";
 
 const INNER_CORE_SCALE = 0.45; // 旧 ExhaustCone と同値
@@ -133,6 +134,12 @@ export const SelfShipRenderer = ({
   cameraYawRef?: React.RefObject<number>;
 }) => {
   const groupRef = useRef<THREE.Group>(null);
+  // 砲塔 wrapper: shooter mode 時に hull (groupRef) と独立に heading 方向へ回す。
+  // classic mode 時は groupRef 全体が yaw 回転 + cannonGroupRef.rotation = 0 で
+  // 旧来の「砲も hull と一緒に回る」挙動を復元する。
+  const cannonGroupRef = useRef<THREE.Group>(null);
+  // viewMode を購読 (re-render 頻度は切替時のみ)。useFrame 内で hull / 砲塔 / nozzle 計算に分岐。
+  const viewMode = useGameStore((s) => s.viewMode);
   // 4 cardinal nozzle に対応する exhaust ペア (outer + inner)。各 nozzle は独立に
   // smoothing + 表示制御。斜め thrust (e.g., W+A) は **2 nozzle が同時噴射、各 1/√2 の
   // 強度** で literal に再現 (RCS の真面目な合成)。
@@ -217,19 +224,46 @@ export const SelfShipRenderer = ({
     const yaw = cameraYawRef
       ? cameraYawRef.current
       : quatToYaw(player.phaseSpace.heading);
-    group.rotation.set(0, 0, yaw);
+
+    // viewMode 分岐:
+    //   classic: hull (group) 全体が heading 方向に回転、砲塔 (cannonGroup) は group 内で 0
+    //     → 旧来の「機体が回ると砲も一緒に回る」挙動。
+    //   shooter: hull (group) は world basis 固定 (rotation=0)、砲塔 (cannonGroup) のみ
+    //     heading 方向に回る → 「機体は固定、砲だけ入力方向 (8 方向) に向く」。
+    const isShooter = viewMode === "shooter";
+    group.rotation.set(0, 0, isShooter ? 0 : yaw);
+    // 砲塔回転: shooter mode では heading 即時設定だと「向きが瞬間切り替わる」感が出るので、
+    // 時間定数 ~80ms で滑らかに lerp 追従。twin-stick の応答性は保ちつつ視覚的な切替感を緩和。
+    // angle 差は ±π に wrap して shortest path で lerp。classic mode は groupRef 全体が回るので
+    // cannonGroupRef は 0 固定 (即時戻し)。
+    if (cannonGroupRef.current) {
+      if (isShooter) {
+        const target = yaw;
+        const cur = cannonGroupRef.current.rotation.z;
+        let diff = target - cur;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        const tau = 0.08; // s, smaller=snappier
+        const alpha = 1 - Math.exp(-Math.min(0.1, delta) / tau);
+        cannonGroupRef.current.rotation.z = cur + diff * alpha;
+      } else {
+        cannonGroupRef.current.rotation.z = 0;
+      }
+    }
 
     // 4 cardinal nozzle 各々の独立噴射 (RCS の真面目な合成)。
     // thrust (world) → local frame に変換、各 nozzle outward に対し intensity =
     // max(0, -localThrust · outward) で分解。WASD 単独 → 1 ノズル intensity 1.0、
     // WA 等斜め → 2 ノズル各 intensity 1/√2 → 炎長さも各 1/√2 倍。
+    // shooter mode は hull が回らない → local frame = world frame、yaw=0 と等価で計算。
     const accel = thrustAccelRef.current;
     const ax = accel.x;
     const ay = accel.y;
     const norm = Math.hypot(ax, ay);
     const thrustFrac = Math.min(1, norm / PLAYER_ACCELERATION);
-    const cosY = Math.cos(yaw);
-    const sinY = Math.sin(yaw);
+    const hullYaw = isShooter ? 0 : yaw;
+    const cosY = Math.cos(hullYaw);
+    const sinY = Math.sin(hullYaw);
     // local thrust unit vector
     let localUx = 0;
     let localUy = 0;
@@ -498,7 +532,13 @@ export const SelfShipRenderer = ({
           4. cannon 各 segment は group 内で x=0 から始まる (HULL_R offset なし)。
           結果: 砲は hull 真下にぶら下がり、そこから forward+down 45° に伸びる
           → 後方視点でも常に hull 下に砲身が見える。
-          cannonStyle='laser' では LaserCannonRenderer で差替え (bracket は内部で同 spec 再描画)。 */}
+          cannonStyle='laser' では LaserCannonRenderer で差替え (bracket は内部で同 spec 再描画)。
+
+          === cannonGroupRef wrapper (shooter mode 用) ===
+          shooter mode では hull (groupRef) は固定で、この wrapper だけが heading に応じて
+          z 軸回転 → 砲塔だけが入力方向 (8 方向) に向く。classic mode では wrapper rotation=0
+          で hull (group) 全体の回転に従う (= 旧挙動)。 */}
+      <group ref={cannonGroupRef}>
       {cannonStyle === "laser" && <LaserCannonRenderer color={player.color} />}
       {cannonStyle === "gun" && (
         <>
@@ -662,6 +702,7 @@ export const SelfShipRenderer = ({
       </group>
         </>
       )}
+      </group>{/* end cannonGroupRef wrapper */}
 
       {/* Exhaust (4 nozzle 各々、旧 ExhaustCone と同 spec、2 層 cone + additive blending)。
           位置・向き・scale は useFrame で nozzle 個別に動的設定。

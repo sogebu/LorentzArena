@@ -47,7 +47,12 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const [energy, setEnergy] = useState(ENERGY_MAX);
 
   // --- Per-frame local refs (shared with SceneContent) ---
-  const cameraYawRef = useRef(0);
+  // headingYawRef: 自機の進行方向 (heading) の唯一の source of truth。
+  //   入力 (矢印キー / WASD shooter mode / touch) で即時更新、phaseSpace.heading に
+  //   毎 tick 同期。SelfShipRenderer の砲塔 / HeadingMarkerRenderer / Radar / camera (classic
+  //   mode) はこの値を参照する。shooter mode では camera は 0 固定で heading と独立。
+  // (plans/2026-04-25-viewpoint-controls.md)
+  const headingYawRef = useRef(0);
   const cameraPitchRef = useRef(DEFAULT_CAMERA_PITCH);
   // 自機の最新 thrust 加速度 (world coords、friction 除外)。exhaust 描画用。
   const thrustAccelRef = useRef(vector3Zero());
@@ -279,7 +284,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   useGameLoop({
     peerManager, myId, getPlayerColor,
     setFps, setEnergy, setIsFiring, setDeathFlash,
-    cameraYawRef, cameraPitchRef, thrustAccelRef, respawnTimeoutsRef,
+    headingYawRef, cameraPitchRef, thrustAccelRef, respawnTimeoutsRef,
     keysPressed, touchInput, stale,
   });
 
@@ -300,7 +305,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         setShowInRestFrame={setShowInRestFrame}
         useOrthographic={useOrthographic}
         setUseOrthographic={setUseOrthographic}
-        cameraYawRef={cameraYawRef}
+        cameraYawRef={headingYawRef}
         energy={energy}
         isFiring={isFiring}
         myLaserColor={
@@ -329,7 +334,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             myId={myId}
             showInRestFrame={showInRestFrame}
             useOrthographic={true}
-            cameraYawRef={cameraYawRef}
+            headingYawRef={headingYawRef}
             cameraPitchRef={cameraPitchRef}
             thrustAccelRef={thrustAccelRef}
             isFiring={isFiring}
@@ -341,7 +346,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             myId={myId}
             showInRestFrame={showInRestFrame}
             useOrthographic={false}
-            cameraYawRef={cameraYawRef}
+            headingYawRef={headingYawRef}
             cameraPitchRef={cameraPitchRef}
             thrustAccelRef={thrustAccelRef}
             isFiring={isFiring}

@@ -67,7 +67,10 @@ export interface GameLoopDeps {
   setDeathFlash: React.Dispatch<React.SetStateAction<boolean>>;
 
   // Per-frame local refs (shared with SceneContent)
-  cameraYawRef: MutableRefObject<number>;
+  // headingYawRef: heading の唯一の source of truth (旧 cameraYawRef の役割)。
+  // 入力 (矢印 / WASD screen / touch) で更新、phaseSpace.heading に同期。
+  // camera yaw は SceneContent 側で別途 lerp 追従 (Chase mode) で計算する。
+  headingYawRef: MutableRefObject<number>;
   cameraPitchRef: MutableRefObject<number>;
   /** 自機の最新 thrust 加速度 (world coords、friction 除外)。
    *  exhaust 描画用、毎 tick 更新。死亡中・frozen・非入力時はゼロベクトル。 */
@@ -102,7 +105,7 @@ export function useGameLoop({
   setEnergy,
   setIsFiring,
   setDeathFlash,
-  cameraYawRef,
+  headingYawRef,
   cameraPitchRef,
   thrustAccelRef,
   respawnTimeoutsRef,
@@ -161,7 +164,7 @@ export function useGameLoop({
           // alpha は catchup 内の友動摩擦しかないので evolvePhaseSpace が既に格納済。
           const newPhaseSpace = {
             ...evolved,
-            heading: yawToQuat(cameraYawRef.current),
+            heading: yawToQuat(headingYawRef.current),
           };
           store.setPlayers((prev) => {
             const cur = prev.get(myId);
@@ -208,7 +211,7 @@ export function useGameLoop({
       if (prevMyDeathEventRef.current !== null && currentMyDeathEvent === null) {
         // non-null → null: self-respawn just happened → reset camera refs.
         // energy は handleSpawn が ENERGY_MAX にリセット済 (store 側で一元管理)。
-        cameraYawRef.current = 0;
+        headingYawRef.current = 0;
         cameraPitchRef.current = DEFAULT_CAMERA_PITCH;
       }
       // null → non-null: self-death。ghost phaseSpace は handleKill 内で
@@ -256,10 +259,10 @@ export function useGameLoop({
         keysPressed.current,
         touch,
         dTau,
-        { yaw: cameraYawRef.current, pitch: cameraPitchRef.current },
+        { yaw: headingYawRef.current, pitch: cameraPitchRef.current },
         isDeadForCamera,
       );
-      cameraYawRef.current = cam.yaw;
+      headingYawRef.current = cam.yaw;
       cameraPitchRef.current = cam.pitch;
       touch.yawDelta = 0;
       // pitch は touch で制御しない (processCamera 内の pitch 処理削除済み)。
@@ -320,7 +323,7 @@ export function useGameLoop({
         const laserResult = processLaserFiring(
           myPlayer,
           myId,
-          cameraYawRef.current,
+          headingYawRef.current,
           currentTime,
           energy,
           lastLaserTimeRef.current,
@@ -392,20 +395,24 @@ export function useGameLoop({
               ghostMe,
               keysPressed.current,
               touch,
-              cameraYawRef.current,
+              headingYawRef.current,
               dTau,
               otherPositions,
               Number.POSITIVE_INFINITY,
+              fresh.viewMode,
             );
             thrustRequestedThisTick = physics.thrustRequested;
             thrustAccelerationThisTick = physics.thrustAcceleration;
+            // screen-relative では入力で yaw が即時更新される → headingYawRef に反映。
+            // body-relative では newYaw === yaw (引数) なので no-op。
+            headingYawRef.current = physics.newYaw;
 
             // 自機 heading は現カメラ yaw を source of truth とする。
             // physics.newPhaseSpace.heading は前 tick の値が preserve されているので、
             // ここで現 yaw に上書き (alpha は physics 側で既に world 4-accel に設定済)。
             const ghostPs = {
               ...physics.newPhaseSpace,
-              heading: yawToQuat(cameraYawRef.current),
+              heading: yawToQuat(headingYawRef.current),
             };
             // 2026-04-22: dead player は自分の ghost 位置を世界に announce しない。
             // 従って `players[myId].phaseSpace` は死亡時刻で凍結されたまま (他者 snapshot
@@ -434,14 +441,17 @@ export function useGameLoop({
               freshMe,
               keysPressed.current,
               touch,
-              cameraYawRef.current,
+              headingYawRef.current,
               dTau,
               otherPositions,
               energy,
+              fresh.viewMode,
             );
             energy = Math.max(0, energy - physics.thrustEnergyConsumed);
             thrustRequestedThisTick = physics.thrustRequested;
             thrustAccelerationThisTick = physics.thrustAcceleration;
+            // screen-relative で入力により yaw が更新されたら反映 (= heading 同期)。
+            headingYawRef.current = physics.newYaw;
 
             // 自機 heading = 現カメラ yaw (source of truth)。physics.newPhaseSpace は
             // 前 tick の heading を preserve しているので上書き。
@@ -450,7 +460,7 @@ export function useGameLoop({
             // を読むので実害は小さい (履歴 replay 精度のみ影響、角速度無しの現仕様で顕在化せず)。
             const newPs = {
               ...physics.newPhaseSpace,
-              heading: yawToQuat(cameraYawRef.current),
+              heading: yawToQuat(headingYawRef.current),
             };
             fresh.setPlayers((prev) => {
               const me = prev.get(myId);

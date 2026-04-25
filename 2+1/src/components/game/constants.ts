@@ -329,6 +329,14 @@ export const PLAYER_WORLDLINE_OPACITY = 0.4;
 // 2026-04-22: 0.55 → 0.4 (odakin 指示、世界線がやや主張強すぎた)
 export const LASER_WORLDLINE_OPACITY = 0.4;
 
+// --- Heading marker (未来光円錐の母線として heading 方向を可視化) ---
+// 自機の進行方向を null geodesic (Δt = |Δx|) で描画。レーザーの予測線でもあり、
+// 機体姿勢に依存せず「向き」が一目瞭然になる (plans/2026-04-25-viewpoint-controls.md Stage 1)。
+// 色は LASER_PAST_CONE_MARKER_COLOR (silver) を流用。
+// 長さは LASER_RANGE (10) より短く、機体スケール (~1.5) より十分長い中間値。
+export const HEADING_MARKER_LENGTH = 5.0;
+export const HEADING_MARKER_OPACITY = 0.5;
+
 // --- Debris opacity ---
 // InstancedMesh 全 instance 共通 (per-vertex 時間 fade が shader で乗算される)。
 // 2026-04-22: 0.1 → 0.07 (odakin 指示、世界線部分を少し目立たなく)
