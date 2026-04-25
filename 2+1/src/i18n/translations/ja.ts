@@ -1,8 +1,8 @@
 export const ja = {
   // HUD - title & controls
   "hud.title": "相対論的アリーナ (2+1次元 時空図)",
-  "hud.controls.forward": "W/S: 前進/後退  A/D: 左右移動",
-  "hud.controls.cameraH": "←/→: カメラ水平回転",
+  "hud.controls.forward": "WASD: 並進 (画面相対)",
+  "hud.controls.cameraH": "←/→: 機体回転 (砲身 = aim)",
   "hud.controls.cameraV": "↑/↓: カメラ上下回転",
   "hud.controls.fire": "スペースキー: レーザー発射",
   "hud.controls.touch.heading": "スワイプ ←→: 方向転換",

@@ -58,15 +58,18 @@ type SpawnsUpdater = (prev: SpawnEffect[]) => SpawnEffect[];
  *   world basis で表示、砲塔だけが heading 方向に向く。WASD 入力ベクトルが heading
  *   (= 砲方向 = 射撃方向) を即時決定 + thrust。heading 線も砲方向に伸びる。
  */
-export type ViewMode = "classic" | "shooter";
+export type ViewMode = "classic" | "shooter" | "jellyfish";
 
 const VIEW_MODE_LS_KEY = "la-view-mode";
+const VIEW_MODE_VALUES: readonly ViewMode[] = ["classic", "shooter", "jellyfish"];
 
 const loadViewMode = (): ViewMode => {
   if (typeof localStorage === "undefined") return "shooter";
   const v = localStorage.getItem(VIEW_MODE_LS_KEY);
-  // default = shooter (twin-stick)。明示的に classic を選んだ場合のみ classic。
-  return v === "classic" ? "classic" : "shooter";
+  // default = shooter (twin-stick rocket)。jellyfish も shooter 系の操作系で動く別 hull 形状。
+  return (VIEW_MODE_VALUES as readonly string[]).includes(v ?? "")
+    ? (v as ViewMode)
+    : "shooter";
 };
 const saveViewMode = (mode: ViewMode) => {
   if (typeof localStorage !== "undefined") localStorage.setItem(VIEW_MODE_LS_KEY, mode);

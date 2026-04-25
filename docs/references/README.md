@@ -1,7 +1,9 @@
 # References
 
-LorentzArena が依拠する / 直接の元ネタとなっている公開論文の archive。  
-出版側 Open Access ライセンスの範囲で PDF 実体を同梱しています。
+LorentzArena が依拠する / 直接の元ネタとなっている公開論文・素材の archive。  
+出版側 Open Access ライセンスの範囲で PDF 実体を同梱しています。  
+外部素材 (イラスト等) は再配布禁止のものが多いため、本リポには素材ファイルを含めず、
+出典 URL とライセンス概要を本ファイルに記録します。
 
 ## Nakayama & Oda, "Relativity for games" (PTEP 2017)
 
@@ -36,3 +38,28 @@ PTEP 誌は 2012 年以降 [Creative Commons Attribution 4.0 International (CC B
     year = "2017"
 }
 ```
+
+## External art assets
+
+### ジャパクリップ「クラゲ」 — JellyfishShipRenderer の motif
+
+- **Source URL**: https://japaclip.com/jellyfish/
+- **Site terms**: https://japaclip.com/terms/
+- **Used by**: [`2+1/src/components/game/JellyfishShipRenderer.tsx`](../../2+1/src/components/game/JellyfishShipRenderer.tsx)
+
+Shooter mode の 3 機目 (クラゲ機体) のシルエット・色合い・顔まわりの design motif として参照。実装は procedural 3D (LatheGeometry の dome、Verlet rope の触手、半透明水色マテリアル等) で、元 PNG 自体は repo に含めていない。
+
+### License 概要 (2026-04 確認)
+
+| 項目 | 可否 |
+|---|---|
+| 商用利用 | OK |
+| 改変・加工 (= 3D モデル化はその延長) | OK |
+| ゲーム / アプリ組込 | OK |
+| クレジット表記 | 任意 (本ファイルで記録) |
+| **イラスト素材として配布** | **NG** |
+| LINE スタンプ等 | NG |
+| 公序良俗反 | NG |
+
+「素材として配布」NG の制約により、本リポ (public) に元 PNG を commit しない運用。3D
+モデル成果物 (procedural code / 自作 .glb) は派生物として OK と解釈。著作権はジャパクリップ側に残る (放棄しない)。

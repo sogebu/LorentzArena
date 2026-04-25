@@ -20,6 +20,12 @@ import { ShipPreview } from "./ShipPreview";
 export const ShipViewer = () => {
   const thrustAccelRef = useRef<Vector3>(createVector3(0, 0, 0));
   const cameraYawRef = useRef<number>(0);
+  const firingRef = useRef<boolean>(false);
+  const [firing, setFiring] = useState(false);
+  const setFiringSync = (v: boolean) => {
+    firingRef.current = v;
+    setFiring(v);
+  };
 
   type ThrustOption = {
     label: string;
@@ -50,7 +56,7 @@ export const ShipViewer = () => {
   const [bgColor, setBgColor] = useState("#0a0a0f");
   const [cannonStyle, setCannonStyle] = useState<"gun" | "laser">("laser");
   const [dorsalStyle, setDorsalStyle] = useState<"pod" | "antenna" | "none">("pod");
-  const [hullStyle, setHullStyle] = useState<"classic" | "rocket">("rocket");
+  const [hullStyle, setHullStyle] = useState<"classic" | "rocket" | "jellyfish">("jellyfish");
   // Laser cannon の glow を player 識別色で着色する実機プレビュー用。"default" は従来の
   // cyan glow (ShipPreview の stubPlayer.color="#ffffff" fallback と同等)。
   const playerColorOptions: { label: string; value: string }[] = [
@@ -90,6 +96,7 @@ export const ShipViewer = () => {
         hullStyle={hullStyle}
         playerColor={playerColor || undefined}
         alpha4={alpha4Preview}
+        firingRef={firingRef}
       />
 
       <div
@@ -154,7 +161,9 @@ export const ShipViewer = () => {
           {"Hull: "}
           <select
             value={hullStyle}
-            onChange={(e) => setHullStyle(e.target.value as "classic" | "rocket")}
+            onChange={(e) =>
+              setHullStyle(e.target.value as "classic" | "rocket" | "jellyfish")
+            }
             style={{
               background: "#222",
               color: "#ddd",
@@ -164,6 +173,7 @@ export const ShipViewer = () => {
           >
             <option value="classic">classic (六角プリズム、classic mode)</option>
             <option value="rocket">rocket (ぽっちゃりロケット、shooter mode)</option>
+            <option value="jellyfish">jellyfish (クラゲ、shooter mode v2)</option>
           </select>
         </label>
         <label style={{ display: "block", marginBottom: 8 }}>
@@ -217,6 +227,14 @@ export const ShipViewer = () => {
               </option>
             ))}
           </select>
+        </label>
+        <label style={{ display: "block", marginBottom: 6 }}>
+          <input
+            type="checkbox"
+            checked={firing}
+            onChange={(e) => setFiringSync(e.target.checked)}
+          />
+          {" 射撃中 (jellyfish: 武装触手 45° 下)"}
         </label>
 
         <div style={{ marginTop: 10, fontWeight: "bold" }}>Thrust 入力</div>

@@ -4,7 +4,9 @@ import {
   createVector3,
   createVector4,
   evolvePhaseSpace,
+  inverseLorentzBoost,
   lorentzDotVector4,
+  multiplyVector4Matrix4,
   pastLightConeIntersectionWorldLine,
   subVector4,
   vector3Zero,
@@ -100,50 +102,37 @@ export function processPlayerPhysics(
   dTau: number,
   otherPositions: Vector4[],
   availableEnergy: number,
-  viewMode: "classic" | "shooter" = "classic",
+  viewMode: "classic" | "shooter" | "jellyfish" = "classic",
   cameraYaw = 0,
 ): PhysicsResult {
   let forwardAccel = 0;
   let lateralAccel = 0;
-  let effectiveYaw = yaw;
-
-  if (viewMode === "classic") {
-    // Classic: WASD = 機体相対 thrust (前後左右)、yaw は別経路 (矢印キー / processCamera) で操作。
-    // 旧来挙動 (= 機体本体が回り、camera が heading 追従)。
-    if (keys.has("w")) forwardAccel += PLAYER_ACCELERATION;
-    if (keys.has("s")) forwardAccel -= PLAYER_ACCELERATION;
-    if (keys.has("a")) lateralAccel += PLAYER_ACCELERATION;
-    if (keys.has("d")) lateralAccel -= PLAYER_ACCELERATION;
-    if (touch.thrust !== 0) {
-      forwardAccel += PLAYER_ACCELERATION * touch.thrust;
-    }
-  } else {
-    // Shooter (twin-stick): WASD = 画面相対の進みたい方向 → heading + thrust 即時。
-    //   camera basis での解釈: 画面 forward = (cos(cameraYaw), sin(cameraYaw))、
-    //   画面 left = camera basis での +y、screen right = -y。
-    //   W=画面前 (camera basis +x), S=画面後 (-x), A=画面左 (+y), D=画面右 (-y)。
-    //   atan2(sy, sx) で camera basis での角度を求め、cameraYaw を加算して world basis に変換。
-    //   camera が矢印キーで回転すると WASD interpretation も追従するので「画面の上 = 進みたい方向」
-    //   が常に成立。
-    //   Touch は touch.thrust 1 軸のみなので heading は前後限定 (将来 2D stick で改善)。
-    //   慣性 (velocity ≠ heading) は physics 側で保たれる。
-    let sx = 0; // camera basis +x 成分 (= 画面前方)
-    let sy = 0; // camera basis +y 成分 (= 画面左)
-    if (keys.has("w")) sx += 1;
-    if (keys.has("s")) sx -= 1;
-    if (keys.has("a")) sy += 1;
-    if (keys.has("d")) sy -= 1;
-    if (touch.thrust !== 0) {
-      sx += touch.thrust;
-    }
-    const mag = Math.sqrt(sx * sx + sy * sy);
-    if (mag > 1e-6) {
-      const norm = Math.min(1, mag);
-      effectiveYaw = Math.atan2(sy, sx) + cameraYaw;
-      forwardAccel = norm * PLAYER_ACCELERATION;
-      lateralAccel = 0;
-    }
+  // Thrust 方向は heading に依存しない。WASD は camera basis (画面相対) の純粋な並進。
+  // heading は別経路 (矢印キー = processCamera) で旋回し、aim 方向 = 砲身方向として独立。
+  // viewMode に関わらず統一の操作系。
+  // - 画面 forward (W) = camera basis +x = world (cos cy, sin cy)
+  // - 画面 left   (A) = camera basis +y = world (-sin cy, cos cy)
+  // 既存の (forwardAccel, lateralAccel, effectiveYaw) 投影機構を流用するために、effectiveYaw
+  // を cameraYaw に置き、forward/lateral には camera basis の (sx, sy) をそのまま入れる。
+  let sx = 0; // camera basis +x 成分 (画面前方)
+  let sy = 0; // camera basis +y 成分 (画面左)
+  if (keys.has("w")) sx += 1;
+  if (keys.has("s")) sx -= 1;
+  if (keys.has("a")) sy += 1;
+  if (keys.has("d")) sy -= 1;
+  if (touch.thrust !== 0) {
+    sx += touch.thrust;
   }
+  const mag = Math.sqrt(sx * sx + sy * sy);
+  let effectiveYaw = yaw; // default (input direction が無い時) はそのまま (使われない)
+  if (mag > 1e-6) {
+    const norm = Math.min(1, mag);
+    effectiveYaw = cameraYaw; // 投影 basis = camera basis
+    forwardAccel = (sx / mag) * norm * PLAYER_ACCELERATION;
+    lateralAccel = (sy / mag) * norm * PLAYER_ACCELERATION;
+  }
+  // viewMode は引数として残すが現在は分岐に使わない (将来分岐したくなった時の hook)。
+  void viewMode;
 
   const rawLen = Math.sqrt(forwardAccel * forwardAccel + lateralAccel * lateralAccel);
   if (rawLen > PLAYER_ACCELERATION) {
@@ -180,7 +169,23 @@ export function processPlayerPhysics(
   const frictionY = -me.phaseSpace.u.y * FRICTION_COEFFICIENT;
 
   const acceleration = createVector3(ax + frictionX, ay + frictionY, 0);
-  const newPhaseSpace = evolvePhaseSpace(me.phaseSpace, acceleration, dTau);
+  const evolved = evolvePhaseSpace(me.phaseSpace, acceleration, dTau);
+
+  // phaseSpace.alpha は **表示専用** (噴射炎強度 / 加速度矢印 / 他 peer への broadcast)。
+  // 物理進行 (位置 / 4-velocity 更新) には evolvePhaseSpace 内部の `acceleration` 引数のみ
+  // 使われ、戻り値の alpha は overwrite しても物理に影響しない。
+  //
+  // evolvePhaseSpace は (thrust + friction) を rest-frame proper acceleration とみなして
+  // boost し world-frame 4-加速度 (alpha) を格納するが、friction を含めると静止漂流時に
+  // 矢印が反転して見えるのが不自然 → **同じ boost 操作を thrust のみで通した値**で上書き。
+  // 新たな計算は無く、(0, ax, ay, 0) を inverseLorentzBoost(u) で world-frame に持って
+  // いくだけ ((ax, ay) は thrust 由来の rest-frame proper accel として既に gameLoop 前段
+  // で算出済)。
+  const thrustAccel4Rest = createVector4(0, ax, ay, 0);
+  const boost = inverseLorentzBoost(me.phaseSpace.u);
+  const thrustAlpha4 = multiplyVector4Matrix4(boost, thrustAccel4Rest);
+  const newPhaseSpace = { ...evolved, alpha: thrustAlpha4 };
+
   const updatedWorldLine = appendWorldLine(me.worldLine, newPhaseSpace, otherPositions);
 
   return {
@@ -189,7 +194,9 @@ export function processPlayerPhysics(
     thrustEnergyConsumed,
     thrustRequested,
     thrustAcceleration,
-    newYaw: effectiveYaw,
+    // 新操作系では WASD は heading を変えない (heading は矢印キーで別経路)。
+    // ここで入力 yaw をそのまま返すことで useGameLoop の headingYawRef 同期が no-op に。
+    newYaw: yaw,
   };
 }
 

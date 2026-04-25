@@ -11,6 +11,7 @@ import {
   yawToQuat,
 } from "../physics";
 import { GameLights, type LightPosition } from "./game/GameLights";
+import { JellyfishShipRenderer } from "./game/JellyfishShipRenderer";
 import { RocketShipRenderer } from "./game/RocketShipRenderer";
 import { SelfShipRenderer } from "./game/SelfShipRenderer";
 
@@ -104,14 +105,18 @@ export interface ShipPreviewProps {
   cannonStyle?: "gun" | "laser";
   /** 上面構造物デザイン。'pod' (案 B、扁平 ellipsoid + stripe) / 'antenna' (案 A、棒 + 球) / 'none'。 */
   dorsalStyle?: "pod" | "antenna" | "none";
-  /** 機体形状。'classic' (六角プリズム hull) / 'rocket' (ぽっちゃりロケット、shooter mode 用)。 */
-  hullStyle?: "classic" | "rocket";
+  /** 機体形状。'classic' (六角プリズム hull) / 'rocket' (ぽっちゃりロケット、shooter mode 用) /
+   *  'jellyfish' (procedural クラゲ、shooter mode 用 v2)。 */
+  hullStyle?: "classic" | "rocket" | "jellyfish";
   /** Player 識別色 (hsl)。laser cannon の crystal / emitter / lens emissive を焼き込む。
    *  未指定 (undefined) は従来の cyan glow。 */
   playerColor?: string;
   /** spacetime 加速度矢印用の 4-加速度 (world frame)。未指定時は矢印非表示。
    *  preview では u=0 前提なので (0, thrust.x, thrust.y, 0) を渡せば spatial 矢印として表示。 */
   alpha4?: Vector4;
+  /** 射撃中フラグの ref (jellyfish renderer に渡され、武装触手末端を 45° 上に kinematic
+   *  強制する)。未指定 = 常に false (通常時)。 */
+  firingRef?: React.MutableRefObject<boolean>;
 }
 
 export const ShipPreview = ({
@@ -128,6 +133,7 @@ export const ShipPreview = ({
   hullStyle = "classic",
   playerColor,
   alpha4,
+  firingRef,
 }: ShipPreviewProps = {}) => {
   const defaultThrustRef = useRef<Vector3>(createVector3(0, 0, 0));
   const defaultYawRef = useRef<number>(0);
@@ -175,7 +181,7 @@ export const ShipPreview = ({
 
         <HeadingUpdater yawRef={yawRef} stubPlayer={stubPlayer} />
 
-        {/* hullStyle で 2 種類の renderer を dispatch (構造的に独立)。 */}
+        {/* hullStyle で 3 種類の renderer を dispatch (構造的に独立)。 */}
         {hullStyle === "rocket" ? (
           <RocketShipRenderer
             player={stubPlayer}
@@ -184,6 +190,16 @@ export const ShipPreview = ({
             observerBoost={null}
             cameraYawRef={yawRef}
             alpha4={alpha4}
+          />
+        ) : hullStyle === "jellyfish" ? (
+          <JellyfishShipRenderer
+            player={stubPlayer}
+            thrustAccelRef={thrustRef}
+            observerPos={stubPlayer.phaseSpace.pos}
+            observerBoost={null}
+            cameraYawRef={yawRef}
+            alpha4={alpha4}
+            firingRef={firingRef}
           />
         ) : (
           <SelfShipRenderer

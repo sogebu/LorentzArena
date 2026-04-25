@@ -258,22 +258,22 @@ export function useGameLoop({
       }
 
       // --- Camera / 矢印キーによる yaw 操作 ---
-      // viewMode で routing を切替:
-      //   classic: 矢印キー = heading 連続旋回 (camera は heading に同期、旧来挙動)
-      //   shooter: 矢印キー = camera yaw offset (機体周りで camera が回る、heading は WASD で別途決まる)
+      // 全 viewMode 共通: 矢印キー = heading 連続旋回 (= aim 方向)。
+      // camera 自体は world basis 固定 (cameraYawRef は 0 固定で動かさない) → 「カメラ
+      // 回転は固定で動かさない」要件。WASD は camera basis (= world basis) の純粋並進、
+      // heading 独立。
       const touch = touchInput.current;
       const isDeadForCamera = store.players.get(myId)?.isDead ?? false;
-      const isShooter = store.viewMode === "shooter";
-      const yawSourceRef = isShooter ? cameraYawRef : headingYawRef;
       const cam = processCamera(
         keysPressed.current,
         touch,
         dTau,
-        { yaw: yawSourceRef.current, pitch: cameraPitchRef.current },
+        { yaw: headingYawRef.current, pitch: cameraPitchRef.current },
         isDeadForCamera,
       );
-      yawSourceRef.current = cam.yaw;
+      headingYawRef.current = cam.yaw;
       cameraPitchRef.current = cam.pitch;
+      cameraYawRef.current = 0;
       touch.yawDelta = 0;
       // pitch は touch で制御しない (processCamera 内の pitch 処理削除済み)。
       // pitchDelta を毎 tick リセットして蓄積を防ぐ。

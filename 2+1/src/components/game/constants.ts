@@ -226,7 +226,9 @@ export const ARROW_COLOR = "hsl(45, 85%, 70%)";
 export const ARROW_MAX_OPACITY = 0.55; // flat shape + DoubleSide で視認性重視
 
 // --- Camera ---
-export const CAMERA_YAW_SPEED = 0.8; // rad/s
+// CAMERA_YAW_SPEED は新操作系では aim (heading) 旋回速度として使われる。0.8 rad/s だと
+// 半周 4 秒と aim には遅すぎたため 2.5 rad/s (半周 1.3 秒) へ。
+export const CAMERA_YAW_SPEED = 2.5; // rad/s
 export const CAMERA_PITCH_SPEED = 0.5; // rad/s
 export const CAMERA_PITCH_MIN = (-Math.PI * 89.9) / 180;
 export const CAMERA_PITCH_MAX = (Math.PI * 89.9) / 180;
@@ -335,7 +337,8 @@ export const LASER_WORLDLINE_OPACITY = 0.4;
 // 色は LASER_PAST_CONE_MARKER_COLOR (silver) を流用。
 // 長さは LASER_RANGE (10) より短く、機体スケール (~1.5) より十分長い中間値。
 export const HEADING_MARKER_LENGTH = 5.0;
-export const HEADING_MARKER_OPACITY = 0.5;
+// 1 px LineSegments は背景に紛れて視認困難 → opacity 1.0 で常時はっきり見せる。
+export const HEADING_MARKER_OPACITY = 1.0;
 
 // --- Debris opacity ---
 // InstancedMesh 全 instance 共通 (per-vertex 時間 fade が shader で乗算される)。

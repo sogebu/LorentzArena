@@ -13,6 +13,7 @@ import { useGameStore } from "../../stores/game-store";
 import { ArenaRenderer } from "./ArenaRenderer";
 import { DebrisRenderer } from "./DebrisRenderer";
 import { HeadingMarkerRenderer } from "./HeadingMarkerRenderer";
+import { JellyfishShipRenderer } from "./JellyfishShipRenderer";
 import { LaserBatchRenderer } from "./LaserBatchRenderer";
 import { LightConeRenderer } from "./LightConeRenderer";
 import { RocketShipRenderer } from "./RocketShipRenderer";
@@ -118,7 +119,7 @@ export const SceneContent = ({
   showInRestFrame,
   useOrthographic,
   headingYawRef,
-  cameraYawRef,
+  cameraYawRef: _cameraYawRef,
   cameraPitchRef,
   thrustAccelRef,
   isFiring,
@@ -127,6 +128,11 @@ export const SceneContent = ({
   const firingStartRef = useRef<number>(0);
   if (isFiring && firingStartRef.current === 0) firingStartRef.current = Date.now();
   if (!isFiring) firingStartRef.current = 0;
+
+  // jellyfish 武装触手の砲指向 (45° 下) に渡す。React state の isFiring を ref にミラー
+  // して、useFrame 内で同期取得できるように。
+  const firingRef = useRef<boolean>(isFiring);
+  firingRef.current = isFiring;
 
   // --- Store selectors ---
   const players = useGameStore((s) => s.players);
@@ -192,8 +198,9 @@ export const SceneContent = ({
     const targetY = playerPos.y;
     const targetT = playerPos.t;
 
-    const yaw =
-      viewMode === "shooter" ? cameraYawRef.current : headingYawRef.current;
+    // camera yaw は固定 (= world basis = 0)。新操作系では camera は回転しない、矢印キー
+    // は heading 旋回 (= aim) に直結。
+    const yaw = 0;
     const pitch = cameraPitchRef.current;
     const distance = useOrthographic ? CAMERA_DISTANCE_ORTHOGRAPHIC : CAMERA_DISTANCE_PERSPECTIVE;
     const camX = targetX + distance * Math.cos(pitch) * Math.cos(yaw + Math.PI);
@@ -393,12 +400,11 @@ export const SceneContent = ({
         // を返すので無条件配置 OK。自機は自身の position = observerPos なので past-cone
         // 概念が効かない → isDead で除外 + SelfShipRenderer 直描画。
         if (isMe && !player.isDead) {
-          // viewMode で 2 種類の自機レンダラを dispatch (構造的に独立した別物):
-          //   classic → SelfShipRenderer (六角プリズム hull、4 RCS、heading で全体回転)
-          //   shooter → RocketShipRenderer (ロケット hull、後部単一噴射、砲塔のみ heading 回転)
+          // viewMode で 3 種類の自機レンダラを dispatch (構造的に独立した別物):
+          //   classic   → SelfShipRenderer (六角プリズム hull、4 RCS、heading で全体回転)
+          //   shooter   → RocketShipRenderer (ロケット hull、後部単一噴射、砲塔のみ heading 回転)
+          //   jellyfish → JellyfishShipRenderer (procedural クラゲ、Verlet rope 触手、武装触手)
           if (viewMode === "shooter") {
-            // 自機 body は heading 方向に向く (RocketShipRenderer 内 lerp で追従)。
-            // cameraYawRef は SceneContent の camera 計算で別途使用、ここでは渡さない。
             items.push(
               <RocketShipRenderer
                 key={key}
@@ -408,6 +414,19 @@ export const SceneContent = ({
                 observerBoost={observerBoost}
                 cameraYawRef={headingYawRef}
                 alpha4={player.phaseSpace.alpha}
+              />,
+            );
+          } else if (viewMode === "jellyfish") {
+            items.push(
+              <JellyfishShipRenderer
+                key={key}
+                player={player}
+                thrustAccelRef={thrustAccelRef}
+                observerPos={observerPos}
+                observerBoost={observerBoost}
+                cameraYawRef={headingYawRef}
+                alpha4={player.phaseSpace.alpha}
+                firingRef={firingRef}
               />,
             );
           } else {

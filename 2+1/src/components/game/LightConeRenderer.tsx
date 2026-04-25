@@ -199,7 +199,12 @@ export const LightConeRenderer = ({
 
   return (
     <>
-      {/* Future surface + wire */}
+      {/* Future surface + wire — one-sided (BackSide)。
+          fan triangulation (apex→rim→rim CCW) で apex.z < rim.z (= apex 下、rim 上)、
+          cross product の normal が inward+upward → front face が **内面** 側。
+          BackSide 指定で front (= 内面) cull → 外面のみ描画。
+          - 過去側 (-z、cone 外側) から見上げる → 外面見える → 表示
+          - 未来側 (+z、cone 内側) から見下ろす → 内面 cull → 消える */}
       <mesh
         geometry={geo.futureSurface}
         matrix={displayMatrix}
@@ -210,7 +215,7 @@ export const LightConeRenderer = ({
           color={color}
           transparent
           opacity={LIGHT_CONE_SURFACE_OPACITY}
-          side={THREE.DoubleSide}
+          side={THREE.BackSide}
           depthWrite={false}
           onBeforeCompile={onFutureShader}
         />
@@ -226,11 +231,16 @@ export const LightConeRenderer = ({
           transparent
           opacity={LIGHT_CONE_WIRE_OPACITY}
           wireframe
+          side={THREE.BackSide}
           depthWrite={false}
           onBeforeCompile={onFutureShader}
         />
       </mesh>
-      {/* Past surface + wire */}
+      {/* Past surface + wire — one-sided (FrontSide = default)。
+          winding は future と同じ apex→rim→rim CCW だが apex.z > rim.z (= apex 上、
+          rim 下) のため cross product の normal が outward+upward → front face が
+          **外面** 側に反転 (future と逆)。FrontSide (= back cull = 内面 cull) で
+          外面のみ描画 → past 側から見ると消える、future 側から見ると見える。 */}
       <mesh
         geometry={geo.pastSurface}
         matrix={displayMatrix}
@@ -241,7 +251,6 @@ export const LightConeRenderer = ({
           color={color}
           transparent
           opacity={LIGHT_CONE_SURFACE_OPACITY}
-          side={THREE.DoubleSide}
           depthWrite={false}
           onBeforeCompile={onPastShader}
         />

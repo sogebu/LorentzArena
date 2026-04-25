@@ -1,5 +1,5 @@
 import { useFrame } from "@react-three/fiber";
-import { useEffect, useMemo, useRef } from "react";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import { quatToYaw } from "../../physics";
 import {
@@ -7,22 +7,27 @@ import {
   HEADING_MARKER_OPACITY,
   LASER_PAST_CONE_MARKER_COLOR,
 } from "./constants";
-import { useDisplayFrame } from "./DisplayFrameContext";
-import { useGameStore } from "../../stores/game-store";
 import { getThreeColor } from "./threeCache";
-import { applyTimeFadeShader } from "./timeFadeShader";
 import type { RelativisticPlayer } from "./types";
 
+// 砲身と同程度の太さ。前実装の 1px LineSegments (= silver) は背景に紛れて見えない
+// 現象が出ていたため、明確に視認できる tube 太さに。
+const HEADING_MARKER_RADIUS = 0.06;
+const SQRT_HALF = Math.SQRT1_2;
+
 /**
- * 未来光円錐の母線として heading 方向に null geodesic を描画する。
- * 機体姿勢に依存せず「向き」が時空に貼られた線で一目瞭然になる
- * (plans/2026-04-25-viewpoint-controls.md Stage 1)。
+ * 自機の aim 方向を「過去光円錐の母線」(= heading 方向 + 過去 -t 方向) の
+ * null geodesic として描画する。
  *
- * 自機: cameraYawRef を直読 (re-render 遅延回避、SelfShipRenderer と同じ方式)。
- * 他機: phaseSpace.heading の quaternion から quatToYaw 経由。
- *
- * 描画は LaserBatchRenderer と同じ D pattern (頂点は world frame、
- * mesh.matrix に displayMatrix を適用 → GPU で per-vertex Lorentz)。
+ * 設計:
+ *   - **自機専用** (SceneContent で `isMe && !isDead` ブロック内でのみ呼ばれる)。
+ *     observer = player なので observer rest frame での aim 表現は機体現在位置 = origin
+ *     から direction 方向に伸ばすだけで完結する → 旧 D pattern (world coord vertex +
+ *     displayMatrix の per-vertex Lorentz) は不要。
+ *   - **標準 scene graph + cylinder mesh** で実装。Context Lost に強い (= LineSegments +
+ *     手動 BufferAttribute は restore 経路が脆弱で「途中で消える」現象が出ていた)。
+ *   - 過去光円錐に乗せる根拠: laser は機体から発射されて観測者の過去光円錐上を流れて
+ *     いくため、aim 線も同じ null geodesic に貼る方が物理的に整合。
  */
 export const HeadingMarkerRenderer = ({
   player,
@@ -31,90 +36,60 @@ export const HeadingMarkerRenderer = ({
   player: RelativisticPlayer;
   cameraYawRef?: React.RefObject<number>;
 }) => {
-  const { displayMatrix } = useDisplayFrame();
-  const meshRef = useRef<THREE.LineSegments | null>(null);
-  const geoRef = useRef<THREE.BufferGeometry | null>(null);
-  // Shooter mode で heading 線を cannon 回転と同じ lerp で滑らかに追従させる。
-  // Classic mode では heading 即時 (機体回転と同期) なので smoothing なし。
-  const viewMode = useGameStore((s) => s.viewMode);
-  const smoothedYawRef = useRef<number | null>(null);
+  const meshRef = useRef<THREE.Mesh>(null);
+  const yAxis = useMemo(() => new THREE.Vector3(0, 1, 0), []);
+  const dirVec = useMemo(() => new THREE.Vector3(), []);
+  const tmpQuat = useMemo(() => new THREE.Quaternion(), []);
+  const color = useMemo(
+    () => getThreeColor(LASER_PAST_CONE_MARKER_COLOR),
+    [],
+  );
 
-  const geometry = useMemo(() => {
-    geoRef.current?.dispose();
-    const verts = new Float32Array(6); // 1 segment × 2 vertices × 3 floats
-    const colors = new Float32Array(6);
-    const c = getThreeColor(LASER_PAST_CONE_MARKER_COLOR);
-    for (let i = 0; i < 2; i++) {
-      colors[i * 3] = c.r;
-      colors[i * 3 + 1] = c.g;
-      colors[i * 3 + 2] = c.b;
-    }
-    const g = new THREE.BufferGeometry();
-    const posAttr = new THREE.Float32BufferAttribute(verts, 3);
-    posAttr.usage = THREE.DynamicDrawUsage;
-    g.setAttribute("position", posAttr);
-    g.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-    geoRef.current = g;
-    return g;
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      geoRef.current?.dispose();
-      geoRef.current = null;
-    };
-  }, []);
-
-  useFrame((_, delta) => {
+  useFrame(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
-    const targetYaw = cameraYawRef
+    const yaw = cameraYawRef
       ? cameraYawRef.current
       : quatToYaw(player.phaseSpace.heading);
-    let yaw: number;
-    if (viewMode === "shooter") {
-      // 初回は target そのまま、以降は SelfShipRenderer の cannon と同じ tau=80ms で追従。
-      if (smoothedYawRef.current === null) {
-        smoothedYawRef.current = targetYaw;
-      } else {
-        let diff = targetYaw - smoothedYawRef.current;
-        while (diff > Math.PI) diff -= Math.PI * 2;
-        while (diff < -Math.PI) diff += Math.PI * 2;
-        const tau = 0.08;
-        const alpha = 1 - Math.exp(-Math.min(0.1, delta) / tau);
-        smoothedYawRef.current += diff * alpha;
-      }
-      yaw = smoothedYawRef.current;
-    } else {
-      // Classic: 即時 (機体回転に同期)。smoothedYawRef はリセットして次回 shooter 切替時に
-      // 急ジャンプしないようにする。
-      smoothedYawRef.current = targetYaw;
-      yaw = targetYaw;
+    if (!Number.isFinite(yaw)) {
+      mesh.visible = false;
+      return;
     }
-    const dx = Math.cos(yaw);
-    const dy = Math.sin(yaw);
-    const pos = player.phaseSpace.pos;
-    const verts = geometry.attributes.position.array as Float32Array;
-    verts[0] = pos.x;
-    verts[1] = pos.y;
-    verts[2] = pos.t;
-    verts[3] = pos.x + dx * HEADING_MARKER_LENGTH;
-    verts[4] = pos.y + dy * HEADING_MARKER_LENGTH;
-    verts[5] = pos.t + HEADING_MARKER_LENGTH; // null geodesic: Δt = |Δx_spatial|
-    geometry.attributes.position.needsUpdate = true;
-    mesh.matrix.copy(displayMatrix);
-    mesh.matrixAutoUpdate = false;
+    mesh.visible = true;
+    // 過去光円錐の母線 (null geodesic): heading 方向に cos(45°)、-z (過去) に sin(45°)。
+    const dirX = Math.cos(yaw) * SQRT_HALF;
+    const dirY = Math.sin(yaw) * SQRT_HALF;
+    const dirZ = -SQRT_HALF;
+    dirVec.set(dirX, dirY, dirZ);
+    // cylinder default の y 軸を direction 方向に向ける。
+    tmpQuat.setFromUnitVectors(yAxis, dirVec);
+    mesh.quaternion.copy(tmpQuat);
+    // cylinder 中央 = origin + direction * length/2。両端は origin と direction*length。
+    const halfLen = HEADING_MARKER_LENGTH / 2;
+    mesh.position.set(dirX * halfLen, dirY * halfLen, dirZ * halfLen);
   });
 
   return (
-    <lineSegments ref={meshRef} geometry={geometry}>
-      <lineBasicMaterial
-        vertexColors
+    // aim 線は UI 指示器 (「この方向を狙ってる」)。何にも occlude されず常時可視であるべき
+    // なので depthTest=false + 大きな renderOrder で他 geometry の前に上乗せ描画。
+    <mesh ref={meshRef} renderOrder={20}>
+      <cylinderGeometry
+        args={[
+          HEADING_MARKER_RADIUS,
+          HEADING_MARKER_RADIUS,
+          HEADING_MARKER_LENGTH,
+          8,
+          1,
+        ]}
+      />
+      <meshBasicMaterial
+        color={color}
         transparent
         opacity={HEADING_MARKER_OPACITY}
-        onBeforeCompile={applyTimeFadeShader}
+        depthTest={false}
         depthWrite={false}
+        toneMapped={false}
       />
-    </lineSegments>
+    </mesh>
   );
 };

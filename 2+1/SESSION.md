@@ -4,20 +4,54 @@
 
 **`a70f3aa` デプロイ済** (build `2026/04/22 23:14:13 JST`)。本番: https://sogebu.github.io/LorentzArena/
 
-未デプロイ commit (= main の更新): `8b5dfbb` (camera 矢印分離 fix) + `d52868f` (Shooter mode の RocketShipRenderer)。Deploy 前の動作確認は localhost。
+未デプロイ commit 多数 (= main の更新): 2026-04-25 セッションで viewMode 3-way 化 + 操作系刷新 + jellyfish hull 追加 + LightCone one-sided + 多数の bug 修正。**実機 multi-tab 実戦テストは未完了**、deploy 前にもう一度実機テスト推奨。中途半端な状態でセッション終了。
 
 ### 直近の文脈 (次セッションで意識すべき状態)
 
-- **viewMode** = `'classic' | 'shooter'` を [`game-store.ts`](src/stores/game-store.ts) に追加、HUD ControlPanel で切替 + localStorage 永続化。default は **shooter**。
-  - **classic** (= 旧来 SelfShipRenderer): camera が heading 追従、機体本体が回転、WASD は機体相対 thrust、矢印キーで heading 連続旋回
-  - **shooter** (= RocketShipRenderer): camera と機体姿勢が独立。矢印キーで camera yaw offset、WASD は camera basis での screen-relative 入力で heading 即時設定 + thrust。機体 nose は heading に lerp 追従回転 (tau=80ms)
-- **HeadingMarkerRenderer** = 自機の進行方向を未来光円錐の母線 (null geodesic) として時空に貼って描画 (silver、半透明)。Shooter では更に lerp 追従。
-- **死亡 event 統一アルゴリズム** は (x_D, u_D, τ_0) ベース、DeathMarker / DeadShipRenderer / LH (2026-04-22 夜に LighthouseRenderer を `aliveIntersection == null` gate に純化) が一元駆動。設計: [`plans/死亡イベント.md`](plans/死亡イベント.md) + [`design/meta-principles.md §M21`](design/meta-principles.md)
-- **PhaseSpace 拡張** は `(pos, u, heading, alpha)` で past-cone 交点で heading slerp + alpha 線形補間。Phase B-5 (他機 exhaust の pure thrust broadcast 用 wire field) 未着手 — `phaseSpace.alpha = thrust + friction` が thrust 単独信号ではない問題が残る
-- **加速度表示** は 2026-04-22 夜にフレーム整合化: 噴射炎 = 被観測者 rest frame proper acc、加速度矢印 = 観測者 rest frame 4-vector の時空矢印 (`observerBoost · α_world`)
-- **player 識別色** は laser cannon glow + dorsal pod stripe で hull navy の識別弱さを補強。default `dorsalStyle = "pod"`、`AntennaBeaconRenderer` (案 A) は ShipViewer dropdown でのみ切替可
-- **LH 光源** は観測者視点で死亡観測済 (= `pastLightConeIntersectionWorldLine` null) なら消灯。`GameLights.positions` は必須 (暗黙 fallback `DEFAULT_POSITIONS` 撤去)
-- **射撃 UI** (「射撃中」text / aim arrow 3 本 / inset glow) は `LASER_PAST_CONE_MARKER_COLOR` の silver に統一
+#### 操作系 — 全 viewMode 共通の「ASDW 並進 + 矢印 aim + camera 固定」に統一
+- **WASD**: camera basis (= world basis、camera 固定) の screen-relative thrust。heading 不変
+- **矢印 ←/→**: heading (= aim = 砲身方向) 連続旋回 (`CAMERA_YAW_SPEED = 2.5 rad/s`)
+- **矢印 ↑/↓**: camera pitch
+- **camera yaw**: 常に 0 (world basis)、回転しない
+- 詳細: [`gameLoop.ts:106-130`](src/components/game/gameLoop.ts), [`useGameLoop.ts:260-275`](src/hooks/useGameLoop.ts), [`SceneContent.tsx:201-203`](src/components/game/SceneContent.tsx)
+
+#### viewMode 3-way (機体形状のみの違い、操作系は共通)
+- [`game-store.ts:61`](src/stores/game-store.ts): `ViewMode = "classic" | "shooter" | "jellyfish"`
+- [`ControlPanel.tsx:172-194`](src/components/game/hud/ControlPanel.tsx): 3-way `<select>` dropdown (旧 ToggleSwitch を撤去)
+- **classic** ([`SelfShipRenderer`](src/components/game/SelfShipRenderer.tsx)): 六角プリズム + 4 RCS。本体 group は world basis 固定、`cannonYawGroupRef` で砲塔 (laser cannon) のみ heading 追従
+- **shooter** ([`RocketShipRenderer`](src/components/game/RocketShipRenderer.tsx)): ロケット teardrop body。砲が無いので本体ごと heading 追従 (lerp tau=80ms)
+- **jellyfish** ([`JellyfishShipRenderer`](src/components/game/JellyfishShipRenderer.tsx)) **新規**: 半透明 dome + Verlet rope 触手 14 質点 + 武装触手 (= 砲) のみ heading 方向。ジャパクリップ「クラゲ」を motif にした procedural 派生 (出典: [`docs/references/README.md`](../docs/references/README.md))
+  - 触手は重力 (1.5)・慣性反作用 (5x)・turbulence kick (各質点に tangent 垂直方向の sin 噪声) で物理的にたなびく
+  - 武装触手 = 外殻半球 + 内核 emitter (player 色 emissive 3.0 + halo 加算合成)
+  - 射撃 (= Space 押下中) で武装触手末端を rope local frame `(cos45·L, 0, -sin45·L)` に kinematic 強制 → 砲身として 45° 下に展開、laser 過去光円錐方向と整合
+  - `firingRef` を `SceneContent` 経由で渡す ([`SceneContent.tsx:128-135, :413-426`](src/components/game/SceneContent.tsx))
+
+#### HeadingMarkerRenderer — 過去光円錐に変更 + 実装刷新
+- 「laser は観測者の過去光円錐上を流れる」物理整合のため未来光円錐 → **過去光円錐の母線** (= -t 方向) に
+- 旧 `LineSegments + 手動 BufferAttribute` (D pattern) は **WebGL Context Lost** からの restore 経路が脆弱で「途中で消える」現象が出ていた
+- → `mesh + cylinder geometry` (radius 0.06) + 標準 scene graph、`depthTest=false + renderOrder=20` で常時可視
+- 自機専用 (= observer = self) なので observer rest frame で「origin から direction*L」を直接配置 → D pattern 不要
+- NaN guard 入りで `console.warn` フォールバック
+
+#### LightConeRenderer — one-sided 表示
+- 4 mesh (future surface/wire + past surface/wire) を異なる side 設定: future=`BackSide`、past=`FrontSide`(default)
+- 同じ CCW winding でも future (apex 下→rim 上) と past (apex 上→rim 下) で normal の向きが反転するため別設定が必要
+- 効果: 未来側 (上) から見下ろすと future cone は内面 cull で消え past cone は外面で見える / 過去側 (下) から見上げると逆 / 側方視点 (通常プレイ) では両方見える
+
+#### 物理関連の修正
+- **`phaseSpace.alpha` を thrust only に上書き** ([`gameLoop.ts:171-184`](src/components/game/gameLoop.ts)): 旧仕様 `thrust + friction` だと静止漂流時に矢印反転して不自然 → friction を抜いた thrust 4-加速度を world frame に boost し直して上書き。**alpha は表示専用 (噴射炎 / 加速度矢印 / 他者 broadcast)**、物理進行 (位置 / 4-velocity 更新) には不使用
+- **SelfShipRenderer 噴射方向 fix** ([`SelfShipRenderer.tsx:230-247`](src/components/game/SelfShipRenderer.tsx)): 旧 classic では本体回転していたので thrust に yaw 変換が必要だったが、新仕様で本体 world basis 固定 → nozzle outward は world cardinal で固定 → yaw 変換不要、直接 dot product
+
+#### Bug 修正集 (今セッションで surfaceした regression)
+- **WASD で砲が向こう向きになる** → `newYaw: effectiveYaw` を `newYaw: yaw` に変更 ([`gameLoop.ts:188-194`](src/components/game/gameLoop.ts))
+- **レーダーが回る** → HUD に渡す ref を `headingYawRef` から `cameraYawRef` (= 0 固定) に ([`RelativisticGame.tsx:313`](src/components/RelativisticGame.tsx))
+- **aim 線が途中で消える** → cylinder mesh 化で context lost に強い実装に変更 (上記 HeadingMarker 節)
+
+#### 既存の継続項目
+- **死亡 event 統一アルゴリズム** は (x_D, u_D, τ_0) ベース、DeathMarker / DeadShipRenderer / LH が一元駆動 (詳細: [`plans/死亡イベント.md`](plans/死亡イベント.md) + [`design/meta-principles.md §M21`](design/meta-principles.md))
+- **加速度表示** はフレーム整合化済: 噴射炎 = 被観測者 rest frame proper acc、加速度矢印 = 観測者 rest frame 4-vector の時空矢印
+- **LH 光源** は観測者視点で死亡観測済なら消灯
+- **射撃 UI** (「射撃中」text / aim arrow 3 本 / inset glow) は silver 統一
 
 ## 既知の課題
 
@@ -51,9 +85,9 @@
 
 ### 優先 (次回最初に検討)
 
-- **Shooter mode 用 3 機目の機体 design**: 現状 2 機 (`SelfShipRenderer` 六角プリズム = classic / `RocketShipRenderer` ぽっちゃりロケット = shooter) を `viewMode` で dispatch する構造ができている。3 機目を追加したいが、procedural 三面図 (rocket バリエーション、jellyfish 案 A) はどれも「グッと来ない」と却下、CC0/CC-BY 3D 素材も「気持ち悪い / 重い (54.6k tris) / license 不明」で行き詰まり。**次セッションは odakin が Sketchfab / Poly Pizza を直接ブラウズして visual で選ぶか、別モチーフ (paper-craft / crystal / mushroom UFO / etc) に切り替え**。design 議論ログ: 2026-04-25 セッション末尾。component を増やすときは `RocketShipRenderer` をベースにコピー → JSX 差し替え (構造的に独立させる方針が確立済)。
-- **視点・操作系の再設計** (実装済): camera/control mode を viewMode 単一に集約 (旧 plan の 2 軸 4 通りは shooter 一本に統合、classic は legacy mode として残置)。実装済 commit `d52868f` + `8b5dfbb`。default は shooter で localStorage 永続化、ControlPanel で切替。当初 plan: [`plans/2026-04-25-viewpoint-controls.md`](plans/2026-04-25-viewpoint-controls.md) (4 stage 計画 → 結果として stage 1-4 ほぼ統合実装、shooter 一本化で完了)。Heading 線も実装済。
-- **Phase A/B で実装した worldline 向き・加速度の思想・コード対称性 audit**: `PhaseSpace = (pos, u, heading, alpha)` 拡張 + past-cone 交点補間 (A-4) + SelfShipRenderer heading source 切替 (B-2) 以降、bug が散見 (DeathMarker regression / 3D モデル消失 / etc)。**そろそろ思想に立ち返って対称性・クリーンさを深く追求するタイミング**。具体候補: (a) component 間の「fade / gate / routing」責務配置の統一 (M21 を広域適用、2026-04-22 夜の LighthouseRenderer τ_0 簡素化と GameLights API 二重意味性解消はこの方向の先行)、(b) Phase B-5 (他機 exhaust の pure thrust broadcast) の再設計、(c) Phase C-1 (wire format 厳格化、heading/alpha optional → required) と整合、(d) 世界線データと描画機構の「対応関係」を DESIGN.md に書き下し。plan 化検討: `plans/2026-04-22-symmetry-audit.md` など
+- **実機 multi-tab 実戦テスト** (中途半端で終わった): 今セッションの大量変更 (操作系刷新 / 3 viewMode hull dispatch / jellyfish 物理触手 / past-cone heading marker / LightCone one-sided / alpha thrust-only / 噴射方向 fix / WASD newYaw fix / Radar 固定 fix) が deploy 前に **multi-tab 実戦テスト 未完了**。最低でも host + client 2 tab で 3 viewMode 切替・thrust 入力・射撃・死亡/respawn・レーザー軌跡を全て確認。新たな regression があれば session 中の修正を見直す
+- **Shooter (rocket) mode の本体姿勢を classic / jellyfish と統一**: 現状 RocketShipRenderer のみ「本体ごと heading 追従」(= 砲が無いので本体で aim 表示)。新操作系の理屈では「本体 world basis 固定 + 砲塔 heading」が一貫する。Rocket に砲塔相当を追加するか、視点系を別モード化するか要検討
+- **Phase A/B で実装した worldline 向き・加速度の思想・コード対称性 audit**: 今セッションで `phaseSpace.alpha = thrust only` 化 ([`gameLoop.ts`](src/components/game/gameLoop.ts) で上書き) は thrust 単独信号の役割を満たすが、Phase B-5 で別途 wire field 新設するか alpha のままで運用するか方針確認。**そろそろ思想に立ち返って対称性・クリーンさを深く追求するタイミング**。具体候補: (a) component 間の「fade / gate / routing」責務配置の統一 (M21 を広域適用)、(b) Phase B-5 (他機 exhaust の pure thrust broadcast) の再設計、(c) Phase C-1 (wire format 厳格化、heading/alpha optional → required) と整合、(d) 世界線データと描画機構の「対応関係」を DESIGN.md に書き下し
 
 ### 既存 (優先順未決定)
 

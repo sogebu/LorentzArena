@@ -310,7 +310,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         setShowInRestFrame={setShowInRestFrame}
         useOrthographic={useOrthographic}
         setUseOrthographic={setUseOrthographic}
-        cameraYawRef={headingYawRef}
+        cameraYawRef={cameraYawRef}
         energy={energy}
         isFiring={isFiring}
         myLaserColor={
