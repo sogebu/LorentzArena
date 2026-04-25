@@ -104,6 +104,9 @@ export type SceneContentProps = {
   /** heading の唯一の source of truth。SelfShipRenderer の砲塔 / HeadingMarkerRenderer /
    *  Radar 等で参照。camera 計算でも (classic mode で) 同じ値を使う。 */
   headingYawRef: React.RefObject<number>;
+  /** shooter mode の camera yaw offset。矢印キーで操作、camera が機体周りを回る。
+   *  classic mode では未使用 (camera = headingYawRef のため)。 */
+  cameraYawRef: React.RefObject<number>;
   cameraPitchRef: React.RefObject<number>;
   thrustAccelRef: React.RefObject<Vector3>;
   isFiring: boolean;
@@ -115,6 +118,7 @@ export const SceneContent = ({
   showInRestFrame,
   useOrthographic,
   headingYawRef,
+  cameraYawRef,
   cameraPitchRef,
   thrustAccelRef,
   isFiring,
@@ -188,7 +192,8 @@ export const SceneContent = ({
     const targetY = playerPos.y;
     const targetT = playerPos.t;
 
-    const yaw = viewMode === "shooter" ? 0 : headingYawRef.current;
+    const yaw =
+      viewMode === "shooter" ? cameraYawRef.current : headingYawRef.current;
     const pitch = cameraPitchRef.current;
     const distance = useOrthographic ? CAMERA_DISTANCE_ORTHOGRAPHIC : CAMERA_DISTANCE_PERSPECTIVE;
     const camX = targetX + distance * Math.cos(pitch) * Math.cos(yaw + Math.PI);
@@ -392,6 +397,8 @@ export const SceneContent = ({
           //   classic → SelfShipRenderer (六角プリズム hull、4 RCS、heading で全体回転)
           //   shooter → RocketShipRenderer (ロケット hull、後部単一噴射、砲塔のみ heading 回転)
           if (viewMode === "shooter") {
+            // 自機 body は heading 方向に向く (RocketShipRenderer 内 lerp で追従)。
+            // cameraYawRef は SceneContent の camera 計算で別途使用、ここでは渡さない。
             items.push(
               <RocketShipRenderer
                 key={key}

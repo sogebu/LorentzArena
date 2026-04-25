@@ -101,6 +101,7 @@ export function processPlayerPhysics(
   otherPositions: Vector4[],
   availableEnergy: number,
   viewMode: "classic" | "shooter" = "classic",
+  cameraYaw = 0,
 ): PhysicsResult {
   let forwardAccel = 0;
   let lateralAccel = 0;
@@ -117,15 +118,17 @@ export function processPlayerPhysics(
       forwardAccel += PLAYER_ACCELERATION * touch.thrust;
     }
   } else {
-    // Shooter (twin-stick): WASD = 画面相対の進みたい方向 → 砲 (heading) + thrust 即時。
-    //   shooter mode の camera は yaw=0 固定 + pitch 下向き、画面 forward = world +x、
-    //   画面 right = world -y (camera right = forward × up = +x × +z = -y)。
-    //   W=画面前 (world +x), S=画面後 (-x), A=画面左 (world +y), D=画面右 (world -y)。
-    //   PC は WASD 押下で 8 方向 (W=0, A=π/2, D=-π/2, WA=π/4, ...) に自然に discrete。
+    // Shooter (twin-stick): WASD = 画面相対の進みたい方向 → heading + thrust 即時。
+    //   camera basis での解釈: 画面 forward = (cos(cameraYaw), sin(cameraYaw))、
+    //   画面 left = camera basis での +y、screen right = -y。
+    //   W=画面前 (camera basis +x), S=画面後 (-x), A=画面左 (+y), D=画面右 (-y)。
+    //   atan2(sy, sx) で camera basis での角度を求め、cameraYaw を加算して world basis に変換。
+    //   camera が矢印キーで回転すると WASD interpretation も追従するので「画面の上 = 進みたい方向」
+    //   が常に成立。
     //   Touch は touch.thrust 1 軸のみなので heading は前後限定 (将来 2D stick で改善)。
     //   慣性 (velocity ≠ heading) は physics 側で保たれる。
-    let sx = 0; // world +x 成分 (= 画面前方)
-    let sy = 0; // world +y 成分 (= 画面左)
+    let sx = 0; // camera basis +x 成分 (= 画面前方)
+    let sy = 0; // camera basis +y 成分 (= 画面左)
     if (keys.has("w")) sx += 1;
     if (keys.has("s")) sx -= 1;
     if (keys.has("a")) sy += 1;
@@ -136,7 +139,7 @@ export function processPlayerPhysics(
     const mag = Math.sqrt(sx * sx + sy * sy);
     if (mag > 1e-6) {
       const norm = Math.min(1, mag);
-      effectiveYaw = Math.atan2(sy, sx);
+      effectiveYaw = Math.atan2(sy, sx) + cameraYaw;
       forwardAccel = norm * PLAYER_ACCELERATION;
       lateralAccel = 0;
     }

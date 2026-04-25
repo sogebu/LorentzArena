@@ -47,12 +47,17 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const [energy, setEnergy] = useState(ENERGY_MAX);
 
   // --- Per-frame local refs (shared with SceneContent) ---
-  // headingYawRef: 自機の進行方向 (heading) の唯一の source of truth。
-  //   入力 (矢印キー / WASD shooter mode / touch) で即時更新、phaseSpace.heading に
-  //   毎 tick 同期。SelfShipRenderer の砲塔 / HeadingMarkerRenderer / Radar / camera (classic
-  //   mode) はこの値を参照する。shooter mode では camera は 0 固定で heading と独立。
+  // headingYawRef: 自機の進行方向 (heading) の source of truth。
+  //   - classic: 矢印キーで連続旋回 + WASD body-relative thrust。phaseSpace.heading に同期、
+  //     SelfShipRenderer / Radar / camera (classic) がこの値を読む。
+  //   - shooter: WASD screen-relative の atan2 + camera basis で決まる。Body が lerp 追従回転。
+  // cameraYawRef: shooter mode の camera yaw offset (world basis からの回転)。
+  //   - 矢印キーで連続旋回。SceneContent shooter camera が読む (= 機体周りで camera が回る)。
+  //   - WASD interpretation の basis にも使う (camera が回ると screen-relative 入力も追従)。
+  //   - classic mode では未使用 (camera は heading に同期するので不要)。
   // (plans/2026-04-25-viewpoint-controls.md)
   const headingYawRef = useRef(0);
+  const cameraYawRef = useRef(0);
   const cameraPitchRef = useRef(DEFAULT_CAMERA_PITCH);
   // 自機の最新 thrust 加速度 (world coords、friction 除外)。exhaust 描画用。
   const thrustAccelRef = useRef(vector3Zero());
@@ -284,7 +289,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   useGameLoop({
     peerManager, myId, getPlayerColor,
     setFps, setEnergy, setIsFiring, setDeathFlash,
-    headingYawRef, cameraPitchRef, thrustAccelRef, respawnTimeoutsRef,
+    headingYawRef, cameraYawRef, cameraPitchRef, thrustAccelRef, respawnTimeoutsRef,
     keysPressed, touchInput, stale,
   });
 
@@ -335,6 +340,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             showInRestFrame={showInRestFrame}
             useOrthographic={true}
             headingYawRef={headingYawRef}
+            cameraYawRef={cameraYawRef}
             cameraPitchRef={cameraPitchRef}
             thrustAccelRef={thrustAccelRef}
             isFiring={isFiring}
@@ -347,6 +353,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             showInRestFrame={showInRestFrame}
             useOrthographic={false}
             headingYawRef={headingYawRef}
+            cameraYawRef={cameraYawRef}
             cameraPitchRef={cameraPitchRef}
             thrustAccelRef={thrustAccelRef}
             isFiring={isFiring}

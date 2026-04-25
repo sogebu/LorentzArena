@@ -67,10 +67,13 @@ export interface GameLoopDeps {
   setDeathFlash: React.Dispatch<React.SetStateAction<boolean>>;
 
   // Per-frame local refs (shared with SceneContent)
-  // headingYawRef: heading の唯一の source of truth (旧 cameraYawRef の役割)。
-  // 入力 (矢印 / WASD screen / touch) で更新、phaseSpace.heading に同期。
-  // camera yaw は SceneContent 側で別途 lerp 追従 (Chase mode) で計算する。
+  // headingYawRef: heading の source of truth。classic では矢印で連続旋回、shooter では
+  //   WASD screen-relative の atan2 + camera basis で決まる。phaseSpace.heading に毎 tick 同期。
+  // cameraYawRef: shooter mode の camera yaw offset。矢印キーで連続旋回 (camera が機体周りで回る)。
+  //   shooter の WASD interpretation の basis にも使う (= screen-relative が camera 追従)。
+  //   classic mode では未使用 (camera = headingYawRef)。
   headingYawRef: MutableRefObject<number>;
+  cameraYawRef: MutableRefObject<number>;
   cameraPitchRef: MutableRefObject<number>;
   /** 自機の最新 thrust 加速度 (world coords、friction 除外)。
    *  exhaust 描画用、毎 tick 更新。死亡中・frozen・非入力時はゼロベクトル。 */
@@ -106,6 +109,7 @@ export function useGameLoop({
   setIsFiring,
   setDeathFlash,
   headingYawRef,
+  cameraYawRef,
   cameraPitchRef,
   thrustAccelRef,
   respawnTimeoutsRef,
@@ -212,6 +216,7 @@ export function useGameLoop({
         // non-null → null: self-respawn just happened → reset camera refs.
         // energy は handleSpawn が ENERGY_MAX にリセット済 (store 側で一元管理)。
         headingYawRef.current = 0;
+        cameraYawRef.current = 0;
         cameraPitchRef.current = DEFAULT_CAMERA_PITCH;
       }
       // null → non-null: self-death。ghost phaseSpace は handleKill 内で
@@ -252,17 +257,22 @@ export function useGameLoop({
         fpsRef.current.lastTime = now;
       }
 
-      // --- Camera ---
+      // --- Camera / 矢印キーによる yaw 操作 ---
+      // viewMode で routing を切替:
+      //   classic: 矢印キー = heading 連続旋回 (camera は heading に同期、旧来挙動)
+      //   shooter: 矢印キー = camera yaw offset (機体周りで camera が回る、heading は WASD で別途決まる)
       const touch = touchInput.current;
       const isDeadForCamera = store.players.get(myId)?.isDead ?? false;
+      const isShooter = store.viewMode === "shooter";
+      const yawSourceRef = isShooter ? cameraYawRef : headingYawRef;
       const cam = processCamera(
         keysPressed.current,
         touch,
         dTau,
-        { yaw: headingYawRef.current, pitch: cameraPitchRef.current },
+        { yaw: yawSourceRef.current, pitch: cameraPitchRef.current },
         isDeadForCamera,
       );
-      headingYawRef.current = cam.yaw;
+      yawSourceRef.current = cam.yaw;
       cameraPitchRef.current = cam.pitch;
       touch.yawDelta = 0;
       // pitch は touch で制御しない (processCamera 内の pitch 処理削除済み)。
@@ -400,6 +410,7 @@ export function useGameLoop({
               otherPositions,
               Number.POSITIVE_INFINITY,
               fresh.viewMode,
+              cameraYawRef.current,
             );
             thrustRequestedThisTick = physics.thrustRequested;
             thrustAccelerationThisTick = physics.thrustAcceleration;
@@ -446,6 +457,7 @@ export function useGameLoop({
               otherPositions,
               energy,
               fresh.viewMode,
+              cameraYawRef.current,
             );
             energy = Math.max(0, energy - physics.thrustEnergyConsumed);
             thrustRequestedThisTick = physics.thrustRequested;
