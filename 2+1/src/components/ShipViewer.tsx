@@ -50,6 +50,7 @@ export const ShipViewer = () => {
   const [bgColor, setBgColor] = useState("#0a0a0f");
   const [cannonStyle, setCannonStyle] = useState<"gun" | "laser">("laser");
   const [dorsalStyle, setDorsalStyle] = useState<"pod" | "antenna" | "none">("pod");
+  const [hullStyle, setHullStyle] = useState<"classic" | "rocket">("rocket");
   // Laser cannon の glow を player 識別色で着色する実機プレビュー用。"default" は従来の
   // cyan glow (ShipPreview の stubPlayer.color="#ffffff" fallback と同等)。
   const playerColorOptions: { label: string; value: string }[] = [
@@ -86,6 +87,7 @@ export const ShipViewer = () => {
         cameraYawRef={cameraYawRef}
         cannonStyle={cannonStyle}
         dorsalStyle={dorsalStyle}
+        hullStyle={hullStyle}
         playerColor={playerColor || undefined}
         alpha4={alpha4Preview}
       />
@@ -146,6 +148,22 @@ export const ShipViewer = () => {
             <option value="#444">mid gray</option>
             <option value="#aaa">light gray</option>
             <option value="#000">pure black</option>
+          </select>
+        </label>
+        <label style={{ display: "block", marginBottom: 8 }}>
+          {"Hull: "}
+          <select
+            value={hullStyle}
+            onChange={(e) => setHullStyle(e.target.value as "classic" | "rocket")}
+            style={{
+              background: "#222",
+              color: "#ddd",
+              border: "1px solid #555",
+              padding: "2px 6px",
+            }}
+          >
+            <option value="classic">classic (六角プリズム、classic mode)</option>
+            <option value="rocket">rocket (ぽっちゃりロケット、shooter mode)</option>
           </select>
         </label>
         <label style={{ display: "block", marginBottom: 8 }}>

@@ -15,6 +15,7 @@ import { DebrisRenderer } from "./DebrisRenderer";
 import { HeadingMarkerRenderer } from "./HeadingMarkerRenderer";
 import { LaserBatchRenderer } from "./LaserBatchRenderer";
 import { LightConeRenderer } from "./LightConeRenderer";
+import { RocketShipRenderer } from "./RocketShipRenderer";
 import { DeadShipRenderer } from "./DeadShipRenderer";
 import { DeathMarker } from "./DeathMarker";
 import { LighthouseRenderer } from "./LighthouseRenderer";
@@ -387,19 +388,38 @@ export const SceneContent = ({
         // を返すので無条件配置 OK。自機は自身の position = observerPos なので past-cone
         // 概念が効かない → isDead で除外 + SelfShipRenderer 直描画。
         if (isMe && !player.isDead) {
+          // viewMode で 2 種類の自機レンダラを dispatch (構造的に独立した別物):
+          //   classic → SelfShipRenderer (六角プリズム hull、4 RCS、heading で全体回転)
+          //   shooter → RocketShipRenderer (ロケット hull、後部単一噴射、砲塔のみ heading 回転)
+          if (viewMode === "shooter") {
+            items.push(
+              <RocketShipRenderer
+                key={key}
+                player={player}
+                thrustAccelRef={thrustAccelRef}
+                observerPos={observerPos}
+                observerBoost={observerBoost}
+                cameraYawRef={headingYawRef}
+                alpha4={player.phaseSpace.alpha}
+              />,
+            );
+          } else {
+            items.push(
+              <SelfShipRenderer
+                key={key}
+                player={player}
+                thrustAccelRef={thrustAccelRef}
+                observerPos={observerPos}
+                observerBoost={observerBoost}
+                cannonStyle="laser"
+                cameraYawRef={headingYawRef}
+                alpha4={player.phaseSpace.alpha}
+              />,
+            );
+          }
+          // heading 線 (未来光円錐母線) — 自機の進行方向を時空に貼る
+          // (plans/2026-04-25-viewpoint-controls.md Stage 1)
           items.push(
-            <SelfShipRenderer
-              key={key}
-              player={player}
-              thrustAccelRef={thrustAccelRef}
-              observerPos={observerPos}
-              observerBoost={observerBoost}
-              cannonStyle="laser"
-              cameraYawRef={headingYawRef}
-              alpha4={player.phaseSpace.alpha}
-            />,
-            // heading 線 (未来光円錐母線) — 自機の進行方向を時空に貼る
-            // (plans/2026-04-25-viewpoint-controls.md Stage 1)
             <HeadingMarkerRenderer
               key={`${key}-heading`}
               player={player}

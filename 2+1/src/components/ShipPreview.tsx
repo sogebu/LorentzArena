@@ -11,6 +11,7 @@ import {
   yawToQuat,
 } from "../physics";
 import { GameLights, type LightPosition } from "./game/GameLights";
+import { RocketShipRenderer } from "./game/RocketShipRenderer";
 import { SelfShipRenderer } from "./game/SelfShipRenderer";
 
 // 機体プレビュー用の固定 stage 光源 (旧 GameLights の DEFAULT_POSITIONS と同位置)。
@@ -103,6 +104,8 @@ export interface ShipPreviewProps {
   cannonStyle?: "gun" | "laser";
   /** 上面構造物デザイン。'pod' (案 B、扁平 ellipsoid + stripe) / 'antenna' (案 A、棒 + 球) / 'none'。 */
   dorsalStyle?: "pod" | "antenna" | "none";
+  /** 機体形状。'classic' (六角プリズム hull) / 'rocket' (ぽっちゃりロケット、shooter mode 用)。 */
+  hullStyle?: "classic" | "rocket";
   /** Player 識別色 (hsl)。laser cannon の crystal / emitter / lens emissive を焼き込む。
    *  未指定 (undefined) は従来の cyan glow。 */
   playerColor?: string;
@@ -122,6 +125,7 @@ export const ShipPreview = ({
   cameraYawRef,
   cannonStyle = "gun",
   dorsalStyle = "pod",
+  hullStyle = "classic",
   playerColor,
   alpha4,
 }: ShipPreviewProps = {}) => {
@@ -171,15 +175,28 @@ export const ShipPreview = ({
 
         <HeadingUpdater yawRef={yawRef} stubPlayer={stubPlayer} />
 
-        <SelfShipRenderer
-          player={stubPlayer}
-          thrustAccelRef={thrustRef}
-          observerPos={stubPlayer.phaseSpace.pos}
-          observerBoost={null}
-          cannonStyle={cannonStyle}
-          dorsalStyle={dorsalStyle}
-          alpha4={alpha4}
-        />
+        {/* hullStyle で 2 種類の renderer を dispatch (構造的に独立)。 */}
+        {hullStyle === "rocket" ? (
+          <RocketShipRenderer
+            player={stubPlayer}
+            thrustAccelRef={thrustRef}
+            observerPos={stubPlayer.phaseSpace.pos}
+            observerBoost={null}
+            cameraYawRef={yawRef}
+            alpha4={alpha4}
+          />
+        ) : (
+          <SelfShipRenderer
+            player={stubPlayer}
+            thrustAccelRef={thrustRef}
+            observerPos={stubPlayer.phaseSpace.pos}
+            observerBoost={null}
+            cannonStyle={cannonStyle}
+            dorsalStyle={dorsalStyle}
+            cameraYawRef={yawRef}
+            alpha4={alpha4}
+          />
+        )}
 
         <Orbit autoRotate={autoRotate} interactive={interactive} target={cameraTarget} />
       </Canvas>
