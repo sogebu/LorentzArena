@@ -181,3 +181,36 @@ D 案 (cone 遠面の透明化 / カリング) は本 plan に **含めない** 
 - **PC の矢印キー camera offset の永続化**: タブ越しに保存するか、リスポーンでリセットするか
 - **stage 1 の他機対応**: 自機のみ初版 → 他機含めるかは Phase B-5 (他機 exhaust pure thrust wire field) と同時設計の余地
 - **default 切替タイミング**: 観察期間 (1-2 週間?) 後に判断、本 plan 外で扱う
+
+---
+
+## Post-mortem (2026-04-25 セッション末尾)
+
+当初の 4 stage 設計 (camera mode 直交 × control mode 直交 = 2 軸 4 通り) は実装中に simplify。最終形:
+
+- 2 軸 4 通り → **viewMode 単一 enum (`'classic' | 'shooter'`)** に集約
+- `classic` = 旧来挙動 (camera が heading 追従 + 機体回転 + body-relative WASD + 矢印で heading 旋回)
+- `shooter` = twin-stick (camera と機体姿勢デカップル、矢印で camera yaw offset、WASD は camera basis screen-relative で heading 即時 + thrust、機体 nose は heading に lerp 追従)
+- HUD ControlPanel に切替トグル + localStorage 永続化 (`la-view-mode`)、default は **shooter**
+
+機体実装は **構造的に独立な 2 component に分割**:
+- `SelfShipRenderer` = classic 専用 (六角プリズム hull + 4 RCS + Laser cannon)
+- `RocketShipRenderer` = shooter 専用 (LatheGeometry teardrop hull + 後部 de Laval bell + 動的炎)
+- `SceneContent` / `ShipPreview` で `viewMode` / `hullStyle` で dispatch
+- `HeadingMarkerRenderer` は両 mode 共通で時空に null geodesic を貼って前方を伝える
+
+完了 commit: `d52868f` (RocketShipRenderer)、`8b5dfbb` (camera 矢印 yaw 分離 fix)。
+
+### 3 機目 design 試行と却下 (記録)
+
+shooter mode 用の 3 機目を作ろうとして、procedural / 既製モデルともに却下:
+
+1. **クラゲ案 A (前傾 bell + 触手)** procedural: 1st 試行で bell を 90° 横倒し (lathe axis 方向間違い)、2nd 試行で正姿勢化 + 触手 ribbon mesh + trailing inertia + 4 oral arms 実装したが「触手しょぼい / proportion ダメ / 全体的に話にならない」で却下
+2. **CC0 / CC-BY 既製 .glb** 5 候補提示 (milkfromsaturn / Ghost and Friends / yanix / n- low-poly / cgsoul): いずれも却下 (Ghost and Friends は cute だが 54.6k tris で重い、Habit の 418 tris は license 不明 + 非 download)。
+3. 結論: **3D モデルの visual 判定はテキスト記述では効率悪い、odakin が直接 Sketchfab / Poly Pizza ブラウズして visual で選ぶか、別モチーフに切り替える方が早い**
+
+次セッションへの引き継ぎ:
+- 3 機目は **保留**。現状 2 機 (classic + shooter) で運用可能。
+- design 議論で出た代替モチーフ案: paper-craft / origami crane、crystal / 多面体、mushroom UFO、squid (イカ)、octopus head、抽象アイコン、ペンシル型 etc。クラゲは「向きが radial で出しにくい」+ 「organic 形状を procedural で表現するのが本質的に困難」という両方の問題で頓挫。
+- 3 機目を増やすときは `RocketShipRenderer.tsx` をコピー → JSX 差し替えで簡単に拡張可。dispatch は `SceneContent` / `ShipPreview` で 1 行追加。viewer (`#viewer` ルート) の hullStyle dropdown にも 1 行。
+- 既製モデルを使う場合: `.glb` を `2+1/public/models/<name>.glb` に配置 → `GLTFLoader` (three native、drei 不使用) で load、player 色は material emissive 上書きで tint。Sketchfab download は login 必要なため odakin 手動 DL。

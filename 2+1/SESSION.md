@@ -4,8 +4,14 @@
 
 **`a70f3aa` デプロイ済** (build `2026/04/22 23:14:13 JST`)。本番: https://sogebu.github.io/LorentzArena/
 
+未デプロイ commit (= main の更新): `8b5dfbb` (camera 矢印分離 fix) + `d52868f` (Shooter mode の RocketShipRenderer)。Deploy 前の動作確認は localhost。
+
 ### 直近の文脈 (次セッションで意識すべき状態)
 
+- **viewMode** = `'classic' | 'shooter'` を [`game-store.ts`](src/stores/game-store.ts) に追加、HUD ControlPanel で切替 + localStorage 永続化。default は **shooter**。
+  - **classic** (= 旧来 SelfShipRenderer): camera が heading 追従、機体本体が回転、WASD は機体相対 thrust、矢印キーで heading 連続旋回
+  - **shooter** (= RocketShipRenderer): camera と機体姿勢が独立。矢印キーで camera yaw offset、WASD は camera basis での screen-relative 入力で heading 即時設定 + thrust。機体 nose は heading に lerp 追従回転 (tau=80ms)
+- **HeadingMarkerRenderer** = 自機の進行方向を未来光円錐の母線 (null geodesic) として時空に貼って描画 (silver、半透明)。Shooter では更に lerp 追従。
 - **死亡 event 統一アルゴリズム** は (x_D, u_D, τ_0) ベース、DeathMarker / DeadShipRenderer / LH (2026-04-22 夜に LighthouseRenderer を `aliveIntersection == null` gate に純化) が一元駆動。設計: [`plans/死亡イベント.md`](plans/死亡イベント.md) + [`design/meta-principles.md §M21`](design/meta-principles.md)
 - **PhaseSpace 拡張** は `(pos, u, heading, alpha)` で past-cone 交点で heading slerp + alpha 線形補間。Phase B-5 (他機 exhaust の pure thrust broadcast 用 wire field) 未着手 — `phaseSpace.alpha = thrust + friction` が thrust 単独信号ではない問題が残る
 - **加速度表示** は 2026-04-22 夜にフレーム整合化: 噴射炎 = 被観測者 rest frame proper acc、加速度矢印 = 観測者 rest frame 4-vector の時空矢印 (`observerBoost · α_world`)
@@ -45,7 +51,8 @@
 
 ### 優先 (次回最初に検討)
 
-- **視点・操作系の再設計**: camera mode (`heading-follow` / `world-fixed`) と control mode (`body-relative` / `screen-relative`) を直交軸として設定切替可、heading を未来光円錐の母線で描画。動機: 自機が永遠に背中、進行方向が直感しにくい、camera が機体周りで回ると認知負荷高い。4 stage 一気に plan 化済: [`plans/2026-04-25-viewpoint-controls.md`](plans/2026-04-25-viewpoint-controls.md)。Stage 1 (heading 線) から着手。
+- **Shooter mode 用 3 機目の機体 design**: 現状 2 機 (`SelfShipRenderer` 六角プリズム = classic / `RocketShipRenderer` ぽっちゃりロケット = shooter) を `viewMode` で dispatch する構造ができている。3 機目を追加したいが、procedural 三面図 (rocket バリエーション、jellyfish 案 A) はどれも「グッと来ない」と却下、CC0/CC-BY 3D 素材も「気持ち悪い / 重い (54.6k tris) / license 不明」で行き詰まり。**次セッションは odakin が Sketchfab / Poly Pizza を直接ブラウズして visual で選ぶか、別モチーフ (paper-craft / crystal / mushroom UFO / etc) に切り替え**。design 議論ログ: 2026-04-25 セッション末尾。component を増やすときは `RocketShipRenderer` をベースにコピー → JSX 差し替え (構造的に独立させる方針が確立済)。
+- **視点・操作系の再設計** (実装済): camera/control mode を viewMode 単一に集約 (旧 plan の 2 軸 4 通りは shooter 一本に統合、classic は legacy mode として残置)。実装済 commit `d52868f` + `8b5dfbb`。default は shooter で localStorage 永続化、ControlPanel で切替。当初 plan: [`plans/2026-04-25-viewpoint-controls.md`](plans/2026-04-25-viewpoint-controls.md) (4 stage 計画 → 結果として stage 1-4 ほぼ統合実装、shooter 一本化で完了)。Heading 線も実装済。
 - **Phase A/B で実装した worldline 向き・加速度の思想・コード対称性 audit**: `PhaseSpace = (pos, u, heading, alpha)` 拡張 + past-cone 交点補間 (A-4) + SelfShipRenderer heading source 切替 (B-2) 以降、bug が散見 (DeathMarker regression / 3D モデル消失 / etc)。**そろそろ思想に立ち返って対称性・クリーンさを深く追求するタイミング**。具体候補: (a) component 間の「fade / gate / routing」責務配置の統一 (M21 を広域適用、2026-04-22 夜の LighthouseRenderer τ_0 簡素化と GameLights API 二重意味性解消はこの方向の先行)、(b) Phase B-5 (他機 exhaust の pure thrust broadcast) の再設計、(c) Phase C-1 (wire format 厳格化、heading/alpha optional → required) と整合、(d) 世界線データと描画機構の「対応関係」を DESIGN.md に書き下し。plan 化検討: `plans/2026-04-22-symmetry-audit.md` など
 
 ### 既存 (優先順未決定)
