@@ -1,10 +1,11 @@
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import type { lorentzBoost } from "../../physics";
 import {
   multiplyVector4Matrix4,
-  quatToYaw,
   type Quaternion,
+  quatToYaw,
   type Vector3,
   type Vector4,
 } from "../../physics";
@@ -40,11 +41,9 @@ import {
   SHIP_NOZZLE_OUTWARD_OFFSET,
   SHIP_NOZZLE_THROAT_RADIUS,
 } from "./constants";
-import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
 import { transformEventForDisplay } from "./displayTransform";
 import { RocketHullRenderer } from "./RocketHullRenderer";
 import { getThreeColor, sharedGeometries } from "./threeCache";
-import type { lorentzBoost } from "../../physics";
 
 const INNER_CORE_SCALE = 0.45;
 
@@ -100,7 +99,9 @@ export const RocketShipRenderer = ({
   const nozzleHardwareColor = getThreeColor(SHIP_NOZZLE_HARDWARE_COLOR);
   const nozzleEmissiveColor = getThreeColor(SHIP_NOZZLE_EMISSIVE_COLOR);
   const nozzleInnerColor = getThreeColor(SHIP_NOZZLE_INNER_COLOR);
-  const nozzleInnerEmissiveColor = getThreeColor(SHIP_NOZZLE_INNER_EMISSIVE_COLOR);
+  const nozzleInnerEmissiveColor = getThreeColor(
+    SHIP_NOZZLE_INNER_EMISSIVE_COLOR,
+  );
   const bracketColor = getThreeColor(SHIP_BRACKET_COLOR);
   const bracketEmissiveColor = getThreeColor(SHIP_BRACKET_EMISSIVE_COLOR);
 
@@ -118,18 +119,17 @@ export const RocketShipRenderer = ({
   const tmpQuat = useMemo(() => new THREE.Quaternion(), []);
   const vecY = useMemo(() => new THREE.Vector3(0, 1, 0), []);
   const vecDir = useMemo(() => new THREE.Vector3(), []);
-  const torusHalfWidth = useTorusHalfWidth();
 
   useFrame((_, delta) => {
     const group = groupRef.current;
     if (!group) return;
 
-    // Position: player world pos → display 座標
+    // Position: player world pos → display 座標 (raw、 fold せず boost のみ、 caller の
+    // image cell loop で offset 加算済前提)。
     const dp = transformEventForDisplay(
       player.phaseSpace.pos,
       observerPos,
       observerBoost,
-      torusHalfWidth,
     );
     group.position.set(dp.x, dp.y, dp.t);
 
@@ -161,7 +161,8 @@ export const RocketShipRenderer = ({
 
     const rawTargetR = thrustFrac;
     const curR = rearSmoothedMagRef.current;
-    const tauMsR = rawTargetR > curR ? EXHAUST_ATTACK_TIME : EXHAUST_RELEASE_TIME;
+    const tauMsR =
+      rawTargetR > curR ? EXHAUST_ATTACK_TIME : EXHAUST_RELEASE_TIME;
     const rateR = 1 - Math.exp(-(delta * 1000) / tauMsR);
     const smR = curR + (rawTargetR - curR) * rateR;
     rearSmoothedMagRef.current = smR;
@@ -171,7 +172,13 @@ export const RocketShipRenderer = ({
     const rOuterMat = rearExhaustOuterMatRef.current;
     const rInnerMat = rearExhaustInnerMatRef.current;
 
-    if (smR < EXHAUST_VISIBILITY_THRESHOLD || !rOuter || !rInner || !rOuterMat || !rInnerMat) {
+    if (
+      smR < EXHAUST_VISIBILITY_THRESHOLD ||
+      !rOuter ||
+      !rInner ||
+      !rOuterMat ||
+      !rInnerMat
+    ) {
       if (rOuter) rOuter.visible = false;
       if (rInner) rInner.visible = false;
     } else {
@@ -214,7 +221,8 @@ export const RocketShipRenderer = ({
       const mag4 = Math.sqrt(ax4 * ax4 + ay4 * ay4 + at4 * at4);
       const rawTarget = mag4 / PLAYER_ACCELERATION;
       const current = arrowSmoothedMagRef.current;
-      const tauMs = rawTarget > current ? EXHAUST_ATTACK_TIME : EXHAUST_RELEASE_TIME;
+      const tauMs =
+        rawTarget > current ? EXHAUST_ATTACK_TIME : EXHAUST_RELEASE_TIME;
       const rate = 1 - Math.exp(-(delta * 1000) / tauMs);
       const smoothed = current + (rawTarget - current) * rate;
       arrowSmoothedMagRef.current = smoothed;
@@ -376,7 +384,8 @@ export const RocketShipRenderer = ({
               />
             </mesh>
           </group>
-        </group>{/* end lift wrapper */}
+        </group>
+        {/* end lift wrapper */}
       </group>
 
       {/* Spacetime acceleration arrow (sibling、ship body group の外側、yaw/scale 非適用)。 */}

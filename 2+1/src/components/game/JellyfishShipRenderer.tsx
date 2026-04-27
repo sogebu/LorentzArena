@@ -1,16 +1,15 @@
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import type { lorentzBoost } from "../../physics";
 import {
-  quatToYaw,
   type Quaternion,
+  quatToYaw,
   type Vector3,
   type Vector4,
 } from "../../physics";
 import { SHIP_HULL_RADIUS, SHIP_LIFT_Z, SHIP_MODEL_SCALE } from "./constants";
-import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
 import { transformEventForDisplay } from "./displayTransform";
-import type { lorentzBoost } from "../../physics";
 
 // 機体モチーフ: ジャパクリップ「クラゲ」 (https://japaclip.com/jellyfish/)。
 // 規約: https://japaclip.com/terms/ — 商用 OK / 改変 OK / クレジット任意。
@@ -177,10 +176,8 @@ class TentacleRope {
       const phx = this.kickPhases[k * 3 + 0];
       const phy = this.kickPhases[k * 3 + 1];
       const phs = this.kickPhases[k * 3 + 2];
-      const nx =
-        Math.sin(t * fA + phx) + 0.5 * Math.sin(t * fB + phs);
-      const ny =
-        Math.sin(t * fA + phy) + 0.5 * Math.sin(t * fB + phs * 1.31);
+      const nx = Math.sin(t * fA + phx) + 0.5 * Math.sin(t * fB + phs);
+      const ny = Math.sin(t * fA + phy) + 0.5 * Math.sin(t * fB + phs * 1.31);
       // Tangent (世界座標、length 不問なので正規化のみ)。末端 (k=numPoints-1) では
       // 自身を 1 個ぶん前向き extension と見做す (= positions[k] - positions[k-1])。
       const nextK = k + 1 < this.numPoints ? k + 1 : k;
@@ -324,7 +321,7 @@ export const JellyfishShipRenderer = ({
       let x = (seed * 0x9e3779b9 + 0x12345) | 0;
       return () => {
         x = (Math.imul(x, 0x6c078965) + 1) | 0;
-        return ((x >>> 0) / 0x100000000);
+        return (x >>> 0) / 0x100000000;
       };
     };
     const ropes: TentacleRope[] = [];
@@ -383,16 +380,15 @@ export const JellyfishShipRenderer = ({
     return out;
   }, []);
 
-  const torusHalfWidth = useTorusHalfWidth();
   useFrame((_, delta) => {
     const group = groupRef.current;
     if (!group) return;
 
+    // raw display position (= caller の image cell loop で offset 加算済前提)。
     const dp = transformEventForDisplay(
       player.phaseSpace.pos,
       observerPos,
       observerBoost,
-      torusHalfWidth,
     );
     group.position.set(dp.x, dp.y, dp.t);
 
@@ -629,7 +625,9 @@ export const JellyfishShipRenderer = ({
                       emissive を HDR 値 (>1) に上げ、toneMapped=false で tone mapping を
                       スキップ → 真っ白に飽和するくらい強く光る。 */}
                   <mesh>
-                    <sphereGeometry args={[ARMED_INNER_EMITTER_RADIUS, 14, 14]} />
+                    <sphereGeometry
+                      args={[ARMED_INNER_EMITTER_RADIUS, 14, 14]}
+                    />
                     <meshPhysicalMaterial
                       color={new THREE.Color(player.color)}
                       emissive={new THREE.Color(player.color)}
