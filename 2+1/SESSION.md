@@ -120,9 +120,37 @@
 
 ## 次にやること
 
-### 優先 (次回最初に検討)
+### 優先 (次セッション最初に検討)
 
-- **実機 multi-tab 実戦テスト**: legacy_classic デフォルトでの host + client 2 tab、thrust 入力・射撃・死亡/respawn・レーザー軌跡を確認。問題なければ deploy。隠しオプション (`#controls=modern`, `#ship=jellyfish` 等) も合わせて動作確認しておくと future-proof
+#### PBC torus 中間版の完成 ← ★ いま 2f7f9ce push 済の続き
+
+`plans/2026-04-27-pbc-torus.md` の §「実装ステータス (2026-04-27)」を最初に読む。 中間版で動作する `boundary=torus` (= default) の **未実装の後続作業** が以下:
+
+1. **worldLine 描画の wrap 跨ぎ line break** (= 「世界線が画面横切らない」要件未達、 odakin の core requirement):
+   - 現状 [`WorldLineRenderer.tsx`](src/components/game/WorldLineRenderer.tsx) は TubeGeometry 1 本に全 vertex を込めて、 wrap 跨ぎ瞬間の隣接 vertex で斜めに横切る描画
+   - 対応案: `physics/torus.ts:isWrapCrossing` で wrap 跨ぎ点を検出 → worldLine.history を「複数 segment 配列」に分割 → 各 segment に独立な TubeGeometry を生成 → 複数 `<mesh>` で render
+   - cell 内の通常 1 segment、 wrap 跨ぎ瞬間に segment が増える (~1 個/秒程度)
+   - 課題: TubeGeometry 複数生成のコスト、 inner hide shader uniform の per-segment 共有、 timeFade shader 同様
+   - 設計議論は `plans/2026-04-27-pbc-torus.md` §「(3) 「世界線が画面を横切らない」」と Appendix A
+2. **DebrisRenderer の observer 中心 wrap**:
+   - 現状 [`DebrisRenderer.tsx`](src/components/game/DebrisRenderer.tsx) の各 segment vertex (sx, sy, st) → (ex, ey, et) は world coords のまま。 observer が境界跨いで遠ざかると debris が画面外に置き去り
+   - 対応: writeInstanced で各 segment の (sx, sy) / (ex, ey) を観測者中心 minImage で folding。 `markerElements` の transformEventForDisplay は既に torus 化済 (Phase 3 で対応済)
+   - 寿命短い (DEBRIS_MAX_LAMBDA ~1-2s) ので影響は limited だが、 死亡瞬間に境界近くで爆発した場合 visual 違和感あり
+3. **レーザー軌跡の primary cell 境界クリッピング**:
+   - 現状 [`LaserRenderer`](src/components/game/) (or 同等) の laser 直線描画は 1 segment、 emission → tip の直線で境界跨ぐと画面横切り
+   - 対応案 (b): emission と tip を観測者中心 wrap、 |displayΔ| > L で 2 segment に分割。 Liang-Barsky 風 (= 直線 ∩ box の clipping)
+   - 実装 ~30-50 行 / レーザー軌跡 renderer を確認して着手
+4. **過去光円錐 ∩ 正方形枠 の交線描画**:
+   - 円柱版 [`ArenaRenderer`](src/components/game/ArenaRenderer.tsx) の `ARENA_PAST_CONE_OPACITY` LineLoop 相当を、 [`SquareArenaRenderer`](src/components/game/SquareArenaRenderer.tsx) でも実装。 4 平面 × 円錐の交線計算が必要
+   - 優先度低 (= 描画 nice-to-have、 ゲームプレイには影響しない)
+
+#### PBC 中間版が完成したら → 実機 multi-tab + deploy
+
+- **実機 multi-tab 実戦テスト**: torus default で host + client 2 tab、 境界跨ぎでの攻防成立 / レーダー / 死亡 routing を確認
+- **deploy** (`pnpm run deploy` + main push)
+
+### 既存 (優先順未決定)
+
 - **Phase A/B で実装した worldline 向き・加速度の思想・コード対称性 audit**: `phaseSpace.alpha = thrust only` 化 ([`gameLoop.ts`](src/components/game/gameLoop.ts) で上書き) は thrust 単独信号の役割を満たすが、Phase B-5 で別途 wire field 新設するか alpha のままで運用するか方針確認。具体候補: (a) component 間の「fade / gate / routing」責務配置の統一 (M21 を広域適用)、(b) Phase B-5 (他機 exhaust の pure thrust broadcast) の再設計、(c) Phase C-1 (wire format 厳格化、heading/alpha optional → required)、(d) 世界線データと描画機構の「対応関係」を DESIGN.md に書き下し
 
 ### 既存 (優先順未決定)
