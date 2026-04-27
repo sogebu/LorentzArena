@@ -4,6 +4,7 @@ import {
   createVector4,
   createWorldLine,
   gamma,
+  minImageDelta1D,
   vector3Zero,
   type Vector3,
   type Vector4,
@@ -87,12 +88,18 @@ export const computeInterceptDirection = (
   turretPos: Vector4,
   enemyPos: Vector4,
   enemyU: Vector3,
+  torusHalfWidth?: number,
 ): Vector3 | null => {
   const g = gamma(enemyU);
 
-  // Displacement from turret to enemy observation point
-  const dx = enemyPos.x - turretPos.x;
-  const dy = enemyPos.y - turretPos.y;
+  // Displacement from turret to enemy observation point.
+  // torus mode では最短画像 delta で取る (= 境界跨ぎの enemy にも intercept 計算が機能)。
+  const rawDx = enemyPos.x - turretPos.x;
+  const rawDy = enemyPos.y - turretPos.y;
+  const dx =
+    torusHalfWidth !== undefined ? minImageDelta1D(rawDx, torusHalfWidth) : rawDx;
+  const dy =
+    torusHalfWidth !== undefined ? minImageDelta1D(rawDy, torusHalfWidth) : rawDy;
   const dt = enemyPos.t - turretPos.t;
 
   // Enemy 4-velocity components

@@ -1,7 +1,8 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { pastLightConeIntersectionWorldLine } from "../../physics";
+import { minImageDelta1D, pastLightConeIntersectionWorldLine } from "../../physics";
+import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
 import { PLAYER_WORLDLINE_OPACITY, SHIP_WORLDLINE_HIDE_UPPER_SHRINK } from "./constants";
 import { buildDisplayMatrix } from "./displayTransform";
 import { createInnerHideShader } from "./innerHideShader";
@@ -25,9 +26,20 @@ export const WorldLineRenderer = ({
   const tubeRef = useRef<THREE.Mesh>(null);
   const prevTubeGeoRef = useRef<THREE.TubeGeometry | null>(null);
 
+  const torusHalfWidth = useTorusHalfWidth();
   // version を TUBE_REGEN_INTERVAL で量子化して再生成を間引く
   // wl オブジェクト自体が変わった時（リスポーン）も確実に再生成するため wl を依存に含める
   const geoVersion = Math.floor(wl.version / TUBE_REGEN_INTERVAL);
+  // torus mode: 観測者が境界跨ぎで cell index が変わったときのみ vertex 再計算 (cell 内で
+  // 観測者が連続的に動いても vertex 値は不変、 細かい並進は displayMatrix で吸収される)。
+  const obsCellX =
+    torusHalfWidth !== undefined && observerPos
+      ? Math.floor((observerPos.x + torusHalfWidth) / (2 * torusHalfWidth))
+      : 0;
+  const obsCellY =
+    torusHalfWidth !== undefined && observerPos
+      ? Math.floor((observerPos.y + torusHalfWidth) / (2 * torusHalfWidth))
+      : 0;
   // biome-ignore lint/correctness/useExhaustiveDependencies: geoVersion throttles rebuild; wl included for respawn identity change
   const tubeGeo = useMemo(() => {
     prevTubeGeoRef.current?.dispose();
@@ -35,15 +47,30 @@ export const WorldLineRenderer = ({
       prevTubeGeoRef.current = null;
       return null;
     }
-    const points = wl.history.map(
-      (ps) => new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t),
-    );
+    // torus mode: 各 vertex の (x, y) を観測者の primary cell `[obs±L]²` に最短画像で折り畳む。
+    // wrap 跨ぎ瞬間の隣接 2 vertex は座標が大ジャンプ → TubeGeometry が画面を斜めに横切る
+    // 現象が出る (= 「世界線が横切らない」要件は **TODO**、 segment 分割で対応予定)。 中間版
+    // として現状はジャンプ許容。 詳細: plans/2026-04-27-pbc-torus.md
+    const points =
+      torusHalfWidth !== undefined
+        ? (() => {
+            const cx = 2 * torusHalfWidth * obsCellX;
+            const cy = 2 * torusHalfWidth * obsCellY;
+            return wl.history.map((ps) => {
+              const dx = minImageDelta1D(ps.pos.x - cx, torusHalfWidth);
+              const dy = minImageDelta1D(ps.pos.y - cy, torusHalfWidth);
+              return new THREE.Vector3(cx + dx, cy + dy, ps.pos.t);
+            });
+          })()
+        : wl.history.map(
+            (ps) => new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t),
+          );
     const curve = new THREE.CatmullRomCurve3(points, false, "centripetal", 0.5);
     const segments = Math.max(1, points.length * 2);
     const geo = new THREE.TubeGeometry(curve, segments, tubeRadius, 6, false);
     prevTubeGeoRef.current = geo;
     return geo;
-  }, [geoVersion, wl]);
+  }, [geoVersion, wl, torusHalfWidth, obsCellX, obsCellY]);
 
   // Dispose on unmount
   useEffect(() => {
@@ -64,7 +91,11 @@ export const WorldLineRenderer = ({
       tubeRef.current.matrixAutoUpdate = false;
     }
     if (innerHideRadius != null && observerPos) {
-      const intersection = pastLightConeIntersectionWorldLine(wl, observerPos);
+      const intersection = pastLightConeIntersectionWorldLine(
+        wl,
+        observerPos,
+        torusHalfWidth,
+      );
       if (intersection) {
         hideCenter.set(intersection.pos.x, intersection.pos.y, intersection.pos.t);
       }

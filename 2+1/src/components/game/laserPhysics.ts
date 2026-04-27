@@ -3,6 +3,7 @@ import {
   findLatestIndexAtOrBeforeTime,
   futureLightConeIntersectionSegment,
   pastLightConeIntersectionSegment,
+  shiftObserverToReferenceImage,
   subVector4,
   type Vector4,
   type WorldLine,
@@ -26,13 +27,30 @@ export const findLaserHitPosition = (
   laser: Laser,
   worldLine: WorldLine,
   hitRadius: number,
+  torusHalfWidth?: number,
 ): { t: number; x: number; y: number; z: number } | null => {
   const history = worldLine.history;
   if (history.length < 2) return null;
 
   const eT = laser.emissionPos.t;
-  const eX = laser.emissionPos.x;
-  const eY = laser.emissionPos.y;
+  // torus mode: laser emission を target worldLine 最新点と同じ image cell に shift し、
+  // 連続値 hit 計算で最短画像距離での命中判定を行う。 worldLine 連続値前提のロジックを
+  // 変更せずに PBC 対応する (= worldLine.ts の shiftObserverToReferenceImage と同じ
+  // pattern)。 詳細: plans/2026-04-27-pbc-torus.md
+  let eX = laser.emissionPos.x;
+  let eY = laser.emissionPos.y;
+  if (torusHalfWidth !== undefined) {
+    const ref = history[history.length - 1]?.pos;
+    if (ref) {
+      const shifted = shiftObserverToReferenceImage(
+        { t: eT, x: eX, y: eY, z: laser.emissionPos.z },
+        ref,
+        torusHalfWidth,
+      );
+      eX = shifted.x;
+      eY = shifted.y;
+    }
+  }
   const dX = laser.direction.x;
   const dY = laser.direction.y;
   const range = laser.range;

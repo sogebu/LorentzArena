@@ -4,8 +4,9 @@ import {
   lorentzBoost,
   multiplyVector4Matrix4,
   pastLightConeIntersectionWorldLine,
-  subVector4,
+  subVector4Torus,
 } from "../../../physics";
+import { useTorusHalfWidth } from "../../../hooks/useTorusHalfWidth";
 import { useGameStore } from "../../../stores/game-store";
 import { ARENA_RADIUS } from "../constants";
 import { pastLightConeIntersectionLaser } from "../laserPhysics";
@@ -48,6 +49,10 @@ export const Radar = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const size = isTouchDevice ? RADAR_SIZE_MOBILE : RADAR_SIZE_PC;
+  const torusHalfWidth = useTorusHalfWidth();
+  // useEffect closure 内で raf 経由で読むため ref に持たせる (毎 frame 最新値が要る)
+  const torusHalfWidthRef = useRef<number | undefined>(torusHalfWidth);
+  torusHalfWidthRef.current = torusHalfWidth;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -101,12 +106,14 @@ export const Radar = ({
         const cosA = Math.sin(yaw);
         const sinA = Math.cos(yaw);
         // World 4-event (t, x, y, 0) を観測者静止系の空間 delta に落とす。
+        // torus mode では (x, y) を最短画像 delta で取る (= 反対側の相手も radar 内に収まる)。
+        const halfW = torusHalfWidthRef.current;
         const boostEvent = (
           t: number,
           x: number,
           y: number,
         ): [number, number] => {
-          const delta = subVector4(createVector4(t, x, y, 0), obsPos);
+          const delta = subVector4Torus(createVector4(t, x, y, 0), obsPos, halfW);
           const r = multiplyVector4Matrix4(boost, delta);
           return [r.x, r.y];
         };
@@ -156,6 +163,7 @@ export const Radar = ({
           const ix = pastLightConeIntersectionWorldLine(
             player.worldLine,
             obsPos,
+            halfW,
           );
           if (!ix) continue;
           const isLH = isLighthouse(player.id);
@@ -175,7 +183,7 @@ export const Radar = ({
         // 凍結世界線 (死体) past-cone 交点 — 薄く
         for (const fw of frozenWorldLines) {
           if (isLighthouse(fw.playerId)) continue;
-          const ix = pastLightConeIntersectionWorldLine(fw.worldLine, obsPos);
+          const ix = pastLightConeIntersectionWorldLine(fw.worldLine, obsPos, halfW);
           if (!ix) continue;
           const [sx, sy] = projectEvent(ix.pos.t, ix.pos.x, ix.pos.y);
           ctx.fillStyle = fw.color;

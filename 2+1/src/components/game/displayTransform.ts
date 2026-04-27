@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import {
   type lorentzBoost,
+  minImageDelta1D,
   multiplyVector4Matrix4,
   subVector4,
   type Vector4,
@@ -14,24 +15,41 @@ import {
  *     空間 (x, y) は world 座標のまま保持 → カメラが観測者を追随。時間並進によって
  *     `timeFadeShader` が読む display z が `Δt` となり、rest frame と fade 挙動が一致する。
  *   - 観測者が未設定 (`observerPos = null`): 素通し。
+ *
+ * **torus PBC mode** (`torusHalfWidth` 指定時): event の (x, y) を観測者中心 primary cell
+ * `[obs.x±L, obs.y±L]²` に最短画像で折り畳む (= Asteroids 風 visual wrapping)。 これを世界系
+ * では結果 event の (x, y) を「shifted observer.xy + minImage(event.xy − observer.xy)」 に、
+ * rest frame では observer subtract の前に同じ shift を適用して boost に渡す。 これで観測者が
+ * 境界を超えても他オブジェクトが画面内に映り続ける。 詳細: plans/2026-04-27-pbc-torus.md
  */
 export const transformEventForDisplay = (
   worldEvent: Vector4,
   observerPos: Vector4 | null,
   observerBoost: ReturnType<typeof lorentzBoost> | null,
+  torusHalfWidth?: number,
 ): Vector4 => {
   if (!observerPos) return worldEvent;
+  // torus mode で event を観測者中心 primary cell に折り畳んだ「shifted event」を生成
+  const wrappedEvent: Vector4 =
+    torusHalfWidth !== undefined
+      ? {
+          t: worldEvent.t,
+          x: observerPos.x + minImageDelta1D(worldEvent.x - observerPos.x, torusHalfWidth),
+          y: observerPos.y + minImageDelta1D(worldEvent.y - observerPos.y, torusHalfWidth),
+          z: worldEvent.z,
+        }
+      : worldEvent;
   if (!observerBoost) {
     return {
-      t: worldEvent.t - observerPos.t,
-      x: worldEvent.x,
-      y: worldEvent.y,
-      z: worldEvent.z,
+      t: wrappedEvent.t - observerPos.t,
+      x: wrappedEvent.x,
+      y: wrappedEvent.y,
+      z: wrappedEvent.z,
     };
   }
   return multiplyVector4Matrix4(
     observerBoost,
-    subVector4(worldEvent, observerPos),
+    subVector4(wrappedEvent, observerPos),
   );
 };
 

@@ -1,4 +1,5 @@
 import { createPhaseSpace, type PhaseSpace } from "./mechanics";
+import { shiftObserverToReferenceImage } from "./torus";
 import {
   addVector4,
   createVector4,
@@ -274,8 +275,21 @@ const interpolateSegmentPhaseSpace = (
 export const pastLightConeIntersectionWorldLineLinear = (
   wl: WorldLine,
   observerPosition: Vector4,
+  torusHalfWidth?: number,
 ): PhaseSpace | null => {
   const history = wl.history;
+  // torus mode: 観測者を worldLine 最新点 (or origin) と同 image cell に shift してから
+  // 連続値ベースの探索を実行。 詳細: physics/torus.ts shiftObserverToReferenceImage
+  if (torusHalfWidth !== undefined) {
+    const ref = history[history.length - 1]?.pos ?? wl.origin?.pos;
+    if (ref) {
+      observerPosition = shiftObserverToReferenceImage(
+        observerPosition,
+        ref,
+        torusHalfWidth,
+      );
+    }
+  }
   if (history.length === 0) {
     if (wl.origin) {
       return pastLightConeIntersectionHalfLine(wl.origin, observerPosition);
@@ -413,8 +427,24 @@ const CONE_NEIGHBORHOOD = 16;
 export const pastLightConeIntersectionWorldLine = (
   wl: WorldLine,
   observerPosition: Vector4,
+  torusHalfWidth?: number,
 ): PhaseSpace | null => {
   const history = wl.history;
+  // torus mode: 観測者を worldLine 最新点 (or origin) と同 image cell に shift してから
+  // 連続値ベースの探索を実行 (詳細: physics/torus.ts shiftObserverToReferenceImage)。
+  // worldLine は連続値で保持されているので、 観測者を最新点近傍に持ってくれば過去光円錐
+  // 探索が連続値で正常動作する。 履歴 ~16s に対して一周 ~40s 必要なので「光が一周回って
+  // 届く」エッジケースは実用上発生しない。
+  if (torusHalfWidth !== undefined) {
+    const ref = history[history.length - 1]?.pos ?? wl.origin?.pos;
+    if (ref) {
+      observerPosition = shiftObserverToReferenceImage(
+        observerPosition,
+        ref,
+        torusHalfWidth,
+      );
+    }
+  }
   if (history.length === 0) {
     if (wl.origin) {
       return pastLightConeIntersectionHalfLine(wl.origin, observerPosition);

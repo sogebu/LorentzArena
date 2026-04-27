@@ -112,6 +112,34 @@ const saveControlScheme = (scheme: ControlScheme) => {
     localStorage.setItem(CONTROL_SCHEME_LS_KEY, scheme);
 };
 
+/**
+ * アリーナ境界の挙動 (plans/2026-04-27-pbc-torus.md)。
+ *
+ * - 'torus' (default): PBC = 周期的境界条件。 アリーナは正方形 `[-L, L]²` のトーラス、
+ *   プレイヤーが境界を超えると反対側から出現、 距離計算 (hit detection / 過去光円錐) も
+ *   最短画像。 視覚は正方形枠。
+ * - 'open_cylinder': 旧挙動。 物理的な閉じ込めなし、 プレイヤーはどこまでも飛んでいける。
+ *   視覚は円柱 (= 元の ArenaRenderer)。
+ *
+ * UI dropdown は撤去 (隠しオプション)。 切替は URL hash `#boundary=open_cylinder`。
+ */
+export type BoundaryMode = "torus" | "open_cylinder";
+
+const BOUNDARY_MODE_LS_KEY = "la-boundary-mode";
+const BOUNDARY_MODE_VALUES: readonly BoundaryMode[] = ["torus", "open_cylinder"];
+
+const loadBoundaryMode = (): BoundaryMode => {
+  if (typeof localStorage === "undefined") return "torus";
+  const v = localStorage.getItem(BOUNDARY_MODE_LS_KEY);
+  return (BOUNDARY_MODE_VALUES as readonly string[]).includes(v ?? "")
+    ? (v as BoundaryMode)
+    : "torus";
+};
+const saveBoundaryMode = (mode: BoundaryMode) => {
+  if (typeof localStorage !== "undefined")
+    localStorage.setItem(BOUNDARY_MODE_LS_KEY, mode);
+};
+
 export interface GameState {
   // --- Reactive state (components subscribe via selectors) ---
   players: Map<string, RelativisticPlayer>;
@@ -151,6 +179,7 @@ export interface GameState {
   // --- 視点・操作系設定 ---
   viewMode: ViewMode;
   controlScheme: ControlScheme;
+  boundaryMode: BoundaryMode;
 
   // --- Actions: state setters ---
   setPlayers: (updater: PlayersUpdater) => void;
@@ -216,6 +245,7 @@ export interface GameState {
   // --- 視点・操作系 setters ---
   setViewMode: (mode: ViewMode) => void;
   setControlScheme: (scheme: ControlScheme) => void;
+  setBoundaryMode: (mode: BoundaryMode) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -246,6 +276,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   // 視点・操作系 default は localStorage から復元
   viewMode: loadViewMode(),
   controlScheme: loadControlScheme(),
+  boundaryMode: loadBoundaryMode(),
 
   // -----------------------------------------------------------------------
   // State setters
@@ -517,6 +548,11 @@ export const useGameStore = create<GameState>()((set, get) => ({
   setControlScheme: (controlScheme) => {
     saveControlScheme(controlScheme);
     set({ controlScheme });
+  },
+
+  setBoundaryMode: (boundaryMode) => {
+    saveBoundaryMode(boundaryMode);
+    set({ boundaryMode });
   },
 }));
 

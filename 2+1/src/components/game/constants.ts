@@ -610,12 +610,17 @@ export const AIM_ARROW_OPACITY_STEP = 0.15;
 export const KILL_NOTIFICATION_SPHERE_OPACITY = 0.6;
 export const KILL_NOTIFICATION_RING_OPACITY = 0.8;
 
-// --- Arena (world-frame static cylinder, visual guide only) ---
+// --- Arena ---
 // スポーン中心 (= [0, SPAWN_RANGE]² 一様分布の中心) に配置。
 export const ARENA_CENTER_X = SPAWN_RANGE / 2;
 export const ARENA_CENTER_Y = SPAWN_RANGE / 2;
-// 半径: LASER_RANGE (=10) の 2 倍、光円錐 HEIGHT と同じスケール感。
+// open_cylinder mode 用の円柱半径: LASER_RANGE (=10) の 2 倍、光円錐 HEIGHT と同じスケール感。
 export const ARENA_RADIUS = 20;
+// torus (PBC) mode 用の正方形半幅。 アリーナは `[-L+CX, L+CX) × [-L+CY, L+CY)` の torus、
+// プレイヤーが境界を超えると反対側から出現、 距離計算も最短画像。 LASER_RANGE (=10) の 2 倍で
+// 攻防成立スケール。 円柱半径と同値にして既存設計から geometry スケール感を継承。
+// 詳細: plans/2026-04-27-pbc-torus.md
+export const ARENA_HALF_WIDTH = 20;
 // 円柱の時間方向「半幅」下限: 観測者の光円錐との交線 (= ρ(θ)) と max を取り、半幅 =
 // max(ρ, ARENA_MIN_HALF_HEIGHT)。ρ が小さい θ (観測者に近い円柱上の点) では固定半幅
 // でガードし円柱が極端に狭くならないようにし、ρ が大きい (観測者が円柱から遠い) θ では
@@ -637,3 +642,13 @@ export const ARENA_PAST_CONE_OPACITY = 0.5;
 // の θ では未来光円錐交線と一致し、ρ < HALF_HEIGHT の θ では固定半幅 H による rim。
 // pastCone の 1.0 より控えめ (既に起きた event vs まだ起きていない event の情報量差)。
 export const ARENA_FUTURE_CONE_OPACITY = 0.3;
+
+// --- Square arena (torus PBC mode) ---
+// 正方形枠の色 / opacity。 円柱と同じ hsl 系で揃える (パステル化時は両者まとめて変更)。
+export const ARENA_SQUARE_COLOR = "hsl(180, 40%, 70%)";
+export const ARENA_SQUARE_SURFACE_OPACITY = 0.06;
+// 4 辺の縦エッジ (時間方向に伸びる線) の opacity。 円柱の vertical line と同等。
+export const ARENA_SQUARE_EDGE_OPACITY = 0.25;
+// 上端/下端 rim (= 観測者光円錐 ∩ 正方形 の交線、 簡略版) の opacity。
+// 当面は固定半幅で rim を描き、 過去/未来光円錐との交線は後続検討。
+export const ARENA_SQUARE_RIM_OPACITY = 0.2;

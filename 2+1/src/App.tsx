@@ -4,6 +4,7 @@ import Lobby from "./components/Lobby";
 import { useI18n, type Lang } from "./i18n";
 import {
   useGameStore,
+  type BoundaryMode,
   type ControlScheme,
   type ViewMode,
 } from "./stores/game-store";
@@ -49,15 +50,17 @@ const CONTROL_SCHEME_VALUES: readonly ControlScheme[] = [
   "legacy_shooter",
   "modern",
 ];
+const BOUNDARY_MODE_VALUES: readonly BoundaryMode[] = ["torus", "open_cylinder"];
 
 /**
- * 起動時 1 回、URL hash の `#controls=` / `#ship=` を読んで store に override 適用。
- * UI dropdown は撤去済 (隠しオプション) なので、これが唯一の切替経路 (LS 直接編集を除く)。
- * 適用後は LS にも書かれるため、F5 後も維持される (URL hash を消した場合も保持)。
+ * 起動時 1 回、URL hash の `#controls=` / `#ship=` / `#boundary=` を読んで store に override
+ * 適用。 UI dropdown は撤去済 (隠しオプション) なので、 これが唯一の切替経路 (LS 直接編集を
+ * 除く)。 適用後は LS にも書かれるため、 F5 後も維持される (URL hash を消した場合も保持)。
  */
 const useUrlHashOverrides = () => {
   const setViewMode = useGameStore((s) => s.setViewMode);
   const setControlScheme = useGameStore((s) => s.setControlScheme);
+  const setBoundaryMode = useGameStore((s) => s.setBoundaryMode);
   useEffect(() => {
     const { params } = parseHash();
     const ship = params.ship;
@@ -71,7 +74,14 @@ const useUrlHashOverrides = () => {
     ) {
       setControlScheme(controls as ControlScheme);
     }
-  }, [setViewMode, setControlScheme]);
+    const boundary = params.boundary;
+    if (
+      boundary &&
+      (BOUNDARY_MODE_VALUES as readonly string[]).includes(boundary)
+    ) {
+      setBoundaryMode(boundary as BoundaryMode);
+    }
+  }, [setViewMode, setControlScheme, setBoundaryMode]);
 };
 
 const STORAGE_KEY_NAME = "la-playerName";

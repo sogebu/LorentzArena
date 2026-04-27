@@ -6,9 +6,10 @@ import {
   evolvePhaseSpace,
   inverseLorentzBoost,
   lorentzDotVector4,
+  minImageDelta1D,
   multiplyVector4Matrix4,
   pastLightConeIntersectionWorldLine,
-  subVector4,
+  subVector4Torus,
   vector3Zero,
   type Vector3,
   type Vector4,
@@ -281,6 +282,7 @@ export function processLighthouseAI(
   currentTime: number,
   lastFireMap: Map<string, number>,
   spawnTimeMap: Map<string, number>,
+  torusHalfWidth?: number,
 ): LighthouseResult {
   // 死亡中 LH は呼び出し側 (useGameLoop) で既に continue されているため、ここには
   // alive な LH しか来ない。死亡中 LH の phaseSpace.pos.t は死亡時刻で固定されており、
@@ -296,7 +298,7 @@ export function processLighthouseAI(
     if (player.isDead) continue;
     minPlayerT = Math.min(minPlayerT, player.phaseSpace.pos.t);
     if (player.phaseSpace.pos.t <= lhNewPs.pos.t) continue;
-    const diff = subVector4(lhNewPs.pos, player.phaseSpace.pos);
+    const diff = subVector4Torus(lhNewPs.pos, player.phaseSpace.pos, torusHalfWidth);
     const l = lorentzDotVector4(diff, diff);
     if (l < 0) {
       needsJump = true;
@@ -331,14 +333,30 @@ export function processLighthouseAI(
     if (isLighthouse(pId)) continue;
     if (player.isDead) continue;
 
-    const observed = pastLightConeIntersectionWorldLine(player.worldLine, lhNewPs.pos);
+    const observed = pastLightConeIntersectionWorldLine(
+      player.worldLine,
+      lhNewPs.pos,
+      torusHalfWidth,
+    );
     if (!observed) continue;
 
-    const dir = computeInterceptDirection(lhNewPs.pos, observed.pos, observed.u);
+    const dir = computeInterceptDirection(
+      lhNewPs.pos,
+      observed.pos,
+      observed.u,
+      torusHalfWidth,
+    );
     if (!dir) continue;
 
-    const dx = observed.pos.x - lhNewPs.pos.x;
-    const dy = observed.pos.y - lhNewPs.pos.y;
+    // 最短画像距離で「最近い enemy」を選ぶ (torus mode で境界跨ぎ相手を最短画像として扱う)
+    const dx =
+      torusHalfWidth !== undefined
+        ? minImageDelta1D(observed.pos.x - lhNewPs.pos.x, torusHalfWidth)
+        : observed.pos.x - lhNewPs.pos.x;
+    const dy =
+      torusHalfWidth !== undefined
+        ? minImageDelta1D(observed.pos.y - lhNewPs.pos.y, torusHalfWidth)
+        : observed.pos.y - lhNewPs.pos.y;
     const dist = dx * dx + dy * dy;
     if (dist < bestDist) {
       bestDist = dist;
@@ -402,6 +420,7 @@ export function processHitDetection(
   processedIds: Set<string>,
   deadIds: Set<string>,
   invincibleIds: Set<string>,
+  torusHalfWidth?: number,
 ): HitDetectionResult {
   const hits: HitDetectionResult["hits"] = [];
   const hitLaserIds: string[] = [];
@@ -436,7 +455,7 @@ export function processHitDetection(
       if (deadIds.has(playerId)) continue;
       if (invincibleIds.has(playerId)) continue;
       const radius = isLighthouse(playerId) ? LIGHTHOUSE_HIT_RADIUS : HIT_RADIUS;
-      const hitPos = findLaserHitPosition(laser, player.worldLine, radius);
+      const hitPos = findLaserHitPosition(laser, player.worldLine, radius, torusHalfWidth);
       if (hitPos) {
         hits.push({
           victimId: playerId,
@@ -467,6 +486,7 @@ export function checkCausalFreeze(
   me: RelativisticPlayer,
   staleFrozenIds: Set<string>,
   wasFrozen: boolean,
+  torusHalfWidth?: number,
 ): boolean {
   for (const [id, player] of players) {
     if (id === myId) continue;
@@ -474,7 +494,11 @@ export function checkCausalFreeze(
     if (isLighthouse(id)) continue;
     if (staleFrozenIds.has(id)) continue;
     if (player.phaseSpace.pos.t > me.phaseSpace.pos.t) continue;
-    const diff = subVector4(player.phaseSpace.pos, me.phaseSpace.pos);
+    const diff = subVector4Torus(
+      player.phaseSpace.pos,
+      me.phaseSpace.pos,
+      torusHalfWidth,
+    );
     const l = lorentzDotVector4(diff, diff);
     const threshold = wasFrozen ? CAUSAL_FREEZE_HYSTERESIS : 0;
     if (l < -threshold) {

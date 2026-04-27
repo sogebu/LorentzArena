@@ -66,6 +66,7 @@ import {
   SHIP_NOZZLE_OUTWARD_OFFSET,
   SHIP_NOZZLE_THROAT_RADIUS,
 } from "./constants";
+import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
 import { transformEventForDisplay } from "./displayTransform";
 import { AntennaBeaconRenderer } from "./AntennaBeaconRenderer";
 import { DorsalPodRenderer } from "./DorsalPodRenderer";
@@ -139,6 +140,7 @@ export const SelfShipRenderer = ({
   controlScheme?: "legacy_classic" | "legacy_shooter" | "modern";
 }) => {
   const groupRef = useRef<THREE.Group>(null);
+  const torusHalfWidth = useTorusHalfWidth();
   // 砲塔 (cannon = laser or gun) のみを heading に追従させるための独立 group。
   // 本体 (hull) は固定で、cannon assembly だけがこの ref を介して回転。
   const cannonYawGroupRef = useRef<THREE.Group>(null);
@@ -217,6 +219,7 @@ export const SelfShipRenderer = ({
       player.phaseSpace.pos,
       observerPos,
       observerBoost,
+      torusHalfWidth,
     );
     group.position.set(dp.x, dp.y, dp.t);
 

@@ -47,20 +47,27 @@ deploy 後に報告する項目:
 - **正しい運用**: deploy 時は dev server に触らない。HMR が動いてれば preview URL もそのまま生きてるので、deploy 前後の動作確認は localhost で完結
 - どうしても止めたい場合 (port 競合 etc.) は harness の task ID で stop すれば graceful 扱いになる可能性あり (`pkill` は harness を経由しないのが問題)
 
-## 操作系・機体形状の隠しオプション (URL hash override)
+## 操作系・機体形状・境界モードの隠しオプション (URL hash override)
 
-操作系 (`controlScheme`) と機体形状 (`viewMode`) は直交軸として独立に持ち、各軸 3 種すべてコードに保持。UI dropdown は両方撤去 (隠す) し、デフォルトは `legacy_classic` × `classic`。切替は **URL hash override** または LS 直接編集。
+操作系 (`controlScheme`)・機体形状 (`viewMode`)・境界モード (`boundaryMode`) は直交軸として独立に持ち、 各軸の値すべてコードに保持。 UI dropdown は撤去 (隠す)、 切替は **URL hash override** または LS 直接編集。
+
+| 軸 | 値 | デフォルト | LS key |
+|---|---|---|---|
+| `controlScheme` | `legacy_classic` / `legacy_shooter` / `modern` | `legacy_classic` | `la-control-scheme` |
+| `viewMode` | `classic` / `shooter` / `jellyfish` | `classic` | `la-view-mode` |
+| `boundaryMode` | `torus` / `open_cylinder` | `torus` | `la-boundary-mode` |
 
 ### URL hash 形式
 
 `&` 区切りで `key=value` 併用可、値なしフラグ (例: `viewer`) も同居可。[`App.tsx:parseHash`](src/App.tsx) で起動時 1 回 store に適用、適用と同時に LS (`la-control-scheme` / `la-view-mode`) に persist → 次回 hash 無しでも維持。
 
 ```
-#room=test                                   → デフォルト (legacy_classic × classic)
+#room=test                                   → デフォルト (legacy_classic × classic × torus)
 #room=test&controls=modern                   → 71e5788 の新統一操作系
 #room=test&controls=legacy_shooter           → 旧 twin-stick
 #room=test&ship=jellyfish                    → クラゲ機体
-#room=test&controls=modern&ship=shooter      → ロケット + 新操作系
+#room=test&boundary=open_cylinder            → 旧円柱アリーナ (壁無し)
+#room=test&controls=modern&ship=shooter&boundary=open_cylinder  → 全部 override
 ```
 
 ### デフォルトに戻す
@@ -69,6 +76,7 @@ LS を削除 + reload:
 ```js
 localStorage.removeItem('la-control-scheme');
 localStorage.removeItem('la-view-mode');
+localStorage.removeItem('la-boundary-mode');
 location.reload();
 ```
 

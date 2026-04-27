@@ -44,18 +44,18 @@ export const DeathMarker = ({
   uD: Vector4;
   color: THREE.Color;
 }) => {
-  const { observerPos, observerBoost } = useDisplayFrame();
+  const { observerPos, observerBoost, torusHalfWidth } = useDisplayFrame();
   if (!observerPos) return null;
 
   const tau0 = pastLightConeIntersectionDeathWorldLine(xD, uD, observerPos);
   if (tau0 == null || tau0 < 0 || tau0 > DEATH_TAU_EFFECT_MAX) return null;
 
   // Sphere @ x_D (C pattern、観測者進行で沈む)。
-  const sphereDp = transformEventForDisplay(xD, observerPos, observerBoost);
+  const sphereDp = transformEventForDisplay(xD, observerPos, observerBoost, torusHalfWidth);
 
   // Ring @ W_D(τ_0) (C pattern、並進のみ)。
   const ringWorld = evaluateDeathWorldLine(xD, uD, tau0);
-  const ringDp = transformEventForDisplay(ringWorld, observerPos, observerBoost);
+  const ringDp = transformEventForDisplay(ringWorld, observerPos, observerBoost, torusHalfWidth);
 
   return (
     <>

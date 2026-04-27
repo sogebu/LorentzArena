@@ -7,6 +7,7 @@ import {
   yawToQuat,
 } from "../physics";
 import {
+  ARENA_HALF_WIDTH,
   DEBRIS_MAX_LAMBDA,
   DEFAULT_CAMERA_PITCH,
   ENERGY_MAX,
@@ -454,6 +455,7 @@ export function useGameLoop({
             freshMe,
             stale.staleFrozenRef.current,
             causalFrozenRef.current,
+            fresh.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined,
           );
           causalFrozenRef.current = frozen;
 
@@ -556,6 +558,7 @@ export function useGameLoop({
             currentTime,
             freshForLH.lighthouseLastFireTime,
             freshForLH.lighthouseSpawnTime,
+            freshForLH.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined,
           );
 
           lhUpdates.push({ id: lhId, ps: result.newPs, wl: result.newWl });
@@ -616,6 +619,7 @@ export function useGameLoop({
           freshForHit.processedLasers,
           deadIds,
           invincibleIds,
+          freshForHit.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined,
         );
 
         // Cleanup processedLasers

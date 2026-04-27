@@ -40,6 +40,7 @@ import {
   SHIP_NOZZLE_OUTWARD_OFFSET,
   SHIP_NOZZLE_THROAT_RADIUS,
 } from "./constants";
+import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
 import { transformEventForDisplay } from "./displayTransform";
 import { RocketHullRenderer } from "./RocketHullRenderer";
 import { getThreeColor, sharedGeometries } from "./threeCache";
@@ -117,6 +118,7 @@ export const RocketShipRenderer = ({
   const tmpQuat = useMemo(() => new THREE.Quaternion(), []);
   const vecY = useMemo(() => new THREE.Vector3(0, 1, 0), []);
   const vecDir = useMemo(() => new THREE.Vector3(), []);
+  const torusHalfWidth = useTorusHalfWidth();
 
   useFrame((_, delta) => {
     const group = groupRef.current;
@@ -127,6 +129,7 @@ export const RocketShipRenderer = ({
       player.phaseSpace.pos,
       observerPos,
       observerBoost,
+      torusHalfWidth,
     );
     group.position.set(dp.x, dp.y, dp.t);
 

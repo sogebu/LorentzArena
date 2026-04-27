@@ -6,6 +6,7 @@ import {
   pastLightConeIntersectionWorldLine,
   type Vector3,
 } from "../../physics";
+import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
 import { useDisplayFrame } from "./DisplayFrameContext";
 import { SelfShipRenderer } from "./SelfShipRenderer";
 import type { RelativisticPlayer } from "./types";
@@ -44,8 +45,9 @@ export const OtherShipRenderer = ({
   // SelfShipRenderer の useFrame は `.current` を読むので sync で OK。
   const thrustRef = useRef<Vector3>(createVector3(0, 0, 0));
 
+  const torusHalfWidth = useTorusHalfWidth();
   const intersection = observerPos
-    ? pastLightConeIntersectionWorldLine(player.worldLine, observerPos)
+    ? pastLightConeIntersectionWorldLine(player.worldLine, observerPos, torusHalfWidth)
     : null;
 
   if (!intersection) return null;

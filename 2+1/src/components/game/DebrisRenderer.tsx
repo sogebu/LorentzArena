@@ -41,7 +41,7 @@ export const DebrisRenderer = ({
   debrisRecords: readonly DebrisRecord[];
   myPlayer: { phaseSpace: { pos: Vector4 }; color: string };
 }) => {
-  const { displayMatrix, observerPos, observerBoost } = useDisplayFrame();
+  const { displayMatrix, observerPos, observerBoost, torusHalfWidth } = useDisplayFrame();
   const explosionMeshRef = useRef<THREE.InstancedMesh>(null);
   const hitMeshRef = useRef<THREE.InstancedMesh>(null);
 
@@ -99,7 +99,7 @@ export const DebrisRenderer = ({
       );
       if (intersection) {
         // marker は球なので Lorentz 変形を避け、display 並進のみ
-        const dp = transformEventForDisplay(intersection, observerPos, observerBoost);
+        const dp = transformEventForDisplay(intersection, observerPos, observerBoost, torusHalfWidth);
         markerElements.push(
           <mesh
             key={`debris-${di}-${pi}`}

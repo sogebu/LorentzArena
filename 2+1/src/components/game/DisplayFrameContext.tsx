@@ -31,6 +31,10 @@ export interface DisplayFrameValue {
   observerPos: Vector4 | null;
   /** world → display 変換 matrix (boost + 観測者位置並進、世界系では時間並進のみ) */
   displayMatrix: THREE.Matrix4;
+  /** torus PBC mode の正方形半幅 (open_cylinder mode では undefined)。 transformEventForDisplay
+   *  / buildMeshMatrix でこれを渡すと event の (x, y) を観測者中心 primary cell `[obs±L]²` に
+   *  最短画像で折り畳む。 詳細: plans/2026-04-27-pbc-torus.md。 */
+  torusHalfWidth?: number;
 }
 
 const DisplayFrameCtx = createContext<DisplayFrameValue | null>(null);
@@ -40,11 +44,12 @@ export const DisplayFrameProvider = ({
   observerBoost,
   observerPos,
   displayMatrix,
+  torusHalfWidth,
   children,
 }: DisplayFrameValue & { children: ReactNode }) => {
   const value = useMemo<DisplayFrameValue>(
-    () => ({ observerU, observerBoost, observerPos, displayMatrix }),
-    [observerU, observerBoost, observerPos, displayMatrix],
+    () => ({ observerU, observerBoost, observerPos, displayMatrix, torusHalfWidth }),
+    [observerU, observerBoost, observerPos, displayMatrix, torusHalfWidth],
   );
   return <DisplayFrameCtx.Provider value={value}>{children}</DisplayFrameCtx.Provider>;
 };

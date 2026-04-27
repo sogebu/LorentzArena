@@ -8,6 +8,7 @@ import {
   type Vector4,
 } from "../../physics";
 import { SHIP_HULL_RADIUS, SHIP_LIFT_Z, SHIP_MODEL_SCALE } from "./constants";
+import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
 import { transformEventForDisplay } from "./displayTransform";
 import type { lorentzBoost } from "../../physics";
 
@@ -382,6 +383,7 @@ export const JellyfishShipRenderer = ({
     return out;
   }, []);
 
+  const torusHalfWidth = useTorusHalfWidth();
   useFrame((_, delta) => {
     const group = groupRef.current;
     if (!group) return;
@@ -390,6 +392,7 @@ export const JellyfishShipRenderer = ({
       player.phaseSpace.pos,
       observerPos,
       observerBoost,
+      torusHalfWidth,
     );
     group.position.set(dp.x, dp.y, dp.t);
 

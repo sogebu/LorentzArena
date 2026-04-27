@@ -53,6 +53,7 @@ import {
   sharedGeometries,
 } from "./threeCache";
 import type { Laser } from "./types";
+import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
 
 /**
  * 交点 `eventPos` (world frame) における光円錐接平面の **world frame rotation matrix** を返す。
@@ -186,12 +187,14 @@ export const SceneContent = ({
   //   modern        → 0 固定 (world basis、camera は回らない)
   const viewMode = useGameStore((s) => s.viewMode);
   const controlScheme = useGameStore((s) => s.controlScheme);
+  const torusHalfWidth = useTorusHalfWidth();
   useFrame(({ camera }) => {
     if (!myPlayer) return;
     const playerPos = transformEventForDisplay(
       myPlayer.phaseSpace.pos,
       observerPos,
       observerBoost,
+      torusHalfWidth,
     );
     const targetX = playerPos.x;
     const targetY = playerPos.y;
@@ -238,6 +241,7 @@ export const SceneContent = ({
       const intersection = pastLightConeIntersectionWorldLine(
         player.worldLine,
         observerPos,
+        torusHalfWidth,
       );
       if (!intersection) continue;
       pastCone.push({
@@ -247,7 +251,7 @@ export const SceneContent = ({
       });
     }
     return { pastCone, future };
-  }, [playerList, myId, observerPos]);
+  }, [playerList, myId, observerPos, torusHalfWidth]);
   const worldLinePastConePoints = worldLineMarkerEntries.pastCone;
   const worldLineFuturePoints = worldLineMarkerEntries.future;
 
@@ -322,13 +326,14 @@ export const SceneContent = ({
       const intersection = pastLightConeIntersectionWorldLine(
         player.worldLine,
         observerPos,
+        torusHalfWidth,
       );
       if (!intersection) continue; // 死亡 event を観測済み → 光源消灯
-      const dp = transformEventForDisplay(intersection.pos, observerPos, observerBoost);
+      const dp = transformEventForDisplay(intersection.pos, observerPos, observerBoost, torusHalfWidth);
       positions.push([dp.x, dp.y, dp.t]);
     }
     return positions;
-  }, [playerList, observerPos, observerBoost]);
+  }, [playerList, observerPos, observerBoost, torusHalfWidth]);
 
   return (
     <DisplayFrameProvider
@@ -336,6 +341,7 @@ export const SceneContent = ({
       observerBoost={observerBoost}
       observerPos={observerPos}
       displayMatrix={displayMatrix}
+      torusHalfWidth={torusHalfWidth}
     >
       <GameLights positions={lightPositions} />
 
@@ -554,7 +560,7 @@ export const SceneContent = ({
       })}
       {futureLightConeIntersections.map(({ playerId, color: colorText, pos }) => {
         const c = getThreeColor(colorText);
-        const dp = transformEventForDisplay(pos, observerPos, observerBoost);
+        const dp = transformEventForDisplay(pos, observerPos, observerBoost, torusHalfWidth);
         const ringMatrix = buildMeshMatrix(pos, displayMatrix);
         ringMatrix.multiply(new THREE.Matrix4().makeScale(0.8, 0.8, 0.8));
         return (
@@ -582,7 +588,7 @@ export const SceneContent = ({
           null のフレーム (respawn 光未到達 / worldLine 空) は出さない。 */}
       {worldLinePastConePoints.map(({ key, color: colorText, pos }) => {
         const c = getThreeColor(colorText);
-        const dp = transformEventForDisplay(pos, observerPos, observerBoost);
+        const dp = transformEventForDisplay(pos, observerPos, observerBoost, torusHalfWidth);
         const size = PLAYER_MARKER_SIZE_OTHER;
         return (
           <group key={key} position={[dp.x, dp.y, dp.t]}>
@@ -623,7 +629,7 @@ export const SceneContent = ({
           (`playerSphere` × `PLAYER_MARKER_SIZE_OTHER` = 0.5 × 0.2 = effective radius 0.1)。 */}
       {worldLineFuturePoints.map(({ key, color: colorText, pos }) => {
         const c = getThreeColor(colorText);
-        const dp = transformEventForDisplay(pos, observerPos, observerBoost);
+        const dp = transformEventForDisplay(pos, observerPos, observerBoost, torusHalfWidth);
         const size = PLAYER_MARKER_SIZE_OTHER;
         return (
           <group key={key} position={[dp.x, dp.y, dp.t]}>
@@ -682,7 +688,7 @@ export const SceneContent = ({
             0,         0,        0, 1,
         );
         const quat = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
-        const pos = transformEventForDisplay(myPlayer.phaseSpace.pos, observerPos, observerBoost);
+        const pos = transformEventForDisplay(myPlayer.phaseSpace.pos, observerPos, observerBoost, torusHalfWidth);
         // Aim arrow 色は player 色ではなく laser past-cone marker と同じ silver に統一
         // (odakin 指定: 「射撃中」text / marker と同系統で視覚統合)
         const c = pastConeMarkerColor;

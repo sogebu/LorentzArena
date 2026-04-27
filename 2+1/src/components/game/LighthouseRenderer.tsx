@@ -3,6 +3,7 @@ import * as THREE from "three";
 import type { Vector4 } from "../../physics";
 import { getVelocity4 } from "../../physics/vector";
 import { pastLightConeIntersectionWorldLine } from "../../physics/worldLine";
+import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
 import {
   DEATH_TAU_MAX,
   LIGHTHOUSE_COLOR,
@@ -72,8 +73,9 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
   //
   // LH の worldLine は kill 時点で freeze (gameLoop が dead LH スキップ)、末端 = x_D。
   const uD = useMemo(() => getVelocity4(player.phaseSpace.u), [player.phaseSpace.u]);
+  const torusHalfWidth = useTorusHalfWidth();
   const aliveIntersection = observerPos
-    ? pastLightConeIntersectionWorldLine(player.worldLine, observerPos)
+    ? pastLightConeIntersectionWorldLine(player.worldLine, observerPos, torusHalfWidth)
     : null;
 
   let towerAnchor: Vector4 | null = null;
@@ -100,10 +102,10 @@ export const LighthouseRenderer = ({ player }: { player: RelativisticPlayer }) =
   //       居ないので描くものが無い (wp は過去の x_D event を指し続けるだけで
   //       「現在の位置」ではない)。存在論的に除外、情報隠蔽ではない。
   const pastConeSpherePos = aliveIntersection
-    ? transformEventForDisplay(aliveIntersection.pos, observerPos, observerBoost)
+    ? transformEventForDisplay(aliveIntersection.pos, observerPos, observerBoost, torusHalfWidth)
     : null;
   const futureMostSpherePos = !player.isDead
-    ? transformEventForDisplay(wp, observerPos, observerBoost)
+    ? transformEventForDisplay(wp, observerPos, observerBoost, torusHalfWidth)
     : null;
   const sphereSize = PLAYER_MARKER_SIZE_OTHER;
 

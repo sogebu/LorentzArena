@@ -2,13 +2,39 @@
 
 ## 現在のステータス
 
-**`a70f3aa` デプロイ済** (build `2026/04/22 23:14:13 JST`)。本番: https://sogebu.github.io/LorentzArena/
+**`e6c17cc` デプロイ済** (build `2026/04/27 15:15:46 JST`)。本番: https://sogebu.github.io/LorentzArena/
 
-未デプロイ commit 多数 (= main の更新): 2026-04-25 で viewMode 3-way 化 + 71e5788 新統一操作系 + jellyfish hull 追加 + LightCone one-sided + 多数の bug 修正、2026-04-27 で **デフォルト操作系を旧 classic に戻す + 3 種コード保持 + UI dropdown 撤去 + URL hash override** に再編。**実機 multi-tab 実戦テストは未完了**、deploy 前にもう一度実機テスト推奨。
+未デプロイ commit (= main の更新): 2026-04-27 後半で **PBC torus アリーナ** 導入 (boundaryMode 切替軸 + 正方形枠 SquareArenaRenderer + 距離計算 5 箇所の最短画像化 + WorldLineRenderer の observer 中心 wrap)。 デフォルト = `torus` (= 周期的境界条件)、 円柱は `#boundary=open_cylinder` でオプション保持。 **実機 multi-tab 実戦テストは未完了**。 また worldLine の wrap 跨ぎ瞬間の line break (= 「世界線が画面横切らない」) と DebrisRenderer の wrap は **中間版で未実装**、 後続作業として残っている。
 
 ### 直近の文脈 (次セッションで意識すべき状態)
 
-#### 操作系・機体形状の axis 設計 (2026-04-27 再編)
+#### PBC torus アリーナ (2026-04-27 後半) — 中間版
+
+第 3 軸の `boundaryMode: "torus" | "open_cylinder"` を controlScheme / viewMode と直交軸として追加。 デフォルト torus = PBC、 切替は URL hash `#boundary=open_cylinder`。 LS 永続化、 UI dropdown は撤去。
+
+**設計の核** (詳細: `plans/2026-04-27-pbc-torus.md`):
+- `phaseSpace.pos` / `worldLine` 各点は **unwrapped 連続値** を source of truth に維持。 wrap は描画と距離計算に閉じ込める
+- 距離計算: `pastLightConeIntersectionWorldLine` / `findLaserHitPosition` / `processHitDetection` / `processLighthouseAI` / `checkCausalFreeze` / `computeInterceptDirection` / `Radar` で観測者を worldLine 最新点と同 image cell に shift してから連続値計算 (worldLine.ts は無変更)
+- 描画: `transformEventForDisplay` に optional `torusHalfWidth` 引数で観測者中心の primary cell `[obs±L]²` に最短画像で折り畳む (= Asteroids 風 visual wrapping)
+- WorldLineRenderer の TubeGeometry vertex も観測者の cell index で wrap (cell 内動きは displayMatrix で吸収、 cell 変化時のみ再生成)
+- ArenaRenderer は boundaryMode で `SquareArenaRenderer` (4 corner 縦エッジ + 上下 rim) と `CylinderArenaRenderer` (旧) に dispatch
+
+**主要ヘルパ** ([`physics/torus.ts`](src/physics/torus.ts)):
+- `minImageDelta1D(d, L)` / `minImageDelta4(a, b, L)`: 最短画像 delta
+- `imageCell(p, obs, L)`: floor based の cell index (境界跨ぎでの flicker 安定)
+- `displayPos(p, obs, L)`: observer 中心 primary cell に折り畳み
+- `isWrapCrossing(p0, p1, obs, L)`: 隣接 worldLine 点の wrap 跨ぎ判定 (raw Δ defensive + cell 比較 primary、 OR 結合で漏れなし)
+- `subVector4Torus(a, b, halfW?)`: optional torus 化された subVector4
+- `shiftObserverToReferenceImage(obs, ref, halfW?)`: 観測者を reference と同 cell に shift (worldLine.ts 不変で PBC 対応する核 helper)
+- 単体テスト 26 ケース pass ([`physics/torus.test.ts`](src/physics/torus.test.ts))
+
+**未実装の後続作業 (= 中間版の制約)**:
+- **worldLine 描画の wrap 跨ぎ line break**: 1 本の TubeGeometry を複数 segment に分割して、 観測者の image cell が変わる隣接 vertex 間で線分を切る。 現状はジャンプ点で TubeGeometry が斜めに横切る描画 (= 「世界線が画面横切らない」要件未達)
+- **DebrisRenderer の observer 中心 wrap**: debris segment vertex を observer 中心 primary cell に折り畳み。 寿命短いので影響限定的だが完成度のため要対応
+- **レーザー軌跡の primary cell 境界クリッピング**: 計画書 (b) 案、 Liang-Barsky 風で emission → tip を 2 segment に分割
+- **過去光円錐 ∩ 正方形枠 の交線描画**: 円柱版の `ARENA_PAST_CONE_OPACITY` 相当、 4 平面 × 円錐の交線計算が要
+
+#### 操作系・機体形状の axis 設計 (2026-04-27 前半 再編)
 
 操作系 (`controlScheme`) と機体形状 (`viewMode`) を直交軸として独立に持つ。コードは各軸 3 種すべて保持、UI dropdown は両方撤去 (隠しオプション)、デフォルトは `legacy_classic` × `classic`。
 

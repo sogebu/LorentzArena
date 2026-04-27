@@ -1,6 +1,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import { useGameStore } from "../../stores/game-store";
 import {
   ARENA_CENTER_X,
   ARENA_CENTER_Y,
@@ -14,6 +15,7 @@ import {
   ARENA_VERTICAL_LINE_OPACITY,
 } from "./constants";
 import { useDisplayFrame } from "./DisplayFrameContext";
+import { SquareArenaRenderer } from "./SquareArenaRenderer";
 import { getThreeColor } from "./threeCache";
 import { applyTimeFadeShader } from "./timeFadeShader";
 
@@ -46,6 +48,12 @@ import { applyTimeFadeShader } from "./timeFadeShader";
 // 各 mesh は `frustumCulled={false}` で bounding sphere 依存の culling を無効化 (本
 // geometry は position が毎 frame 変わるので初期 boundingSphere が意味を持たない)。
 export const ArenaRenderer = () => {
+  const boundaryMode = useGameStore((s) => s.boundaryMode);
+  if (boundaryMode === "torus") return <SquareArenaRenderer />;
+  return <CylinderArenaRenderer />;
+};
+
+const CylinderArenaRenderer = () => {
   const { displayMatrix, observerPos } = useDisplayFrame();
 
   // observerPos を ref に sync して useFrame callback 内から最新値を参照可能に。
