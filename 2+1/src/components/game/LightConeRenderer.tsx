@@ -1,6 +1,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
 import {
   ARENA_CENTER_X,
   ARENA_CENTER_Y,
@@ -90,6 +91,7 @@ export const LightConeRenderer = ({
   observerPos: { x: number; y: number; t: number };
 }) => {
   const { displayMatrix } = useDisplayFrame();
+  const torusHalfWidth = useTorusHalfWidth();
   const observerPosRef = useRef(observerPos);
   observerPosRef.current = observerPos;
 
@@ -104,7 +106,10 @@ export const LightConeRenderer = ({
   //   - past:   SHIP_INNER_HIDE_RADIUS (baseline、hull 下方のみ)
   // hideCenter は共通 (hull 中心)。
   const onFutureShader = useMemo(() => {
-    const hide = createInnerHideShader(SHIP_FUTURE_CONE_HIDE_RADIUS, hideCenter);
+    const hide = createInnerHideShader(
+      SHIP_FUTURE_CONE_HIDE_RADIUS,
+      hideCenter,
+    );
     return (s: THREE.WebGLProgramParametersWithUniforms) => {
       applyTimeFadeShader(s);
       hide(s);
@@ -169,17 +174,22 @@ export const LightConeRenderer = ({
     pastPositions[1] = pos.y;
     pastPositions[2] = pos.t;
 
+    // torus mode: 世界が PBC で繰り返すので光円錐は arena 境界に押しつぶされず spatial
+    // 全方位に LIGHT_CONE_HEIGHT まで extended であるべき。 cylinder clipping は
+    // open_cylinder mode (= 円柱 arena に「壁」 がある visual を強調する旧設定) でのみ適用。
+    const isTorus = torusHalfWidth !== undefined;
     for (let i = 0; i < N; i++) {
       const theta = (i / N) * Math.PI * 2;
-      const hit = cylinderHitDistance(
-        pos.x,
-        pos.y,
-        theta,
-        ARENA_CENTER_X,
-        ARENA_CENTER_Y,
-        ARENA_RADIUS,
-      );
-      const rho = hit ?? LIGHT_CONE_HEIGHT;
+      const rho = isTorus
+        ? LIGHT_CONE_HEIGHT
+        : (cylinderHitDistance(
+            pos.x,
+            pos.y,
+            theta,
+            ARENA_CENTER_X,
+            ARENA_CENTER_Y,
+            ARENA_RADIUS,
+          ) ?? LIGHT_CONE_HEIGHT);
       const rx = pos.x + rho * Math.cos(theta);
       const ry = pos.y + rho * Math.sin(theta);
       const o = (1 + i) * 3;
