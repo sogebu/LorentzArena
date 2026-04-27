@@ -60,15 +60,17 @@
 
 ## 次にやること
 
+各 task の **詳細 (= debug 手順 / 設計議論内容 / 確認項目)** は [`plans/2026-04-27-pbc-torus.md` Appendix D](plans/2026-04-27-pbc-torus.md) に集約。 SESSION では概要 + pointer のみ:
+
 ### 優先
 
-- **Phase D (b) 残り**: `DeathMarker` / `HeadingMarkerRenderer` / `AntennaBeaconRenderer` / レーザー emission marker の 9 image 化 (image observer pattern 適用)。 影響軽微なので odakin visual 確認後着手
-- **他セルの他機 spawn ring 不発疑い** (odakin 2026-04-28 朝報告): 実機再現確認 + console log で `firedSpawns` 検証 + 自機 echo との比較
-- **因果律ガード設計** (odakin 2026-04-28 朝提起): 「深く考える」 段階。 候補 (PBC future image past-cone 流入 / image cell 間光速超過 / 受信 phaseSpace の causal 整合) を列挙、 設計議論 → DESIGN section 化してから着手
-- **timeFade に spatial fade 追加** (任意、 visual 評価要): 詳細 `plans/2026-04-27-pbc-torus.md` Appendix B §(a)
-- **innerHide dispatch 設計** (b-1/b-2/b-3 いずれか、 odakin 好み): 詳細 `plans/2026-04-27-pbc-torus.md` Appendix B §(b)
-- **実機 multi-tab 検証 + deploy**: visual OK なら `pnpm run deploy` + main push。 確認: 半開区間 flip 解消 / spawn echo 複数 trigger / 灯台他機 hull arena worldLine laser debris 全 9 image / arena magenta vs 光円錐 cyan 識別性
-- **過去光円錐 ∩ 正方形枠 の交線描画** (低優先、 描画装飾): universal cover refactor 後は corner flip 解消で individual 実装可能
+- **Phase D (b) 残り**: 補助 marker 4 種 (`DeathMarker` / `HeadingMarkerRenderer` / `AntennaBeaconRenderer` / レーザー emission marker) を image observer pattern で 9 image 化 → Appendix D §「Phase D (b) 残り」
+- **他機 spawn ring 不発疑い** (odakin 2026-04-28 朝報告): 実機再現 + `firedSpawns` console log 確認 → Appendix D §「他セルの他機 spawn ring 不発疑い」 (6 step debug 手順)
+- **因果律ガード設計** (odakin 2026-04-28 朝提起): 「何を guard するか」 から議論段階、 候補 4 つ列挙済 → Appendix D §「因果律ガードの設計」 (PBC future image past-cone 流入 / hit 光速超過 / network 受信 causal 整合 / その他)
+- **innerHide dispatch (b-1/b-2/b-3)**: 9 hull 並ぶ visual の処理選択、 odakin 好み判断 → Appendix D §「innerHide dispatch 設計」
+- **timeFade に spatial fade 追加** (任意): `fade = r²/(r²+dt²+s²)` で隣接 image 自然減衰 → Appendix D §「timeFade に spatial fade 追加」 + 本 plan Appendix B §(a)
+- **実機 multi-tab 検証 + deploy**: visual OK なら `pnpm run deploy` + main push → Appendix D §「実機 multi-tab 検証 + deploy」 (確認項目 list)
+- **過去光円錐 ∩ 正方形枠 の交線描画** (低優先、 描画装飾): universal cover refactor 後 individual 実装可能 → Appendix D §同名
 
 ### 既存 (優先順未決定)
 
