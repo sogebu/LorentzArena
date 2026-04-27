@@ -4,8 +4,9 @@ import { imageCell, type Vector4 } from "../../physics";
  * レーザー直線 (emission → tip) を「観測者から見て同じ image cell に収まる line segment」
  * の配列に分割する。 emission と tip が異なる image cell にあるとき、 emission cell の境界で
  * 直線をクリップして 2 segment に分割。 各 segment 内では vertex がすべて同じ image cell に
- * 属するので、 shader fold ({@link createTorusFoldShader}) で primary cell `[obs±L]²` に
- * 折られた後も画面を横切らない。
+ * 属するので、 image cell instance の mesh.matrix で `displayMatrix × translate(2L*offset)`
+ * に並進された後も画面を横切らない。 (= LaserBatchRenderer の universal cover image 化と
+ * 連携)
  *
  * `torusHalfWidth === undefined` (= open_cylinder mode) または `observerPos === null` なら
  * 分割せず emission → tip の単一 segment を返す (= 既存挙動)。
