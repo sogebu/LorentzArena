@@ -4,7 +4,14 @@
 
 **`e6c17cc` デプロイ済** (build `2026/04/27 15:15:46 JST`)。本番: https://sogebu.github.io/LorentzArena/
 
-未デプロイ commit (= main の更新): 2026-04-27 後半〜夜で **PBC torus アリーナ完成版** ([`9d14b16`](https://github.com/sogebu/LorentzArena/commit/9d14b16) + 本セッション最新)。 デフォルト = `torus` (= 周期的境界条件)、 円柱は `#boundary=open_cylinder` でオプション保持。 **「世界線が画面を横切らない」 core requirement 達成**: GPU vertex shader fold (`createTorusFoldShader`) + CPU segment split (`buildWorldLineSegments` for worldLine、 `buildLaserSegments` for laser、 `_debrisMid` shift for debris) で全 D pattern renderer の境界跨ぎ描画を解消。 **実機 multi-tab 実戦テストは未完了** (= odakin の確認待ち)。
+未デプロイ commit (= main の更新): 2026-04-27 後半〜2026-04-28 早朝で **PBC torus アリーナ完成版**。 デフォルト = `torus` (= 周期的境界条件)、 円柱は `#boundary=open_cylinder` でオプション保持。 **「世界線が画面を横切らない」 core requirement 達成 + 光円錐境界クリップ解除 + 1 周回って戻ってきた敵 event の過去光円錐到達発火 fix** すべて完了。 **実機 multi-tab 実戦テストは継続中** (odakin が境界跨ぎ視覚確認済、 「光円錐切れる」 と「リスポーンエフェクト不発」 の 2 bug を実機検出 → 即時 fix push 済)。
+
+主要 commit:
+- [`9d14b16`](https://github.com/sogebu/LorentzArena/commit/9d14b16): worldLine line break (GPU shader fold + segment break)
+- [`f209d32`](https://github.com/sogebu/LorentzArena/commit/f209d32): Debris / Laser fold
+- [`89eb814`](https://github.com/sogebu/LorentzArena/commit/89eb814): Step 2 Appendix B + 過去光円錐 ∩ 正方形 を Step 2 統合判断
+- [`86ae2cf`](https://github.com/sogebu/LorentzArena/commit/86ae2cf): 光円錐 cylinder clip 解除 (= torus mode で arena 境界に押しつぶされない)
+- [`d203503`](https://github.com/sogebu/LorentzArena/commit/d203503): 1 周回って戻ってきた敵 event の過去光円錐到達発火 (kill / spawn UI)
 
 ### 直近の文脈 (次セッションで意識すべき状態)
 
@@ -33,6 +40,17 @@
 - [`buildWorldLineSegments`](src/components/game/WorldLineRenderer.tsx): worldLine.history を `isWrapCrossing` で分割。 各 segment 独立 TubeGeometry。 9 unit tests
 - [`buildLaserSegments`](src/components/game/laserSegmentSplit.ts): emission ↔ tip が異なる image cell の laser を Liang-Barsky 風境界クリッピングで 2 segment に分割。 9 unit tests
 - DebrisRenderer は cylinder length が短い (~1-2s) ので mid shift のみ。 完全 segment 分割は Step 2 (3x3) で吸収予定
+
+**LightConeRenderer の torus 対応** ([`86ae2cf`](https://github.com/sogebu/LorentzArena/commit/86ae2cf)):
+- 円柱 arena 時代の `cylinderHitDistance` clipping は `boundaryMode === "open_cylinder"` でのみ適用、 torus mode では `ρ = LIGHT_CONE_HEIGHT` 全方位一定
+- LCH = ARENA_HALF_WIDTH = 20 で球面 rim はちょうど primary cell `[obs±L]²` に内接 (4 辺中点で接、 4 corner からは `√2·L` ≈ 28.3 外)、 1 cell 内に自然収まる
+- 「世界が PBC で繰り返す」 = 光円錐は壁で押しつぶされない、 spatial 全方位に extended
+
+**Causal event 関連の torus 対応** ([`d203503`](https://github.com/sogebu/LorentzArena/commit/d203503)):
+- [`isInPastLightCone`](src/physics/vector.ts) に optional `torusHalfWidth` 引数追加、 指定時は (x, y) を最短画像で計算
+- [`firePendingKillEvents`](src/components/game/causalEvents.ts) / [`firePendingSpawnEvents`](src/components/game/causalEvents.ts) に同引数を伝搬、 useGameLoop の callsite で `boundaryMode === "torus"` の場合 ARENA_HALF_WIDTH を渡す
+- これで「1 周回って戻ってきた敵」 (= primary cell の反対側に再出現) の死亡 / 復活 event も最短画像で過去光円錐到達判定 → kill notification / death flash / spawn ring が trigger される
+- 7 unit tests (基本 3 + torus 化 4)
 
 **Shader fold** ([`torusFoldShader.ts`](src/components/game/torusFoldShader.ts)):
 - vertex shader の `#include <begin_vertex>` 直後に注入、 transformed.xy を `obs.xy + mod(transformed.xy - obs.xy + L, 2L) - L` で primary cell 内に折る
