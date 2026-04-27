@@ -452,23 +452,42 @@ export const SceneContent = ({
         // を返すので無条件配置 OK。自機は自身の position = observerPos なので past-cone
         // 概念が効かない → isDead で除外 + SelfShipRenderer 直描画。
         if (isMe && !player.isDead) {
-          // **PBC universal cover**: 自機本体を 9 image cell に複製描画。 各 image cell ごと
-          // に player.phaseSpace.pos に `2L * (obsCell + cell.offset)` 加算した synthetic player
-          // を ship renderer に渡す (= 「universal cover の自分の copy」 が周囲 8 image cells に
-          // 並ぶ visual)。 primary cell (0,0) は元の position で表示。
+          // **PBC universal cover (image observer past-cone pattern)**: 全 player (= self /
+          // other / lighthouse) で **統一**の物理的に正しい echo 計算。 各 image cell ごとに
+          //   imageObserver = obs - 2L*(obsCell + cell.offset)
+          // で pastLightConeIntersectionWorldLine(player.worldLine, imageObserver) を呼び、
+          // intersection.pos に +2L*(obsCell + cell.offset) を加算して image cell 位置として
+          // 表示。 primary image (= cell (0,0)): intersection ≈ worldLine 末端 = 現在自分。
+          // 隣接 image (= cell (±1, 0) etc): worldLine の 2L spatial 過去 vertex (= 過去の自分)
+          // → +2L で primary 隣接位置に echo 表示。 worldLine 履歴が短いと隣接 cell の
+          // intersection が null (= 物理的に正しい 「echo まだ届いてない」 挙動)。
           for (const cell of selfShipCells) {
             const dx = 2 * selfL * (selfObsCellX + cell.kx);
             const dy = 2 * selfL * (selfObsCellY + cell.ky);
             const cellKey = `${key}-${cell.kx},${cell.ky}`;
+            const imageObserver = observerPos
+              ? { ...observerPos, x: observerPos.x - dx, y: observerPos.y - dy }
+              : null;
+            const intersection = imageObserver
+              ? pastLightConeIntersectionWorldLine(
+                  player.worldLine,
+                  imageObserver,
+                )
+              : null;
+            // 自機の場合、 primary cell (dx=dy=0) は image observer = obs で intersection が
+            // 必ず worldLine 末端 ≈ phaseSpace.pos になる。 隣接 cell は worldLine 履歴が
+            // 不足してると null → 描画 skip (= 物理的に「観測者本人の過去光円錐に echo まだ届いてない」)。
+            if (!intersection) continue;
             const offsetPlayer = {
               ...player,
               phaseSpace: {
                 ...player.phaseSpace,
                 pos: {
-                  ...player.phaseSpace.pos,
-                  x: player.phaseSpace.pos.x + dx,
-                  y: player.phaseSpace.pos.y + dy,
+                  ...intersection.pos,
+                  x: intersection.pos.x + dx,
+                  y: intersection.pos.y + dy,
                 },
+                heading: intersection.heading,
               },
             };
             // viewMode で 3 種類の自機レンダラを dispatch
