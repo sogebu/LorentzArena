@@ -176,10 +176,19 @@ export const DebrisRenderer = ({
       const baseMidX = _debrisMid.x;
       const baseMidY = _debrisMid.y;
       const baseMidZ = _debrisMid.z;
+      // **observer follow**: observer cell index を加算して 9 cells が観測者に追従。
+      const obsCellXNow =
+        torusHalfWidth !== undefined && observerPos
+          ? Math.floor((observerPos.x + L) / (2 * L))
+          : 0;
+      const obsCellYNow =
+        torusHalfWidth !== undefined && observerPos
+          ? Math.floor((observerPos.y + L) / (2 * L))
+          : 0;
       for (const cell of cells) {
         _debrisMid.set(
-          baseMidX + 2 * L * cell.kx,
-          baseMidY + 2 * L * cell.ky,
+          baseMidX + 2 * L * (obsCellXNow + cell.kx),
+          baseMidY + 2 * L * (obsCellYNow + cell.ky),
           baseMidZ,
         );
         _debrisMatrix.compose(_debrisMid, _debrisQuat, _debrisScale);

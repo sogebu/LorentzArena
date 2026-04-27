@@ -101,7 +101,8 @@ export const LaserBatchRenderer = ({
     return geo;
   }, [lasers, torusHalfWidth, obsCellX, obsCellY]);
 
-  // 各 image cell mesh の matrix を `displayMatrix × translate(2L*offset)` で設定。
+  // 各 image cell mesh の matrix を `displayMatrix × translate(2L*(obsCell+offset))` で設定。
+  // **observer follow**: observer cell index を加算して、 9 cells が観測者に追従。
   // 共有 BufferGeometry なので vertex 更新は不要、 matrix のみ per-image 更新。
   useEffect(() => {
     const L = torusHalfWidth ?? 0;
@@ -109,14 +110,14 @@ export const LaserBatchRenderer = ({
       const m = meshRefs.current[i];
       if (!m) continue;
       const offset = new THREE.Matrix4().makeTranslation(
-        2 * L * cells[i].kx,
-        2 * L * cells[i].ky,
+        2 * L * (obsCellX + cells[i].kx),
+        2 * L * (obsCellY + cells[i].ky),
         0,
       );
       m.matrix.multiplyMatrices(displayMatrix, offset);
       m.matrixAutoUpdate = false;
     }
-  }, [displayMatrix, cells, torusHalfWidth]);
+  }, [displayMatrix, cells, torusHalfWidth, obsCellX, obsCellY]);
 
   if (!geometry) return null;
   return (

@@ -93,21 +93,10 @@ export const WorldLineRenderer = ({
   }, [torusHalfWidth]);
   const instanceCount = cells.length;
 
-  // 共有 instance matrix: 各 instance に 2L*(kx, ky) translation。 cells が変わったときのみ
-  // 計算 (= torusHalfWidth 変化時のみ)。
-  const instanceMatrices = useMemo(() => {
-    const matrices: THREE.Matrix4[] = [];
-    const L = torusHalfWidth ?? 0;
-    for (const cell of cells) {
-      const m = new THREE.Matrix4().makeTranslation(
-        2 * L * cell.kx,
-        2 * L * cell.ky,
-        0,
-      );
-      matrices.push(m);
-    }
-    return matrices;
-  }, [cells, torusHalfWidth]);
+  // 共有 instance matrix は useFrame で観測者 cell index を加算して計算 (= observer follow)。
+  // cells (relative offset) は torusHalfWidth 変化時のみ再計算、 matrix 自体は per-frame
+  // 観測者 cell に追従。
+  const _instanceMatrix = useMemo(() => new THREE.Matrix4(), []);
 
   // version を TUBE_REGEN_INTERVAL で量子化して再生成を間引く
   // wl オブジェクト自体が変わった時（リスポーン）も確実に再生成するため wl を依存に含める
@@ -176,15 +165,31 @@ export const WorldLineRenderer = ({
   // hide center から world 距離 ~2L で hide されない (= 自機の echo image が描画される)。
   const hideCenter = useMemo(() => new THREE.Vector3(), []);
   useFrame(() => {
+    // **observer follow**: 9 cells の world position を observer cell index 中心に毎フレーム
+    // 計算。 observer 移動で cell 跨ぎするたびに 9 cells も追従する (= 起動時固定ではなく
+    // observer 中心)。
+    const L = torusHalfWidth ?? 0;
+    const obsCellXNow =
+      torusHalfWidth !== undefined && observerPos
+        ? Math.floor((observerPos.x + L) / (2 * L))
+        : 0;
+    const obsCellYNow =
+      torusHalfWidth !== undefined && observerPos
+        ? Math.floor((observerPos.y + L) / (2 * L))
+        : 0;
     for (let i = 0; i < tubeGeos.length; i++) {
       const mesh = meshRefs.current[i];
       if (!mesh) continue;
       mesh.matrix.copy(displayMatrix);
       mesh.matrixAutoUpdate = false;
-      // instance matrix を毎フレーム refresh (= count / cells が変わらない限り same matrix
-      // のはずだが、 InstancedMesh.count を tubeGeos.length 経由で変更した瞬間に必要)
       for (let j = 0; j < instanceCount; j++) {
-        mesh.setMatrixAt(j, instanceMatrices[j]);
+        const cell = cells[j];
+        _instanceMatrix.makeTranslation(
+          2 * L * (obsCellXNow + cell.kx),
+          2 * L * (obsCellYNow + cell.ky),
+          0,
+        );
+        mesh.setMatrixAt(j, _instanceMatrix);
       }
       mesh.count = instanceCount;
       mesh.instanceMatrix.needsUpdate = true;

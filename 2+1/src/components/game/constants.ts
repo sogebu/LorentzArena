@@ -371,13 +371,16 @@ export const SHIP_HULL_RADIUS = 0.32;
 // HULL_RADIUS 連動 = 機体サイズに比例して自動追従。
 // Past cone (過去光円錐) の hide 半径。baseline。
 export const SHIP_INNER_HIDE_RADIUS_COEFFICIENT = 3.0;
-export const SHIP_INNER_HIDE_RADIUS = SHIP_HULL_RADIUS * SHIP_INNER_HIDE_RADIUS_COEFFICIENT;
+export const SHIP_INNER_HIDE_RADIUS =
+  SHIP_HULL_RADIUS * SHIP_INNER_HIDE_RADIUS_COEFFICIENT;
 // Future cone (未来光円錐) の hide 半径。hull より上に大きく広げて自機周辺を広範に隠す。
 export const SHIP_FUTURE_CONE_HIDE_RADIUS_COEFFICIENT = 5.0;
-export const SHIP_FUTURE_CONE_HIDE_RADIUS = SHIP_HULL_RADIUS * SHIP_FUTURE_CONE_HIDE_RADIUS_COEFFICIENT;
+export const SHIP_FUTURE_CONE_HIDE_RADIUS =
+  SHIP_HULL_RADIUS * SHIP_FUTURE_CONE_HIDE_RADIUS_COEFFICIENT;
 // 世界線の hide 半径。光円錐より小さく、gnomon マーカー周辺のみ隠す。
 export const SHIP_WORLDLINE_HIDE_RADIUS_COEFFICIENT = 1.5;
-export const SHIP_WORLDLINE_HIDE_RADIUS = SHIP_HULL_RADIUS * SHIP_WORLDLINE_HIDE_RADIUS_COEFFICIENT;
+export const SHIP_WORLDLINE_HIDE_RADIUS =
+  SHIP_HULL_RADIUS * SHIP_WORLDLINE_HIDE_RADIUS_COEFFICIENT;
 // 世界線 hide 領域の上方向 (+z、display 未来側) 非対称伸長。< 1 で上側が伸びる。
 // 1 / 0.4 = 2.5 倍 → 上側の effective radius が 2.5 倍に (下側は不変)。
 // 過去光円錐交点から ship 現在位置までの worldline tube が ship body に食い込むのを
@@ -386,7 +389,8 @@ export const SHIP_WORLDLINE_HIDE_UPPER_SHRINK = 0.4;
 // LH は機体より小さく狭い範囲だけ隠す (LH 塔の半径は ~0.2 (LIGHTHOUSE_HIT_RADIUS) で
 // 機体より細い、過剰に隠さない)。HULL_RADIUS の数倍小さい係数。
 export const LH_INNER_HIDE_RADIUS_COEFFICIENT = 2.5;
-export const LH_INNER_HIDE_RADIUS = SHIP_HULL_RADIUS * LH_INNER_HIDE_RADIUS_COEFFICIENT;
+export const LH_INNER_HIDE_RADIUS =
+  SHIP_HULL_RADIUS * LH_INNER_HIDE_RADIUS_COEFFICIENT;
 // 機体モデル全体の表示スケール。物理値 (hit 判定・laser 発射点等) は触らず、
 // 見た目の 3D モデルのみ一括拡縮する。SelfShipRenderer 最外層 group に適用。
 export const SHIP_MODEL_SCALE = 0.75;
@@ -412,7 +416,7 @@ export const SHIP_HULL_EMISSIVE_INTENSITY = 0.45;
 export const SHIP_NOZZLE_LENGTH = 0.35;
 export const SHIP_NOZZLE_THROAT_RADIUS = 0.05;
 export const SHIP_NOZZLE_EXIT_RADIUS = 0.22;
-export const SHIP_NOZZLE_OUTWARD_OFFSET = 0.10;
+export const SHIP_NOZZLE_OUTWARD_OFFSET = 0.1;
 // Nozzle mount pylon: hull edge → nozzle throat を繋ぐ tapered cylinder (mount hardware)。
 // hull 側が太く (mount base)、nozzle 側が細く (throat に meet)、長さ = OUTWARD_OFFSET で
 // ぴったり gap を埋める。色は bracket と同系 (steel-blue) で「取り付けパーツ」扱い。
@@ -516,10 +520,10 @@ export const SHIP_BRACKET_EMISSIVE_INTENSITY = 0.7;
 //   5. Emitter disc (lens 最奥の bright plate)         — 発射孔
 
 // Chin pod (hull 底面の整流 blister、vertical 高さ 0.55 で cannon mount まで届く)
-export const SHIP_LASER_POD_FORE_AFT = 0.6;   // 全長 (fore-aft)
-export const SHIP_LASER_POD_LATERAL = 0.26;   // 全幅 (lateral)
-export const SHIP_LASER_POD_VERTICAL = 0.55;  // 全高 (hull 底面 → cannon mount)
-export const SHIP_LASER_POD_X_OFFSET = 0.05;  // hull 中央から僅か前方シフト (chin 向き強調)
+export const SHIP_LASER_POD_FORE_AFT = 0.6; // 全長 (fore-aft)
+export const SHIP_LASER_POD_LATERAL = 0.26; // 全幅 (lateral)
+export const SHIP_LASER_POD_VERTICAL = 0.55; // 全高 (hull 底面 → cannon mount)
+export const SHIP_LASER_POD_X_OFFSET = 0.05; // hull 中央から僅か前方シフト (chin 向き強調)
 
 // Barrel (主砲身、cannon group 内 x=0 から +x 方向に伸びる)
 export const SHIP_LASER_BARREL_RADIUS = 0.045;
@@ -556,8 +560,8 @@ export const SHIP_LASER_POD_EMISSIVE_INTENSITY = 0.35;
 
 // --- Dorsal antenna + beacon (案 A、最小構造でシルエット維持、beacon 球で player 色) ---
 export const SHIP_DORSAL_ANTENNA_RADIUS = 0.014;
-export const SHIP_DORSAL_ANTENNA_LENGTH = 0.38;       // hull 上面から beacon 底までの rod 長
-export const SHIP_DORSAL_BEACON_RADIUS = 0.055;       // 球 radius
+export const SHIP_DORSAL_ANTENNA_LENGTH = 0.38; // hull 上面から beacon 底までの rod 長
+export const SHIP_DORSAL_BEACON_RADIUS = 0.055; // 球 radius
 export const SHIP_DORSAL_BEACON_EMISSIVE_INTENSITY_PLAYER = 1.0;
 export const SHIP_DORSAL_BEACON_EMISSIVE_INTENSITY_DEFAULT = 2.0;
 
@@ -568,17 +572,17 @@ export const SHIP_DORSAL_BEACON_EMISSIVE_INTENSITY_DEFAULT = 2.0;
 export const SHIP_DORSAL_POD_FORE_AFT = 0.45;
 export const SHIP_DORSAL_POD_LATERAL = 0.22;
 export const SHIP_DORSAL_POD_VERTICAL = 0.22;
-export const SHIP_DORSAL_POD_X_OFFSET = 0.0;          // 左右対称・前後中央
-export const SHIP_DORSAL_POD_SUBMERGE_RATIO = 0.3;    // pod 下側の埋没率 (0=全可視, 1=完全埋没)
+export const SHIP_DORSAL_POD_X_OFFSET = 0.0; // 左右対称・前後中央
+export const SHIP_DORSAL_POD_SUBMERGE_RATIO = 0.3; // pod 下側の埋没率 (0=全可視, 1=完全埋没)
 // Stripe: torus を pod 赤道に一周、scale で pod の xy 楕円断面に合わせる。
 export const SHIP_DORSAL_STRIPE_TUBE_RADIUS = 0.014;
-export const SHIP_DORSAL_STRIPE_EMISSIVE_INTENSITY_PLAYER = 1.0;  // player 色指定時 (R+G 両ch強い hue クリップ回避)
+export const SHIP_DORSAL_STRIPE_EMISSIVE_INTENSITY_PLAYER = 1.0; // player 色指定時 (R+G 両ch強い hue クリップ回避)
 export const SHIP_DORSAL_STRIPE_EMISSIVE_INTENSITY_DEFAULT = 1.8; // 未指定時 (cyan 系で HDR bloom 許容)
-export const SHIP_DORSAL_STRIPE_DEFAULT_COLOR = "hsl(185, 100%, 65%)";  // laser glow と揃える (cyan)
+export const SHIP_DORSAL_STRIPE_DEFAULT_COLOR = "hsl(185, 100%, 65%)"; // laser glow と揃える (cyan)
 export const SHIP_LASER_BARREL_COLOR = "hsl(210, 30%, 28%)";
 export const SHIP_LASER_BARREL_EMISSIVE_COLOR = "hsl(210, 35%, 35%)";
 export const SHIP_LASER_BARREL_EMISSIVE_INTENSITY = 0.35;
-export const SHIP_LASER_LENS_COLOR = "hsl(200, 18%, 42%)";       // brighter steel for contrast
+export const SHIP_LASER_LENS_COLOR = "hsl(200, 18%, 42%)"; // brighter steel for contrast
 export const SHIP_LASER_LENS_EMISSIVE_COLOR = "hsl(185, 80%, 55%)";
 export const SHIP_LASER_LENS_EMISSIVE_INTENSITY_BASE = 0.6;
 export const SHIP_LASER_LENS_EMISSIVE_INTENSITY_FRONT = 1.5;
@@ -644,8 +648,9 @@ export const ARENA_PAST_CONE_OPACITY = 0.5;
 export const ARENA_FUTURE_CONE_OPACITY = 0.3;
 
 // --- Square arena (torus PBC mode) ---
-// 正方形枠の色 / opacity。 円柱と同じ hsl 系で揃える (パステル化時は両者まとめて変更)。
-export const ARENA_SQUARE_COLOR = "hsl(180, 40%, 70%)";
+// hue 35° (warm amber) で光円錐 (= cyan 系 hsl(200, ...)) と完全区別。 universal cover の
+// 隣接 image cells が並ぶ visual で、 arena 枠と光円錐の重なりを視覚的に切り分ける。
+export const ARENA_SQUARE_COLOR = "hsl(35, 50%, 65%)";
 export const ARENA_SQUARE_SURFACE_OPACITY = 0.06;
 // 4 辺の縦エッジ (時間方向に伸びる線) の opacity。 円柱の vertical line と同等。
 export const ARENA_SQUARE_EDGE_OPACITY = 0.25;

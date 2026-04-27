@@ -147,11 +147,22 @@ export const SquareArenaRenderer = () => {
     }
     attr.needsUpdate = true;
 
-    // 各 image cell の mesh.matrix を `displayMatrix × translate(2L*offset)` で設定。
+    // 各 image cell の mesh.matrix を `displayMatrix × translate(2L*(obsCell+offset))` で設定。
+    // **observer follow**: 観測者の現在 cell index (obsCellX, obsCellY) を加算して、 9 cells が
+    // 観測者の primary cell + 8 隣接 image に常時追従。 observer 移動で cell 跨ぎするたびに
+    // 9 cells の world position も shift する (= 起動時固定ではなく observer 中心)。
     const L = torusHalfWidth ?? 0;
+    const obsCellX =
+      torusHalfWidth !== undefined ? Math.floor((pos.x + L) / (2 * L)) : 0;
+    const obsCellY =
+      torusHalfWidth !== undefined ? Math.floor((pos.y + L) / (2 * L)) : 0;
     for (let i = 0; i < cells.length; i++) {
       const cell = cells[i];
-      _offsetMatrix.makeTranslation(2 * L * cell.kx, 2 * L * cell.ky, 0);
+      _offsetMatrix.makeTranslation(
+        2 * L * (obsCellX + cell.kx),
+        2 * L * (obsCellY + cell.ky),
+        0,
+      );
       _meshMatrix.multiplyMatrices(displayMatrix, _offsetMatrix);
       const refs = [
         surfaceRefs.current[i],
