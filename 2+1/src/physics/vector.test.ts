@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   conjugateQuat,
+  createVector4,
+  isInPastLightCone,
   multiplyQuat,
   normalizeQuat,
   quatIdentity,
@@ -124,7 +126,8 @@ describe("Quaternion helpers", () => {
       const a = yawToQuat(0.001);
       const b = yawToQuat(0.002);
       const mid = slerpQuat(a, b, 0.5);
-      const norm2 = mid.w * mid.w + mid.x * mid.x + mid.y * mid.y + mid.z * mid.z;
+      const norm2 =
+        mid.w * mid.w + mid.x * mid.x + mid.y * mid.y + mid.z * mid.z;
       expect(norm2).toBeCloseTo(1, 6);
     });
 
@@ -141,5 +144,58 @@ describe("Quaternion helpers", () => {
       expect(Math.abs(y1)).toBeCloseTo(Math.PI / 4, 6);
       expect(Math.abs(y2)).toBeCloseTo(Math.PI / 4, 6);
     });
+  });
+});
+
+describe("isInPastLightCone", () => {
+  const L = 20;
+  // observer at origin, t=100 (= future), event の t は past 側
+  const observer = createVector4(100, 0, 0, 0);
+
+  it("通常の event (近距離 + 過去) は past cone 内", () => {
+    // event at (t=80, x=10, y=0)、 spatial 距離 10、 dt=20、 lightlike 内
+    const event = createVector4(80, 10, 0, 0);
+    expect(isInPastLightCone(event, observer)).toBe(true);
+  });
+
+  it("future event は past cone 外 (t 順序判定)", () => {
+    const event = createVector4(120, 0, 0, 0);
+    expect(isInPastLightCone(event, observer)).toBe(false);
+  });
+
+  it("spacelike event (= 距離大、 dt 小) は past cone 外", () => {
+    // dt=5、 spatial=20 → spacelike
+    const event = createVector4(95, 20, 0, 0);
+    expect(isInPastLightCone(event, observer)).toBe(false);
+  });
+
+  it("torus 化: 1 周回って戻ってきた event は最短画像で判定", () => {
+    // 観測者 (0, 0)、 event (x=35, y=0): unwrapped 距離 35、 minImage で -5
+    // dt = 100 - 80 = 20、 lightlike check: dx²+dy²+dz² ≤ dt² (minImage 適用)
+    const event = createVector4(80, 35, 0, 0);
+    // unwrapped: 35² > 20² → spacelike → past cone 外
+    expect(isInPastLightCone(event, observer)).toBe(false);
+    // torus L=20: minImage(35) = -5、 5² ≤ 20² → past cone 内
+    expect(isInPastLightCone(event, observer, L)).toBe(true);
+  });
+
+  it("torus 化: y 軸でも同様に最短画像で判定", () => {
+    const event = createVector4(80, 0, -35, 0);
+    expect(isInPastLightCone(event, observer)).toBe(false);
+    // minImage(-35) = 5、 5² ≤ 20² → past cone 内
+    expect(isInPastLightCone(event, observer, L)).toBe(true);
+  });
+
+  it("torus 化: 離れたままの event (= 最短画像でも past cone 外) は false 維持", () => {
+    // observer (0, 0)、 event (x=15, y=0)、 spatial 15、 dt=5 → spacelike (15² > 5²)
+    const event = createVector4(95, 15, 0, 0);
+    expect(isInPastLightCone(event, observer, L)).toBe(false);
+  });
+
+  it("torusHalfWidth undefined は従来挙動と等価", () => {
+    const event = createVector4(80, 35, 0, 0);
+    expect(isInPastLightCone(event, observer, undefined)).toBe(
+      isInPastLightCone(event, observer),
+    );
   });
 });

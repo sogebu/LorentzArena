@@ -189,13 +189,26 @@ export const lorentzDotVector4 = (a: Vector4, b: Vector4): number =>
  * Check if an event is in the observer's past light cone.
  * True when the separation is timelike or lightlike AND the event is in the past.
  * JP: event が observer の過去光円錐内（時間的 or 光的、かつ過去）にあるか判定。
+ *
+ * `torusHalfWidth` 指定時は (x, y) を最短画像で計算 (= PBC で 1 周回って戻ってきた event
+ * も近い image cell 経由で判定される)。 t / z は素通し (空間 wrap のみ)。 indefined なら
+ * unwrapped 連続値で従来挙動。
  */
 export const isInPastLightCone = (
   event: Vector4,
   observer: Vector4,
+  torusHalfWidth?: number,
 ): boolean => {
-  const diff = subVector4(event, observer);
-  return lorentzDotVector4(diff, diff) <= 0 && observer.t > event.t;
+  let dx = event.x - observer.x;
+  let dy = event.y - observer.y;
+  if (torusHalfWidth !== undefined) {
+    const L = torusHalfWidth;
+    dx = dx - 2 * L * Math.round(dx / (2 * L));
+    dy = dy - 2 * L * Math.round(dy / (2 * L));
+  }
+  const dz = event.z - observer.z;
+  const dt = event.t - observer.t;
+  return dx * dx + dy * dy + dz * dz - dt * dt <= 0 && observer.t > event.t;
 };
 
 /**

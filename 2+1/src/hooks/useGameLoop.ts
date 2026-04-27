@@ -1,11 +1,13 @@
-import { useEffect, useRef, type MutableRefObject, type RefObject } from "react";
 import {
-  vector3Zero,
-  type createPhaseSpace,
-  type Vector3,
-  type Vector4,
-  yawToQuat,
-} from "../physics";
+  type MutableRefObject,
+  type RefObject,
+  useEffect,
+  useRef,
+} from "react";
+import {
+  firePendingKillEvents,
+  firePendingSpawnEvents,
+} from "../components/game/causalEvents";
 import {
   ARENA_HALF_WIDTH,
   DEBRIS_MAX_LAMBDA,
@@ -16,36 +18,37 @@ import {
   GAME_LOOP_INTERVAL,
   GC_PAST_LCH_MULTIPLIER,
   HIT_DAMAGE,
-  LIGHTHOUSE_HIT_DAMAGE,
   HIT_DEBRIS_MAX_LAMBDA,
   LASER_RANGE,
   LIGHT_CONE_HEIGHT,
+  LIGHTHOUSE_HIT_DAMAGE,
   MAX_FROZEN_WORLDLINES,
   MAX_LASERS,
   PROCESSED_LASERS_CLEANUP_THRESHOLD,
   RESPAWN_DELAY,
   SPAWN_EFFECT_DURATION,
 } from "../components/game/constants";
-import { createRespawnPosition } from "../components/game/respawnTime";
-import { isLighthouse } from "../components/game/lighthouse";
 import {
-  processCamera,
-  processPlayerPhysics,
-  processLighthouseAI,
-  processHitDetection,
-  checkCausalFreeze,
-  processLaserFiring,
   ballisticCatchupPhaseSpace,
+  checkCausalFreeze,
+  processCamera,
+  processHitDetection,
+  processLaserFiring,
+  processLighthouseAI,
+  processPlayerPhysics,
 } from "../components/game/gameLoop";
-import {
-  firePendingKillEvents,
-  firePendingSpawnEvents,
-} from "../components/game/causalEvents";
+import { isLighthouse } from "../components/game/lighthouse";
+import { createRespawnPosition } from "../components/game/respawnTime";
+import type { useTouchInput } from "../components/game/touchInput";
 import type { Laser, RelativisticPlayer } from "../components/game/types";
 import type { NetworkManager } from "../contexts/PeerProvider";
-import type { Message } from "../types/message";
-import type { useStaleDetection } from "./useStaleDetection";
-import type { useTouchInput } from "../components/game/touchInput";
+import {
+  type createPhaseSpace,
+  type Vector3,
+  type Vector4,
+  vector3Zero,
+  yawToQuat,
+} from "../physics";
 import {
   gcLogs,
   selectDeadPlayerIds,
@@ -53,6 +56,8 @@ import {
   selectIsDead,
   useGameStore,
 } from "../stores/game-store";
+import type { Message } from "../types/message";
+import type { useStaleDetection } from "./useStaleDetection";
 
 // --- Types ---
 
@@ -188,11 +193,14 @@ export function useGameLoop({
           // 既存 worldLine が空でなければ凍結 (messageHandler の gap reset と同じ semantic)。
           if (me.worldLine.history.length > 0) {
             store.setFrozenWorldLines((prev) =>
-              [...prev, {
-                playerId: myId,
-                worldLine: me.worldLine,
-                color: me.color,
-              }].slice(-MAX_FROZEN_WORLDLINES),
+              [
+                ...prev,
+                {
+                  playerId: myId,
+                  worldLine: me.worldLine,
+                  color: me.color,
+                },
+              ].slice(-MAX_FROZEN_WORLDLINES),
             );
           }
           // network に catchup 後の phaseSpace を通知。受信側は gap 検出で
@@ -213,7 +221,10 @@ export function useGameLoop({
 
       // --- Detect myDeathEvent transitions for local ref resets ---
       const currentMyDeathEvent = store.myDeathEvent;
-      if (prevMyDeathEventRef.current !== null && currentMyDeathEvent === null) {
+      if (
+        prevMyDeathEventRef.current !== null &&
+        currentMyDeathEvent === null
+      ) {
         // non-null → null: self-respawn just happened → reset camera refs.
         // energy は handleSpawn が ENERGY_MAX にリセット済 (store 側で一元管理)。
         headingYawRef.current = 0;
@@ -241,9 +252,7 @@ export function useGameLoop({
       if (myT !== undefined && store.lasers.length > 0) {
         const cutoff = myT - LASER_RANGE * 2;
         store.setLasers((prev) => {
-          const alive = prev.filter(
-            (l) => l.emissionPos.t + l.range > cutoff,
-          );
+          const alive = prev.filter((l) => l.emissionPos.t + l.range > cutoff);
           return alive.length === prev.length ? prev : alive;
         });
       }
@@ -297,13 +306,19 @@ export function useGameLoop({
       // --- Causal events ---
       // Stage C: pending kill events は killLog.filter(!firedForUi) で derive。
       // 過去光円錐到達で firedForUi を立て、scores を加算する。
+      // torus mode では最短画像距離で過去光円錐到達判定 → 1 周回って戻ってきた敵 event
+      // も近い image cell 経由で発火される (= odakin 報告の「1 周回って戻ってきた敵に
+      // リスポーンエフェクト出ない」 fix)。
       const myPos = store.players.get(myId)?.phaseSpace.pos;
+      const causalTorusHalfWidth =
+        store.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined;
       if (myPos && store.killLog.some((e) => !e.firedForUi)) {
         const result = firePendingKillEvents(
           store.killLog,
           myPos,
           myId,
           store.scores,
+          causalTorusHalfWidth,
         );
         if (result.firedIndices.length > 0) {
           const firedSet = new Set(result.firedIndices);
@@ -320,8 +335,13 @@ export function useGameLoop({
             setTimeout(() => setDeathFlash(false), 600);
           }
           if (result.effects.killNotification) {
-            useGameStore.setState({ killNotification: result.effects.killNotification });
-            setTimeout(() => useGameStore.setState({ killNotification: null }), 1500);
+            useGameStore.setState({
+              killNotification: result.effects.killNotification,
+            });
+            setTimeout(
+              () => useGameStore.setState({ killNotification: null }),
+              1500,
+            );
           }
         }
       }
@@ -332,16 +352,20 @@ export function useGameLoop({
           myPos,
           Date.now(),
           store.players,
+          causalTorusHalfWidth,
         );
         if (result.firedSpawns.length > 0) {
           useGameStore.setState({ pendingSpawnEvents: result.remaining });
-          useGameStore.getState().setSpawns((prev) => [...prev, ...result.firedSpawns]);
+          useGameStore
+            .getState()
+            .setSpawns((prev) => [...prev, ...result.firedSpawns]);
         }
       }
 
       // --- Laser firing + energy ---
       const isDead = store.players.get(myId)?.isDead ?? false;
-      const wantsFire = !isDead && (keysPressed.current.has(" ") || touch.firing);
+      const wantsFire =
+        !isDead && (keysPressed.current.has(" ") || touch.firing);
       const myPlayer = store.players.get(myId);
 
       if (myPlayer && !isDead) {
@@ -448,7 +472,6 @@ export function useGameLoop({
             fresh.setMyDeathEvent({ ...de, ghostPhaseSpace: ghostPs });
           }
         } else if (freshMe) {
-
           const frozen = checkCausalFreeze(
             fresh.players,
             myId,
@@ -519,7 +542,8 @@ export function useGameLoop({
       // --- Energy recovery ---
       // fire も thrust もしていないときのみ回復。死亡中は respawn 時に満タンに
       // リセットされるので、ここでの回復は不要 (加算する意味がない)。
-      const freshIsDead = useGameStore.getState().players.get(myId)?.isDead ?? true;
+      const freshIsDead =
+        useGameStore.getState().players.get(myId)?.isDead ?? true;
       if (!wantsFire && !thrustRequestedThisTick && !freshIsDead) {
         energy = Math.min(ENERGY_MAX, energy + ENERGY_RECOVERY_RATE * dTau);
       }
@@ -540,7 +564,15 @@ export function useGameLoop({
       // host-ness ではなく owner-ness で分岐。LH.ownerId === myId な peer が AI を回す。
       {
         const freshForLH = useGameStore.getState();
-        const lhUpdates: Array<{ id: string; ps: ReturnType<typeof createPhaseSpace>; wl: ReturnType<typeof freshForLH.players.get> extends infer P ? P extends { worldLine: infer W } ? W : never : never }> = [];
+        const lhUpdates: Array<{
+          id: string;
+          ps: ReturnType<typeof createPhaseSpace>;
+          wl: ReturnType<typeof freshForLH.players.get> extends infer P
+            ? P extends { worldLine: infer W }
+              ? W
+              : never
+            : never;
+        }> = [];
         const lhLasers: Laser[] = [];
 
         for (const [lhId, lh] of freshForLH.players) {
@@ -627,7 +659,9 @@ export function useGameLoop({
         for (const id of freshForHit.processedLasers) {
           if (!currentLaserIds.has(id)) freshForHit.processedLasers.delete(id);
         }
-        if (freshForHit.processedLasers.size > PROCESSED_LASERS_CLEANUP_THRESHOLD) {
+        if (
+          freshForHit.processedLasers.size > PROCESSED_LASERS_CLEANUP_THRESHOLD
+        ) {
           freshForHit.processedLasers.clear();
         }
 
@@ -636,12 +670,19 @@ export function useGameLoop({
             freshForHit.processedLasers.add(id);
           }
 
-          for (const { victimId, killerId, hitPos, laserDir } of hitResult.hits) {
+          for (const {
+            victimId,
+            killerId,
+            hitPos,
+            laserDir,
+          } of hitResult.hits) {
             // Phase C1: damage を先に適用 (i-frame / 既死 / 無敵 は handleDamage
             // が内部で弾く)。致命なら handleDamage 内で handleKill が呼ばれる。
             // 灯台は専用 damage (= LIGHTHOUSE_HIT_DAMAGE = 0.2) で 6 発死、energy 回復なし、
             // respawn 無敵なし。post-hit i-frame (500ms) は 2026-04-19 から人間と共通。
-            const damage = isLighthouse(victimId) ? LIGHTHOUSE_HIT_DAMAGE : HIT_DAMAGE;
+            const damage = isLighthouse(victimId)
+              ? LIGHTHOUSE_HIT_DAMAGE
+              : HIT_DAMAGE;
             sendToNetwork({
               type: "hit" as const,
               victimId,
@@ -660,7 +701,12 @@ export function useGameLoop({
             if (!selectIsDead(afterStore, victimId)) continue;
 
             stale.staleFrozenRef.current.delete(victimId);
-            sendToNetwork({ type: "kill" as const, victimId, killerId, hitPos });
+            sendToNetwork({
+              type: "kill" as const,
+              victimId,
+              killerId,
+              hitPos,
+            });
 
             // 自機の respawn は owner poll (下の block) で駆動 (killLog.wallTime ベース)。
             // setTimeout 方式は useEffect cleanup ([peerManager, myId] 差し替え) で消失し、
@@ -674,7 +720,10 @@ export function useGameLoop({
               respawnTimeoutsRef.current.delete(timerId);
               const currentStore = useGameStore.getState();
               if (!selectIsDead(currentStore, victimId)) return; // poll 先行 or 別経路で respawn 済
-              const respawnPos = createRespawnPosition(currentStore.players, victimId);
+              const respawnPos = createRespawnPosition(
+                currentStore.players,
+                victimId,
+              );
               sendToNetwork({
                 type: "respawn" as const,
                 playerId: victimId,
@@ -683,7 +732,12 @@ export function useGameLoop({
               const existingColor =
                 currentStore.players.get(victimId)?.color ??
                 getPlayerColor(victimId);
-              currentStore.handleSpawn(victimId, respawnPos, myId, existingColor);
+              currentStore.handleSpawn(
+                victimId,
+                respawnPos,
+                myId,
+                existingColor,
+              );
             }, RESPAWN_DELAY);
             respawnTimeoutsRef.current.add(timerId);
           }
@@ -728,7 +782,10 @@ export function useGameLoop({
             if (deathTime === undefined) continue; // selectIsDead true なら必ず entry あるはず
             if (deathTime + RESPAWN_DELAY > currentTime) continue;
 
-            const respawnPos = createRespawnPosition(pollState.players, victimId);
+            const respawnPos = createRespawnPosition(
+              pollState.players,
+              victimId,
+            );
             sendToNetwork({
               type: "respawn" as const,
               playerId: victimId,
@@ -757,8 +814,14 @@ export function useGameLoop({
       {
         const gcState = useGameStore.getState();
         const gc = gcLogs(gcState.killLog, gcState.respawnLog);
-        if (gc.killLog !== gcState.killLog || gc.respawnLog !== gcState.respawnLog) {
-          useGameStore.setState({ killLog: gc.killLog, respawnLog: gc.respawnLog });
+        if (
+          gc.killLog !== gcState.killLog ||
+          gc.respawnLog !== gcState.respawnLog
+        ) {
+          useGameStore.setState({
+            killLog: gc.killLog,
+            respawnLog: gc.respawnLog,
+          });
         }
       }
 
@@ -774,7 +837,8 @@ export function useGameLoop({
           if (t < earliestPlayerT) earliestPlayerT = t;
         }
         if (Number.isFinite(earliestPlayerT)) {
-          const cutoff = earliestPlayerT - LIGHT_CONE_HEIGHT * GC_PAST_LCH_MULTIPLIER;
+          const cutoff =
+            earliestPlayerT - LIGHT_CONE_HEIGHT * GC_PAST_LCH_MULTIPLIER;
           // laser: 最未来点 = emissionPos.t + range
           const lasers = gcState.lasers;
           if (lasers.length > 0) {
@@ -801,7 +865,8 @@ export function useGameLoop({
           const debris = gcState.debrisRecords;
           if (debris.length > 0) {
             const kept = debris.filter((d) => {
-              const lambda = d.type === "hit" ? HIT_DEBRIS_MAX_LAMBDA : DEBRIS_MAX_LAMBDA;
+              const lambda =
+                d.type === "hit" ? HIT_DEBRIS_MAX_LAMBDA : DEBRIS_MAX_LAMBDA;
               return d.deathPos.t + lambda >= cutoff;
             });
             if (kept.length !== debris.length) {

@@ -22,12 +22,16 @@ export interface KillEventsResult {
  * Fire UI effects for kill events that have just entered the observer's past
  * light cone. Consumes un-fired entries from `killLog` (those with
  * `firedForUi === false`); returns log indices to flag.
+ *
+ * `torusHalfWidth` 指定時は最短画像で過去光円錐到達判定 (= PBC で 1 周回って戻ってきた
+ * event も近い image cell 経由で発火される)。
  */
 export function firePendingKillEvents(
   killLog: KillEventRecord[],
   myPos: Vector4,
   myId: string,
   scores: Record<string, number>,
+  torusHalfWidth?: number,
 ): KillEventsResult {
   const firedIndices: number[] = [];
   const newScores = { ...scores };
@@ -37,8 +41,13 @@ export function firePendingKillEvents(
   for (let i = 0; i < killLog.length; i++) {
     const ev = killLog[i];
     if (ev.firedForUi) continue;
-    const hitPosV4 = createVector4(ev.hitPos.t, ev.hitPos.x, ev.hitPos.y, ev.hitPos.z);
-    if (isInPastLightCone(hitPosV4, myPos)) {
+    const hitPosV4 = createVector4(
+      ev.hitPos.t,
+      ev.hitPos.x,
+      ev.hitPos.y,
+      ev.hitPos.z,
+    );
+    if (isInPastLightCone(hitPosV4, myPos, torusHalfWidth)) {
       firedIndices.push(i);
       newScores[ev.killerId] = (newScores[ev.killerId] || 0) + 1;
       if (ev.victimId === myId) {
@@ -68,13 +77,14 @@ export function firePendingSpawnEvents(
   myPos: Vector4,
   fireTime: number,
   players: Map<string, { color: string }>,
+  torusHalfWidth?: number,
 ): SpawnEventsResult {
   const firedSpawns: SpawnEffect[] = [];
   const remaining: PendingSpawnEvent[] = [];
 
   for (const ev of pending) {
     const spawnPosV4 = createVector4(ev.pos.t, ev.pos.x, ev.pos.y, ev.pos.z);
-    if (isInPastLightCone(spawnPosV4, myPos)) {
+    if (isInPastLightCone(spawnPosV4, myPos, torusHalfWidth)) {
       // Resolve color from current player state (joinRegistry may have updated since creation)
       const resolvedColor = players.get(ev.playerId)?.color ?? ev.color;
       firedSpawns.push({
