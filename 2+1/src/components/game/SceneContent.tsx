@@ -1,31 +1,19 @@
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
 import {
   futureLightConeIntersectionWorldLine,
   getVelocity4,
   lorentzBoost,
+  observableImageCells,
   pastLightConeIntersectionWorldLine,
+  requiredImageCellRadius,
   type Vector3,
   type Vector4,
 } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
 import { ArenaRenderer } from "./ArenaRenderer";
-import { DebrisRenderer } from "./DebrisRenderer";
-import { HeadingMarkerRenderer } from "./HeadingMarkerRenderer";
-import { JellyfishShipRenderer } from "./JellyfishShipRenderer";
-import { LaserBatchRenderer } from "./LaserBatchRenderer";
-import { LightConeRenderer } from "./LightConeRenderer";
-import { RocketShipRenderer } from "./RocketShipRenderer";
-import { DeadShipRenderer } from "./DeadShipRenderer";
-import { DeathMarker } from "./DeathMarker";
-import { LighthouseRenderer } from "./LighthouseRenderer";
-import { isLighthouse } from "./lighthouse";
-import { OtherShipRenderer } from "./OtherShipRenderer";
-import { SelfShipRenderer } from "./SelfShipRenderer";
-import { SpawnRenderer } from "./SpawnRenderer";
-import { StardustRenderer } from "./StardustRenderer";
-import { WorldLineRenderer } from "./WorldLineRenderer";
 import {
   AIM_ARROW_BASE_OPACITY,
   AIM_ARROW_OPACITY_STEP,
@@ -36,24 +24,39 @@ import {
   FUTURE_CONE_WORLDLINE_SPHERE_OPACITY,
   LASER_PAST_CONE_MARKER_COLOR,
   LH_INNER_HIDE_RADIUS,
+  LIGHT_CONE_HEIGHT,
   PLAYER_MARKER_GLOW_OPACITY_OTHER,
   PLAYER_MARKER_MAIN_OPACITY_OTHER,
   PLAYER_MARKER_SIZE_OTHER,
   SHIP_WORLDLINE_HIDE_RADIUS,
 } from "./constants";
+import { DeadShipRenderer } from "./DeadShipRenderer";
+import { DeathMarker } from "./DeathMarker";
+import { DebrisRenderer } from "./DebrisRenderer";
+import { buildMeshMatrix, DisplayFrameProvider } from "./DisplayFrameContext";
 import {
   buildDisplayMatrix,
   transformEventForDisplay,
 } from "./displayTransform";
-import { buildMeshMatrix, DisplayFrameProvider } from "./DisplayFrameContext";
 import { GameLights } from "./GameLights";
-import { futureLightConeIntersectionLaser, pastLightConeIntersectionLaser } from "./laserPhysics";
+import { HeadingMarkerRenderer } from "./HeadingMarkerRenderer";
+import { JellyfishShipRenderer } from "./JellyfishShipRenderer";
+import { LaserBatchRenderer } from "./LaserBatchRenderer";
+import { LightConeRenderer } from "./LightConeRenderer";
+import { LighthouseRenderer } from "./LighthouseRenderer";
 import {
-  getThreeColor,
-  sharedGeometries,
-} from "./threeCache";
+  futureLightConeIntersectionLaser,
+  pastLightConeIntersectionLaser,
+} from "./laserPhysics";
+import { isLighthouse } from "./lighthouse";
+import { OtherShipRenderer } from "./OtherShipRenderer";
+import { RocketShipRenderer } from "./RocketShipRenderer";
+import { SelfShipRenderer } from "./SelfShipRenderer";
+import { SpawnRenderer } from "./SpawnRenderer";
+import { StardustRenderer } from "./StardustRenderer";
+import { getThreeColor, sharedGeometries } from "./threeCache";
 import type { Laser } from "./types";
-import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
+import { WorldLineRenderer } from "./WorldLineRenderer";
 
 /**
  * 交点 `eventPos` (world frame) における光円錐接平面の **world frame rotation matrix** を返す。
@@ -85,17 +88,31 @@ const computeConeTangentWorldRotation = (
   let ut = -ldotN * nt;
   const ulen = Math.sqrt(ux * ux + uy * uy + ut * ut);
   if (ulen < 1e-9) return null;
-  ux /= ulen; uy /= ulen; ut /= ulen;
+  ux /= ulen;
+  uy /= ulen;
+  ut /= ulen;
   // v = n × u
   const vx = ny * ut - nt * uy;
   const vy = nt * ux - nx * ut;
   const vt = nx * uy - ny * ux;
   // Local (x, y, z) → world (u, v, n). Three.js maps local z ↔ world t.
   return new THREE.Matrix4().set(
-    ux, vx, nx, 0,
-    uy, vy, ny, 0,
-    ut, vt, nt, 0,
-    0, 0, 0, 1,
+    ux,
+    vx,
+    nx,
+    0,
+    uy,
+    vy,
+    ny,
+    0,
+    ut,
+    vt,
+    nt,
+    0,
+    0,
+    0,
+    0,
+    1,
   );
 };
 
@@ -127,7 +144,8 @@ export const SceneContent = ({
 }: SceneContentProps) => {
   // --- Firing start time (for sequential arrow animation) ---
   const firingStartRef = useRef<number>(0);
-  if (isFiring && firingStartRef.current === 0) firingStartRef.current = Date.now();
+  if (isFiring && firingStartRef.current === 0)
+    firingStartRef.current = Date.now();
   if (!isFiring) firingStartRef.current = 0;
 
   // jellyfish 武装触手の砲指向 (45° 下) に渡す。React state の isFiring を ref にミラー
@@ -188,6 +206,26 @@ export const SceneContent = ({
   const viewMode = useGameStore((s) => s.viewMode);
   const controlScheme = useGameStore((s) => s.controlScheme);
   const torusHalfWidth = useTorusHalfWidth();
+
+  // **PBC universal cover**: 自機本体 (Self/Rocket/Jellyfish) を `(2R+1)²` image cell に複製
+  // 描画。 各 image cell ごとに player.phaseSpace.pos に `2L * (obsCell + cell.offset)` 加算
+  // した synthetic player を ship renderer に渡す。 自機本体は observerPos = phaseSpace.pos
+  // なので primary cell は display 原点、 隣接 image は 2L*offset 離れた位置に出る (=
+  // 「universal cover の自分の copy」 が周囲 8 image に echo)。
+  const selfShipCells = useMemo(() => {
+    if (torusHalfWidth === undefined) return [{ kx: 0, ky: 0 }];
+    const R = requiredImageCellRadius(torusHalfWidth, LIGHT_CONE_HEIGHT);
+    return observableImageCells(R);
+  }, [torusHalfWidth]);
+  const selfL = torusHalfWidth ?? 0;
+  const selfObsCellX =
+    torusHalfWidth !== undefined && observerPos
+      ? Math.floor((observerPos.x + selfL) / (2 * selfL))
+      : 0;
+  const selfObsCellY =
+    torusHalfWidth !== undefined && observerPos
+      ? Math.floor((observerPos.y + selfL) / (2 * selfL))
+      : 0;
   useFrame(({ camera }) => {
     if (!myPlayer) return;
     const playerPos = transformEventForDisplay(
@@ -202,7 +240,9 @@ export const SceneContent = ({
 
     const yaw = cameraYawRef.current;
     const pitch = cameraPitchRef.current;
-    const distance = useOrthographic ? CAMERA_DISTANCE_ORTHOGRAPHIC : CAMERA_DISTANCE_PERSPECTIVE;
+    const distance = useOrthographic
+      ? CAMERA_DISTANCE_ORTHOGRAPHIC
+      : CAMERA_DISTANCE_PERSPECTIVE;
     const camX = targetX + distance * Math.cos(pitch) * Math.cos(yaw + Math.PI);
     const camY = targetY + distance * Math.cos(pitch) * Math.sin(yaw + Math.PI);
     const camT = targetT + distance * Math.sin(pitch);
@@ -329,7 +369,12 @@ export const SceneContent = ({
         torusHalfWidth,
       );
       if (!intersection) continue; // 死亡 event を観測済み → 光源消灯
-      const dp = transformEventForDisplay(intersection.pos, observerPos, observerBoost, torusHalfWidth);
+      const dp = transformEventForDisplay(
+        intersection.pos,
+        observerPos,
+        observerBoost,
+        torusHalfWidth,
+      );
       positions.push([dp.x, dp.y, dp.t]);
     }
     return positions;
@@ -361,7 +406,9 @@ export const SceneContent = ({
           observerPos={observerPos}
           observerBoost={observerBoost}
           innerHideRadius={
-            isLighthouse(fw.playerId) ? LH_INNER_HIDE_RADIUS : SHIP_WORLDLINE_HIDE_RADIUS
+            isLighthouse(fw.playerId)
+              ? LH_INNER_HIDE_RADIUS
+              : SHIP_WORLDLINE_HIDE_RADIUS
           }
         />
       ))}
@@ -376,7 +423,9 @@ export const SceneContent = ({
           observerPos={observerPos}
           observerBoost={observerBoost}
           innerHideRadius={
-            isLighthouse(player.id) ? LH_INNER_HIDE_RADIUS : SHIP_WORLDLINE_HIDE_RADIUS
+            isLighthouse(player.id)
+              ? LH_INNER_HIDE_RADIUS
+              : SHIP_WORLDLINE_HIDE_RADIUS
           }
         />
       ))}
@@ -403,55 +452,68 @@ export const SceneContent = ({
         // を返すので無条件配置 OK。自機は自身の position = observerPos なので past-cone
         // 概念が効かない → isDead で除外 + SelfShipRenderer 直描画。
         if (isMe && !player.isDead) {
-          // viewMode で 3 種類の自機レンダラを dispatch (構造的に独立した別物):
-          //   classic   → SelfShipRenderer (六角プリズム hull、4 RCS、heading で全体回転)
-          //   shooter   → RocketShipRenderer (ロケット hull、後部単一噴射、砲塔のみ heading 回転)
-          //   jellyfish → JellyfishShipRenderer (procedural クラゲ、Verlet rope 触手、武装触手)
-          if (viewMode === "shooter") {
-            items.push(
-              <RocketShipRenderer
-                key={key}
-                player={player}
-                thrustAccelRef={thrustAccelRef}
-                observerPos={observerPos}
-                observerBoost={observerBoost}
-                cameraYawRef={headingYawRef}
-                alpha4={player.phaseSpace.alpha}
-              />,
-            );
-          } else if (viewMode === "jellyfish") {
-            items.push(
-              <JellyfishShipRenderer
-                key={key}
-                player={player}
-                thrustAccelRef={thrustAccelRef}
-                observerPos={observerPos}
-                observerBoost={observerBoost}
-                cameraYawRef={headingYawRef}
-                alpha4={player.phaseSpace.alpha}
-                firingRef={firingRef}
-              />,
-            );
-          } else {
-            items.push(
-              <SelfShipRenderer
-                key={key}
-                player={player}
-                thrustAccelRef={thrustAccelRef}
-                observerPos={observerPos}
-                observerBoost={observerBoost}
-                cannonStyle="laser"
-                cameraYawRef={headingYawRef}
-                alpha4={player.phaseSpace.alpha}
-                controlScheme={controlScheme}
-              />,
-            );
+          // **PBC universal cover**: 自機本体を 9 image cell に複製描画。 各 image cell ごと
+          // に player.phaseSpace.pos に `2L * (obsCell + cell.offset)` 加算した synthetic player
+          // を ship renderer に渡す (= 「universal cover の自分の copy」 が周囲 8 image cells に
+          // 並ぶ visual)。 primary cell (0,0) は元の position で表示。
+          for (const cell of selfShipCells) {
+            const dx = 2 * selfL * (selfObsCellX + cell.kx);
+            const dy = 2 * selfL * (selfObsCellY + cell.ky);
+            const cellKey = `${key}-${cell.kx},${cell.ky}`;
+            const offsetPlayer = {
+              ...player,
+              phaseSpace: {
+                ...player.phaseSpace,
+                pos: {
+                  ...player.phaseSpace.pos,
+                  x: player.phaseSpace.pos.x + dx,
+                  y: player.phaseSpace.pos.y + dy,
+                },
+              },
+            };
+            // viewMode で 3 種類の自機レンダラを dispatch
+            if (viewMode === "shooter") {
+              items.push(
+                <RocketShipRenderer
+                  key={cellKey}
+                  player={offsetPlayer}
+                  thrustAccelRef={thrustAccelRef}
+                  observerPos={observerPos}
+                  observerBoost={observerBoost}
+                  cameraYawRef={headingYawRef}
+                  alpha4={player.phaseSpace.alpha}
+                />,
+              );
+            } else if (viewMode === "jellyfish") {
+              items.push(
+                <JellyfishShipRenderer
+                  key={cellKey}
+                  player={offsetPlayer}
+                  thrustAccelRef={thrustAccelRef}
+                  observerPos={observerPos}
+                  observerBoost={observerBoost}
+                  cameraYawRef={headingYawRef}
+                  alpha4={player.phaseSpace.alpha}
+                  firingRef={firingRef}
+                />,
+              );
+            } else {
+              items.push(
+                <SelfShipRenderer
+                  key={cellKey}
+                  player={offsetPlayer}
+                  thrustAccelRef={thrustAccelRef}
+                  observerPos={observerPos}
+                  observerBoost={observerBoost}
+                  cannonStyle="laser"
+                  cameraYawRef={headingYawRef}
+                  alpha4={player.phaseSpace.alpha}
+                  controlScheme={controlScheme}
+                />,
+              );
+            }
           }
-          // heading 線 (過去光円錐母線) — 自機の砲身/aim 方向を時空に貼る。
-          // legacy_classic では本体 hull ごと heading 方向に回るため、機体自体が砲身方向を
-          // 視覚的に示している → aim 線は冗長なので非表示。modern (本体 world basis 固定 +
-          // 砲塔のみ追従) と legacy_shooter (twin-stick) では砲身/heading の独立可視化が
-          // 有用なので表示する。
+          // heading 線は primary image のみ (= 自機の aim 方向、 echo 化すると過剰)
           if (controlScheme !== "legacy_classic") {
             items.push(
               <HeadingMarkerRenderer
@@ -462,6 +524,7 @@ export const SceneContent = ({
             );
           }
         } else if (!isMe) {
+          // OtherShipRenderer 内部で 9 image 化済 (= player を渡すだけ)
           items.push(<OtherShipRenderer key={key} player={player} />);
         }
 
@@ -509,86 +572,127 @@ export const SceneContent = ({
           色は 2026-04-21 odakin 指定で universal `LASER_PAST_CONE_MARKER_COLOR` (silver) に。
           player / laser 色は kill log + beam 本体で識別されるので、このマーカーは中立 metal 銀で
           「物理マーカー」表現。*/}
-      {observerPos && laserIntersections.map(({ laser, pos }) => {
-        const c = pastConeMarkerColor;
-        const rot = computeConeTangentWorldRotation(pos, observerPos, laser.direction);
-        if (!rot) return null;
-        const m = buildMeshMatrix(pos, displayMatrix);
-        m.multiply(rot);
-        return (
-          <mesh
-            key={`laser-intersection-${laser.id}`}
-            geometry={sharedGeometries.laserIntersectionTriangle}
-            matrix={m}
-            matrixAutoUpdate={false}
-            // 2026-04-19: 旧 [3,3,3] (chunky 三角) を [6,1,1] に変更。geometry の +x が
-            // laser 接平面射影方向なので x scale = laser 方向の長さ、y scale = 横幅。
-            // x を伸ばし y を細くすることで「ビーム」感を出す。
-            scale={[6, 1, 1]}
-          >
-            {/* toneMapped=false で色を明るく出す + additive で背景に光が乗る (ビーム感) */}
-            <meshBasicMaterial
-              color={c}
-              side={THREE.DoubleSide}
-              toneMapped={false}
-              transparent
-              blending={THREE.AdditiveBlending}
-              depthWrite={false}
-            />
-          </mesh>
-        );
-      })}
+      {observerPos &&
+        laserIntersections.map(({ laser, pos }) => {
+          const c = pastConeMarkerColor;
+          const rot = computeConeTangentWorldRotation(
+            pos,
+            observerPos,
+            laser.direction,
+          );
+          if (!rot) return null;
+          const m = buildMeshMatrix(pos, displayMatrix);
+          m.multiply(rot);
+          return (
+            <mesh
+              key={`laser-intersection-${laser.id}`}
+              geometry={sharedGeometries.laserIntersectionTriangle}
+              matrix={m}
+              matrixAutoUpdate={false}
+              // 2026-04-19: 旧 [3,3,3] (chunky 三角) を [6,1,1] に変更。geometry の +x が
+              // laser 接平面射影方向なので x scale = laser 方向の長さ、y scale = 横幅。
+              // x を伸ばし y を細くすることで「ビーム」感を出す。
+              scale={[6, 1, 1]}
+            >
+              {/* toneMapped=false で色を明るく出す + additive で背景に光が乗る (ビーム感) */}
+              <meshBasicMaterial
+                color={c}
+                side={THREE.DoubleSide}
+                toneMapped={false}
+                transparent
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
+            </mesh>
+          );
+        })}
 
       {/* 未来光円錐交差マーカー（接平面に貼り付いた三角形、うっすら表示） */}
-      {observerPos && laserFutureIntersections.map(({ laser, pos }) => {
-        const c = getThreeColor(laser.color);
-        const rot = computeConeTangentWorldRotation(pos, observerPos, laser.direction);
-        if (!rot) return null;
-        const m = buildMeshMatrix(pos, displayMatrix);
-        m.multiply(rot);
-        return (
-          <group
-            key={`laser-future-${laser.id}`}
-            matrix={m}
-            matrixAutoUpdate={false}
-          >
-            <mesh geometry={sharedGeometries.laserIntersectionTriangle} scale={[1.5, 1.5, 1.5]}>
-              <meshBasicMaterial color={c} transparent opacity={FUTURE_CONE_LASER_TRIANGLE_OPACITY} side={THREE.DoubleSide} depthWrite={false} />
-            </mesh>
-          </group>
-        );
-      })}
-      {futureLightConeIntersections.map(({ playerId, color: colorText, pos }) => {
-        const c = getThreeColor(colorText);
-        const dp = transformEventForDisplay(pos, observerPos, observerBoost, torusHalfWidth);
-        const ringMatrix = buildMeshMatrix(pos, displayMatrix);
-        ringMatrix.multiply(new THREE.Matrix4().makeScale(0.8, 0.8, 0.8));
-        return (
-          <group key={`future-${playerId}`}>
-            <mesh
-              geometry={sharedGeometries.intersectionSphere}
-              position={[dp.x, dp.y, dp.t]}
-              scale={[0.6, 0.6, 0.6]}
-            >
-              <meshBasicMaterial color={c} transparent opacity={FUTURE_CONE_WORLDLINE_SPHERE_OPACITY} depthWrite={false} />
-            </mesh>
-            <mesh
-              geometry={sharedGeometries.intersectionRing}
-              matrix={ringMatrix}
+      {observerPos &&
+        laserFutureIntersections.map(({ laser, pos }) => {
+          const c = getThreeColor(laser.color);
+          const rot = computeConeTangentWorldRotation(
+            pos,
+            observerPos,
+            laser.direction,
+          );
+          if (!rot) return null;
+          const m = buildMeshMatrix(pos, displayMatrix);
+          m.multiply(rot);
+          return (
+            <group
+              key={`laser-future-${laser.id}`}
+              matrix={m}
               matrixAutoUpdate={false}
             >
-              <meshBasicMaterial color={c} transparent opacity={FUTURE_CONE_WORLDLINE_RING_OPACITY} depthWrite={false} />
-            </mesh>
-          </group>
-        );
-      })}
+              <mesh
+                geometry={sharedGeometries.laserIntersectionTriangle}
+                scale={[1.5, 1.5, 1.5]}
+              >
+                <meshBasicMaterial
+                  color={c}
+                  transparent
+                  opacity={FUTURE_CONE_LASER_TRIANGLE_OPACITY}
+                  side={THREE.DoubleSide}
+                  depthWrite={false}
+                />
+              </mesh>
+            </group>
+          );
+        })}
+      {futureLightConeIntersections.map(
+        ({ playerId, color: colorText, pos }) => {
+          const c = getThreeColor(colorText);
+          const dp = transformEventForDisplay(
+            pos,
+            observerPos,
+            observerBoost,
+            torusHalfWidth,
+          );
+          const ringMatrix = buildMeshMatrix(pos, displayMatrix);
+          ringMatrix.multiply(new THREE.Matrix4().makeScale(0.8, 0.8, 0.8));
+          return (
+            <group key={`future-${playerId}`}>
+              <mesh
+                geometry={sharedGeometries.intersectionSphere}
+                position={[dp.x, dp.y, dp.t]}
+                scale={[0.6, 0.6, 0.6]}
+              >
+                <meshBasicMaterial
+                  color={c}
+                  transparent
+                  opacity={FUTURE_CONE_WORLDLINE_SPHERE_OPACITY}
+                  depthWrite={false}
+                />
+              </mesh>
+              <mesh
+                geometry={sharedGeometries.intersectionRing}
+                matrix={ringMatrix}
+                matrixAutoUpdate={false}
+              >
+                <meshBasicMaterial
+                  color={c}
+                  transparent
+                  opacity={FUTURE_CONE_WORLDLINE_RING_OPACITY}
+                  depthWrite={false}
+                />
+              </mesh>
+            </group>
+          );
+        },
+      )}
 
       {/* (A) 他プレイヤー世界線 **過去光円錐交差点** に dot + glow halo。観測者が
           「今まさに見ている」他機位置に anchor (ship と同位置)。aliveIntersection
           null のフレーム (respawn 光未到達 / worldLine 空) は出さない。 */}
       {worldLinePastConePoints.map(({ key, color: colorText, pos }) => {
         const c = getThreeColor(colorText);
-        const dp = transformEventForDisplay(pos, observerPos, observerBoost, torusHalfWidth);
+        const dp = transformEventForDisplay(
+          pos,
+          observerPos,
+          observerBoost,
+          torusHalfWidth,
+        );
         const size = PLAYER_MARKER_SIZE_OTHER;
         return (
           <group key={key} position={[dp.x, dp.y, dp.t]}>
@@ -629,7 +733,12 @@ export const SceneContent = ({
           (`playerSphere` × `PLAYER_MARKER_SIZE_OTHER` = 0.5 × 0.2 = effective radius 0.1)。 */}
       {worldLineFuturePoints.map(({ key, color: colorText, pos }) => {
         const c = getThreeColor(colorText);
-        const dp = transformEventForDisplay(pos, observerPos, observerBoost, torusHalfWidth);
+        const dp = transformEventForDisplay(
+          pos,
+          observerPos,
+          observerBoost,
+          torusHalfWidth,
+        );
         const size = PLAYER_MARKER_SIZE_OTHER;
         return (
           <group key={key} position={[dp.x, dp.y, dp.t]}>
@@ -667,54 +776,82 @@ export const SceneContent = ({
       <LaserBatchRenderer lasers={lasers} />
 
       {/* レーザー方向マーカー（自機のみ、トリガー中） */}
-      {isFiring && myPlayer && myId && (() => {
-        // 自機の最新レーザーから方向取得
-        let latestLaser: typeof lasers[0] | null = null;
-        for (const l of lasers) {
-          if (l.playerId !== myId) continue;
-          if (!latestLaser || l.emissionPos.t > latestLaser.emissionPos.t) latestLaser = l;
-        }
-        if (!latestLaser) return null;
-        const dir = latestLaser.direction;
-        if (dir.x * dir.x + dir.y * dir.y < 0.000001) return null;
-        const aimYaw = Math.atan2(dir.y, dir.x);
-        const s2 = Math.SQRT1_2;
-        const cy = Math.cos(aimYaw), sy = Math.sin(aimYaw);
-        const pastDir = new THREE.Vector3(cy, sy, -1).normalize();
-        const rotMatrix = new THREE.Matrix4().set(
-          -sy,  -cy * s2,  cy * s2, 0,
-           cy,  -sy * s2,  sy * s2, 0,
-            0,        s2,       s2, 0,
-            0,         0,        0, 1,
-        );
-        const quat = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
-        const pos = transformEventForDisplay(myPlayer.phaseSpace.pos, observerPos, observerBoost, torusHalfWidth);
-        // Aim arrow 色は player 色ではなく laser past-cone marker と同じ silver に統一
-        // (odakin 指定: 「射撃中」text / marker と同系統で視覚統合)
-        const c = pastConeMarkerColor;
-        const spacing = 1.2; // 矢印の全長 (tip 0.75 + base 0.45) と一致させ tip↔base を接合
-        // 0s→1個, 0.05s→2個, 0.1s→3個（ループなし、トリガー押し始めから）
-        const elapsed = Date.now() - firingStartRef.current;
-        const visibleCount = Math.min(3, Math.floor(elapsed / 50) + 1);
-        return [1, 2, 3].map((i) => {
-          if (i > visibleCount) return null;
-          const opacity = AIM_ARROW_BASE_OPACITY - (i - 1) * AIM_ARROW_OPACITY_STEP;
-          return (
-            <mesh
-              key={`aim-arrow-${i}`}
-              position={[
-                pos.x + pastDir.x * spacing * i,
-                pos.y + pastDir.y * spacing * i,
-                pos.t + pastDir.z * spacing * i,
-              ]}
-              quaternion={quat}
-              geometry={sharedGeometries.laserArrow}
-            >
-              <meshBasicMaterial color={c} transparent opacity={opacity} side={THREE.DoubleSide} />
-            </mesh>
+      {isFiring &&
+        myPlayer &&
+        myId &&
+        (() => {
+          // 自機の最新レーザーから方向取得
+          let latestLaser: (typeof lasers)[0] | null = null;
+          for (const l of lasers) {
+            if (l.playerId !== myId) continue;
+            if (!latestLaser || l.emissionPos.t > latestLaser.emissionPos.t)
+              latestLaser = l;
+          }
+          if (!latestLaser) return null;
+          const dir = latestLaser.direction;
+          if (dir.x * dir.x + dir.y * dir.y < 0.000001) return null;
+          const aimYaw = Math.atan2(dir.y, dir.x);
+          const s2 = Math.SQRT1_2;
+          const cy = Math.cos(aimYaw),
+            sy = Math.sin(aimYaw);
+          const pastDir = new THREE.Vector3(cy, sy, -1).normalize();
+          const rotMatrix = new THREE.Matrix4().set(
+            -sy,
+            -cy * s2,
+            cy * s2,
+            0,
+            cy,
+            -sy * s2,
+            sy * s2,
+            0,
+            0,
+            s2,
+            s2,
+            0,
+            0,
+            0,
+            0,
+            1,
           );
-        });
-      })()}
+          const quat = new THREE.Quaternion().setFromRotationMatrix(rotMatrix);
+          const pos = transformEventForDisplay(
+            myPlayer.phaseSpace.pos,
+            observerPos,
+            observerBoost,
+            torusHalfWidth,
+          );
+          // Aim arrow 色は player 色ではなく laser past-cone marker と同じ silver に統一
+          // (odakin 指定: 「射撃中」text / marker と同系統で視覚統合)
+          const c = pastConeMarkerColor;
+          const spacing = 1.2; // 矢印の全長 (tip 0.75 + base 0.45) と一致させ tip↔base を接合
+          // 0s→1個, 0.05s→2個, 0.1s→3個（ループなし、トリガー押し始めから）
+          const elapsed = Date.now() - firingStartRef.current;
+          const visibleCount = Math.min(3, Math.floor(elapsed / 50) + 1);
+          return [1, 2, 3].map((i) => {
+            if (i > visibleCount) return null;
+            const opacity =
+              AIM_ARROW_BASE_OPACITY - (i - 1) * AIM_ARROW_OPACITY_STEP;
+            return (
+              <mesh
+                key={`aim-arrow-${i}`}
+                position={[
+                  pos.x + pastDir.x * spacing * i,
+                  pos.y + pastDir.y * spacing * i,
+                  pos.t + pastDir.z * spacing * i,
+                ]}
+                quaternion={quat}
+                geometry={sharedGeometries.laserArrow}
+              >
+                <meshBasicMaterial
+                  color={c}
+                  transparent
+                  opacity={opacity}
+                  side={THREE.DoubleSide}
+                />
+              </mesh>
+            );
+          });
+        })()}
 
       {/* デブリの世界線とマーカー（世界オブジェクト） */}
       {myPlayer && (
