@@ -8,62 +8,55 @@
 
 **Universal cover 化が core abstraction**: 「単一最短画像で fold」 という ad hoc を撤去、 PBC topology の本質 (= 同じ event/object が `(2R+1)²` image cell に repetition) を全 phase で統一表現。 worldLine / laser / debris / arena すべて 9 image (R=1) に独立描画。 causal events (kill / spawn) も各 image 独立に過去光円錐到達 + UI trigger (= echo)。 「右で非表示 / 左で表示」 等の半開区間 mod boundary flip artifact が原理的に発生しない。
 
-主要 commit (universal cover refactor 段階):
-- [`42868ad`](https://github.com/sogebu/LorentzArena/commit/42868ad): **Phase A** — causal events を image cell loop に統一。 `KillEventRecord.firedImageCells` / `PendingSpawnEvent.firedImageCells` で各 image 独立発火追跡。 spawn ring が同じ event から複数回 echo として trigger される
-- [`be5f944`](https://github.com/sogebu/LorentzArena/commit/be5f944): **Phase B** — WorldLineRenderer / LaserBatchRenderer の image 分散描画。 InstancedMesh / per-image LineSegments で `(2R+1)²` 複製、 vertex は raw + instance offset で各 image
-- [`8ac5e78`](https://github.com/sogebu/LorentzArena/commit/8ac5e78): **Phase C1** — DebrisRenderer の image 分散 (= cylinder × 9 cell instance)
-- [`0898f06`](https://github.com/sogebu/LorentzArena/commit/0898f06): **Phase C2** — SquareArenaRenderer の image 分散 (= corner flip 問題が原理的に消える)
-- [`cf33bf1`](https://github.com/sogebu/LorentzArena/commit/cf33bf1): **Phase D (a)** — torusFoldShader 撤去 (= 不要、 image cell instance で並進)
+**思想と設計判断は [`DESIGN.md` §「PBC torus: Universal cover image observer past-cone pattern」](DESIGN.md) に記録**。 詳細実装ログは `plans/2026-04-27-pbc-torus.md`。
 
-事前準備 (= 中間版 ad hoc fix、 universal cover refactor で大半が一掃):
-- [`9d14b16`](https://github.com/sogebu/LorentzArena/commit/9d14b16): worldLine line break (GPU shader fold + segment break) — Phase B で revise
+主要 commit (universal cover refactor 段階):
+- [`42868ad`](https://github.com/sogebu/LorentzArena/commit/42868ad): **Phase A** — causal events を image cell loop に統一。 `KillEventRecord.firedImageCells` / `PendingSpawnEvent.firedImageCells` で各 image 独立発火追跡
+- [`be5f944`](https://github.com/sogebu/LorentzArena/commit/be5f944): **Phase B** — WorldLineRenderer / LaserBatchRenderer の image 分散描画
+- [`8ac5e78`](https://github.com/sogebu/LorentzArena/commit/8ac5e78): **Phase C1** — DebrisRenderer image 分散 (cylinder × 9 instance)
+- [`0898f06`](https://github.com/sogebu/LorentzArena/commit/0898f06): **Phase C2** — SquareArenaRenderer image 分散 (corner flip 問題が原理的に消える)
+- [`cf33bf1`](https://github.com/sogebu/LorentzArena/commit/cf33bf1): **Phase D (a)** — torusFoldShader 撤去 (= 不要)
+- [`e19892a`](https://github.com/sogebu/LorentzArena/commit/e19892a): cells を observer follow + arena 色 amber → magenta
+- [`baebb41`](https://github.com/sogebu/LorentzArena/commit/baebb41): LighthouseRenderer 9 image (初版、 後で revise)
+- [`dc5ec54`](https://github.com/sogebu/LorentzArena/commit/dc5ec54): **Image observer past-cone pattern** に revise (= 「観測者本人の過去光円錐 上の echo」 で物理的に正しく、 「他セルの自分の過去光円錐」 ではない)
+- [`c472f1a`](https://github.com/sogebu/LorentzArena/commit/c472f1a): Rocket / Jellyfish の transformEventForDisplay raw 化
+- [`90d079f`](https://github.com/sogebu/LorentzArena/commit/90d079f): SceneContent self ship 9 image wrap
+- [`0249285`](https://github.com/sogebu/LorentzArena/commit/0249285): self ship を image observer pattern に統一 (= 90d079f の ad hoc 修正)
+- [`d41f0d9`](https://github.com/sogebu/LorentzArena/commit/d41f0d9): **causal events を image observer pattern に統一** (= 全 phase 対称化、 ad hoc 完全脱却)
+
+事前準備 (= 中間版 ad hoc fix、 universal cover refactor で大半が revise/revert):
+- [`9d14b16`](https://github.com/sogebu/LorentzArena/commit/9d14b16): worldLine line break shader fold — Phase B で revise
 - [`f209d32`](https://github.com/sogebu/LorentzArena/commit/f209d32): Debris / Laser fold — Phase B/C1 で revise
-- [`86ae2cf`](https://github.com/sogebu/LorentzArena/commit/86ae2cf): 光円錐 cylinder clip 解除 — 維持 (torus mode 独自挙動で universal cover とは独立)
+- [`86ae2cf`](https://github.com/sogebu/LorentzArena/commit/86ae2cf): 光円錐 cylinder clip 解除 — **維持** (torus mode 独自、 universal cover とは独立)
 - [`d203503`](https://github.com/sogebu/LorentzArena/commit/d203503): isInPastLightCone に torus 引数 (ad hoc) — Phase A で revert
 
 **実機 multi-tab 実戦テストは継続中** (= odakin が universal cover refactor 後の visual を確認待ち)。
 
 ### 直近の文脈 (次セッションで意識すべき状態)
 
-#### PBC torus アリーナ — universal cover refactor (2026-04-28)
+#### PBC torus アリーナ — universal cover refactor 完遂 (2026-04-28)
 
 第 3 軸の `boundaryMode: "torus" | "open_cylinder"` を controlScheme / viewMode と直交軸として追加。 デフォルト torus = PBC、 切替は URL hash `#boundary=open_cylinder`。
 
-**Core abstraction** = **universal cover image cell** (詳細: `plans/2026-04-27-pbc-torus.md`):
+**思想 (= core abstraction) は [`DESIGN.md` §「PBC torus: Universal cover image observer past-cone pattern」](DESIGN.md) に記録**。 5 行の式 (`imageObserver = obs - 2L*(obsCell+cell)` / `isInPastLightCone(raw event, imageObserver)` / `imagePos = event + 2L*(obsCell+cell)`) で全 phase (= 描画 + event 発火) を統一。 物理計算 (hit / 攻防) は最短画像距離、 描画 / event 発火は raw 距離 (= image observer shift)、 と意味的整合を保つ。
 
-PBC topology では同じ event/object が universal cover に `(2R+1)²` image 複製 (= `(kx, ky) ∈ Z²` で `2L * (kx, ky)` 並進した copy)。 観測者は **各 image を独立に観測** (= 過去光円錐到達 + 描画 + fade)。 `R = ⌈LCH/(2L)⌉` で打ち切り、 LCH=L=20 なら R=1 = 3×3=9 cells が必要十分。
+**主要 helper** ([`physics/torus.ts`](src/physics/torus.ts) — 36 unit tests):
+- `ImageCell` 型 / `observableImageCells(R)` / `imageCellKey(cell)` / `eventImage(event, cell, L)` / `requiredImageCellRadius(L, LCH)` (= 新設、 universal cover 用)
+- `minImageDelta1D` / `imageCell` / `isWrapCrossing` / `subVector4Torus` / `shiftObserverToReferenceImage` (= 既存、 物理計算 (hit / past cone intersection) 用、 最短画像距離)
 
-**ad hoc 化を脱した思想**: 「単一最短画像で fold」 という旧パターンは半開区間 mod boundary flip artifact (= 「右で非表示 / 左で表示」 等の visual 非対称) を生む。 universal cover で各 image 独立処理すれば原理的に発生しない。 過去の Authority 解体 (Stage A〜H) と同じ統合 refactor パターン。
+**実装位置** (image observer past-cone pattern を全部適用済):
 
-**helper 群** ([`physics/torus.ts`](src/physics/torus.ts)):
-- `ImageCell = { kx, ky }` 型
-- `observableImageCells(R)`: `(2R+1)²` cells、 primary `(0,0)` を先頭固定 (= score double-count 防止規約)
-- `imageCellKey(cell)`: `"kx,ky"` 文字列 (= JSON serializable / Set key)
-- `eventImage(event, cell, L)`: event を image cell に並進 (= 物理計算用)
-- `requiredImageCellRadius(L, lightConeHeight)`: R = ⌈LCH/(2L)⌉
-- 既存: `minImageDelta1D` / `minImageDelta4` / `imageCell` / `displayPos` / `isWrapCrossing` / `subVector4Torus` / `shiftObserverToReferenceImage` (= 物理計算で最短画像 delta を取る場面で継続利用)
-- 単体テスト 36 ケース pass ([`physics/torus.test.ts`](src/physics/torus.test.ts))
+| Phase | 実装 |
+|---|---|
+| LighthouseRenderer | cells.map loop で per-image intersection |
+| OtherShipRenderer | cells.map loop、 各 image SelfShipRenderer 流用 |
+| SceneContent self ship | cells.map で Self/Rocket/Jellyfish 9 image render |
+| firePendingKillEvents / firePendingSpawnEvents | image cell loop、 各 image 独立判定 + UI trigger (= echo) |
+| WorldLineRenderer / LaserBatchRenderer / DebrisRenderer / SquareArenaRenderer | mesh.matrix で `2L*(obsCell+cell)` translate (= image observer shift と等価) |
 
-**各 phase の実装** (universal cover refactor):
+**LightConeRenderer**: torus mode では `ρ = LIGHT_CONE_HEIGHT` 全方位一定 (= cylinder clip 解除、 [`86ae2cf`](https://github.com/sogebu/LorentzArena/commit/86ae2cf))。 LCH=L で球面 rim ちょうど primary cell に内接 → 隣接 image cell の球面は重ならない、 1 image で十分
 
-1. **causal events** ([`causalEvents.ts`](src/components/game/causalEvents.ts)): `firePendingKillEvents` / `firePendingSpawnEvents` が image cell loop で各 image を判定。 `firedImageCells: string[]` で発火済み image を追跡、 `firedForUi = (firedImageCells.length === totalCells)` で derive。 score は primary image 発火時のみ加算 (= double-count 防止)、 visual effect (death flash / kill notification) も primary のみ、 spawn ring は **各 image 独立に出る** (= echo)
-2. **WorldLineRenderer** ([`WorldLineRenderer.tsx`](src/components/game/WorldLineRenderer.tsx)): `<instancedMesh>` × N segment、 instance count = `(2R+1)²`、 各 instance に `2L*(kx,ky)` translation matrix。 vertex は raw world、 segment 分割 (`buildWorldLineSegments`) は維持 (= 各 segment が cell 内に収まる前提)
-3. **LaserBatchRenderer** ([`LaserBatchRenderer.tsx`](src/components/game/LaserBatchRenderer.tsx)): `<lineSegments>` × `(2R+1)²` 個、 同じ BufferGeometry を共有して mesh.matrix に `displayMatrix × translate(2L*offset)` を per-image 設定。 `buildLaserSegments` で cell 跨ぎ Liang-Barsky split 維持
-4. **DebrisRenderer** ([`DebrisRenderer.tsx`](src/components/game/DebrisRenderer.tsx)): cylinder instance × `cells.length` で各 image cell に segment 配置。 max instance = MAX_DEBRIS × EXPLOSION_PARTICLES × 9
-5. **SquareArenaRenderer** ([`SquareArenaRenderer.tsx`](src/components/game/SquareArenaRenderer.tsx)): 4 corner を raw world 固定、 4 geometry × `cells.length` mesh で per-image 配置。 旧 corner wrap (= 半開区間 flip 問題) を撤去
-
-**timeFade / innerHide は変更不要**: 各 image cell instance の vertex world coords + 親 mesh.matrix で modelView 計算され、 USE_INSTANCING define で instance offset も自動考慮。 各 image 独立 dt fade (= 隣接 image は遠方で薄く)、 innerHide center は raw world で primary image のみ近距離→hide、 echo image は遠距離→描画 (= 自機の echo image が見える、 物理的に妥当)。
-
-**LightConeRenderer**: torus mode では `ρ = LIGHT_CONE_HEIGHT` 全方位一定 (= cylinder clip 解除)、 LCH=L で球面 rim ちょうど primary cell に内接 → 隣接 image cell の球面は cell 中心 2L 離れて重ならない、 1 image (= primary のみ) で十分
-
-**残課題 (= Phase D (b))**: ship hull 系 (Self/Other/Rocket/Jellyfish/Lighthouse) + DeathMarker / HeadingMarker / AntennaBeacon の 9 image 化。 SceneContent 内で各 renderer を `cells.length` 回 instance、 各々 image offset で配置する形が clean。 visual 大変化 (= 自他機 hull が周囲 8 image に並ぶ) で odakin の好み judgment 必要、 別セッション着手。 当面は ship hull のみ primary image 1 個、 worldLine / laser / debris / arena は 9 image で「線状物体は echo 表現、 hull は中心のみ」 の混在状態 (= bug 1, 2 は本質解決済、 visual 完成度のための残り task)
-
-**実機 multi-tab 実戦テスト** (= universal cover refactor 完遂 → odakin visual 確認待ち):
-- 自機を境界 (各軸 ±20) に向けて動かして、 worldLine が画面横切らず連続描画される
-- 「右 / 左 で worldLine 表示の非対称」 が消えてる
-- 1 周回って戻ってきた敵が過去光円錐に当たるたびに spawn ring が echo として trigger される
-- 境界跨ぎでもレーザーが反対側に届く (visual + hit 判定)
-- 結果 OK なら deploy
+**timeFade / innerHide は変更不要**: 各 image cell instance の vertex + 親 mesh.matrix で modelView 計算、 USE_INSTANCING で instance offset 自動考慮。 各 image 独立 dt fade、 innerHide center は raw world で primary のみ hide / echo image は描画される (= 物理的に妥当)。
 
 #### 操作系・機体形状の axis 設計 (2026-04-27 前半 再編)
 
@@ -152,28 +145,44 @@ PBC topology では同じ event/object が universal cover に `(2R+1)²` image 
 
 ### 優先 (次セッション最初に検討)
 
-#### PBC torus 完成版 → 実機 multi-tab + deploy
+#### Universal cover refactor の残部 (Phase D 残り)
 
-中間版完遂済 (worldLine line break + Debris fold + Laser segment split、 すべて GPU shader fold + CPU segment split の組合せ)。 残るのは **実機 multi-tab 検証 + deploy** のみ。
+`DESIGN.md §「PBC torus: Universal cover image observer past-cone pattern」` の core abstraction に従って、 残った D pattern renderer を image observer pattern で対応:
 
-- **実機 multi-tab 実戦テスト**: torus default で host + client 2 tab、 境界跨ぎでの worldLine が画面横切らずに line break で切れる / レーザーが反対側に届く / 死亡 routing / 攻防成立を目視確認
-- **deploy** (`pnpm run deploy` + main push)
-- 詳細: `plans/2026-04-27-pbc-torus.md` §「実装ステータス」 §「実機テスト未実施」
+- **DeathMarker** の 9 image 化 (= 死亡 sphere + ring を各 image cell ごとに表示)
+- **HeadingMarkerRenderer** の 9 image 化 (= 自機 aim 線を各 image cell に複製。 ただし aim 線は自機固有方向情報なので primary のみが妥当という判断もあり、 visual 評価必要)
+- **AntennaBeaconRenderer** (= dorsalStyle="antenna" 時の上面 antenna ビーコン) の 9 image 化
+- **レーザー emission marker** (= 過去光円錐到達 marker、 LaserBatchRenderer とは別) の 9 image 化
+- 全 callsite で `pastLightConeIntersectionWorldLine` の `imageObserver = obs - 2L*(obsCell + cell)` pattern を適用
 
-#### Step 2: 3x3 image cell 描画 (= Asteroids 風 visual wrapping)
+これらは「補助 marker」 で影響軽微 (= 通常時は出ない or 小さい)、 visual judgment 必要なので odakin の確認後着手推奨。
 
-odakin 提案の「観測者中心に世界が無限に繰り返す」 (= 3x3 マス重複表示) を独立 plan で詳細化。
+#### timeFade に spatial fade 追加 (任意)
 
-- 設計議論: `plans/2026-04-27-pbc-torus.md` Appendix B (今後追記)
-- 別 plan 化予定: `plans/2026-04-XX-pbc-torus-tile-N.md`
-- 実装階層: InstancedMesh + offset attribute で各 D pattern renderer に展開、 timeFade に spatial fade 追加で「無限」 を遠方で自然 fade out、 innerHide の primary-only dispatch
-- 中間版完成 + 実機テスト OK + deploy 後に着手 (= visual 評価が要るので odakin の判断必要)
+現在 `fade = r²/(r²+dt²)` (dt only) で隣接 image の vertex は dt 同じ → 同強度描画。 「無限平行世界」 が遠方で自然 fade out するには `fade = r²/(r²+dt²+s²)` で spatial 距離 s を加える必要。 ただし既存 timeFade 仕様変更で「等時刻面強調」 visual も変わるので別判断。 詳細: `plans/2026-04-27-pbc-torus.md` Appendix B §(a)
 
-#### 過去光円錐 ∩ 正方形枠 の交線描画 (低優先、 Step 2 で吸収予定)
+#### innerHide の dispatch 設計
 
-円柱版 [`ArenaRenderer`](src/components/game/ArenaRenderer.tsx) の `ARENA_PAST_CONE_OPACITY` LineLoop 相当を、 [`SquareArenaRenderer`](src/components/game/SquareArenaRenderer.tsx) でも実装。 4 平面 × 円錐の交線計算が必要。 ゲームプレイには影響しない描画装飾。
+現状: 隣接 image cell の自機 vertex は hide center から world 距離 ~2L で hide されない (= 9 hull が並ぶ visual)。 odakin の好みで:
+- **(b-1)** hide center を 9 image array で全部 hide (= 各 image hull が hide される)
+- **(b-2)** 自機 hull は primary のみ描画 (= 自機 echo を非表示)
+- **(b-3)** 何もしない (= 9 hull 並ぶの許容、 「無限平行世界」 として自然)
 
-**単独実装は defer**: 既存 SquareArenaRenderer の corner wrap が半開区間 `[obs±L)` を使っているため、 obs が arena 中央で境界 ±L 上にいるとき 4 corner が片側に flip して縮退する (= PBC として +L と -L は同じ点で数学的には正しいが visual に「arena が左半分にだけ存在」 する違和感)。 同じ問題が過去光円錐 sample にも伝播。 Step 2 (3x3) で arena を 9 image cell 複製描画すれば自然解消するので、 個別 fix より枠組み変更で一括解決の方が clean。 詳細: `plans/2026-04-27-pbc-torus.md` §「後続作業」
+詳細: `plans/2026-04-27-pbc-torus.md` Appendix B §(b)
+
+#### 実機 multi-tab 実戦テスト + deploy
+
+universal cover refactor 完遂後、 odakin の visual 評価が OK なら deploy:
+- 自機を境界 (各軸 ±20) 付近に動かして、 自機本体が周囲 8 image cells に echo 表示される (worldLine 履歴 ≥ 2L 必要、 実用的には高速移動でないと echo 届かない)
+- 「右で非表示 / 左で表示」 等の半開区間 flip artifact が消えてる
+- 1 周回ってきた敵の spawn / kill event が echo として複数 image で trigger される
+- 灯台 / 他機 hull / arena 枠 / worldLine / laser / debris すべて 9 image
+- arena 色 magenta が光円錐 cyan と区別できる
+- `pnpm run deploy` + main push
+
+#### 過去光円錐 ∩ 正方形枠 の交線描画 (低優先)
+
+円柱版 ArenaRenderer の `ARENA_PAST_CONE_OPACITY` LineLoop 相当を SquareArenaRenderer でも実装。 4 平面 × 円錐の交線計算。 各 image cell で独立 (= universal cover refactor 後は corner flip 問題消えてるので individual 実装可能になった)。 ゲームプレイ非影響、 描画装飾の completion。
 
 ### 既存 (優先順未決定)
 

@@ -181,3 +181,98 @@ manualChunks: (id) => (id.includes("node_modules") ? "vendor" : undefined),
 `package.json` で `build = vite build` と `typecheck = tsc -b` を別 script に分離。deploy pipeline (`build → gh-pages`) は tsc を blocking step に含めず、type error があっても build 通過させて deploy できる。明示的に `pnpm run typecheck` を走らせる運用。
 
 **Why**: 型 error の「報告」と「deploy 阻止」を分離。deploy は「UI が壊れていない」ことを最速で確認する用途、type error は視覚に現れないので別軸で監視。CI で並列実行できる。
+
+## PBC torus: Universal cover image observer past-cone pattern (2026-04-28)
+
+PBC topology の描画と event 発火を統一する core abstraction。 当初は「単一最短画像で
+primary cell に fold」 する ad hoc な pattern (= GPU shader fold / CPU mid shift / `eventImage`
+中心 fold 等) で個別実装していたが、 半開区間 mod boundary flip / echo 不発 / image 位置の
+非対称等の問題が次々顕在化したため、 2026-04-28 に **universal cover image observer past-cone
+pattern** に統一した。 詳細実装ログ: `plans/2026-04-27-pbc-torus.md`。
+
+### Core abstraction (= 全 phase で唯一の rule)
+
+PBC では同じ event/object が universal cover に無限の image として複製される (`(kx, ky) ∈ Z²`
+で `2L * (kx, ky)` 並進した copy)。 観測者本人 (= primary obs) の過去光円錐は spatial 球面で
+全方位、 各 image cell の copy は raw spatial 距離 (≤ R*2L) で観測者の過去光円錐に到達する
+(= echo として時間差で観測される)。
+
+これを描画と event 発火の両方で **同じ pattern** で扱う:
+
+```
+imageObserver = obs - 2L * (obsCell + cell.offset)   // 観測者を image cell 反対方向に shift
+isInPastLightCone(raw event.pos, imageObserver)      // raw 距離 (= torusHalfWidth 渡さない)
+imagePos = event.pos + 2L * (obsCell + cell.offset)  // observer 中心 cell 位置で表示
+```
+
+なぜ「image observer の shift」 か: 「raw event.pos と image observer」 の spatial 距離は
+「image event.pos (= raw + offset) と raw observer」 の spatial 距離と等価。 後者で考える方が
+直感的だが、 worldLine は raw vertex の集合なので「`pastLightConeIntersectionWorldLine` の
+observer 引数だけ shift する」 形にすると **worldLine.ts 側を一切変更せず**、 既存 binary
+search ロジックがそのまま動く (= ライブラリの purity を保つ)。
+
+### 物理計算 vs 描画の意味的整合 (= 2 つの異なる距離概念)
+
+PBC 化された距離計算は **2 つの異なる目的**で使い分ける:
+
+- **物理計算 (hit / 攻防判定)** = 最短画像距離 (= `pastLightConeIntersectionWorldLine` に
+  `torusHalfWidth` を渡す)。 「最も近い image でゲームメカニクス的に判定」 する。 PBC で
+  「敵を隣に 1 周回り込む方向から撃つ」 等の strategic depth 維持
+- **描画 / event 発火 (echo display)** = raw 距離 (= image observer shift)。 観測者本人の
+  過去光円錐に乗る image を独立判定、 echo として複数 image を表示
+
+ゲームメカニクス上「最短画像で 1 つだけ判定」 する物理と、 visual で「universal cover の
+無限 image を見せる」 描画を **混同しない**。 これが ad hoc を脱却した核心。
+
+### 実装位置 (= 全 phase で対称扱い)
+
+| Phase | 実装位置 | 役割 |
+|---|---|---|
+| 描画: 灯台 hull | `LighthouseRenderer` の cells.map loop | 灯台が観測者の過去光円錐 echo |
+| 描画: 他機 hull | `OtherShipRenderer` の cells.map loop | SelfShipRenderer 流用 |
+| 描画: 自機 hull | `SceneContent` の self ship section の cells.map loop | 自機 echo (= worldLine ~2L 以上必要) |
+| 発火: kill | `causalEvents.ts:firePendingKillEvents` | 各 image 独立判定、 visual effect は primary のみ、 score も primary のみ |
+| 発火: spawn | `causalEvents.ts:firePendingSpawnEvents` | 各 image 独立に spawn ring 出る (= echo 複数回) |
+| 描画: worldLine | `WorldLineRenderer` InstancedMesh × `(2R+1)²` | mesh.matrix で `2L*(obsCell+cell)` translate |
+| 描画: laser | `LaserBatchRenderer` `<lineSegments>` × `(2R+1)²` | 同上 |
+| 描画: debris cylinder | `DebrisRenderer` の instance count × `cells.length` | mid に `2L*(obsCell+cell)` 加算 |
+| 描画: arena 枠 | `SquareArenaRenderer` の mesh × `cells.length` | 同上 |
+
+worldLine / laser / debris / arena の「mesh.matrix translate」 は image observer pattern と
+**等価**: 物体 vertex を `+2L*offset` 並進してから observer rest frame に boost = 観測者を
+`-2L*offset` shift してから raw 距離計算するのと同じ。 ship hull 系は per-instance position
+計算 (= image observer past-cone intersection) で synthetic player を作って ship renderer に
+渡す形。
+
+### ad hoc 化を脱却した経緯 (= 過去事例として記録)
+
+最初は「単一最短画像で primary cell に fold」 する pattern で実装。 GPU shader fold
+(`torusFoldShader`) や CPU mid shift (`DebrisRenderer.mid`) などで個別対応。 以下の問題が
+次々顕在化:
+
+1. **半開区間 mod boundary flip**: 観測者から見て primary cell `[obs±L)` の右端 `+L` が
+   左端 `-L` に flip する mod の半開区間挙動 → 「右で worldLine 非表示 / 左で表示」 の
+   asymmetric artifact
+2. **echo が出ない**: 1 周回って戻ってきた敵の spawn event が「最短画像で 1 度しか発火しない」
+   ため、 同じ event が時間差で複数 image 観測されない
+3. **image position が物理的に間違い**: 各 image cell の object を「primary image の
+   intersection を image cell に copy」 で配置すると、 「観測者の image (= 隣セルの自分の
+   copy) の過去光円錐」 上に置かれる (≠ 観測者本人の過去光円錐)
+4. **observer cell index 中心ではなく event cell index 中心の image を判定**: causalEvents で
+   `eventImage(ev.pos, cell, L)` (= event 中心固定) を使うと観測者から遠い image しか判定
+   されず、 観測者周辺の image が trigger されない
+
+これらすべて「単一最短画像 fold」 の限界 = universal cover image observer past-cone pattern に
+統一すれば **原理的に発生しない**。
+
+### Authority 解体パターンとの構造的相似
+
+過去の Stage A〜H Authority 解体 (`plans/2026-04-14-authority-dissolution.md`) と同じ refactor
+構造:
+
+- **Before**: 散発的な individual fix (= ad hoc fold / shift / event-centric image) が積層
+- **After**: 1 つの core abstraction (= image observer pattern) で全 phase を統一表現
+
+過去事例として、 「個別 fix が積み上がった結果 visual artifact が次々顕在化した」 → 「一気に
+core abstraction で refactor」 という pattern は LorentzArena で **再現性のある成功 pattern**。
+似たような ad hoc 化が累積し始めたら早めに「universal な統一概念は何か」 を問う。
