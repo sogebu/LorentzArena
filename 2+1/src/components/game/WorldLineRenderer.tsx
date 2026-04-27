@@ -4,10 +4,13 @@ import * as THREE from "three";
 import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
 import {
   isWrapCrossing,
+  observableImageCells,
   pastLightConeIntersectionWorldLine,
+  requiredImageCellRadius,
   type Vector4,
 } from "../../physics";
 import {
+  LIGHT_CONE_HEIGHT,
   PLAYER_WORLDLINE_OPACITY,
   SHIP_WORLDLINE_HIDE_UPPER_SHRINK,
 } from "./constants";
@@ -15,7 +18,6 @@ import { buildDisplayMatrix } from "./displayTransform";
 import { createInnerHideShader } from "./innerHideShader";
 import { getThreeColor } from "./threeCache";
 import { applyTimeFadeShader } from "./timeFadeShader";
-import { createTorusFoldShader } from "./torusFoldShader";
 import type { WorldLineRendererProps } from "./types";
 
 /** TubeGeometry regeneration interval (in append count).
@@ -73,18 +75,46 @@ export const WorldLineRenderer = ({
   tubeOpacity = PLAYER_WORLDLINE_OPACITY,
   innerHideRadius,
 }: WorldLineRendererProps) => {
-  const meshRefs = useRef<(THREE.Mesh | null)[]>([]);
+  const meshRefs = useRef<(THREE.InstancedMesh | null)[]>([]);
   const prevTubeGeosRef = useRef<THREE.TubeGeometry[]>([]);
 
   const torusHalfWidth = useTorusHalfWidth();
+
+  // **PBC universal cover**: 観測者から見える image cell `(2R+1)²` (R=⌈LCH/(2L)⌉) を
+  // InstancedMesh で複製描画。 各 instance に `2L * (kx, ky)` の translation matrix を
+  // 設定、 vertex は raw world coords のまま (= shader fold 不要)。 mesh.matrix =
+  // displayMatrix で観測者 rest frame に boost+並進、 各 image cell が独立 dt で timeFade
+  // → 「右で flip」 等の単一 image fold artifact が原理的に発生しない。
+  // open_cylinder mode は instance count = 1 (= primary cell のみ) で従来挙動と等価。
+  const cells = useMemo(() => {
+    if (torusHalfWidth === undefined) return [{ kx: 0, ky: 0 }];
+    const R = requiredImageCellRadius(torusHalfWidth, LIGHT_CONE_HEIGHT);
+    return observableImageCells(R);
+  }, [torusHalfWidth]);
+  const instanceCount = cells.length;
+
+  // 共有 instance matrix: 各 instance に 2L*(kx, ky) translation。 cells が変わったときのみ
+  // 計算 (= torusHalfWidth 変化時のみ)。
+  const instanceMatrices = useMemo(() => {
+    const matrices: THREE.Matrix4[] = [];
+    const L = torusHalfWidth ?? 0;
+    for (const cell of cells) {
+      const m = new THREE.Matrix4().makeTranslation(
+        2 * L * cell.kx,
+        2 * L * cell.ky,
+        0,
+      );
+      matrices.push(m);
+    }
+    return matrices;
+  }, [cells, torusHalfWidth]);
+
   // version を TUBE_REGEN_INTERVAL で量子化して再生成を間引く
   // wl オブジェクト自体が変わった時（リスポーン）も確実に再生成するため wl を依存に含める
   const geoVersion = Math.floor(wl.version / TUBE_REGEN_INTERVAL);
-  // torus mode: TubeGeometry vertex は **raw unwrapped 連続値** のまま、 fold は GPU
-  // (vertex shader、 createTorusFoldShader) で per-vertex に行う。 segment 分割は CPU
-  // (`buildWorldLineSegments` の `isWrapCrossing` 判定) で、 obs 観測者 cell index でのみ
-  // 構造変化するので useMemo は obsCellX/Y で gate (cell 内 obs 動きでは segment 不変、
-  // shader が連続的に fold を吸収)。
+  // 観測者 cell index で gating: segment 構造は obs cell 跨ぎでのみ変わる (= cell 内 obs
+  // 動きでは isWrapCrossing 結果不変)。 cell 内 obs 動きは mesh.matrix (= displayMatrix)
+  // が連続吸収 (= 各 instance は固定 offset、 fold 動作が不要なので「flip」 artifact なし)。
   const obsCellX =
     torusHalfWidth !== undefined && observerPos
       ? Math.floor((observerPos.x + torusHalfWidth) / (2 * torusHalfWidth))
@@ -99,9 +129,6 @@ export const WorldLineRenderer = ({
     prevTubeGeosRef.current = [];
     if (wl.history.length < 2) return [];
 
-    // segment 分割: 観測者から見た cell 跨ぎ点で line break。 各 segment 内では history
-    // vertex はすべて同じ image cell (obs 中心) なので、 補間も含めて shader fold で
-    // 連続的に primary cell `[obs±L]²` に折られる。 詳細: plans/2026-04-27-pbc-torus.md §「(3)」
     const segments = buildWorldLineSegments(
       wl.history,
       observerPos,
@@ -110,7 +137,8 @@ export const WorldLineRenderer = ({
 
     const geos: THREE.TubeGeometry[] = [];
     for (const seg of segments) {
-      // raw world coords をそのまま vertex に。 fold は GPU shader で実行。
+      // raw world coords をそのまま vertex に。 instance offset で各 image に複製、
+      // mesh.matrix で観測者 rest frame に投影。
       const points = seg.map(
         (ps) => new THREE.Vector3(ps.pos.x, ps.pos.y, ps.pos.t),
       );
@@ -144,23 +172,22 @@ export const WorldLineRenderer = ({
 
   const displayMatrix = buildDisplayMatrix(observerPos, observerBoost);
   // Inner hide center: 観測者の過去光円錐とこの世界線との交差点 (= 観測者がこの player を
-  // 「今見ている」spacetime 点) に追従。これは gnomon マーカーが描かれる位置でもあり、
-  // worldLine 最終 vertex (= player の現在位置) ではない (= 観測者からは光速遅延で過去に見える)。
-  // useFrame で in-place 更新 → shader uniform が auto sync。
+  // 「今見ている」spacetime 点) に追従。 raw world coords。 隣接 image cell の vertex は
+  // hide center から world 距離 ~2L で hide されない (= 自機の echo image が描画される)。
   const hideCenter = useMemo(() => new THREE.Vector3(), []);
-  // torus fold shader 用の観測者連続位置 ref。 useFrame で in-place 更新 → uObserverPos
-  // uniform が auto sync (= hideCenter と同じパターン)。
-  const obsShaderPos = useMemo(() => new THREE.Vector3(), []);
   useFrame(() => {
     for (let i = 0; i < tubeGeos.length; i++) {
       const mesh = meshRefs.current[i];
-      if (mesh) {
-        mesh.matrix.copy(displayMatrix);
-        mesh.matrixAutoUpdate = false;
+      if (!mesh) continue;
+      mesh.matrix.copy(displayMatrix);
+      mesh.matrixAutoUpdate = false;
+      // instance matrix を毎フレーム refresh (= count / cells が変わらない限り same matrix
+      // のはずだが、 InstancedMesh.count を tubeGeos.length 経由で変更した瞬間に必要)
+      for (let j = 0; j < instanceCount; j++) {
+        mesh.setMatrixAt(j, instanceMatrices[j]);
       }
-    }
-    if (observerPos) {
-      obsShaderPos.set(observerPos.x, observerPos.y, 0);
+      mesh.count = instanceCount;
+      mesh.instanceMatrix.needsUpdate = true;
     }
     if (innerHideRadius != null && observerPos) {
       const intersection = pastLightConeIntersectionWorldLine(
@@ -178,19 +205,16 @@ export const WorldLineRenderer = ({
     }
   });
 
-  // Shader 注入順 = `fold → timeFade → innerHide`。 fold が transformed.xy を観測者中心
-  // primary cell `[obs±L]²` に折り、 後段は fold 後の transformed を引き継ぐ。
-  //   - timeFade: `modelMatrix * transformed` の z (= dt) のみ使う。 fold は (x,y) のみで
-  //     z 不変 → vTimeFade 無影響
-  //   - innerHide: `transformed - uInnerHideCenter` の world 距離。 fold 後 vertex が
-  //     hide center と同 image cell なら近距離 (hide)、 異なれば遠距離 (描画) → 物理的に
-  //     妥当 (過去映像の隣接 image vertex は hide しない)
+  // Shader 注入順 = `timeFade → innerHide`。 fold は **不要** (= instance offset で各
+  // image cell に複製済み、 vertex は raw + instance translation で正しい world position)。
+  //   - timeFade: `modelMatrix * (instanceMatrix * transformed)` の z (= dt) で fade。
+  //     各 instance 独立 dt → 隣接 image (= 遠い) は dt 大で薄く描画
+  //   - innerHide: `instanceMatrix * transformed` (= world coords + offset) と
+  //     uInnerHideCenter (raw world) の距離。 primary instance は近距離 → hide、 隣接
+  //     instance は ~2L 離れて hide されない → echo image 描画
   const onShader = useMemo(() => {
     const layers: ((s: THREE.WebGLProgramParametersWithUniforms) => void)[] =
       [];
-    if (torusHalfWidth !== undefined) {
-      layers.push(createTorusFoldShader(torusHalfWidth, obsShaderPos));
-    }
     layers.push(applyTimeFadeShader);
     if (innerHideRadius != null) {
       layers.push(
@@ -204,24 +228,23 @@ export const WorldLineRenderer = ({
     return (s: THREE.WebGLProgramParametersWithUniforms) => {
       for (const layer of layers) layer(s);
     };
-  }, [innerHideRadius, hideCenter, torusHalfWidth, obsShaderPos]);
+  }, [innerHideRadius, hideCenter]);
 
   const threeColor = getThreeColor(color);
   return (
     <>
       {tubeGeos.map((geo, i) => (
-        <mesh
+        <instancedMesh
           // biome-ignore lint/suspicious/noArrayIndexKey: segment 配列は worldLine 時系列順、 順序入替なし
           key={i}
           ref={(el) => {
             meshRefs.current[i] = el;
           }}
-          geometry={geo}
+          args={[geo, undefined, instanceCount]}
+          frustumCulled={false}
         >
-          {/* 2026-04-22: PBR (MeshStandardMaterial + roughness/metalness/emissive) →
-              unlit (MeshBasicMaterial) に切替。ライティング起因の specular highlight で
-              「ツヤツヤ」な実体感が出ていたのを、視点に寄らず均一な translucent flat で
-              「半透明の幽霊」的外観に。depthWrite=false で前後関係による自己遮蔽を抑制。 */}
+          {/* 2026-04-22: PBR → unlit (MeshBasicMaterial)。 視点に寄らず均一な translucent
+              flat で「半透明の幽霊」 的外観、 depthWrite=false で前後関係による自己遮蔽を抑制。 */}
           <meshBasicMaterial
             color={threeColor}
             transparent
@@ -229,7 +252,7 @@ export const WorldLineRenderer = ({
             depthWrite={false}
             onBeforeCompile={onShader}
           />
-        </mesh>
+        </instancedMesh>
       ))}
     </>
   );

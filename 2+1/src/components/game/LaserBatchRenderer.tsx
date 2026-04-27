@@ -1,19 +1,18 @@
-import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import { LASER_WORLDLINE_OPACITY } from "./constants";
+import { observableImageCells, requiredImageCellRadius } from "../../physics";
+import { LASER_WORLDLINE_OPACITY, LIGHT_CONE_HEIGHT } from "./constants";
 import { useDisplayFrame } from "./DisplayFrameContext";
 import { buildLaserSegments, type LaserSegment } from "./laserSegmentSplit";
 import { getThreeColor } from "./threeCache";
 import { applyTimeFadeShader } from "./timeFadeShader";
-import { createTorusFoldShader } from "./torusFoldShader";
 import type { Laser } from "./types";
 
-// D pattern: world frame の端点で BufferGeometry を構築し、lineSegments の matrix に
-// displayMatrix を適用して GPU で頂点単位 Lorentz。 torus mode では vertex は raw world
-// 連続値、 fold は GPU shader で per-vertex に行う (createTorusFoldShader)。 emission ↔ tip
-// が異なる image cell の laser は CPU で 2 segment に分割 (buildLaserSegments) して shader
-// fold が画面横切る現象を防ぐ。 詳細: plans/2026-04-27-pbc-torus.md §「レーザー軌跡」
+// **PBC universal cover**: vertex は raw world coords、 各 image cell `(2R+1)²` を独立な
+// LineSegments mesh で複製描画 (= 同じ BufferGeometry を共有、 mesh.matrix で `displayMatrix
+// × translate(2L*offset)` を per-image 設定)。 segment split (buildLaserSegments) は維持
+// = 各 segment が cell 内に収まる前提で、 各 image でも cell 境界跨ぎ artifact が出ない。
+// open_cylinder mode は instance count = 1 (= primary cell のみ) で従来挙動と等価。
 export const LaserBatchRenderer = ({
   lasers,
 }: {
@@ -21,7 +20,7 @@ export const LaserBatchRenderer = ({
 }) => {
   const { displayMatrix, observerPos, torusHalfWidth } = useDisplayFrame();
   const geoRef = useRef<THREE.BufferGeometry | null>(null);
-  const meshRef = useRef<THREE.LineSegments | null>(null);
+  const meshRefs = useRef<(THREE.LineSegments | null)[]>([]);
 
   useEffect(() => {
     return () => {
@@ -30,8 +29,16 @@ export const LaserBatchRenderer = ({
     };
   }, []);
 
+  // 観測者から見える image cells。 torus mode では `(2R+1)²` 個、 open_cylinder では primary
+  // 1 個。 cells 配列の順序が mesh refs の index に対応。
+  const cells = useMemo(() => {
+    if (torusHalfWidth === undefined) return [{ kx: 0, ky: 0 }];
+    const R = requiredImageCellRadius(torusHalfWidth, LIGHT_CONE_HEIGHT);
+    return observableImageCells(R);
+  }, [torusHalfWidth]);
+
   // segment 構造の再計算 gating: torus mode では observer cell 跨ぎでのみ image cell 判定
-  // 結果が変わる (cell 内 obs 動きでは結果不変)。 cell index で gate。
+  // 結果が変わる。
   const obsCellX =
     torusHalfWidth !== undefined && observerPos
       ? Math.floor((observerPos.x + torusHalfWidth) / (2 * torusHalfWidth))
@@ -48,7 +55,7 @@ export const LaserBatchRenderer = ({
       geoRef.current = null;
       return null;
     }
-    // 各 laser を image cell 跨ぎで segment 配列に展開
+    // 各 laser を image cell 跨ぎで segment 配列に展開 (= 1 segment が cell 内に収まる前提)。
     const allSegs: { seg: LaserSegment; color: THREE.Color }[] = [];
     for (const l of lasers) {
       const tip = {
@@ -94,45 +101,45 @@ export const LaserBatchRenderer = ({
     return geo;
   }, [lasers, torusHalfWidth, obsCellX, obsCellY]);
 
-  // displayMatrix を mesh.matrix に適用 (頂点単位 Lorentz)
+  // 各 image cell mesh の matrix を `displayMatrix × translate(2L*offset)` で設定。
+  // 共有 BufferGeometry なので vertex 更新は不要、 matrix のみ per-image 更新。
   useEffect(() => {
-    const m = meshRef.current;
-    if (!m) return;
-    m.matrix.copy(displayMatrix);
-    m.matrixAutoUpdate = false;
-  }, [displayMatrix]);
-
-  // torus fold shader 用の観測者連続位置 ref。 useFrame で in-place 更新 → uObserverPos
-  // uniform が auto sync。
-  const obsShaderPos = useMemo(() => new THREE.Vector3(), []);
-  useFrame(() => {
-    if (observerPos) obsShaderPos.set(observerPos.x, observerPos.y, 0);
-  });
-
-  // Shader 注入順 = `fold → timeFade`。 fold が transformed.xy を観測者 primary cell に
-  // 折り、 timeFade は fold 後 modelMatrix * transformed の z (= dt) で Lorentzian fade。
-  // (z 不変なので fold は timeFade に影響しない)
-  const onShader = useMemo(() => {
-    if (torusHalfWidth === undefined) return applyTimeFadeShader;
-    const fold = createTorusFoldShader(torusHalfWidth, obsShaderPos);
-    return (s: THREE.WebGLProgramParametersWithUniforms) => {
-      fold(s);
-      applyTimeFadeShader(s);
-    };
-  }, [torusHalfWidth, obsShaderPos]);
+    const L = torusHalfWidth ?? 0;
+    for (let i = 0; i < cells.length; i++) {
+      const m = meshRefs.current[i];
+      if (!m) continue;
+      const offset = new THREE.Matrix4().makeTranslation(
+        2 * L * cells[i].kx,
+        2 * L * cells[i].ky,
+        0,
+      );
+      m.matrix.multiplyMatrices(displayMatrix, offset);
+      m.matrixAutoUpdate = false;
+    }
+  }, [displayMatrix, cells, torusHalfWidth]);
 
   if (!geometry) return null;
   return (
-    <lineSegments ref={meshRef} geometry={geometry}>
-      {/* per-vertex 時間 fade: 各 laser の emission 端 (observer.t 近傍) は濃く、
-          range 先の先端 (emissionPos.t + range) は薄くなる。batch の 1 material で
-          全 laser が自動的に個別 fade。 */}
-      <lineBasicMaterial
-        vertexColors
-        transparent
-        opacity={LASER_WORLDLINE_OPACITY}
-        onBeforeCompile={onShader}
-      />
-    </lineSegments>
+    <>
+      {cells.map((cell, i) => (
+        <lineSegments
+          key={`${cell.kx},${cell.ky}`}
+          ref={(el) => {
+            meshRefs.current[i] = el;
+          }}
+          geometry={geometry}
+          frustumCulled={false}
+        >
+          {/* per-vertex 時間 fade: 各 image cell が独立 dt で fade (= 隣接 image は遠方
+              dt 大で薄く描画される)。 */}
+          <lineBasicMaterial
+            vertexColors
+            transparent
+            opacity={LASER_WORLDLINE_OPACITY}
+            onBeforeCompile={applyTimeFadeShader}
+          />
+        </lineSegments>
+      ))}
+    </>
   );
 };
