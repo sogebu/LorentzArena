@@ -1,14 +1,5 @@
 import { create } from "zustand";
 import {
-  appendWorldLine,
-  createPhaseSpace,
-  createVector4,
-  createWorldLine,
-  getVelocity4,
-  vector3Zero,
-  type Vector3,
-} from "../physics";
-import {
   ENERGY_MAX,
   EXPLOSION_DEBRIS_COLOR,
   HIT_DEBRIS_COLOR,
@@ -27,7 +18,10 @@ import {
   generateHitParticles,
 } from "../components/game/debris";
 import { applyKill } from "../components/game/killRespawn";
-import { isLighthouse, LIGHTHOUSE_DISPLAY_NAME } from "../components/game/lighthouse";
+import {
+  isLighthouse,
+  LIGHTHOUSE_DISPLAY_NAME,
+} from "../components/game/lighthouse";
 import type {
   DeathEvent,
   DebrisRecord,
@@ -41,12 +35,23 @@ import type {
   RespawnEventRecord,
   SpawnEffect,
 } from "../components/game/types";
+import {
+  appendWorldLine,
+  createPhaseSpace,
+  createVector4,
+  createWorldLine,
+  getVelocity4,
+  type Vector3,
+  vector3Zero,
+} from "../physics";
 
 // ---------------------------------------------------------------------------
 // Store types
 // ---------------------------------------------------------------------------
 
-type PlayersUpdater = (prev: Map<string, RelativisticPlayer>) => Map<string, RelativisticPlayer>;
+type PlayersUpdater = (
+  prev: Map<string, RelativisticPlayer>,
+) => Map<string, RelativisticPlayer>;
 type LasersUpdater = (prev: Laser[]) => Laser[];
 type SpawnsUpdater = (prev: SpawnEffect[]) => SpawnEffect[];
 
@@ -62,7 +67,11 @@ type SpawnsUpdater = (prev: SpawnEffect[]) => SpawnEffect[];
 export type ViewMode = "classic" | "shooter" | "jellyfish";
 
 const VIEW_MODE_LS_KEY = "la-view-mode";
-const VIEW_MODE_VALUES: readonly ViewMode[] = ["classic", "shooter", "jellyfish"];
+const VIEW_MODE_VALUES: readonly ViewMode[] = [
+  "classic",
+  "shooter",
+  "jellyfish",
+];
 
 const loadViewMode = (): ViewMode => {
   if (typeof localStorage === "undefined") return "classic";
@@ -72,7 +81,8 @@ const loadViewMode = (): ViewMode => {
     : "classic";
 };
 const saveViewMode = (mode: ViewMode) => {
-  if (typeof localStorage !== "undefined") localStorage.setItem(VIEW_MODE_LS_KEY, mode);
+  if (typeof localStorage !== "undefined")
+    localStorage.setItem(VIEW_MODE_LS_KEY, mode);
 };
 
 /**
@@ -126,7 +136,10 @@ const saveControlScheme = (scheme: ControlScheme) => {
 export type BoundaryMode = "torus" | "open_cylinder";
 
 const BOUNDARY_MODE_LS_KEY = "la-boundary-mode";
-const BOUNDARY_MODE_VALUES: readonly BoundaryMode[] = ["torus", "open_cylinder"];
+const BOUNDARY_MODE_VALUES: readonly BoundaryMode[] = [
+  "torus",
+  "open_cylinder",
+];
 
 const loadBoundaryMode = (): BoundaryMode => {
   if (typeof localStorage === "undefined") return "torus";
@@ -186,7 +199,9 @@ export interface GameState {
   setLasers: (updater: LasersUpdater) => void;
   setScores: (scores: Record<string, number>) => void;
   setSpawns: (updater: SpawnsUpdater) => void;
-  setFrozenWorldLines: (updater: (prev: FrozenWorldLine[]) => FrozenWorldLine[]) => void;
+  setFrozenWorldLines: (
+    updater: (prev: FrozenWorldLine[]) => FrozenWorldLine[],
+  ) => void;
   setDebrisRecords: (updater: (prev: DebrisRecord[]) => DebrisRecord[]) => void;
   setKillNotification: (v: KillNotification3D | null) => void;
   setMyDeathEvent: (v: DeathEvent | null) => void;
@@ -285,13 +300,11 @@ export const useGameStore = create<GameState>()((set, get) => ({
   setPlayers: (updater) =>
     set((state) => ({ players: updater(state.players) })),
 
-  setLasers: (updater) =>
-    set((state) => ({ lasers: updater(state.lasers) })),
+  setLasers: (updater) => set((state) => ({ lasers: updater(state.lasers) })),
 
   setScores: (scores) => set({ scores }),
 
-  setSpawns: (updater) =>
-    set((state) => ({ spawns: updater(state.spawns) })),
+  setSpawns: (updater) => set((state) => ({ spawns: updater(state.spawns) })),
 
   setFrozenWorldLines: (updater) =>
     set((state) => ({ frozenWorldLines: updater(state.frozenWorldLines) })),
@@ -343,12 +356,15 @@ export const useGameStore = create<GameState>()((set, get) => ({
       victimName,
       victimColor: victim.color,
       firedForUi: false,
+      firedImageCells: [],
     };
 
     // Batch update (arrays must go through set() to survive state transitions)
     set({
       players: applyKill(state.players, victimId),
-      frozenWorldLines: [...state.frozenWorldLines, frozen].slice(-MAX_FROZEN_WORLDLINES),
+      frozenWorldLines: [...state.frozenWorldLines, frozen].slice(
+        -MAX_FROZEN_WORLDLINES,
+      ),
       debrisRecords: [...state.debrisRecords, newDebris].slice(-MAX_DEBRIS),
       killLog: [...state.killLog, killLogEntry],
       myDeathEvent:
@@ -422,6 +438,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
       playerId,
       pos: position,
       color: player.color,
+      firedImageCells: [],
     };
 
     set({
@@ -495,7 +512,11 @@ export const useGameStore = create<GameState>()((set, get) => ({
     // (respawn で ENERGY_MAX にリセット)。
     const nextPlayers = new Map(state.players);
     nextPlayers.set(victimId, { ...victim, energy: 0 });
-    set({ players: nextPlayers, hitLog: nextHitLog, debrisRecords: nextDebris });
+    set({
+      players: nextPlayers,
+      hitLog: nextHitLog,
+      debrisRecords: nextDebris,
+    });
     get().handleKill(victimId, killerId, hitPos, myId);
   },
 
@@ -606,14 +627,20 @@ export const selectDeadPlayerIds = (state: LogState): Set<string> => {
  * プレイヤーの invincibility 終了 wallTime。respawn が無ければ 0 (= never)。
  * LH は invincibility 対象外なので -Infinity。
  */
-export const selectInvincibleUntil = (state: LogState, playerId: string): number => {
+export const selectInvincibleUntil = (
+  state: LogState,
+  playerId: string,
+): number => {
   if (isLighthouse(playerId)) return -Infinity;
   const rTime = latestRespawnTime(state).get(playerId);
   return rTime === undefined ? 0 : rTime + INVINCIBILITY_DURATION;
 };
 
 /** 現在無敵中の全プレイヤー ID。hit detection の invincible フィルタ用。 */
-export const selectInvincibleIds = (state: LogState, now: number): Set<string> => {
+export const selectInvincibleIds = (
+  state: LogState,
+  now: number,
+): Set<string> => {
   const ids = new Set<string>();
   for (const [id, rTime] of latestRespawnTime(state)) {
     if (isLighthouse(id)) continue;
@@ -637,7 +664,10 @@ export const selectPendingKillEvents = (state: LogState): KillEventRecord[] =>
  * 最短殺害時間が 5 × POST_HIT_IFRAME_MS = 2.5s になる。なお `selectInvincibleUntil`
  * は依然として LH 短絡 (-Infinity) — 5s respawn 無敵は LH には不要。
  */
-export const selectPostHitUntil = (state: LogState, victimId: string): number => {
+export const selectPostHitUntil = (
+  state: LogState,
+  victimId: string,
+): number => {
   let latest = 0;
   for (const e of state.hitLog) {
     if (e.victimId !== victimId) continue;
@@ -668,7 +698,8 @@ export const gcLogs = (
   const latestResp = new Map<string, number>();
   for (const e of respawnLog) {
     const prev = latestResp.get(e.playerId);
-    if (prev === undefined || e.wallTime > prev) latestResp.set(e.playerId, e.wallTime);
+    if (prev === undefined || e.wallTime > prev)
+      latestResp.set(e.playerId, e.wallTime);
   }
 
   const nextKill = killLog.filter((e) => {
@@ -690,8 +721,12 @@ export const gcLogs = (
   const nextResp = reversed.reverse();
 
   // Safety cap
-  const capKill = nextKill.length > MAX_KILL_LOG ? nextKill.slice(-MAX_KILL_LOG) : nextKill;
-  const capResp = nextResp.length > MAX_RESPAWN_LOG ? nextResp.slice(-MAX_RESPAWN_LOG) : nextResp;
+  const capKill =
+    nextKill.length > MAX_KILL_LOG ? nextKill.slice(-MAX_KILL_LOG) : nextKill;
+  const capResp =
+    nextResp.length > MAX_RESPAWN_LOG
+      ? nextResp.slice(-MAX_RESPAWN_LOG)
+      : nextResp;
 
   // 長さ不変なら同じ参照を返す (kill / respawn の transform は削除のみなので
   // 長さ不変 ⇔ 内容不変)

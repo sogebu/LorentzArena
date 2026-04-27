@@ -190,25 +190,16 @@ export const lorentzDotVector4 = (a: Vector4, b: Vector4): number =>
  * True when the separation is timelike or lightlike AND the event is in the past.
  * JP: event が observer の過去光円錐内（時間的 or 光的、かつ過去）にあるか判定。
  *
- * `torusHalfWidth` 指定時は (x, y) を最短画像で計算 (= PBC で 1 周回って戻ってきた event
- * も近い image cell 経由で判定される)。 t / z は素通し (空間 wrap のみ)。 indefined なら
- * unwrapped 連続値で従来挙動。
+ * **PBC 対応**: caller 側で event を image cell ごとに `eventImage(event, cell, L)` で
+ * 並進してから本関数を呼ぶ pattern (= universal cover の image loop)。 本関数自体は
+ * unwrapped 連続値前提で計算する純粋関数。 詳細: `causalEvents.ts` の image cell loop。
  */
 export const isInPastLightCone = (
   event: Vector4,
   observer: Vector4,
-  torusHalfWidth?: number,
 ): boolean => {
-  let dx = event.x - observer.x;
-  let dy = event.y - observer.y;
-  if (torusHalfWidth !== undefined) {
-    const L = torusHalfWidth;
-    dx = dx - 2 * L * Math.round(dx / (2 * L));
-    dy = dy - 2 * L * Math.round(dy / (2 * L));
-  }
-  const dz = event.z - observer.z;
-  const dt = event.t - observer.t;
-  return dx * dx + dy * dy + dz * dz - dt * dt <= 0 && observer.t > event.t;
+  const diff = subVector4(event, observer);
+  return lorentzDotVector4(diff, diff) <= 0 && observer.t > event.t;
 };
 
 /**

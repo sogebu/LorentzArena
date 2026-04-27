@@ -142,6 +142,66 @@ export const displayPos = (
 };
 
 /**
+ * Universal cover image cell index。 PBC topology では同じ event が無限の image cell に
+ * 複製される (= `(kx, ky) ∈ Z²` で `2L * (kx, ky)` 並進した copy が universal cover に存在)。
+ *
+ * `(kx, ky) = (0, 0)` を primary image と呼ぶ。 観測者から見える image 集合は spatial 距離 ≤
+ * LCH の image (= R = ⌈LCH/(2L)⌉ で決まる) で打ち切れる。
+ */
+export type ImageCell = { kx: number; ky: number };
+
+/**
+ * 観測者から観測可能な image cell の集合。 `(kx, ky) ∈ {-R, ..., R}²` の `(2R+1)²` 個。
+ *
+ * primary cell `(0, 0)` を必ず先頭に置く (= score double-count 防止のため、 「最初の発火」
+ * を primary image で固定する規約)。
+ */
+export const observableImageCells = (R: number): ImageCell[] => {
+  const cells: ImageCell[] = [{ kx: 0, ky: 0 }];
+  for (let kx = -R; kx <= R; kx++) {
+    for (let ky = -R; ky <= R; ky++) {
+      if (kx === 0 && ky === 0) continue;
+      cells.push({ kx, ky });
+    }
+  }
+  return cells;
+};
+
+/**
+ * Image cell key (= `"kx,ky"` 文字列、 JSON serializable)。 Set / Map のキーや
+ * `firedImageCells: string[]` 配列の要素として使う。
+ */
+export const imageCellKey = (cell: ImageCell): string =>
+  `${cell.kx},${cell.ky}`;
+
+/**
+ * Event の image cell における spatial 位置を計算 (= world coords を `2L * (kx, ky)` 並進)。
+ * t / z は素通し (空間 wrap のみ)。
+ */
+export const eventImage = <T extends { x: number; y: number }>(
+  event: T,
+  cell: ImageCell,
+  L: number,
+): T => ({
+  ...event,
+  x: event.x + 2 * L * cell.kx,
+  y: event.y + 2 * L * cell.ky,
+});
+
+/**
+ * 観測者の過去光円錐 (spatial 半径 LCH) が届く image cell の最大半径 R。
+ *
+ *   R = ⌈LCH / (2L)⌉
+ *
+ * 例: LCH = L = 20 → R = ⌈0.5⌉ = 1 (= 3x3 cells で十分)。
+ * LCH = 2L → R = 1 で隣接 image が ちょうど境界、 R = 2 にすれば余裕。
+ */
+export const requiredImageCellRadius = (
+  L: number,
+  lightConeHeight: number,
+): number => Math.ceil(lightConeHeight / (2 * L));
+
+/**
  * worldLine の隣接 2 点間で「画面を横切るような線分」になっているかの判定。
  *
  * OR 結合の 2 軸:

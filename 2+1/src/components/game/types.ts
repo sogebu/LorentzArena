@@ -42,18 +42,33 @@ export type DeathEvent = {
 };
 
 // スポーンイベント（過去光円錐到達まで UI 遅延）
+//
+// PBC universal cover: spawn event も kill と同じく `(2R+1)²` image cell に複製、 各 image
+// 到達で spawn ring が trigger される (echo)。 `firedImageCells` で発火済み image を追跡、
+// 全 image 完了で event を消化 (`remaining` から外す)。 open_cylinder mode では primary
+// 1 つで完了 = 従来挙動。
 export type PendingSpawnEvent = {
   readonly id: string;
   readonly playerId: string;
   readonly pos: { t: number; x: number; y: number; z: number };
   readonly color: string; // fallback color (may be stale at creation time)
+  firedImageCells: string[];
 };
 
 /**
  * Authority 解体 Stage C の event log エントリ。
  * 全 kill は不変記録として killLog に append される。
- * `firedForUi`: 過去光円錐到達で UI score に反映済みかどうか
- * (firePendingKillEvents が書き換える)。
+ *
+ * **PBC universal cover semantics**: PBC torus mode では同じ event が `(2R+1)²` image
+ * cell に複製されて各々独立に観測者の過去光円錐に到達する (= echo)。
+ * - `firedImageCells: string[]`: 発火済み image cell key (= `"kx,ky"`) のリスト。 各 image
+ *   到達で push、 visual effect (death flash / kill notification) trigger。 score は primary
+ *   image (= `"0,0"`) 発火時のみ加算 (= double-count 防止)
+ * - `firedForUi: boolean` (legacy + derived): 「全 image 発火済」 = `firedImageCells.length
+ *   === totalImageCells`。 game-store の selectPendingKills や gcLogs で「完全消化判定」 に
+ *   使う。 open_cylinder mode では `(2R+1)² = 1` (= primary のみ) なので primary 発火 =
+ *   firedForUi = true で従来挙動維持
+ *
  * `wallTime`: invincibility / respawn timer / leaderboard の判定用。
  * coord time は `hitPos.t` で保持されるので冗長保存しない。
  * `victimName` / `victimColor`: kill 発生時点のスナップショット (後から
@@ -67,6 +82,7 @@ export type KillEventRecord = {
   readonly victimName: string;
   readonly victimColor: string;
   firedForUi: boolean;
+  firedImageCells: string[];
 };
 
 /**

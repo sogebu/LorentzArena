@@ -304,11 +304,14 @@ export function useGameLoop({
       touch.pitchDelta = 0;
 
       // --- Causal events ---
-      // Stage C: pending kill events は killLog.filter(!firedForUi) で derive。
-      // 過去光円錐到達で firedForUi を立て、scores を加算する。
-      // torus mode では最短画像距離で過去光円錐到達判定 → 1 周回って戻ってきた敵 event
-      // も近い image cell 経由で発火される (= odakin 報告の「1 周回って戻ってきた敵に
-      // リスポーンエフェクト出ない」 fix)。
+      // **PBC universal cover**: 各 event は `(2R+1)²` image cell に複製され、 各 image が
+      // 観測者の過去光円錐に独立に到達する (= echo)。 firePendingKillEvents は image cell
+      // loop で各 image を判定、 newly fired image を `firedImageCells` に push、 全 image
+      // 到達で `firedForUi = true` に遷移 (= caller 側で derive)。 score は primary image
+      // 発火時のみ加算 (= double-count 防止)。 visual effect (death flash / kill notification)
+      // は primary image でのみ trigger。 隣接 image 到達は echo として `firedImageCells` を
+      // 育てるだけ (visual effect なし)。
+      // 詳細: physics/torus.ts §「Universal cover image cell」 + causalEvents.ts
       const myPos = store.players.get(myId)?.phaseSpace.pos;
       const causalTorusHalfWidth =
         store.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined;
@@ -319,12 +322,31 @@ export function useGameLoop({
           myId,
           store.scores,
           causalTorusHalfWidth,
+          LIGHT_CONE_HEIGHT,
         );
         if (result.firedIndices.length > 0) {
           const firedSet = new Set(result.firedIndices);
-          const nextLog = store.killLog.map((e, i) =>
-            firedSet.has(i) ? { ...e, firedForUi: true } : e,
-          );
+          // R に応じた total image cells 数を計算。 open_cylinder mode は R=0 → 1 cell
+          // (= primary のみ) で従来挙動と等価。
+          const totalCells =
+            causalTorusHalfWidth === undefined
+              ? 1
+              : (() => {
+                  const R = Math.ceil(
+                    LIGHT_CONE_HEIGHT / (2 * causalTorusHalfWidth),
+                  );
+                  return (2 * R + 1) ** 2;
+                })();
+          const nextLog = store.killLog.map((e, i) => {
+            if (!firedSet.has(i)) return e;
+            const merged =
+              result.firedImageCellsByIndex.get(i) ?? e.firedImageCells;
+            return {
+              ...e,
+              firedImageCells: merged,
+              firedForUi: merged.length >= totalCells,
+            };
+          });
           useGameStore.setState({
             killLog: nextLog,
             scores: { ...result.newScores },
@@ -353,6 +375,7 @@ export function useGameLoop({
           Date.now(),
           store.players,
           causalTorusHalfWidth,
+          LIGHT_CONE_HEIGHT,
         );
         if (result.firedSpawns.length > 0) {
           useGameStore.setState({ pendingSpawnEvents: result.remaining });

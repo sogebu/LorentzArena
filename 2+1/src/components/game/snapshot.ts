@@ -14,7 +14,11 @@ import { useGameStore } from "../../stores/game-store";
 import { ENERGY_MAX, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
 import { isLighthouse } from "./lighthouse";
 import { computeSpawnCoordTime } from "./respawnTime";
-import type { KillEventRecord, RelativisticPlayer, RespawnEventRecord } from "./types";
+import type {
+  KillEventRecord,
+  RelativisticPlayer,
+  RespawnEventRecord,
+} from "./types";
 
 /**
  * Authority 解体 Stage F / Stage 1.5: 周期 reconciliation または新規 join 送信用の
@@ -81,8 +85,7 @@ export const buildSnapshot = (myId: string, isBeaconHolder: boolean) => {
     // (Stage 1.5 client) は preserve — 非 BH が LH 所有権を主張すると BH が merge
     // 時に lh.ownerId を汚染される (BH の LH AI 沈黙の catastrophic bug)。
     // 人間プレイヤーは常に self-own 維持。
-    const ownerId =
-      isLighthouse(p.id) && isBeaconHolder ? myId : p.ownerId;
+    const ownerId = isLighthouse(p.id) && isBeaconHolder ? myId : p.ownerId;
     players.push({
       id: p.id,
       ownerId,
@@ -214,10 +217,7 @@ export const applySnapshot = (
     for (const [id, snapshotPlayer] of nextPlayers) {
       if (id === myId) continue;
       const local = store.players.get(id);
-      if (
-        local &&
-        local.phaseSpace.pos.t >= snapshotPlayer.phaseSpace.pos.t
-      ) {
+      if (local && local.phaseSpace.pos.t >= snapshotPlayer.phaseSpace.pos.t) {
         nextPlayers.set(id, local);
       }
     }
@@ -238,7 +238,7 @@ export const applySnapshot = (
     const localKillKeys = new Set(store.killLog.map(killKey));
     const snapshotOnlyKills: KillEventRecord[] = msg.killLog
       .filter((e) => !localKillKeys.has(killKey(e)))
-      .map((e) => ({ ...e, firedForUi: false }));
+      .map((e) => ({ ...e, firedForUi: false, firedImageCells: [] }));
     const mergedKillLog: KillEventRecord[] = [
       ...store.killLog,
       ...snapshotOnlyKills,
@@ -291,7 +291,8 @@ export const applySnapshot = (
     for (const [id, p] of nextPlayers) {
       const kTime = lastKillByVictim.get(id);
       const derivedDead =
-        kTime !== undefined && kTime > (lastRespawnByPlayer.get(id) ?? -Infinity);
+        kTime !== undefined &&
+        kTime > (lastRespawnByPlayer.get(id) ?? -Infinity);
       if (derivedDead !== p.isDead) {
         nextPlayers.set(id, { ...p, isDead: derivedDead });
       }

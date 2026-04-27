@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   displayPos,
+  eventImage,
   imageCell,
+  imageCellKey,
   isWrapCrossing,
   minImageDelta1D,
   minImageDelta4,
+  observableImageCells,
+  requiredImageCellRadius,
   shiftObserverToReferenceImage,
   subVector4Torus,
 } from "./torus";
@@ -69,8 +73,14 @@ describe("imageCell", () => {
     // primary cell = [80, 120)、隣接 cell -1 = [40, 80)、cell 1 = [120, 160)
     expect(imageCell({ x: 100, y: 0 }, obsShift, L)).toEqual({ kx: 0, ky: 0 });
     expect(imageCell({ x: 121, y: 0 }, obsShift, L)).toEqual({ kx: 1, ky: 0 });
-    expect(imageCell({ x: 80.01, y: 0 }, obsShift, L)).toEqual({ kx: 0, ky: 0 });
-    expect(imageCell({ x: 79.99, y: 0 }, obsShift, L)).toEqual({ kx: -1, ky: 0 });
+    expect(imageCell({ x: 80.01, y: 0 }, obsShift, L)).toEqual({
+      kx: 0,
+      ky: 0,
+    });
+    expect(imageCell({ x: 79.99, y: 0 }, obsShift, L)).toEqual({
+      kx: -1,
+      ky: 0,
+    });
   });
 });
 
@@ -100,10 +110,12 @@ describe("displayPos", () => {
       y: 0,
     });
     // 125 は obsShift から +25 → wrap して -15 → display = 100 - 15 = 85
-    expect(displayPos({ t: 0, x: 125, y: 0, z: 0 }, obsShift, L)).toMatchObject({
-      x: 85,
-      y: 0,
-    });
+    expect(displayPos({ t: 0, x: 125, y: 0, z: 0 }, obsShift, L)).toMatchObject(
+      {
+        x: 85,
+        y: 0,
+      },
+    );
   });
 });
 
@@ -144,22 +156,36 @@ describe("isWrapCrossing", () => {
   });
 
   it("y 軸でも判定が機能", () => {
-    expect(isWrapCrossing({ x: 0, y: 19.99 }, { x: 0, y: 20.01 }, obs, L)).toBe(true);
+    expect(isWrapCrossing({ x: 0, y: 19.99 }, { x: 0, y: 20.01 }, obs, L)).toBe(
+      true,
+    );
     expect(isWrapCrossing({ x: 0, y: 0 }, { x: 0, y: 25 }, obs, L)).toBe(true); // raw Δ
   });
 
   it("複数周回した worldLine 各点の隣接判定", () => {
     // primary [-20, 20)、 cell 1 [20, 60)、 cell 2 [60, 100)
-    expect(isWrapCrossing({ x: 19.98, y: 0 }, { x: 20.0, y: 0 }, obs, L)).toBe(true); // cell 0 → 1
-    expect(isWrapCrossing({ x: 20.0, y: 0 }, { x: 20.02, y: 0 }, obs, L)).toBe(false); // 同 cell 1
-    expect(isWrapCrossing({ x: 39.99, y: 0 }, { x: 40.01, y: 0 }, obs, L)).toBe(false); // 同 cell 1 (境界は 60)
-    expect(isWrapCrossing({ x: 59.99, y: 0 }, { x: 60.01, y: 0 }, obs, L)).toBe(true); // cell 1 → 2
+    expect(isWrapCrossing({ x: 19.98, y: 0 }, { x: 20.0, y: 0 }, obs, L)).toBe(
+      true,
+    ); // cell 0 → 1
+    expect(isWrapCrossing({ x: 20.0, y: 0 }, { x: 20.02, y: 0 }, obs, L)).toBe(
+      false,
+    ); // 同 cell 1
+    expect(isWrapCrossing({ x: 39.99, y: 0 }, { x: 40.01, y: 0 }, obs, L)).toBe(
+      false,
+    ); // 同 cell 1 (境界は 60)
+    expect(isWrapCrossing({ x: 59.99, y: 0 }, { x: 60.01, y: 0 }, obs, L)).toBe(
+      true,
+    ); // cell 1 → 2
   });
 
   it("微振動 (境界 ±0.02) は毎 tick 切る (PBC として自然)", () => {
     // 19.99 ↔ 20.01 で振動 → cell 0 ↔ cell 1 → 各 tick 切る
-    expect(isWrapCrossing({ x: 19.99, y: 0 }, { x: 20.01, y: 0 }, obs, L)).toBe(true);
-    expect(isWrapCrossing({ x: 20.01, y: 0 }, { x: 19.99, y: 0 }, obs, L)).toBe(true);
+    expect(isWrapCrossing({ x: 19.99, y: 0 }, { x: 20.01, y: 0 }, obs, L)).toBe(
+      true,
+    );
+    expect(isWrapCrossing({ x: 20.01, y: 0 }, { x: 19.99, y: 0 }, obs, L)).toBe(
+      true,
+    );
   });
 });
 
@@ -217,5 +243,54 @@ describe("shiftObserverToReferenceImage", () => {
     // reference との最短画像 delta = 130 - 120 = 10 → shifted obs = 130 - 10 = 120
     expect(r.x).toBeCloseTo(120, 10);
     expect(Math.abs(r.x - ref.x)).toBeLessThanOrEqual(L);
+  });
+});
+
+describe("observableImageCells", () => {
+  it("R=0 は primary cell のみ", () => {
+    const cells = observableImageCells(0);
+    expect(cells).toEqual([{ kx: 0, ky: 0 }]);
+  });
+  it("R=1 は 9 cells (primary 先頭)", () => {
+    const cells = observableImageCells(1);
+    expect(cells).toHaveLength(9);
+    expect(cells[0]).toEqual({ kx: 0, ky: 0 });
+  });
+  it("R=2 は 25 cells", () => {
+    expect(observableImageCells(2)).toHaveLength(25);
+  });
+});
+
+describe("imageCellKey", () => {
+  it("'kx,ky' 文字列を返す", () => {
+    expect(imageCellKey({ kx: 0, ky: 0 })).toBe("0,0");
+    expect(imageCellKey({ kx: -1, ky: 1 })).toBe("-1,1");
+  });
+});
+
+describe("eventImage", () => {
+  it("primary cell は素通し", () => {
+    const e = { x: 5, y: -7, t: 100, z: 0 };
+    expect(eventImage(e, { kx: 0, ky: 0 }, 20)).toEqual(e);
+  });
+  it("(x, y) を 2L*(kx, ky) shift、 t/z 不変", () => {
+    const e = { x: 5, y: -7, t: 100, z: 0 };
+    const r = eventImage(e, { kx: 1, ky: -1 }, 20);
+    expect(r).toEqual({ x: 45, y: -47, t: 100, z: 0 });
+  });
+});
+
+describe("requiredImageCellRadius", () => {
+  it("LCH = L → R = 1 (= 3x3 で十分)", () => {
+    expect(requiredImageCellRadius(20, 20)).toBe(1);
+  });
+  it("LCH = 2L → R = 1 (= 隣接が境界、 余裕には R=2)", () => {
+    expect(requiredImageCellRadius(20, 40)).toBe(1);
+  });
+  it("LCH = 3L → R = 2 (= 5x5)", () => {
+    expect(requiredImageCellRadius(20, 60)).toBe(2);
+  });
+  it("LCH < L → R = 1 (ceil)", () => {
+    expect(requiredImageCellRadius(20, 10)).toBe(1);
   });
 });

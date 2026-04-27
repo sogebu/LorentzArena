@@ -1,12 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-  appendWorldLine,
-  createPhaseSpace,
-  createVector3,
-  createVector4,
-  createWorldLine,
-} from "../physics";
-import {
   ENERGY_MAX,
   HIT_DAMAGE,
   LIGHTHOUSE_HIT_DAMAGE,
@@ -16,10 +9,13 @@ import {
 } from "../components/game/constants";
 import type { RelativisticPlayer } from "../components/game/types";
 import {
-  selectIsDead,
-  selectPostHitUntil,
-  useGameStore,
-} from "./game-store";
+  appendWorldLine,
+  createPhaseSpace,
+  createVector3,
+  createVector4,
+  createWorldLine,
+} from "../physics";
+import { selectIsDead, selectPostHitUntil, useGameStore } from "./game-store";
 
 const HIT_POS = { t: 0, x: 0, y: 0, z: 0 };
 const LASER_DIR = createVector3(1, 0, 0);
@@ -37,7 +33,10 @@ function makePlayer(
     id,
     ownerId: id,
     phaseSpace,
-    worldLine: appendWorldLine(createWorldLine(MAX_WORLDLINE_HISTORY), phaseSpace),
+    worldLine: appendWorldLine(
+      createWorldLine(MAX_WORLDLINE_HISTORY),
+      phaseSpace,
+    ),
     color: "#fff",
     isDead,
     energy,
@@ -66,10 +65,19 @@ describe("handleDamage — non-lethal damage", () => {
 
   it("energy を damage 分減らし、hitLog に entry を追加、kill しない", () => {
     const store = useGameStore.getState();
-    store.handleDamage("victim", "killer", HIT_POS, HIT_DAMAGE, LASER_DIR, "me");
+    store.handleDamage(
+      "victim",
+      "killer",
+      HIT_POS,
+      HIT_DAMAGE,
+      LASER_DIR,
+      "me",
+    );
 
     const s = useGameStore.getState();
-    expect(s.players.get("victim")?.energy).toBeCloseTo(ENERGY_MAX - HIT_DAMAGE);
+    expect(s.players.get("victim")?.energy).toBeCloseTo(
+      ENERGY_MAX - HIT_DAMAGE,
+    );
     expect(s.hitLog.length).toBe(1);
     expect(s.hitLog[0].victimId).toBe("victim");
     expect(s.hitLog[0].damage).toBe(HIT_DAMAGE);
@@ -85,7 +93,14 @@ describe("handleDamage — lethal damage", () => {
 
   it("energy < 0 で handleKill を連鎖させ killLog に entry、selectIsDead=true", () => {
     const store = useGameStore.getState();
-    store.handleDamage("victim", "killer", HIT_POS, HIT_DAMAGE, LASER_DIR, "me");
+    store.handleDamage(
+      "victim",
+      "killer",
+      HIT_POS,
+      HIT_DAMAGE,
+      LASER_DIR,
+      "me",
+    );
 
     const s = useGameStore.getState();
     expect(s.killLog.length).toBe(1);
@@ -155,10 +170,19 @@ describe("handleDamage — デブリ配色 (2026-04-21: universal HIT/EXPLOSION 
 
   it("killer が players 未登録でも hit debris は HIT_DEBRIS_COLOR (共通色なので fallback 不要)", async () => {
     const { HIT_DEBRIS_COLOR } = await import("../components/game/constants");
-    resetStore(new Map<string, RelativisticPlayer>([["victim", victimWith(ENERGY_MAX)]]));
+    resetStore(
+      new Map<string, RelativisticPlayer>([["victim", victimWith(ENERGY_MAX)]]),
+    );
     useGameStore
       .getState()
-      .handleDamage("victim", "ghostKiller", HIT_POS, HIT_DAMAGE, LASER_DIR, "me");
+      .handleDamage(
+        "victim",
+        "ghostKiller",
+        HIT_POS,
+        HIT_DAMAGE,
+        LASER_DIR,
+        "me",
+      );
 
     const s = useGameStore.getState();
     expect(s.debrisRecords.length).toBe(1);
@@ -175,13 +199,27 @@ describe("handleDamage — post-hit i-frame", () => {
   it("直近 hit から POST_HIT_IFRAME_MS 未満の第 2 発は damage 適用されない", () => {
     const store = useGameStore.getState();
     // 第 1 発: 通常通り energy が減る
-    store.handleDamage("victim", "killer", HIT_POS, HIT_DAMAGE, LASER_DIR, "me");
+    store.handleDamage(
+      "victim",
+      "killer",
+      HIT_POS,
+      HIT_DAMAGE,
+      LASER_DIR,
+      "me",
+    );
     const mid = useGameStore.getState();
     const energyAfterFirst = mid.players.get("victim")?.energy;
     expect(energyAfterFirst).toBeCloseTo(ENERGY_MAX - HIT_DAMAGE);
 
     // 第 2 発 (同 tick、wall-time 差は ≈ 0 なので i-frame 内)
-    store.handleDamage("victim", "killer", HIT_POS, HIT_DAMAGE, LASER_DIR, "me");
+    store.handleDamage(
+      "victim",
+      "killer",
+      HIT_POS,
+      HIT_DAMAGE,
+      LASER_DIR,
+      "me",
+    );
     const after = useGameStore.getState();
     expect(after.players.get("victim")?.energy).toBe(energyAfterFirst);
     // hitLog も増えない (i-frame が延長する動作を避ける)
@@ -190,7 +228,14 @@ describe("handleDamage — post-hit i-frame", () => {
 
   it("selectPostHitUntil は latest hit wallTime + POST_HIT_IFRAME_MS", () => {
     const store = useGameStore.getState();
-    store.handleDamage("victim", "killer", HIT_POS, HIT_DAMAGE, LASER_DIR, "me");
+    store.handleDamage(
+      "victim",
+      "killer",
+      HIT_POS,
+      HIT_DAMAGE,
+      LASER_DIR,
+      "me",
+    );
     const s = useGameStore.getState();
     const latestHit = s.hitLog[s.hitLog.length - 1];
     expect(selectPostHitUntil(s, "victim")).toBe(
@@ -240,12 +285,26 @@ describe("handleDamage — Lighthouse post-hit i-frame (2026-04-19 で人間と�
 
   it("i-frame 内の第 2 発は damage 適用されない (旧仕様の `selectPostHitUntil → 0` 短絡を撤廃)", () => {
     const store = useGameStore.getState();
-    store.handleDamage(lhId, "killer", HIT_POS, LIGHTHOUSE_HIT_DAMAGE, LASER_DIR, "me");
+    store.handleDamage(
+      lhId,
+      "killer",
+      HIT_POS,
+      LIGHTHOUSE_HIT_DAMAGE,
+      LASER_DIR,
+      "me",
+    );
     const energyAfterFirst = useGameStore.getState().players.get(lhId)?.energy;
     expect(energyAfterFirst).toBeCloseTo(ENERGY_MAX - LIGHTHOUSE_HIT_DAMAGE);
 
     // 第 2 発を即座に発火 (wall-time 差 ≈ 0、i-frame 内)
-    store.handleDamage(lhId, "killer", HIT_POS, LIGHTHOUSE_HIT_DAMAGE, LASER_DIR, "me");
+    store.handleDamage(
+      lhId,
+      "killer",
+      HIT_POS,
+      LIGHTHOUSE_HIT_DAMAGE,
+      LASER_DIR,
+      "me",
+    );
     const after = useGameStore.getState();
     expect(after.players.get(lhId)?.energy).toBe(energyAfterFirst);
     // hitLog も増えない (i-frame 連打延長封じ、人間と同設計)
@@ -254,7 +313,14 @@ describe("handleDamage — Lighthouse post-hit i-frame (2026-04-19 で人間と�
 
   it("selectPostHitUntil(LH) は latest hit wallTime + POST_HIT_IFRAME_MS を返す", () => {
     const store = useGameStore.getState();
-    store.handleDamage(lhId, "killer", HIT_POS, LIGHTHOUSE_HIT_DAMAGE, LASER_DIR, "me");
+    store.handleDamage(
+      lhId,
+      "killer",
+      HIT_POS,
+      LIGHTHOUSE_HIT_DAMAGE,
+      LASER_DIR,
+      "me",
+    );
     const s = useGameStore.getState();
     const latestHit = s.hitLog[s.hitLog.length - 1];
     expect(selectPostHitUntil(s, lhId)).toBe(
@@ -277,6 +343,7 @@ describe("handleDamage — 既死 / 無敵 guard", () => {
           victimName: "v",
           victimColor: "#fff",
           firedForUi: false,
+          firedImageCells: [],
         },
       ],
     });

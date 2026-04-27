@@ -148,7 +148,6 @@ describe("Quaternion helpers", () => {
 });
 
 describe("isInPastLightCone", () => {
-  const L = 20;
   // observer at origin, t=100 (= future), event の t は past 側
   const observer = createVector4(100, 0, 0, 0);
 
@@ -169,33 +168,6 @@ describe("isInPastLightCone", () => {
     expect(isInPastLightCone(event, observer)).toBe(false);
   });
 
-  it("torus 化: 1 周回って戻ってきた event は最短画像で判定", () => {
-    // 観測者 (0, 0)、 event (x=35, y=0): unwrapped 距離 35、 minImage で -5
-    // dt = 100 - 80 = 20、 lightlike check: dx²+dy²+dz² ≤ dt² (minImage 適用)
-    const event = createVector4(80, 35, 0, 0);
-    // unwrapped: 35² > 20² → spacelike → past cone 外
-    expect(isInPastLightCone(event, observer)).toBe(false);
-    // torus L=20: minImage(35) = -5、 5² ≤ 20² → past cone 内
-    expect(isInPastLightCone(event, observer, L)).toBe(true);
-  });
-
-  it("torus 化: y 軸でも同様に最短画像で判定", () => {
-    const event = createVector4(80, 0, -35, 0);
-    expect(isInPastLightCone(event, observer)).toBe(false);
-    // minImage(-35) = 5、 5² ≤ 20² → past cone 内
-    expect(isInPastLightCone(event, observer, L)).toBe(true);
-  });
-
-  it("torus 化: 離れたままの event (= 最短画像でも past cone 外) は false 維持", () => {
-    // observer (0, 0)、 event (x=15, y=0)、 spatial 15、 dt=5 → spacelike (15² > 5²)
-    const event = createVector4(95, 15, 0, 0);
-    expect(isInPastLightCone(event, observer, L)).toBe(false);
-  });
-
-  it("torusHalfWidth undefined は従来挙動と等価", () => {
-    const event = createVector4(80, 35, 0, 0);
-    expect(isInPastLightCone(event, observer, undefined)).toBe(
-      isInPastLightCone(event, observer),
-    );
-  });
+  // PBC 対応 image cell loop は caller 側 (= causalEvents.ts) に移譲。 本関数自体は
+  // unwrapped 連続値前提の純粋関数で torus 引数を持たない。
 });

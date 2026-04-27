@@ -8,7 +8,11 @@ import {
   createWorldLine,
 } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
-import { ENERGY_MAX, LIGHTHOUSE_ID_PREFIX, MAX_WORLDLINE_HISTORY } from "./constants";
+import {
+  ENERGY_MAX,
+  LIGHTHOUSE_ID_PREFIX,
+  MAX_WORLDLINE_HISTORY,
+} from "./constants";
 import { applySnapshot, buildSnapshot } from "./snapshot";
 import type { RelativisticPlayer } from "./types";
 
@@ -159,7 +163,10 @@ describe("applySnapshot", () => {
 
     // snapshot: host から受信、"peer" の name は更新される、"old-peer" は含まれない
     const msg: SnapshotMsg = {
-      ...makeSnapshot([{ id: "me", posT: 1.0 }, { id: "peer", posT: 1.0 }]),
+      ...makeSnapshot([
+        { id: "me", posT: 1.0 },
+        { id: "peer", posT: 1.0 },
+      ]),
       displayNames: { peer: "Peer", me: "Me" },
     };
 
@@ -197,7 +204,8 @@ describe("applySnapshot", () => {
           wallTime: 1000,
           victimName: "Victim",
           victimColor: "#fff",
-          firedForUi: true, // beacon holder 側では past-cone 到達済み
+          firedForUi: true,
+          firedImageCells: ["0,0"], // beacon holder 側では past-cone 到達済み
         },
       ],
     };
@@ -227,6 +235,7 @@ describe("applySnapshot", () => {
           victimName: "Victim",
           victimColor: "#fff",
           firedForUi: true,
+          firedImageCells: ["0,0"],
         },
       ],
       respawnLog: [],
@@ -268,6 +277,7 @@ describe("applySnapshot", () => {
           victimName: "Victim",
           victimColor: "#fff",
           firedForUi: true,
+          firedImageCells: ["0,0"],
         },
       ],
       respawnLog: [], // respawn entry を local は取り逃している
@@ -288,6 +298,7 @@ describe("applySnapshot", () => {
           victimName: "Victim",
           victimColor: "#fff",
           firedForUi: true,
+          firedImageCells: ["0,0"],
         },
       ],
       respawnLog: [
@@ -343,7 +354,8 @@ describe("applySnapshot", () => {
           wallTime: 1500,
           victimName: "Victim",
           victimColor: "#fff",
-          firedForUi: true, // alice 側では発火済
+          firedForUi: true,
+          firedImageCells: ["0,0"], // alice 側では発火済
         },
       ],
       scores: { alice: 1 }, // alice 観測者視点の scores (BH が上書きされないことも確認)
@@ -550,7 +562,10 @@ describe("buildSnapshot / applySnapshot heading / alpha round-trip", () => {
 
   it("旧 build 送信 (heading / alpha 欠落 wire): apply 側で identity / zero 補完", () => {
     // makeSnapshot helper は heading / alpha を吐かない旧形式 → backward compat 経路
-    const msg = makeSnapshot([{ id: "a", posT: 1 }, { id: "b", posT: 2 }]);
+    const msg = makeSnapshot([
+      { id: "a", posT: 1 },
+      { id: "b", posT: 2 },
+    ]);
     useGameStore.setState({ players: new Map() });
     applySnapshot("me", msg, () => "#fff", { current: new Map() });
     const a = useGameStore.getState().players.get("a");
