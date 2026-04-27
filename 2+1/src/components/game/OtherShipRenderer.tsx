@@ -1,38 +1,35 @@
-import { useRef } from "react";
+import { Fragment, useMemo, useRef } from "react";
+import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
 import {
   createVector3,
   lorentzBoost,
   multiplyVector4Matrix4,
+  observableImageCells,
   pastLightConeIntersectionWorldLine,
+  requiredImageCellRadius,
   type Vector3,
+  type Vector4,
 } from "../../physics";
-import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
+import { LIGHT_CONE_HEIGHT } from "./constants";
 import { useDisplayFrame } from "./DisplayFrameContext";
 import { SelfShipRenderer } from "./SelfShipRenderer";
 import type { RelativisticPlayer } from "./types";
 
 /**
- * 他機の 3D ship 描画。SelfShipRenderer (自機と同じ 3D モデル) を流用し、
- * **past-cone 交点** の phaseSpace を "合成 player" としてフィードする:
+ * 他機の 3D ship 描画。 SelfShipRenderer (自機と同じ 3D モデル) を流用し、 **観測者本人の
+ * 過去光円錐 ∩ 他機世界線** の合成 player を 各 image cell ごとに作って 9 image 描画。
  *
- * - pos: 観測者の過去光円錐と他機世界線の交点 (= 光が届いた瞬間の event 位置)
- * - heading: 同交点での姿勢 quaternion (slerp 補間済、Phase A-4)
- * - thrust ref: **被観測者 (ship) 静止系** での 4-加速度の空間成分 (proper acceleration)。
- *   `α_rest = lorentzBoost(u_subject) · α_world` の spatial part を毎 render で synthetic ref に
- *   commit。exhaust nozzle は ship 自身の rest frame での噴射指令として駆動される。
- *   (u·α=0 が満たされるため α_rest.t ≈ 0、空間成分 = 固有加速度。摩擦寄与は含むが、
- *   現状は摩擦分離せずそのまま exhaust 駆動信号として使用 — thrust 単独信号化は将来 TODO。)
- * - alpha4 (world 4-vec): spacetime arrow 用に SelfShipRenderer に渡す。内部で observerBoost
- *   により観測者静止系に変換されて 4-vector の時空矢印として描画される。
+ * **PBC universal cover (物理的に正しい echo)**: 各 image cell ごとに `imageObserver = obs -
+ * 2L*(obsCell + cell)` を pastLightConeIntersectionWorldLine に渡して raw 距離 (= 最短画像化
+ * なし) で intersection 計算 → intersection.pos に `+2L*(obsCell + cell)` 加算した image
+ * position を virtualPlayer.phaseSpace.pos として SelfShipRenderer に渡す。 1 周遠い image cell
+ * は ~2L 古い timestamp で表示される (= echo)。
  *
- * 交点 null (新 peer で worldline 履歴が薄い、past-cone が届いていない等) の時は
- * 非描画 (gnomon marker 等も同条件)。死亡中は SceneContent の τ_0 routing で
- * DeadShipRenderer + DeathMarker にフォールバック (8c019e3 統一アルゴリズム)。
- * 本 component は生存中 + τ_0 < 0 の「past-cone 未到達で pre-death worldLine 上に見える」
- * 期間に使う想定。
+ * 交点 null (image cell に光が届いてない / past-cone が worldLine 末端超過) の image は
+ * 非描画。 死亡中は SceneContent の τ_0 routing で DeadShipRenderer + DeathMarker にフォールバック。
  *
- * 光源 / lighting は SceneContent の GameLights で共通処理、自機と同じマテリアルを
- * 流用するため一旦適当 (自機ごとのオーバーライドは今後の課題)。
+ * thrustRef は 9 image で共有 (= 最後 image の thrust 値が残る)、 exhaust visual のみ影響、
+ * 軽微。
  */
 export const OtherShipRenderer = ({
   player,
@@ -40,49 +37,74 @@ export const OtherShipRenderer = ({
   player: RelativisticPlayer;
 }) => {
   const { observerPos, observerBoost } = useDisplayFrame();
+  const torusHalfWidth = useTorusHalfWidth();
 
-  // Synthetic thrust ref: lifetime = component mount〜unmount、毎 render で値更新。
-  // SelfShipRenderer の useFrame は `.current` を読むので sync で OK。
   const thrustRef = useRef<Vector3>(createVector3(0, 0, 0));
 
-  const torusHalfWidth = useTorusHalfWidth();
-  const intersection = observerPos
-    ? pastLightConeIntersectionWorldLine(player.worldLine, observerPos, torusHalfWidth)
-    : null;
-
-  if (!intersection) return null;
-
-  // Subject rest frame proper acceleration: α_rest = lorentzBoost(u) · α_world
-  // (lorentzBoost は world → rest 変換。α は u·α=0 の timelike-orthogonal なので
-  // α_rest.t ≈ 0、空間成分が固有加速度 3-vec。)
-  const alphaRest = multiplyVector4Matrix4(
-    lorentzBoost(intersection.u),
-    intersection.alpha,
-  );
-  thrustRef.current = {
-    x: alphaRest.x,
-    y: alphaRest.y,
-    z: 0,
-  };
-
-  // 合成 player: SelfShipRenderer の期待形 `{ id, phaseSpace: { pos, heading }, color }`。
-  const virtualPlayer = {
-    id: player.id,
-    phaseSpace: {
-      pos: intersection.pos,
-      heading: intersection.heading,
-    },
-    color: player.color,
-  };
+  const cells = useMemo(() => {
+    if (torusHalfWidth === undefined) return [{ kx: 0, ky: 0 }];
+    const R = requiredImageCellRadius(torusHalfWidth, LIGHT_CONE_HEIGHT);
+    return observableImageCells(R);
+  }, [torusHalfWidth]);
+  const L = torusHalfWidth ?? 0;
+  const obsCellX =
+    torusHalfWidth !== undefined && observerPos
+      ? Math.floor((observerPos.x + L) / (2 * L))
+      : 0;
+  const obsCellY =
+    torusHalfWidth !== undefined && observerPos
+      ? Math.floor((observerPos.y + L) / (2 * L))
+      : 0;
 
   return (
-    <SelfShipRenderer
-      player={virtualPlayer}
-      thrustAccelRef={thrustRef}
-      observerPos={observerPos}
-      observerBoost={observerBoost}
-      cannonStyle="laser"
-      alpha4={intersection.alpha}
-    />
+    <>
+      {cells.map((cell) => {
+        const dx = 2 * L * (obsCellX + cell.kx);
+        const dy = 2 * L * (obsCellY + cell.ky);
+        const cellKey = `${cell.kx},${cell.ky}`;
+        const imageObserver: Vector4 | null = observerPos
+          ? { ...observerPos, x: observerPos.x - dx, y: observerPos.y - dy }
+          : null;
+        const intersection = imageObserver
+          ? pastLightConeIntersectionWorldLine(player.worldLine, imageObserver)
+          : null;
+        if (!intersection) return <Fragment key={cellKey} />;
+
+        // Subject rest frame proper acceleration (= 各 image instance で同じ ref に上書き、
+        // 最後の image 値が exhaust visual に反映される)。
+        const alphaRest = multiplyVector4Matrix4(
+          lorentzBoost(intersection.u),
+          intersection.alpha,
+        );
+        thrustRef.current = { x: alphaRest.x, y: alphaRest.y, z: 0 };
+
+        // image position = raw intersection + image cell offset
+        const imagePos: Vector4 = {
+          ...intersection.pos,
+          x: intersection.pos.x + dx,
+          y: intersection.pos.y + dy,
+        };
+        const virtualPlayer = {
+          id: player.id,
+          phaseSpace: {
+            pos: imagePos,
+            heading: intersection.heading,
+          },
+          color: player.color,
+        };
+
+        return (
+          <SelfShipRenderer
+            key={cellKey}
+            player={virtualPlayer}
+            thrustAccelRef={thrustRef}
+            observerPos={observerPos}
+            observerBoost={observerBoost}
+            cannonStyle="laser"
+            alpha4={intersection.alpha}
+          />
+        );
+      })}
+    </>
   );
 };

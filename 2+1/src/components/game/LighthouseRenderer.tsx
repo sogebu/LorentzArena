@@ -83,44 +83,13 @@ export const LighthouseRenderer = ({
     [player.phaseSpace.u],
   );
   const torusHalfWidth = useTorusHalfWidth();
-  const aliveIntersection = observerPos
-    ? pastLightConeIntersectionWorldLine(
-        player.worldLine,
-        observerPos,
-        torusHalfWidth,
-      )
-    : null;
 
-  let towerAnchor: Vector4 | null = null;
-  let alpha = 1;
-  if (aliveIntersection) {
-    towerAnchor = aliveIntersection.pos;
-  } else if (player.isDead && observerPos) {
-    const tau0 = pastLightConeIntersectionDeathWorldLine(wp, uD, observerPos);
-    if (tau0 != null && tau0 >= 0 && tau0 <= DEATH_TAU_MAX) {
-      towerAnchor = wp;
-      alpha = (DEATH_TAU_MAX - tau0) / DEATH_TAU_MAX;
-    }
-  }
-
-  // 球マーカー (raw display position、 fold せず boost のみ): caller 側の image cell loop で
-  // 各 image offset を加算する pattern。 sphere group の position に raw + 2L*offset を渡す。
-  const pastConeSphereRaw = aliveIntersection
-    ? transformEventForDisplay(
-        aliveIntersection.pos,
-        observerPos,
-        observerBoost,
-      )
-    : null;
-  const futureMostSphereRaw = !player.isDead
-    ? transformEventForDisplay(wp, observerPos, observerBoost)
-    : null;
-  const sphereSize = PLAYER_MARKER_SIZE_OTHER;
-
-  // **PBC universal cover**: tower / sphere markers を `(2R+1)²` image cell に複製描画。
-  // 各 image cell の anchor は raw + `2L * (obsCell + offset)`、 buildApparentShapeMatrix で
-  // 各 image の display matrix を計算 (= 各 image の楕円 stretch も独立)。 sphere markers
-  // は raw display pos に dx/dy を加算 (= raw fold せず boost のみ)。
+  // **PBC universal cover (物理的に正しい echo)**: 各 image cell の object は **観測者本人**
+  // の過去光円錐上に乗る (= raw spatial 距離での intersection)。 各 image cell ごとに
+  // imageObserver = `obs - 2L*(obsCell + cell)` を pastLightConeIntersectionWorldLine に渡して
+  // raw 距離 (= torusHalfWidth = undefined) で intersection 計算 → intersection.pos に
+  // +2L*(obsCell + cell) を加算して image cell 位置として表示。 これにより 1 周遠い image cell
+  // は ~2L 古い timestamp で表示される (= echo として「過去光円錐に何度も当たる」 visual)。
   const cells = useMemo(() => {
     if (torusHalfWidth === undefined) return [{ kx: 0, ky: 0 }];
     const R = requiredImageCellRadius(torusHalfWidth, LIGHT_CONE_HEIGHT);
@@ -135,6 +104,7 @@ export const LighthouseRenderer = ({
     torusHalfWidth !== undefined && observerPos
       ? Math.floor((observerPos.y + L) / (2 * L))
       : 0;
+  const sphereSize = PLAYER_MARKER_SIZE_OTHER;
 
   return (
     <>
@@ -142,8 +112,45 @@ export const LighthouseRenderer = ({
         const dx = 2 * L * (obsCellX + cell.kx);
         const dy = 2 * L * (obsCellY + cell.ky);
         const cellKey = `${cell.kx},${cell.ky}`;
-        const imageTowerAnchor: Vector4 | null = towerAnchor
-          ? { ...towerAnchor, x: towerAnchor.x + dx, y: towerAnchor.y + dy }
+        // image observer = 観測者を image cell の反対方向に shift (= raw worldLine から見ると
+        // 観測者の image が遠ざかる、 raw 距離計算で正しい intersection が得られる)。
+        const imageObserver: Vector4 | null = observerPos
+          ? { ...observerPos, x: observerPos.x - dx, y: observerPos.y - dy }
+          : null;
+        const imageAliveIntersection = imageObserver
+          ? pastLightConeIntersectionWorldLine(player.worldLine, imageObserver)
+          : null;
+        let imageTowerAnchor: Vector4 | null = null;
+        let alpha = 1;
+        if (imageAliveIntersection) {
+          imageTowerAnchor = {
+            ...imageAliveIntersection.pos,
+            x: imageAliveIntersection.pos.x + dx,
+            y: imageAliveIntersection.pos.y + dy,
+          };
+        } else if (player.isDead && imageObserver) {
+          const tau0 = pastLightConeIntersectionDeathWorldLine(
+            wp,
+            uD,
+            imageObserver,
+          );
+          if (tau0 != null && tau0 >= 0 && tau0 <= DEATH_TAU_MAX) {
+            imageTowerAnchor = { ...wp, x: wp.x + dx, y: wp.y + dy };
+            alpha = (DEATH_TAU_MAX - tau0) / DEATH_TAU_MAX;
+          }
+        }
+        // 球マーカー (raw display position、 fold せず boost のみ): image cell ごとに
+        // intersection が異なるので per-image。
+        const pastConeSphereRaw = imageAliveIntersection
+          ? transformEventForDisplay(
+              imageAliveIntersection.pos,
+              observerPos,
+              observerBoost,
+            )
+          : null;
+        // futureMostSphere = world-now (= phaseSpace.pos)、 image cell ごとに raw + offset。
+        const futureMostSphereRaw = !player.isDead
+          ? transformEventForDisplay(wp, observerPos, observerBoost)
           : null;
         return (
           <Fragment key={cellKey}>

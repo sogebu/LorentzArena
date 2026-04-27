@@ -1,13 +1,15 @@
 import { useFrame } from "@react-three/fiber";
 import { useMemo, useRef } from "react";
 import * as THREE from "three";
+import type { lorentzBoost } from "../../physics";
 import {
   multiplyVector4Matrix4,
-  quatToYaw,
   type Quaternion,
+  quatToYaw,
   type Vector3,
   type Vector4,
 } from "../../physics";
+import { AntennaBeaconRenderer } from "./AntennaBeaconRenderer";
 import {
   ARROW_BASE_LENGTH,
   ARROW_BASE_OFFSET,
@@ -44,15 +46,15 @@ import {
   SHIP_GUN_RING_RADIUS,
   SHIP_GUN_TIP_LENGTH,
   SHIP_GUN_TIP_RADIUS,
-  SHIP_HULL_SEGMENTS,
-  SHIP_HULL_X_SCALE,
-  SHIP_LIFT_Z,
   SHIP_HULL_COLOR,
   SHIP_HULL_EMISSIVE_COLOR,
   SHIP_HULL_EMISSIVE_INTENSITY,
   SHIP_HULL_HEIGHT,
-  SHIP_MODEL_SCALE,
   SHIP_HULL_RADIUS,
+  SHIP_HULL_SEGMENTS,
+  SHIP_HULL_X_SCALE,
+  SHIP_LIFT_Z,
+  SHIP_MODEL_SCALE,
   SHIP_NOZZLE_EMISSIVE_COLOR,
   SHIP_NOZZLE_EMISSIVE_INTENSITY,
   SHIP_NOZZLE_EXIT_RADIUS,
@@ -66,13 +68,10 @@ import {
   SHIP_NOZZLE_OUTWARD_OFFSET,
   SHIP_NOZZLE_THROAT_RADIUS,
 } from "./constants";
-import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
-import { transformEventForDisplay } from "./displayTransform";
-import { AntennaBeaconRenderer } from "./AntennaBeaconRenderer";
 import { DorsalPodRenderer } from "./DorsalPodRenderer";
+import { transformEventForDisplay } from "./displayTransform";
 import { LaserCannonRenderer } from "./LaserCannonRenderer";
 import { getThreeColor, sharedGeometries } from "./threeCache";
-import type { lorentzBoost } from "../../physics";
 
 const INNER_CORE_SCALE = 0.45; // 旧 ExhaustCone と同値
 
@@ -140,15 +139,24 @@ export const SelfShipRenderer = ({
   controlScheme?: "legacy_classic" | "legacy_shooter" | "modern";
 }) => {
   const groupRef = useRef<THREE.Group>(null);
-  const torusHalfWidth = useTorusHalfWidth();
   // 砲塔 (cannon = laser or gun) のみを heading に追従させるための独立 group。
   // 本体 (hull) は固定で、cannon assembly だけがこの ref を介して回転。
   const cannonYawGroupRef = useRef<THREE.Group>(null);
   // 4 cardinal nozzle に対応する exhaust ペア (outer + inner)。各 nozzle は独立に
   // smoothing + 表示制御。斜め thrust (e.g., W+A) は **2 nozzle が同時噴射、各 1/√2 の
   // 強度** で literal に再現 (RCS の真面目な合成)。
-  const exhaustOuterRefs = useRef<Array<THREE.Mesh | null>>([null, null, null, null]);
-  const exhaustInnerRefs = useRef<Array<THREE.Mesh | null>>([null, null, null, null]);
+  const exhaustOuterRefs = useRef<Array<THREE.Mesh | null>>([
+    null,
+    null,
+    null,
+    null,
+  ]);
+  const exhaustInnerRefs = useRef<Array<THREE.Mesh | null>>([
+    null,
+    null,
+    null,
+    null,
+  ]);
   const exhaustOuterMatRefs = useRef<Array<THREE.MeshBasicMaterial | null>>([
     null,
     null,
@@ -171,7 +179,9 @@ export const SelfShipRenderer = ({
   const nozzleHardwareColor = getThreeColor(SHIP_NOZZLE_HARDWARE_COLOR);
   const nozzleEmissiveColor = getThreeColor(SHIP_NOZZLE_EMISSIVE_COLOR);
   const nozzleInnerColor = getThreeColor(SHIP_NOZZLE_INNER_COLOR);
-  const nozzleInnerEmissiveColor = getThreeColor(SHIP_NOZZLE_INNER_EMISSIVE_COLOR);
+  const nozzleInnerEmissiveColor = getThreeColor(
+    SHIP_NOZZLE_INNER_EMISSIVE_COLOR,
+  );
   const gunColor = getThreeColor(SHIP_GUN_COLOR);
   const gunEmissiveColor = getThreeColor(SHIP_GUN_EMISSIVE_COLOR);
   const bracketColor = getThreeColor(SHIP_BRACKET_COLOR);
@@ -214,12 +224,15 @@ export const SelfShipRenderer = ({
     const group = groupRef.current;
     if (!group) return;
 
-    // Position: player world pos → display 座標
+    // Position: player world pos → display 座標 (raw、 fold せず boost のみ)。
+    // **PBC universal cover**: caller (OtherShipRenderer / SceneContent) が image cell loop
+    // で virtualPlayer.phaseSpace.pos に `2L * (obsCell + offset)` を加算済の前提。 ここで
+    // fold すると各 image が同じ primary 位置に重なる (= 9 image 化が壊れる) ので、
+    // torusHalfWidth は渡さず raw display position を取る。
     const dp = transformEventForDisplay(
       player.phaseSpace.pos,
       observerPos,
       observerBoost,
-      torusHalfWidth,
     );
     group.position.set(dp.x, dp.y, dp.t);
 
@@ -296,7 +309,13 @@ export const SelfShipRenderer = ({
       const outerMat = exhaustOuterMatRefs.current[i];
       const innerMat = exhaustInnerMatRefs.current[i];
 
-      if (smoothedI < EXHAUST_VISIBILITY_THRESHOLD || !outer || !inner || !outerMat || !innerMat) {
+      if (
+        smoothedI < EXHAUST_VISIBILITY_THRESHOLD ||
+        !outer ||
+        !inner ||
+        !outerMat ||
+        !innerMat
+      ) {
         if (outer) outer.visible = false;
         if (inner) inner.visible = false;
         continue;
@@ -380,11 +399,7 @@ export const SelfShipRenderer = ({
         tmpQuat.setFromUnitVectors(vecY, vecDir);
         arrowMesh.quaternion.copy(tmpQuat);
         // Scale: 元の flat 2D 矢印と同じ比率 (x=幅 / y=長さ / z=1)。
-        arrowMesh.scale.set(
-          ARROW_BASE_WIDTH * smoothed,
-          arrowLen,
-          1,
-        );
+        arrowMesh.scale.set(ARROW_BASE_WIDTH * smoothed, arrowLen, 1);
         arrowMat.opacity = smoothed * ARROW_MAX_OPACITY;
       }
     } else if (arrowMesh) {
@@ -394,139 +409,151 @@ export const SelfShipRenderer = ({
 
   return (
     <>
-    <group ref={groupRef} scale={SHIP_MODEL_SCALE}>
-      {/* === Lift wrapper: 全体を +SHIP_LIFT_Z 持ち上げて cannon mount を world origin に着地。
+      <group ref={groupRef} scale={SHIP_MODEL_SCALE}>
+        {/* === Lift wrapper: 全体を +SHIP_LIFT_Z 持ち上げて cannon mount を world origin に着地。
             これで cannon 軸が origin (= 過去光円錐の交点 = laser 発射点) を通る。
             exhausts は lift wrapper 内、座標系は lifted frame (z=0 は world z=+SHIP_LIFT_Z)。
             Spacetime acceleration arrow は display frame 直 attach (ship body group の外、下方)。 */}
-      <group position={[0, 0, SHIP_LIFT_Z]}>
-      {/* Hull: 六角プリズム (CylinderGeometry segments=6) で +x に vertex (尖端)。
+        <group position={[0, 0, SHIP_LIFT_Z]}>
+          {/* Hull: 六角プリズム (CylinderGeometry segments=6) で +x に vertex (尖端)。
           X 方向 scale 1.4 で elongate → 前後に細長い nose 付きシルエット。
           default cylinder 軸 = +y を z 軸に立てるため X 軸 90° 回転、その後 X scale。 */}
-      <mesh rotation={[Math.PI / 2, 0, 0]} scale={[SHIP_HULL_X_SCALE, 1, 1]}>
-        <cylinderGeometry
-          args={[SHIP_HULL_RADIUS, SHIP_HULL_RADIUS, SHIP_HULL_HEIGHT, SHIP_HULL_SEGMENTS]}
-        />
-        <meshStandardMaterial
-          color={hullColor}
-          emissive={hullEmissive}
-          emissiveIntensity={SHIP_HULL_EMISSIVE_INTENSITY}
-          roughness={0.55}
-          metalness={0.4}
-        />
-      </mesh>
+          <mesh
+            rotation={[Math.PI / 2, 0, 0]}
+            scale={[SHIP_HULL_X_SCALE, 1, 1]}
+          >
+            <cylinderGeometry
+              args={[
+                SHIP_HULL_RADIUS,
+                SHIP_HULL_RADIUS,
+                SHIP_HULL_HEIGHT,
+                SHIP_HULL_SEGMENTS,
+              ]}
+            />
+            <meshStandardMaterial
+              color={hullColor}
+              emissive={hullEmissive}
+              emissiveIntensity={SHIP_HULL_EMISSIVE_INTENSITY}
+              roughness={0.55}
+              metalness={0.4}
+            />
+          </mesh>
 
-      {/* 上面構造物 (案 A/B 切替可能、player 色で識別性を付与)。 */}
-      {dorsalStyle === "pod" && <DorsalPodRenderer color={player.color} />}
-      {dorsalStyle === "antenna" && <AntennaBeaconRenderer color={player.color} />}
+          {/* 上面構造物 (案 A/B 切替可能、player 色で識別性を付与)。 */}
+          {dorsalStyle === "pod" && <DorsalPodRenderer color={player.color} />}
+          {dorsalStyle === "antenna" && (
+            <AntennaBeaconRenderer color={player.color} />
+          )}
 
-      {/* 4 RCS nozzle hardware (常時可視、de Laval ベル型)。同 geometry を 2 pass 描画
+          {/* 4 RCS nozzle hardware (常時可視、de Laval ベル型)。同 geometry を 2 pass 描画
           で外面 (FrontSide、明るい hardware 色) と内面 (BackSide、影に沈んだ暗い色) を
           別 material に分離。CylinderGeometry(EXIT_wide, THROAT_narrow, length) を
           θ-π/2 だけ z 軸回転して outward 方向に top=wide を向ける。 */}
-      {nozzleAngles.map((θ, i) => {
-        const outX = Math.cos(θ);
-        const outY = Math.sin(θ);
-        const distFromCenter =
-          SHIP_HULL_RADIUS + SHIP_NOZZLE_OUTWARD_OFFSET + SHIP_NOZZLE_LENGTH / 2;
-        return (
-          <group
-            // biome-ignore lint/suspicious/noArrayIndexKey: NOZZLE_COUNT 固定 + 順序不変
-            key={`nozzle-${i}`}
-            position={[outX * distFromCenter, outY * distFromCenter, 0]}
-            rotation={[0, 0, θ - Math.PI / 2]}
-          >
-            {/* 外面 (FrontSide) */}
-            <mesh>
-              <cylinderGeometry
-                args={[
-                  SHIP_NOZZLE_EXIT_RADIUS,
-                  SHIP_NOZZLE_THROAT_RADIUS,
-                  SHIP_NOZZLE_LENGTH,
-                  12,
-                  1,
-                  true,
-                ]}
-              />
-              <meshStandardMaterial
-                color={nozzleHardwareColor}
-                emissive={nozzleEmissiveColor}
-                emissiveIntensity={SHIP_NOZZLE_EMISSIVE_INTENSITY}
-                roughness={0.6}
-                metalness={0.5}
-                side={THREE.FrontSide}
-              />
-            </mesh>
-            {/* 内面 (BackSide、奥に沈んだ影色) */}
-            <mesh>
-              <cylinderGeometry
-                args={[
-                  SHIP_NOZZLE_EXIT_RADIUS,
-                  SHIP_NOZZLE_THROAT_RADIUS,
-                  SHIP_NOZZLE_LENGTH,
-                  12,
-                  1,
-                  true,
-                ]}
-              />
-              <meshStandardMaterial
-                color={nozzleInnerColor}
-                emissive={nozzleInnerEmissiveColor}
-                emissiveIntensity={SHIP_NOZZLE_INNER_EMISSIVE_INTENSITY}
-                roughness={0.85}
-                metalness={0.2}
-                side={THREE.BackSide}
-              />
-            </mesh>
-            {/* Throat disk: nozzle 最奥 (inward 側) を塞ぐ発光円盤。radius = THROAT、
+          {nozzleAngles.map((θ, i) => {
+            const outX = Math.cos(θ);
+            const outY = Math.sin(θ);
+            const distFromCenter =
+              SHIP_HULL_RADIUS +
+              SHIP_NOZZLE_OUTWARD_OFFSET +
+              SHIP_NOZZLE_LENGTH / 2;
+            return (
+              <group
+                // biome-ignore lint/suspicious/noArrayIndexKey: NOZZLE_COUNT 固定 + 順序不変
+                key={`nozzle-${i}`}
+                position={[outX * distFromCenter, outY * distFromCenter, 0]}
+                rotation={[0, 0, θ - Math.PI / 2]}
+              >
+                {/* 外面 (FrontSide) */}
+                <mesh>
+                  <cylinderGeometry
+                    args={[
+                      SHIP_NOZZLE_EXIT_RADIUS,
+                      SHIP_NOZZLE_THROAT_RADIUS,
+                      SHIP_NOZZLE_LENGTH,
+                      12,
+                      1,
+                      true,
+                    ]}
+                  />
+                  <meshStandardMaterial
+                    color={nozzleHardwareColor}
+                    emissive={nozzleEmissiveColor}
+                    emissiveIntensity={SHIP_NOZZLE_EMISSIVE_INTENSITY}
+                    roughness={0.6}
+                    metalness={0.5}
+                    side={THREE.FrontSide}
+                  />
+                </mesh>
+                {/* 内面 (BackSide、奥に沈んだ影色) */}
+                <mesh>
+                  <cylinderGeometry
+                    args={[
+                      SHIP_NOZZLE_EXIT_RADIUS,
+                      SHIP_NOZZLE_THROAT_RADIUS,
+                      SHIP_NOZZLE_LENGTH,
+                      12,
+                      1,
+                      true,
+                    ]}
+                  />
+                  <meshStandardMaterial
+                    color={nozzleInnerColor}
+                    emissive={nozzleInnerEmissiveColor}
+                    emissiveIntensity={SHIP_NOZZLE_INNER_EMISSIVE_INTENSITY}
+                    roughness={0.85}
+                    metalness={0.2}
+                    side={THREE.BackSide}
+                  />
+                </mesh>
+                {/* Throat disk: nozzle 最奥 (inward 側) を塞ぐ発光円盤。radius = THROAT、
                 color = EXHAUST_INNER_COLOR (噴射炎 inner core と同色)。「ノズル奥が
                 燃えてる」見え方を作る。meshBasicMaterial なのでライト非依存で常に全輝度。
                 rotation.x = -π/2 で disk normal を local +y (= nozzle exit 方向、外側から
                 覗き込む camera 向き) に合わせる。 */}
-            <mesh
-              position={[0, -SHIP_NOZZLE_LENGTH / 2, 0]}
-              rotation={[-Math.PI / 2, 0, 0]}
-            >
-              <circleGeometry args={[SHIP_NOZZLE_THROAT_RADIUS, 16]} />
-              <meshBasicMaterial
-                color={exhaustInnerColor}
-                side={THREE.DoubleSide}
-              />
-            </mesh>
-            {/* Mount pylon: hull edge → nozzle throat を繋ぐ tapered cylinder。
+                <mesh
+                  position={[0, -SHIP_NOZZLE_LENGTH / 2, 0]}
+                  rotation={[-Math.PI / 2, 0, 0]}
+                >
+                  <circleGeometry args={[SHIP_NOZZLE_THROAT_RADIUS, 16]} />
+                  <meshBasicMaterial
+                    color={exhaustInnerColor}
+                    side={THREE.DoubleSide}
+                  />
+                </mesh>
+                {/* Mount pylon: hull edge → nozzle throat を繋ぐ tapered cylinder。
                 +y (top, outward 側) = nozzle throat 接続 (細い)、-y (bottom, hull 側) = base (太い)。
                 group 原点は nozzle 中心、mount 中心は hull edge と throat の中点 →
                 y = -(OFFSET/2 + LENGTH/2) に placement。hull facet が内側を occlude して
                 「hull から emerge する mount」に見える。色は bracket と同じ (steel-blue) で
                 「取り付けパーツ」ファミリーに統一。 */}
-            <mesh
-              position={[
-                0,
-                -(SHIP_NOZZLE_OUTWARD_OFFSET / 2 + SHIP_NOZZLE_LENGTH / 2),
-                0,
-              ]}
-            >
-              <cylinderGeometry
-                args={[
-                  SHIP_NOZZLE_MOUNT_THROAT_RADIUS,
-                  SHIP_NOZZLE_MOUNT_HULL_RADIUS,
-                  SHIP_NOZZLE_OUTWARD_OFFSET,
-                  12,
-                ]}
-              />
-              <meshStandardMaterial
-                color={bracketColor}
-                emissive={bracketEmissiveColor}
-                emissiveIntensity={SHIP_BRACKET_EMISSIVE_INTENSITY}
-                roughness={0.6}
-                metalness={0.55}
-              />
-            </mesh>
-          </group>
-        );
-      })}
+                <mesh
+                  position={[
+                    0,
+                    -(SHIP_NOZZLE_OUTWARD_OFFSET / 2 + SHIP_NOZZLE_LENGTH / 2),
+                    0,
+                  ]}
+                >
+                  <cylinderGeometry
+                    args={[
+                      SHIP_NOZZLE_MOUNT_THROAT_RADIUS,
+                      SHIP_NOZZLE_MOUNT_HULL_RADIUS,
+                      SHIP_NOZZLE_OUTWARD_OFFSET,
+                      12,
+                    ]}
+                  />
+                  <meshStandardMaterial
+                    color={bracketColor}
+                    emissive={bracketEmissiveColor}
+                    emissiveIntensity={SHIP_BRACKET_EMISSIVE_INTENSITY}
+                    roughness={0.6}
+                    metalness={0.55}
+                  />
+                </mesh>
+              </group>
+            );
+          })}
 
-      {/* === 砲: belly mount で hull 底面から bracket 経由でぶら下げ ===
+          {/* === 砲: belly mount で hull 底面から bracket 経由でぶら下げ ===
           1. Bracket: hull 底面 (z=-HULL_H/2) から垂直に -z 方向に伸びる短い cylinder。
           2. その bracket 末端を mount point として cannon group を配置。
           3. cannon group は +π/4 回転で +x → forward+down 方向に向ける。
@@ -535,246 +562,261 @@ export const SelfShipRenderer = ({
           → 後方視点でも常に hull 下に砲身が見える。
           cannonStyle='laser' では LaserCannonRenderer で差替え (bracket は内部で同 spec 再描画)。
           外側 group (cannonYawGroupRef) で yaw 回転 → 本体固定で砲だけが heading 方向を指す。 */}
-      <group ref={cannonYawGroupRef}>
-      {cannonStyle === "laser" && <LaserCannonRenderer color={player.color} />}
-      {cannonStyle === "gun" && (
-        <>
-
-      {/* Bracket (hull 底面 → cannon mount point の垂直支柱)。色は SHIP_BRACKET_* 系列
+          <group ref={cannonYawGroupRef}>
+            {cannonStyle === "laser" && (
+              <LaserCannonRenderer color={player.color} />
+            )}
+            {cannonStyle === "gun" && (
+              <>
+                {/* Bracket (hull 底面 → cannon mount point の垂直支柱)。色は SHIP_BRACKET_* 系列
           (steel-blue、nozzle 外面と同色) で hull/cannon (dark navy) と分離。 */}
-      <mesh
-        rotation={[Math.PI / 2, 0, 0]}
-        position={[
-          0,
-          0,
-          -SHIP_HULL_HEIGHT / 2 - SHIP_GUN_BRACKET_HEIGHT / 2,
-        ]}
-      >
-        {/* Tapered cone (円錐台): radiusTop = BASE_RADIUS (hull 根元側、太い) →
+                <mesh
+                  rotation={[Math.PI / 2, 0, 0]}
+                  position={[
+                    0,
+                    0,
+                    -SHIP_HULL_HEIGHT / 2 - SHIP_GUN_BRACKET_HEIGHT / 2,
+                  ]}
+                >
+                  {/* Tapered cone (円錐台): radiusTop = BASE_RADIUS (hull 根元側、太い) →
             radiusBottom = BRACKET_RADIUS (cannon mount 側、細い)。rotation=[π/2,0,0] で
             局所 +Y が world +Z (= hull 側) に回転するため、radiusTop = 根元。 */}
-        <cylinderGeometry
-          args={[
-            SHIP_GUN_BRACKET_BASE_RADIUS,
-            SHIP_GUN_BRACKET_RADIUS,
-            SHIP_GUN_BRACKET_HEIGHT,
-            8,
-          ]}
-        />
-        <meshStandardMaterial
-          color={bracketColor}
-          emissive={bracketEmissiveColor}
-          emissiveIntensity={SHIP_BRACKET_EMISSIVE_INTENSITY}
-          roughness={0.65}
-          metalness={0.6}
-        />
-      </mesh>
+                  <cylinderGeometry
+                    args={[
+                      SHIP_GUN_BRACKET_BASE_RADIUS,
+                      SHIP_GUN_BRACKET_RADIUS,
+                      SHIP_GUN_BRACKET_HEIGHT,
+                      8,
+                    ]}
+                  />
+                  <meshStandardMaterial
+                    color={bracketColor}
+                    emissive={bracketEmissiveColor}
+                    emissiveIntensity={SHIP_BRACKET_EMISSIVE_INTENSITY}
+                    roughness={0.65}
+                    metalness={0.6}
+                  />
+                </mesh>
 
-      {/* Cannon assembly group: bracket 末端を mount point として +π/4 down-forward */}
-      <group
-        position={[0, 0, -SHIP_HULL_HEIGHT / 2 - SHIP_GUN_BRACKET_HEIGHT]}
-        rotation={[0, SHIP_GUN_PITCH_DOWN_RAD, 0]}
-      >
-        {/* Breech (砲尾、cannon 根元のチャンクなハウジング)。REAR_EXTENSION で
+                {/* Cannon assembly group: bracket 末端を mount point として +π/4 down-forward */}
+                <group
+                  position={[
+                    0,
+                    0,
+                    -SHIP_HULL_HEIGHT / 2 - SHIP_GUN_BRACKET_HEIGHT,
+                  ]}
+                  rotation={[0, SHIP_GUN_PITCH_DOWN_RAD, 0]}
+                >
+                  {/* Breech (砲尾、cannon 根元のチャンクなハウジング)。REAR_EXTENSION で
             breech 全体が cannon group origin (= bracket 接続点) より後方に shift。 */}
-        <mesh
-          position={[SHIP_GUN_BREECH_LENGTH / 2 - SHIP_CANNON_REAR_EXTENSION, 0, 0]}
-          rotation={[0, 0, -Math.PI / 2]}
-        >
-          <cylinderGeometry
-            args={[
-              SHIP_GUN_BREECH_RADIUS,
-              SHIP_GUN_BREECH_RADIUS,
-              SHIP_GUN_BREECH_LENGTH,
-              16,
-            ]}
-          />
-          <meshStandardMaterial
-            color={gunColor}
-            emissive={gunEmissiveColor}
-            emissiveIntensity={SHIP_GUN_EMISSIVE_INTENSITY}
-            roughness={0.65}
-            metalness={0.65}
-          />
-        </mesh>
-        {/* 主砲身 (同じく REAR_EXT で shift) */}
-        <mesh
-          position={[SHIP_GUN_BARREL_LENGTH / 2 - SHIP_CANNON_REAR_EXTENSION, 0, 0]}
-          rotation={[0, 0, -Math.PI / 2]}
-        >
-          <cylinderGeometry
-            args={[
-              SHIP_GUN_BARREL_RADIUS,
-              SHIP_GUN_BARREL_RADIUS,
-              SHIP_GUN_BARREL_LENGTH,
-              16,
-            ]}
-          />
-          <meshStandardMaterial
-            color={gunColor}
-            emissive={gunEmissiveColor}
-            emissiveIntensity={SHIP_GUN_EMISSIVE_INTENSITY}
-            roughness={0.6}
-            metalness={0.7}
-          />
-        </mesh>
-        {/* 補強リング × N (主砲身に等間隔 wrap)。色は cannon body と同じ (navy) に戻す。 */}
-        {ringPositions.map((px, i) => (
-          <mesh
-            // biome-ignore lint/suspicious/noArrayIndexKey: ring 位置固定 + 順序不変
-            key={`gun-ring-${i}`}
-            position={[px, 0, 0]}
-            rotation={[0, 0, -Math.PI / 2]}
-          >
-            <cylinderGeometry
-              args={[
-                SHIP_GUN_RING_RADIUS,
-                SHIP_GUN_RING_RADIUS,
-                SHIP_GUN_RING_LENGTH,
-                16,
-              ]}
-            />
-            <meshStandardMaterial
-              color={gunColor}
-              emissive={gunEmissiveColor}
-              emissiveIntensity={SHIP_GUN_EMISSIVE_INTENSITY * 1.1}
-              roughness={0.55}
-              metalness={0.7}
-            />
-          </mesh>
-        ))}
-        {/* TIP (主砲身 → 細い延長、REAR_EXT shift 適用) */}
-        <mesh
-          position={[
-            SHIP_GUN_BARREL_LENGTH + SHIP_GUN_TIP_LENGTH / 2 - SHIP_CANNON_REAR_EXTENSION,
-            0,
-            0,
-          ]}
-          rotation={[0, 0, -Math.PI / 2]}
-        >
-          <cylinderGeometry
-            args={[
-              SHIP_GUN_TIP_RADIUS,
-              SHIP_GUN_TIP_RADIUS,
-              SHIP_GUN_TIP_LENGTH,
-              16,
-            ]}
-          />
-          <meshStandardMaterial
-            color={gunColor}
-            emissive={gunEmissiveColor}
-            emissiveIntensity={SHIP_GUN_EMISSIVE_INTENSITY * 1.2}
-            roughness={0.55}
-            metalness={0.75}
-          />
-        </mesh>
-        {/* Muzzle brake (TIP 末端、砲口デバイス、REAR_EXT shift 適用) */}
-        <mesh
-          position={[
-            SHIP_GUN_BARREL_LENGTH +
-              SHIP_GUN_TIP_LENGTH -
-              SHIP_GUN_MUZZLE_BRAKE_LENGTH / 2 -
-              SHIP_CANNON_REAR_EXTENSION,
-            0,
-            0,
-          ]}
-          rotation={[0, 0, -Math.PI / 2]}
-        >
-          <cylinderGeometry
-            args={[
-              SHIP_GUN_MUZZLE_BRAKE_RADIUS,
-              SHIP_GUN_MUZZLE_BRAKE_RADIUS,
-              SHIP_GUN_MUZZLE_BRAKE_LENGTH,
-              16,
-            ]}
-          />
-          <meshStandardMaterial
-            color={gunColor}
-            emissive={gunEmissiveColor}
-            emissiveIntensity={SHIP_GUN_EMISSIVE_INTENSITY * 1.3}
-            roughness={0.5}
-            metalness={0.8}
-          />
-        </mesh>
-      </group>
-        </>
-      )}
-      </group>
+                  <mesh
+                    position={[
+                      SHIP_GUN_BREECH_LENGTH / 2 - SHIP_CANNON_REAR_EXTENSION,
+                      0,
+                      0,
+                    ]}
+                    rotation={[0, 0, -Math.PI / 2]}
+                  >
+                    <cylinderGeometry
+                      args={[
+                        SHIP_GUN_BREECH_RADIUS,
+                        SHIP_GUN_BREECH_RADIUS,
+                        SHIP_GUN_BREECH_LENGTH,
+                        16,
+                      ]}
+                    />
+                    <meshStandardMaterial
+                      color={gunColor}
+                      emissive={gunEmissiveColor}
+                      emissiveIntensity={SHIP_GUN_EMISSIVE_INTENSITY}
+                      roughness={0.65}
+                      metalness={0.65}
+                    />
+                  </mesh>
+                  {/* 主砲身 (同じく REAR_EXT で shift) */}
+                  <mesh
+                    position={[
+                      SHIP_GUN_BARREL_LENGTH / 2 - SHIP_CANNON_REAR_EXTENSION,
+                      0,
+                      0,
+                    ]}
+                    rotation={[0, 0, -Math.PI / 2]}
+                  >
+                    <cylinderGeometry
+                      args={[
+                        SHIP_GUN_BARREL_RADIUS,
+                        SHIP_GUN_BARREL_RADIUS,
+                        SHIP_GUN_BARREL_LENGTH,
+                        16,
+                      ]}
+                    />
+                    <meshStandardMaterial
+                      color={gunColor}
+                      emissive={gunEmissiveColor}
+                      emissiveIntensity={SHIP_GUN_EMISSIVE_INTENSITY}
+                      roughness={0.6}
+                      metalness={0.7}
+                    />
+                  </mesh>
+                  {/* 補強リング × N (主砲身に等間隔 wrap)。色は cannon body と同じ (navy) に戻す。 */}
+                  {ringPositions.map((px, i) => (
+                    <mesh
+                      // biome-ignore lint/suspicious/noArrayIndexKey: ring 位置固定 + 順序不変
+                      key={`gun-ring-${i}`}
+                      position={[px, 0, 0]}
+                      rotation={[0, 0, -Math.PI / 2]}
+                    >
+                      <cylinderGeometry
+                        args={[
+                          SHIP_GUN_RING_RADIUS,
+                          SHIP_GUN_RING_RADIUS,
+                          SHIP_GUN_RING_LENGTH,
+                          16,
+                        ]}
+                      />
+                      <meshStandardMaterial
+                        color={gunColor}
+                        emissive={gunEmissiveColor}
+                        emissiveIntensity={SHIP_GUN_EMISSIVE_INTENSITY * 1.1}
+                        roughness={0.55}
+                        metalness={0.7}
+                      />
+                    </mesh>
+                  ))}
+                  {/* TIP (主砲身 → 細い延長、REAR_EXT shift 適用) */}
+                  <mesh
+                    position={[
+                      SHIP_GUN_BARREL_LENGTH +
+                        SHIP_GUN_TIP_LENGTH / 2 -
+                        SHIP_CANNON_REAR_EXTENSION,
+                      0,
+                      0,
+                    ]}
+                    rotation={[0, 0, -Math.PI / 2]}
+                  >
+                    <cylinderGeometry
+                      args={[
+                        SHIP_GUN_TIP_RADIUS,
+                        SHIP_GUN_TIP_RADIUS,
+                        SHIP_GUN_TIP_LENGTH,
+                        16,
+                      ]}
+                    />
+                    <meshStandardMaterial
+                      color={gunColor}
+                      emissive={gunEmissiveColor}
+                      emissiveIntensity={SHIP_GUN_EMISSIVE_INTENSITY * 1.2}
+                      roughness={0.55}
+                      metalness={0.75}
+                    />
+                  </mesh>
+                  {/* Muzzle brake (TIP 末端、砲口デバイス、REAR_EXT shift 適用) */}
+                  <mesh
+                    position={[
+                      SHIP_GUN_BARREL_LENGTH +
+                        SHIP_GUN_TIP_LENGTH -
+                        SHIP_GUN_MUZZLE_BRAKE_LENGTH / 2 -
+                        SHIP_CANNON_REAR_EXTENSION,
+                      0,
+                      0,
+                    ]}
+                    rotation={[0, 0, -Math.PI / 2]}
+                  >
+                    <cylinderGeometry
+                      args={[
+                        SHIP_GUN_MUZZLE_BRAKE_RADIUS,
+                        SHIP_GUN_MUZZLE_BRAKE_RADIUS,
+                        SHIP_GUN_MUZZLE_BRAKE_LENGTH,
+                        16,
+                      ]}
+                    />
+                    <meshStandardMaterial
+                      color={gunColor}
+                      emissive={gunEmissiveColor}
+                      emissiveIntensity={SHIP_GUN_EMISSIVE_INTENSITY * 1.3}
+                      roughness={0.5}
+                      metalness={0.8}
+                    />
+                  </mesh>
+                </group>
+              </>
+            )}
+          </group>
 
-      {/* Exhaust (4 nozzle 各々、旧 ExhaustCone と同 spec、2 層 cone + additive blending)。
+          {/* Exhaust (4 nozzle 各々、旧 ExhaustCone と同 spec、2 層 cone + additive blending)。
           位置・向き・scale は useFrame で nozzle 個別に動的設定。
           **`renderOrder={10}` + `depthTest: false`**: 世界線 tube 等の D pattern geometry
           と重なっても煙が必ず上に描画される (transparent + additive なので後勝ち順が
           意味を持つ)。depthTest off で他 object に occlude されず、renderOrder で常に
           後段描画。 */}
-      {nozzleAngles.map((_, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: NOZZLE_COUNT 固定 + 順序不変
-        <group key={`exhaust-${i}`}>
-          <mesh
-            ref={(el) => {
-              exhaustOuterRefs.current[i] = el;
-            }}
-            geometry={sharedGeometries.exhaustCone}
-            visible={false}
-            renderOrder={10}
-          >
-            <meshBasicMaterial
-              ref={(el) => {
-                exhaustOuterMatRefs.current[i] = el;
-              }}
-              color={exhaustOuterColor}
-              transparent
-              depthTest={false}
-              depthWrite={false}
-              blending={THREE.AdditiveBlending}
-              toneMapped={false}
-            />
-          </mesh>
-          <mesh
-            ref={(el) => {
-              exhaustInnerRefs.current[i] = el;
-            }}
-            geometry={sharedGeometries.exhaustCone}
-            visible={false}
-            renderOrder={10}
-          >
-            <meshBasicMaterial
-              ref={(el) => {
-                exhaustInnerMatRefs.current[i] = el;
-              }}
-              color={exhaustInnerColor}
-              transparent
-              depthTest={false}
-              depthWrite={false}
-              blending={THREE.AdditiveBlending}
-              toneMapped={false}
-            />
-          </mesh>
+          {nozzleAngles.map((_, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: NOZZLE_COUNT 固定 + 順序不変
+            <group key={`exhaust-${i}`}>
+              <mesh
+                ref={(el) => {
+                  exhaustOuterRefs.current[i] = el;
+                }}
+                geometry={sharedGeometries.exhaustCone}
+                visible={false}
+                renderOrder={10}
+              >
+                <meshBasicMaterial
+                  ref={(el) => {
+                    exhaustOuterMatRefs.current[i] = el;
+                  }}
+                  color={exhaustOuterColor}
+                  transparent
+                  depthTest={false}
+                  depthWrite={false}
+                  blending={THREE.AdditiveBlending}
+                  toneMapped={false}
+                />
+              </mesh>
+              <mesh
+                ref={(el) => {
+                  exhaustInnerRefs.current[i] = el;
+                }}
+                geometry={sharedGeometries.exhaustCone}
+                visible={false}
+                renderOrder={10}
+              >
+                <meshBasicMaterial
+                  ref={(el) => {
+                    exhaustInnerMatRefs.current[i] = el;
+                  }}
+                  color={exhaustInnerColor}
+                  transparent
+                  depthTest={false}
+                  depthWrite={false}
+                  blending={THREE.AdditiveBlending}
+                  toneMapped={false}
+                />
+              </mesh>
+            </group>
+          ))}
         </group>
-      ))}
-
-      </group>{/* end lift wrapper */}
-    </group>
-    {/* Spacetime acceleration arrow: display frame 直 attach (ship body group の外側、yaw/scale
+        {/* end lift wrapper */}
+      </group>
+      {/* Spacetime acceleration arrow: display frame 直 attach (ship body group の外側、yaw/scale
         非適用)。useFrame が observerBoost · α_world を計算して position + quaternion を直打ち。
         時空 4-vector の可視化なので、位置は display 座標そのもの (機体 lifted frame ではなく)、
         向きも任意 3D 方向 (時間軸に傾くこともあり)。geometry は元の flat 2D 矢印を流用、
         setFromUnitVectors で +y 軸を α_obs 方向に向ける (edge-on 視点になる極限では潰れるが
         通常のゲームカメラ角度では視認可能)。 */}
-    <mesh
-      ref={arrowMeshRef}
-      geometry={sharedGeometries.accelerationArrowFlat}
-      visible={false}
-    >
-      <meshBasicMaterial
-        ref={arrowMatRef}
-        color={arrowColor}
-        transparent
-        depthWrite={false}
-        toneMapped={false}
-        side={THREE.DoubleSide}
-      />
-    </mesh>
+      <mesh
+        ref={arrowMeshRef}
+        geometry={sharedGeometries.accelerationArrowFlat}
+        visible={false}
+      >
+        <meshBasicMaterial
+          ref={arrowMatRef}
+          color={arrowColor}
+          transparent
+          depthWrite={false}
+          toneMapped={false}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
     </>
   );
 };

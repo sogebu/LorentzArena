@@ -648,9 +648,10 @@ export const ARENA_PAST_CONE_OPACITY = 0.5;
 export const ARENA_FUTURE_CONE_OPACITY = 0.3;
 
 // --- Square arena (torus PBC mode) ---
-// hue 35° (warm amber) で光円錐 (= cyan 系 hsl(200, ...)) と完全区別。 universal cover の
-// 隣接 image cells が並ぶ visual で、 arena 枠と光円錐の重なりを視覚的に切り分ける。
-export const ARENA_SQUARE_COLOR = "hsl(35, 50%, 65%)";
+// hue 320° (magenta、 cyan 200° の対立色) + saturation 60% で光円錐と最大限区別。
+// universal cover の隣接 image cells が並ぶ visual で、 arena 枠と光円錐の重なりを
+// hue で完全切り分け (warm amber 35° では薄かったため magenta に強化)。
+export const ARENA_SQUARE_COLOR = "hsl(320, 60%, 70%)";
 export const ARENA_SQUARE_SURFACE_OPACITY = 0.06;
 // 4 辺の縦エッジ (時間方向に伸びる線) の opacity。 円柱の vertical line と同等。
 export const ARENA_SQUARE_EDGE_OPACITY = 0.25;
