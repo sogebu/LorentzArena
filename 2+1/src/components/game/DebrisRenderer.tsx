@@ -1,16 +1,16 @@
 import type React from "react";
 import { useRef } from "react";
 import * as THREE from "three";
-import { createVector4, type Vector4 } from "../../physics";
+import { createVector4, minImageDelta1D, type Vector4 } from "../../physics";
 import {
   DEBRIS_MAX_LAMBDA,
   DEBRIS_WORLDLINE_OPACITY,
   HIT_DEBRIS_MAX_LAMBDA,
   HIT_DEBRIS_WORLDLINE_OPACITY,
 } from "./constants";
+import { useDisplayFrame } from "./DisplayFrameContext";
 import { pastLightConeIntersectionDebris } from "./debris";
 import { transformEventForDisplay } from "./displayTransform";
-import { useDisplayFrame } from "./DisplayFrameContext";
 import {
   getDebrisMaterial,
   getHitDebrisMaterial,
@@ -41,15 +41,22 @@ export const DebrisRenderer = ({
   debrisRecords: readonly DebrisRecord[];
   myPlayer: { phaseSpace: { pos: Vector4 }; color: string };
 }) => {
-  const { displayMatrix, observerPos, observerBoost, torusHalfWidth } = useDisplayFrame();
+  const { displayMatrix, observerPos, observerBoost, torusHalfWidth } =
+    useDisplayFrame();
   const explosionMeshRef = useRef<THREE.InstancedMesh>(null);
   const hitMeshRef = useRef<THREE.InstancedMesh>(null);
 
   // collect all debris segments (world frame) + intersection markers (world frame)
   type DebrisSegment = {
-    sx: number; sy: number; st: number;
-    ex: number; ey: number; et: number;
-    r: number; g: number; b: number;
+    sx: number;
+    sy: number;
+    st: number;
+    ex: number;
+    ey: number;
+    et: number;
+    r: number;
+    g: number;
+    b: number;
     radius: number;
   };
   // Phase C1: hit デブリは opacity 半分 (size は 2026-04-18 夜統一で explosion 同値)。
@@ -99,21 +106,40 @@ export const DebrisRenderer = ({
       );
       if (intersection) {
         // marker は球なので Lorentz 変形を避け、display 並進のみ
-        const dp = transformEventForDisplay(intersection, observerPos, observerBoost, torusHalfWidth);
+        const dp = transformEventForDisplay(
+          intersection,
+          observerPos,
+          observerBoost,
+          torusHalfWidth,
+        );
         markerElements.push(
           <mesh
             key={`debris-${di}-${pi}`}
             position={[dp.x, dp.y, dp.t]}
             scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
             geometry={sharedGeometries.explosionParticle}
-            material={isHit ? getHitDebrisMaterial(debrisColor) : getDebrisMaterial(debrisColor)}
+            material={
+              isHit
+                ? getHitDebrisMaterial(debrisColor)
+                : getDebrisMaterial(debrisColor)
+            }
           />,
         );
       }
     }
   }
 
-  const writeInstanced = (mesh: THREE.InstancedMesh | null, segs: DebrisSegment[]) => {
+  // torus mode: 各 debris segment の中心点 (= instance translation) を観測者中心 primary
+  // cell `[obs±L]²` に最短画像で折る。 cylinder 自体の length / 方向は world から計算
+  // (= 物理的な segment 軸を保持)、 中心点だけ shift。 cylinder length は寿命短く ~1-2s で
+  // ARENA L=20 に対して微小なので、 segment が境界跨ぐエッジケースは限定的 (= cylinder の
+  // 一端が画面外まで伸びる)。 完全な segment 分割描画は Step 2 (3x3 image cell 複製) で吸収予定。
+  const ox = observerPos?.x ?? 0;
+  const oy = observerPos?.y ?? 0;
+  const writeInstanced = (
+    mesh: THREE.InstancedMesh | null,
+    segs: DebrisSegment[],
+  ) => {
     if (!mesh) return;
     mesh.matrix.copy(displayMatrix);
     mesh.matrixAutoUpdate = false;
@@ -123,6 +149,10 @@ export const DebrisRenderer = ({
       _debrisStart.set(seg.sx, seg.sy, seg.st);
       _debrisEnd.set(seg.ex, seg.ey, seg.et);
       _debrisMid.addVectors(_debrisStart, _debrisEnd).multiplyScalar(0.5);
+      if (torusHalfWidth !== undefined && observerPos) {
+        _debrisMid.x = ox + minImageDelta1D(_debrisMid.x - ox, torusHalfWidth);
+        _debrisMid.y = oy + minImageDelta1D(_debrisMid.y - oy, torusHalfWidth);
+      }
       _debrisDir.subVectors(_debrisEnd, _debrisStart);
       const len = _debrisDir.length();
       if (len < 0.001) {

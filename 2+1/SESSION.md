@@ -4,11 +4,11 @@
 
 **`e6c17cc` デプロイ済** (build `2026/04/27 15:15:46 JST`)。本番: https://sogebu.github.io/LorentzArena/
 
-未デプロイ commit (= main の更新): 2026-04-27 後半で **PBC torus アリーナ** 導入 (boundaryMode 切替軸 + 正方形枠 SquareArenaRenderer + 距離計算 5 箇所の最短画像化 + WorldLineRenderer の observer 中心 wrap)。 デフォルト = `torus` (= 周期的境界条件)、 円柱は `#boundary=open_cylinder` でオプション保持。 **実機 multi-tab 実戦テストは未完了**。 また worldLine の wrap 跨ぎ瞬間の line break (= 「世界線が画面横切らない」) と DebrisRenderer の wrap は **中間版で未実装**、 後続作業として残っている。
+未デプロイ commit (= main の更新): 2026-04-27 後半〜夜で **PBC torus アリーナ完成版** ([`9d14b16`](https://github.com/sogebu/LorentzArena/commit/9d14b16) + 本セッション最新)。 デフォルト = `torus` (= 周期的境界条件)、 円柱は `#boundary=open_cylinder` でオプション保持。 **「世界線が画面を横切らない」 core requirement 達成**: GPU vertex shader fold (`createTorusFoldShader`) + CPU segment split (`buildWorldLineSegments` for worldLine、 `buildLaserSegments` for laser、 `_debrisMid` shift for debris) で全 D pattern renderer の境界跨ぎ描画を解消。 **実機 multi-tab 実戦テストは未完了** (= odakin の確認待ち)。
 
 ### 直近の文脈 (次セッションで意識すべき状態)
 
-#### PBC torus アリーナ (2026-04-27 後半) — 中間版
+#### PBC torus アリーナ (2026-04-27) — 完成版
 
 第 3 軸の `boundaryMode: "torus" | "open_cylinder"` を controlScheme / viewMode と直交軸として追加。 デフォルト torus = PBC、 切替は URL hash `#boundary=open_cylinder`。 LS 永続化、 UI dropdown は撤去。
 
@@ -16,7 +16,8 @@
 - `phaseSpace.pos` / `worldLine` 各点は **unwrapped 連続値** を source of truth に維持。 wrap は描画と距離計算に閉じ込める
 - 距離計算: `pastLightConeIntersectionWorldLine` / `findLaserHitPosition` / `processHitDetection` / `processLighthouseAI` / `checkCausalFreeze` / `computeInterceptDirection` / `Radar` で観測者を worldLine 最新点と同 image cell に shift してから連続値計算 (worldLine.ts は無変更)
 - 描画: `transformEventForDisplay` に optional `torusHalfWidth` 引数で観測者中心の primary cell `[obs±L]²` に最短画像で折り畳む (= Asteroids 風 visual wrapping)
-- WorldLineRenderer の TubeGeometry vertex も観測者の cell index で wrap (cell 内動きは displayMatrix で吸収、 cell 変化時のみ再生成)
+- worldLine / laser の line geometry は **GPU shader (`createTorusFoldShader`) で per-vertex fold** + **CPU で wrap 跨ぎ点を segment に分割**。 vertex 値は raw unwrapped 連続値、 fold は GLSL `mod` で `[obs±L]²` 内に投影
+- DebrisRenderer は cylinder instance translation (= mid) を `minImageDelta1D` で primary cell に shift (= cylinder 軸そのものは world coords 保持、 mid 移動だけで instance 全体が対応 image cell に表示)
 - ArenaRenderer は boundaryMode で `SquareArenaRenderer` (4 corner 縦エッジ + 上下 rim) と `CylinderArenaRenderer` (旧) に dispatch
 
 **主要ヘルパ** ([`physics/torus.ts`](src/physics/torus.ts)):
@@ -28,11 +29,27 @@
 - `shiftObserverToReferenceImage(obs, ref, halfW?)`: 観測者を reference と同 cell に shift (worldLine.ts 不変で PBC 対応する核 helper)
 - 単体テスト 26 ケース pass ([`physics/torus.test.ts`](src/physics/torus.test.ts))
 
-**未実装の後続作業 (= 中間版の制約)**:
-- **worldLine 描画の wrap 跨ぎ line break**: 1 本の TubeGeometry を複数 segment に分割して、 観測者の image cell が変わる隣接 vertex 間で線分を切る。 現状はジャンプ点で TubeGeometry が斜めに横切る描画 (= 「世界線が画面横切らない」要件未達)
-- **DebrisRenderer の observer 中心 wrap**: debris segment vertex を observer 中心 primary cell に折り畳み。 寿命短いので影響限定的だが完成度のため要対応
-- **レーザー軌跡の primary cell 境界クリッピング**: 計画書 (b) 案、 Liang-Barsky 風で emission → tip を 2 segment に分割
-- **過去光円錐 ∩ 正方形枠 の交線描画**: 円柱版の `ARENA_PAST_CONE_OPACITY` 相当、 4 平面 × 円錐の交線計算が要
+**Renderer 別 segment 分割 helper**:
+- [`buildWorldLineSegments`](src/components/game/WorldLineRenderer.tsx): worldLine.history を `isWrapCrossing` で分割。 各 segment 独立 TubeGeometry。 9 unit tests
+- [`buildLaserSegments`](src/components/game/laserSegmentSplit.ts): emission ↔ tip が異なる image cell の laser を Liang-Barsky 風境界クリッピングで 2 segment に分割。 9 unit tests
+- DebrisRenderer は cylinder length が短い (~1-2s) ので mid shift のみ。 完全 segment 分割は Step 2 (3x3) で吸収予定
+
+**Shader fold** ([`torusFoldShader.ts`](src/components/game/torusFoldShader.ts)):
+- vertex shader の `#include <begin_vertex>` 直後に注入、 transformed.xy を `obs.xy + mod(transformed.xy - obs.xy + L, 2L) - L` で primary cell 内に折る
+- `uObserverPos` Vector3 ref を `useFrame` で in-place 更新 (= `hideCenter` と同じパターン)
+- 既存 `applyTimeFadeShader` / `createInnerHideShader` と並列共存 (注入順 fold → timeFade → innerHide、 z 不変 / world 距離変わらないので互換)
+- 4 unit tests (uniform 設定 / inject 文字列 / inject 位置順序 / key 欠落時の skip+warn)
+
+**未実装の後続作業**:
+- **過去光円錐 ∩ 正方形枠 の交線描画** (低優先、 描画装飾): 円柱版の `ARENA_PAST_CONE_OPACITY` 相当、 4 平面 × 円錐の交線計算が要
+- **Step 2 (3x3 image cell 描画)** (新規アイディア): 観測者中心に世界が `3x3` マス重複表示 = Asteroids 風 visual wrapping。 PBC topology の視覚化として本質的に正しい。 InstancedMesh + offset attribute で全 D pattern renderer に展開、 timeFade に spatial fade 追加で「無限平行世界が遠方で自然 fade out」 を実装。 別 plan 化予定 (`plans/2026-04-XX-pbc-torus-tile-N.md`)。 詳細議論: `plans/2026-04-27-pbc-torus.md` Appendix B
+
+**実機 multi-tab 実戦テスト** (= 中間版完遂 → odakin 確認待ち):
+- 自機を境界 (各軸 ±20) に向けて動かして、 worldLine が画面横切らずに line break で切れて反対端から再開する
+- 量子化境界での vertex jump 無し (= shader 連続 fold)
+- 境界跨ぎでもレーザーが反対側に届く (visual + hit 判定)
+- 死亡 / debris の周辺で cylinder が境界付近でも mid 中心に表示
+- 結果 OK なら deploy
 
 #### 操作系・機体形状の axis 設計 (2026-04-27 前半 再編)
 
@@ -100,7 +117,6 @@
 
 - DESIGN.md 残存する設計臭 #2
 - PeerProvider Phase 1 effect のコールバックネスト
-- アリーナ円柱の周期的境界条件 (トーラス化) — un-defer: 壁閉じ込め希望 / `ARENA_HEIGHT > LCH`
 - snapshot に `frozenWorldLines` / `debrisRecords` 同梱 — un-defer: リスポーン世界線連続観測時
 - host migration の LH 時刻 anchor 見直し
 - 色調をポップで明るく (方向性未定)
@@ -122,32 +138,26 @@
 
 ### 優先 (次セッション最初に検討)
 
-#### PBC torus 中間版の完成 ← ★ いま 2f7f9ce push 済の続き
+#### PBC torus 完成版 → 実機 multi-tab + deploy
 
-`plans/2026-04-27-pbc-torus.md` の §「実装ステータス (2026-04-27)」を最初に読む。 中間版で動作する `boundary=torus` (= default) の **未実装の後続作業** が以下:
+中間版完遂済 (worldLine line break + Debris fold + Laser segment split、 すべて GPU shader fold + CPU segment split の組合せ)。 残るのは **実機 multi-tab 検証 + deploy** のみ。
 
-1. **worldLine 描画の wrap 跨ぎ line break** (= 「世界線が画面横切らない」要件未達、 odakin の core requirement):
-   - 現状 [`WorldLineRenderer.tsx`](src/components/game/WorldLineRenderer.tsx) は TubeGeometry 1 本に全 vertex を込めて、 wrap 跨ぎ瞬間の隣接 vertex で斜めに横切る描画
-   - 対応案: `physics/torus.ts:isWrapCrossing` で wrap 跨ぎ点を検出 → worldLine.history を「複数 segment 配列」に分割 → 各 segment に独立な TubeGeometry を生成 → 複数 `<mesh>` で render
-   - cell 内の通常 1 segment、 wrap 跨ぎ瞬間に segment が増える (~1 個/秒程度)
-   - 課題: TubeGeometry 複数生成のコスト、 inner hide shader uniform の per-segment 共有、 timeFade shader 同様
-   - 設計議論は `plans/2026-04-27-pbc-torus.md` §「(3) 「世界線が画面を横切らない」」と Appendix A
-2. **DebrisRenderer の observer 中心 wrap**:
-   - 現状 [`DebrisRenderer.tsx`](src/components/game/DebrisRenderer.tsx) の各 segment vertex (sx, sy, st) → (ex, ey, et) は world coords のまま。 observer が境界跨いで遠ざかると debris が画面外に置き去り
-   - 対応: writeInstanced で各 segment の (sx, sy) / (ex, ey) を観測者中心 minImage で folding。 `markerElements` の transformEventForDisplay は既に torus 化済 (Phase 3 で対応済)
-   - 寿命短い (DEBRIS_MAX_LAMBDA ~1-2s) ので影響は limited だが、 死亡瞬間に境界近くで爆発した場合 visual 違和感あり
-3. **レーザー軌跡の primary cell 境界クリッピング**:
-   - 現状 [`LaserRenderer`](src/components/game/) (or 同等) の laser 直線描画は 1 segment、 emission → tip の直線で境界跨ぐと画面横切り
-   - 対応案 (b): emission と tip を観測者中心 wrap、 |displayΔ| > L で 2 segment に分割。 Liang-Barsky 風 (= 直線 ∩ box の clipping)
-   - 実装 ~30-50 行 / レーザー軌跡 renderer を確認して着手
-4. **過去光円錐 ∩ 正方形枠 の交線描画**:
-   - 円柱版 [`ArenaRenderer`](src/components/game/ArenaRenderer.tsx) の `ARENA_PAST_CONE_OPACITY` LineLoop 相当を、 [`SquareArenaRenderer`](src/components/game/SquareArenaRenderer.tsx) でも実装。 4 平面 × 円錐の交線計算が必要
-   - 優先度低 (= 描画 nice-to-have、 ゲームプレイには影響しない)
-
-#### PBC 中間版が完成したら → 実機 multi-tab + deploy
-
-- **実機 multi-tab 実戦テスト**: torus default で host + client 2 tab、 境界跨ぎでの攻防成立 / レーダー / 死亡 routing を確認
+- **実機 multi-tab 実戦テスト**: torus default で host + client 2 tab、 境界跨ぎでの worldLine が画面横切らずに line break で切れる / レーザーが反対側に届く / 死亡 routing / 攻防成立を目視確認
 - **deploy** (`pnpm run deploy` + main push)
+- 詳細: `plans/2026-04-27-pbc-torus.md` §「実装ステータス」 §「実機テスト未実施」
+
+#### Step 2: 3x3 image cell 描画 (= Asteroids 風 visual wrapping)
+
+odakin 提案の「観測者中心に世界が無限に繰り返す」 (= 3x3 マス重複表示) を独立 plan で詳細化。
+
+- 設計議論: `plans/2026-04-27-pbc-torus.md` Appendix B (今後追記)
+- 別 plan 化予定: `plans/2026-04-XX-pbc-torus-tile-N.md`
+- 実装階層: InstancedMesh + offset attribute で各 D pattern renderer に展開、 timeFade に spatial fade 追加で「無限」 を遠方で自然 fade out、 innerHide の primary-only dispatch
+- 中間版完成 + 実機テスト OK + deploy 後に着手 (= visual 評価が要るので odakin の判断必要)
+
+#### 過去光円錐 ∩ 正方形枠 の交線描画 (低優先)
+
+円柱版 [`ArenaRenderer`](src/components/game/ArenaRenderer.tsx) の `ARENA_PAST_CONE_OPACITY` LineLoop 相当を、 [`SquareArenaRenderer`](src/components/game/SquareArenaRenderer.tsx) でも実装。 4 平面 × 円錐の交線計算が必要。 ゲームプレイには影響しない描画装飾。
 
 ### 既存 (優先順未決定)
 
