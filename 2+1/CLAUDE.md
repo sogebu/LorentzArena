@@ -47,6 +47,35 @@ deploy 後に報告する項目:
 - **正しい運用**: deploy 時は dev server に触らない。HMR が動いてれば preview URL もそのまま生きてるので、deploy 前後の動作確認は localhost で完結
 - どうしても止めたい場合 (port 競合 etc.) は harness の task ID で stop すれば graceful 扱いになる可能性あり (`pkill` は harness を経由しないのが問題)
 
+## 操作系・機体形状の隠しオプション (URL hash override)
+
+操作系 (`controlScheme`) と機体形状 (`viewMode`) は直交軸として独立に持ち、各軸 3 種すべてコードに保持。UI dropdown は両方撤去 (隠す) し、デフォルトは `legacy_classic` × `classic`。切替は **URL hash override** または LS 直接編集。
+
+### URL hash 形式
+
+`&` 区切りで `key=value` 併用可、値なしフラグ (例: `viewer`) も同居可。[`App.tsx:parseHash`](src/App.tsx) で起動時 1 回 store に適用、適用と同時に LS (`la-control-scheme` / `la-view-mode`) に persist → 次回 hash 無しでも維持。
+
+```
+#room=test                                   → デフォルト (legacy_classic × classic)
+#room=test&controls=modern                   → 71e5788 の新統一操作系
+#room=test&controls=legacy_shooter           → 旧 twin-stick
+#room=test&ship=jellyfish                    → クラゲ機体
+#room=test&controls=modern&ship=shooter      → ロケット + 新操作系
+```
+
+### デフォルトに戻す
+
+LS を削除 + reload:
+```js
+localStorage.removeItem('la-control-scheme');
+localStorage.removeItem('la-view-mode');
+location.reload();
+```
+
+### 維持の意図
+
+新操作系 (modern) は 71e5788 で導入したが 2026-04-27 の実機テストで没入感が薄いと判断、デフォルトを旧 classic に戻した。**3 種すべてコード保持**しているのは、将来 UI 復活 / 比較実験 / 別ゲームモードへの転用が見込まれるため。**dropdown を再追加するときは ControlPanel に 2 段 (操作系 / 機体形状) で出す**設計が想定されている (`game-store.ts` の `setControlScheme` / `setViewMode` setter は既に揃っている)。
+
 ## ShipViewer ルート (`#viewer`)
 
 `src/components/ShipViewer.tsx` はゲーム本体 (PeerProvider / GameStore / 光円錐 / network) を一切起動せず、自機 3D モデル (`SelfShipRenderer`) を 360° 回転 / thrust 9 方向ボタン / grid / BG 切替で preview する独立 scene。`http://localhost:5173/LorentzArena/#viewer` (本番も `https://sogebu.github.io/LorentzArena/#viewer`) で起動。`App.tsx` 冒頭で `window.location.hash === '#viewer'` 判定して分岐。

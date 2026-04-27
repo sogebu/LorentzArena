@@ -10,9 +10,10 @@ import {
 import { getThreeColor } from "./threeCache";
 import type { RelativisticPlayer } from "./types";
 
-// 砲身と同程度の太さ。前実装の 1px LineSegments (= silver) は背景に紛れて見えない
-// 現象が出ていたため、明確に視認できる tube 太さに。
-const HEADING_MARKER_RADIUS = 0.06;
+// 補助線位置付け。前実装の 1px LineSegments (= silver) は背景に紛れて見えない現象が
+// 出ていたため tube 化したが、太いと主張が強すぎる。
+// 2026-04-27: 0.06 → 0.04 (3 倍長く伸ばした分、細くして存在感を据え置き)。
+const HEADING_MARKER_RADIUS = 0.04;
 const SQRT_HALF = Math.SQRT1_2;
 
 /**

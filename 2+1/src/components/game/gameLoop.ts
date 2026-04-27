@@ -34,6 +34,7 @@ import {
 } from "./constants";
 import { computeInterceptDirection, isLighthouse, perturbDirection } from "./lighthouse";
 import { findLaserHitPosition } from "./laserPhysics";
+import type { ControlScheme } from "../../stores/game-store";
 import type { Laser, RelativisticPlayer } from "./types";
 
 // --- Camera ---
@@ -102,37 +103,66 @@ export function processPlayerPhysics(
   dTau: number,
   otherPositions: Vector4[],
   availableEnergy: number,
-  viewMode: "classic" | "shooter" | "jellyfish" = "classic",
+  controlScheme: ControlScheme = "legacy_classic",
   cameraYaw = 0,
 ): PhysicsResult {
   let forwardAccel = 0;
   let lateralAccel = 0;
-  // Thrust 方向は heading に依存しない。WASD は camera basis (画面相対) の純粋な並進。
-  // heading は別経路 (矢印キー = processCamera) で旋回し、aim 方向 = 砲身方向として独立。
-  // viewMode に関わらず統一の操作系。
-  // - 画面 forward (W) = camera basis +x = world (cos cy, sin cy)
-  // - 画面 left   (A) = camera basis +y = world (-sin cy, cos cy)
-  // 既存の (forwardAccel, lateralAccel, effectiveYaw) 投影機構を流用するために、effectiveYaw
-  // を cameraYaw に置き、forward/lateral には camera basis の (sx, sy) をそのまま入れる。
-  let sx = 0; // camera basis +x 成分 (画面前方)
-  let sy = 0; // camera basis +y 成分 (画面左)
-  if (keys.has("w")) sx += 1;
-  if (keys.has("s")) sx -= 1;
-  if (keys.has("a")) sy += 1;
-  if (keys.has("d")) sy -= 1;
-  if (touch.thrust !== 0) {
-    sx += touch.thrust;
+  let effectiveYaw = yaw;
+  // newYaw は controlScheme 別に決まる:
+  //   legacy_classic / modern → 入力 yaw 不変 (heading は矢印キー = processCamera で別経路)
+  //   legacy_shooter        → WASD 入力ベクトルから atan2 + cameraYaw で即時スナップ
+  let newYaw = yaw;
+
+  if (controlScheme === "legacy_classic") {
+    // 機体相対 thrust。yaw を基底として forward (W/S) + lateral (A/D)。本体ごと
+    // heading に向いて回るので nozzle は heading basis、本体描画側で yaw 変換。
+    if (keys.has("w")) forwardAccel += PLAYER_ACCELERATION;
+    if (keys.has("s")) forwardAccel -= PLAYER_ACCELERATION;
+    if (keys.has("a")) lateralAccel += PLAYER_ACCELERATION;
+    if (keys.has("d")) lateralAccel -= PLAYER_ACCELERATION;
+    if (touch.thrust !== 0) {
+      forwardAccel += PLAYER_ACCELERATION * touch.thrust;
+    }
+    // effectiveYaw = yaw のまま (入力 yaw 基底に投影)。
+  } else if (controlScheme === "legacy_shooter") {
+    // Twin-stick: WASD = camera basis での進みたい方向 → heading 即時スナップ。
+    let sx = 0; // camera basis +x (画面前方)
+    let sy = 0; // camera basis +y (画面左)
+    if (keys.has("w")) sx += 1;
+    if (keys.has("s")) sx -= 1;
+    if (keys.has("a")) sy += 1;
+    if (keys.has("d")) sy -= 1;
+    if (touch.thrust !== 0) {
+      sx += touch.thrust;
+    }
+    const mag = Math.sqrt(sx * sx + sy * sy);
+    if (mag > 1e-6) {
+      const norm = Math.min(1, mag);
+      effectiveYaw = Math.atan2(sy, sx) + cameraYaw;
+      newYaw = effectiveYaw;
+      forwardAccel = norm * PLAYER_ACCELERATION;
+      lateralAccel = 0;
+    }
+  } else {
+    // modern: WASD = camera basis (cameraYaw=0 前提) thrust。heading は別軸 (矢印 ←/→)。
+    let sx = 0;
+    let sy = 0;
+    if (keys.has("w")) sx += 1;
+    if (keys.has("s")) sx -= 1;
+    if (keys.has("a")) sy += 1;
+    if (keys.has("d")) sy -= 1;
+    if (touch.thrust !== 0) {
+      sx += touch.thrust;
+    }
+    const mag = Math.sqrt(sx * sx + sy * sy);
+    if (mag > 1e-6) {
+      const norm = Math.min(1, mag);
+      effectiveYaw = cameraYaw; // 投影 basis = camera basis
+      forwardAccel = (sx / mag) * norm * PLAYER_ACCELERATION;
+      lateralAccel = (sy / mag) * norm * PLAYER_ACCELERATION;
+    }
   }
-  const mag = Math.sqrt(sx * sx + sy * sy);
-  let effectiveYaw = yaw; // default (input direction が無い時) はそのまま (使われない)
-  if (mag > 1e-6) {
-    const norm = Math.min(1, mag);
-    effectiveYaw = cameraYaw; // 投影 basis = camera basis
-    forwardAccel = (sx / mag) * norm * PLAYER_ACCELERATION;
-    lateralAccel = (sy / mag) * norm * PLAYER_ACCELERATION;
-  }
-  // viewMode は引数として残すが現在は分岐に使わない (将来分岐したくなった時の hook)。
-  void viewMode;
 
   const rawLen = Math.sqrt(forwardAccel * forwardAccel + lateralAccel * lateralAccel);
   if (rawLen > PLAYER_ACCELERATION) {
@@ -194,9 +224,7 @@ export function processPlayerPhysics(
     thrustEnergyConsumed,
     thrustRequested,
     thrustAcceleration,
-    // 新操作系では WASD は heading を変えない (heading は矢印キーで別経路)。
-    // ここで入力 yaw をそのまま返すことで useGameLoop の headingYawRef 同期が no-op に。
-    newYaw: yaw,
+    newYaw,
   };
 }
 

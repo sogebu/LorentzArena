@@ -102,11 +102,11 @@ export type SceneContentProps = {
   myId: string | null;
   showInRestFrame: boolean;
   useOrthographic: boolean;
-  /** heading の唯一の source of truth。SelfShipRenderer の砲塔 / HeadingMarkerRenderer /
-   *  Radar 等で参照。camera 計算でも (classic mode で) 同じ値を使う。 */
+  /** heading の唯一の source of truth。SelfShipRenderer の砲塔 / HeadingMarkerRenderer 等で参照。 */
   headingYawRef: React.RefObject<number>;
-  /** shooter mode の camera yaw offset。矢印キーで操作、camera が機体周りを回る。
-   *  classic mode では未使用 (camera = headingYawRef のため)。 */
+  /** camera yaw の source of truth。useGameLoop が controlScheme 別に正しい値を書く:
+   *   legacy_classic → heading と同期 / legacy_shooter → 独立 / modern → 0 固定。
+   *  camera 計算 / Radar はこれを直接読む。 */
   cameraYawRef: React.RefObject<number>;
   cameraPitchRef: React.RefObject<number>;
   thrustAccelRef: React.RefObject<Vector3>;
@@ -119,7 +119,7 @@ export const SceneContent = ({
   showInRestFrame,
   useOrthographic,
   headingYawRef,
-  cameraYawRef: _cameraYawRef,
+  cameraYawRef,
   cameraPitchRef,
   thrustAccelRef,
   isFiring,
@@ -180,13 +180,12 @@ export const SceneContent = ({
     () => getThreeColor(LASER_PAST_CONE_MARKER_COLOR),
     [],
   );
-  // カメラ制御 (plans/2026-04-25-viewpoint-controls.md):
-  //   - viewMode 'classic': camera yaw = headingYawRef (即時、heading に同期して回る、旧挙動)
-  //   - viewMode 'shooter': camera yaw = 0 固定 (world basis)、camera と heading が完全独立。
-  //     機体 hull も回らないため、camera 視点は常に同方向、自機は画面内で同位置・同方向で表示。
-  // 機体 hull の rotation は SelfShipRenderer 側で viewMode 判定して固定 / 回転を切替。
-  // 砲塔・heading 線は両 mode で常に headingYawRef を参照して回る。
+  // カメラ yaw は cameraYawRef を直読。useGameLoop が controlScheme 別に正しい値を書く:
+  //   legacy_classic → heading と同期 (camera が heading に追従、旧挙動)
+  //   legacy_shooter → 独立 (camera が機体周りを回る、矢印で操作)
+  //   modern        → 0 固定 (world basis、camera は回らない)
   const viewMode = useGameStore((s) => s.viewMode);
+  const controlScheme = useGameStore((s) => s.controlScheme);
   useFrame(({ camera }) => {
     if (!myPlayer) return;
     const playerPos = transformEventForDisplay(
@@ -198,9 +197,7 @@ export const SceneContent = ({
     const targetY = playerPos.y;
     const targetT = playerPos.t;
 
-    // camera yaw は固定 (= world basis = 0)。新操作系では camera は回転しない、矢印キー
-    // は heading 旋回 (= aim) に直結。
-    const yaw = 0;
+    const yaw = cameraYawRef.current;
     const pitch = cameraPitchRef.current;
     const distance = useOrthographic ? CAMERA_DISTANCE_ORTHOGRAPHIC : CAMERA_DISTANCE_PERSPECTIVE;
     const camX = targetX + distance * Math.cos(pitch) * Math.cos(yaw + Math.PI);
@@ -440,18 +437,24 @@ export const SceneContent = ({
                 cannonStyle="laser"
                 cameraYawRef={headingYawRef}
                 alpha4={player.phaseSpace.alpha}
+                controlScheme={controlScheme}
               />,
             );
           }
-          // heading 線 (未来光円錐母線) — 自機の進行方向を時空に貼る
-          // (plans/2026-04-25-viewpoint-controls.md Stage 1)
-          items.push(
-            <HeadingMarkerRenderer
-              key={`${key}-heading`}
-              player={player}
-              cameraYawRef={headingYawRef}
-            />,
-          );
+          // heading 線 (過去光円錐母線) — 自機の砲身/aim 方向を時空に貼る。
+          // legacy_classic では本体 hull ごと heading 方向に回るため、機体自体が砲身方向を
+          // 視覚的に示している → aim 線は冗長なので非表示。modern (本体 world basis 固定 +
+          // 砲塔のみ追従) と legacy_shooter (twin-stick) では砲身/heading の独立可視化が
+          // 有用なので表示する。
+          if (controlScheme !== "legacy_classic") {
+            items.push(
+              <HeadingMarkerRenderer
+                key={`${key}-heading`}
+                player={player}
+                cameraYawRef={headingYawRef}
+              />,
+            );
+          }
         } else if (!isMe) {
           items.push(<OtherShipRenderer key={key} player={player} />);
         }

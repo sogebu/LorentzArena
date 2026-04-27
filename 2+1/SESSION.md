@@ -4,54 +4,65 @@
 
 **`a70f3aa` デプロイ済** (build `2026/04/22 23:14:13 JST`)。本番: https://sogebu.github.io/LorentzArena/
 
-未デプロイ commit 多数 (= main の更新): 2026-04-25 セッションで viewMode 3-way 化 + 操作系刷新 + jellyfish hull 追加 + LightCone one-sided + 多数の bug 修正。**実機 multi-tab 実戦テストは未完了**、deploy 前にもう一度実機テスト推奨。中途半端な状態でセッション終了。
+未デプロイ commit 多数 (= main の更新): 2026-04-25 で viewMode 3-way 化 + 71e5788 新統一操作系 + jellyfish hull 追加 + LightCone one-sided + 多数の bug 修正、2026-04-27 で **デフォルト操作系を旧 classic に戻す + 3 種コード保持 + UI dropdown 撤去 + URL hash override** に再編。**実機 multi-tab 実戦テストは未完了**、deploy 前にもう一度実機テスト推奨。
 
 ### 直近の文脈 (次セッションで意識すべき状態)
 
-#### 操作系 — 全 viewMode 共通の「ASDW 並進 + 矢印 aim + camera 固定」に統一
-- **WASD**: camera basis (= world basis、camera 固定) の screen-relative thrust。heading 不変
-- **矢印 ←/→**: heading (= aim = 砲身方向) 連続旋回 (`CAMERA_YAW_SPEED = 2.5 rad/s`)
-- **矢印 ↑/↓**: camera pitch
-- **camera yaw**: 常に 0 (world basis)、回転しない
-- 詳細: [`gameLoop.ts:106-130`](src/components/game/gameLoop.ts), [`useGameLoop.ts:260-275`](src/hooks/useGameLoop.ts), [`SceneContent.tsx:201-203`](src/components/game/SceneContent.tsx)
+#### 操作系・機体形状の axis 設計 (2026-04-27 再編)
 
-#### viewMode 3-way (機体形状のみの違い、操作系は共通)
-- [`game-store.ts:61`](src/stores/game-store.ts): `ViewMode = "classic" | "shooter" | "jellyfish"`
-- [`ControlPanel.tsx:172-194`](src/components/game/hud/ControlPanel.tsx): 3-way `<select>` dropdown (旧 ToggleSwitch を撤去)
-- **classic** ([`SelfShipRenderer`](src/components/game/SelfShipRenderer.tsx)): 六角プリズム + 4 RCS。本体 group は world basis 固定、`cannonYawGroupRef` で砲塔 (laser cannon) のみ heading 追従
+操作系 (`controlScheme`) と機体形状 (`viewMode`) を直交軸として独立に持つ。コードは各軸 3 種すべて保持、UI dropdown は両方撤去 (隠しオプション)、デフォルトは `legacy_classic` × `classic`。
+
+| 軸 | 値 | デフォルト | UI |
+|---|---|---|---|
+| `controlScheme` | `legacy_classic` / `legacy_shooter` / `modern` | `legacy_classic` | 撤去 |
+| `viewMode` | `classic` / `shooter` / `jellyfish` | `classic` | 撤去 |
+
+**切替手段**: URL hash override `#controls=modern` / `#ship=jellyfish` (`&` 区切りで併用可、`#room=test&controls=modern&ship=jellyfish`)。一度 hash で切替えると LS (`la-control-scheme` / `la-view-mode`) に persist、次回 hash 無しでも維持。デフォルト復元は LS 削除 + reload。詳細は `2+1/CLAUDE.md §URL hash override`。
+
+#### 操作系それぞれの挙動
+
+**`legacy_classic` (default、71e5788^ 時点の旧 classic 復元)**:
+- WASD = 機体相対 thrust (前後左右、yaw 基底に投影)
+- 矢印 ←/→ = `headingYawRef` 連続旋回 + camera 同期 (cameraYawRef = headingYawRef)
+- 矢印 ↑/↓ = camera pitch
+- 機体本体 group が heading で回転、cannonYawGroup は 0 (本体に固定)、噴射方向は world thrust を local frame に inverse rotate
+- aim 線 (HeadingMarkerRenderer) **非表示** — 本体 hull が heading 方向を示すため冗長
+
+**`legacy_shooter` (旧 twin-stick、71e5788^ 時点の旧 shooter 復元)**:
+- WASD = camera basis での進みたい方向 → heading 即時スナップ + thrust
+- 矢印 ←/→ = `cameraYawRef` 旋回 (camera が機体周りを回る、heading は WASD で別途決定)
+- 機体本体は heading で回転 (twin-stick 風)
+- aim 線 表示 (opacity 0.22)
+
+**`modern` (71e5788 で導入した新統一操作系)**:
+- WASD = world basis (cameraYaw=0 前提) thrust、heading 不変
+- 矢印 ←/→ = `headingYawRef` 旋回 (砲身/aim のみ)、camera は固定
+- 機体本体は world basis 固定 + 砲塔のみ heading 追従、噴射方向は world thrust そのまま
+- aim 線 表示 (opacity 0.22)
+- 詳細: [`gameLoop.ts:processPlayerPhysics`](src/components/game/gameLoop.ts), [`useGameLoop.ts:260-285`](src/hooks/useGameLoop.ts), [`SceneContent.tsx:189-204`](src/components/game/SceneContent.tsx), [`SelfShipRenderer.tsx`](src/components/game/SelfShipRenderer.tsx) の controlScheme 分岐
+
+#### 機体形状 dispatch (SceneContent)
+- **classic** ([`SelfShipRenderer`](src/components/game/SelfShipRenderer.tsx)): 六角プリズム + 4 RCS。controlScheme で本体 group rotation を切替 (legacy 系で本体 heading 回転 + 噴射 yaw 変換、modern で本体固定 + 砲塔のみ)
 - **shooter** ([`RocketShipRenderer`](src/components/game/RocketShipRenderer.tsx)): ロケット teardrop body。砲が無いので本体ごと heading 追従 (lerp tau=80ms)
-- **jellyfish** ([`JellyfishShipRenderer`](src/components/game/JellyfishShipRenderer.tsx)) **新規**: 半透明 dome + Verlet rope 触手 14 質点 + 武装触手 (= 砲) のみ heading 方向。ジャパクリップ「クラゲ」を motif にした procedural 派生 (出典: [`docs/references/README.md`](../docs/references/README.md))
-  - 触手は重力 (1.5)・慣性反作用 (5x)・turbulence kick (各質点に tangent 垂直方向の sin 噪声) で物理的にたなびく
-  - 武装触手 = 外殻半球 + 内核 emitter (player 色 emissive 3.0 + halo 加算合成)
-  - 射撃 (= Space 押下中) で武装触手末端を rope local frame `(cos45·L, 0, -sin45·L)` に kinematic 強制 → 砲身として 45° 下に展開、laser 過去光円錐方向と整合
-  - `firingRef` を `SceneContent` 経由で渡す ([`SceneContent.tsx:128-135, :413-426`](src/components/game/SceneContent.tsx))
+- **jellyfish** ([`JellyfishShipRenderer`](src/components/game/JellyfishShipRenderer.tsx)): 半透明 dome + Verlet rope 触手 14 質点 + 武装触手 (= 砲) のみ heading 方向。ジャパクリップ「クラゲ」を motif にした procedural 派生
 
-#### HeadingMarkerRenderer — 過去光円錐に変更 + 実装刷新
-- 「laser は観測者の過去光円錐上を流れる」物理整合のため未来光円錐 → **過去光円錐の母線** (= -t 方向) に
-- 旧 `LineSegments + 手動 BufferAttribute` (D pattern) は **WebGL Context Lost** からの restore 経路が脆弱で「途中で消える」現象が出ていた
-- → `mesh + cylinder geometry` (radius 0.06) + 標準 scene graph、`depthTest=false + renderOrder=20` で常時可視
-- 自機専用 (= observer = self) なので observer rest frame で「origin から direction*L」を直接配置 → D pattern 不要
-- NaN guard 入りで `console.warn` フォールバック
+#### HeadingMarkerRenderer — 過去光円錐 + cylinder mesh
+- 「laser は観測者の過去光円錐上を流れる」物理整合のため過去光円錐の母線 (= -t 方向) を null geodesic として描画
+- `mesh + cylinder geometry` + 標準 scene graph (旧 LineSegments の context lost 脆弱性回避)、`depthTest=false + renderOrder=20` で常時可視
+- 自機専用 (= observer = self、observer rest frame で origin から direction*L)
+- 寸法 (2026-04-27 odakin 調整): LENGTH `15.0`、RADIUS `0.04`、OPACITY `0.22` で aim ガイドとして主張控えめに
+- **legacy_classic では非表示** (本体が heading を示すため冗長)、modern / legacy_shooter で表示
 
 #### LightConeRenderer — one-sided 表示
-- 4 mesh (future surface/wire + past surface/wire) を異なる side 設定: future=`BackSide`、past=`FrontSide`(default)
-- 同じ CCW winding でも future (apex 下→rim 上) と past (apex 上→rim 下) で normal の向きが反転するため別設定が必要
-- 効果: 未来側 (上) から見下ろすと future cone は内面 cull で消え past cone は外面で見える / 過去側 (下) から見上げると逆 / 側方視点 (通常プレイ) では両方見える
+- 4 mesh (future surface/wire + past surface/wire) を future=`BackSide` / past=`FrontSide`(default) に
+- 効果: 未来側から見下ろすと future cone は cull、過去側から見上げると逆、側方視点では両方見える
 
-#### 物理関連の修正
-- **`phaseSpace.alpha` を thrust only に上書き** ([`gameLoop.ts:171-184`](src/components/game/gameLoop.ts)): 旧仕様 `thrust + friction` だと静止漂流時に矢印反転して不自然 → friction を抜いた thrust 4-加速度を world frame に boost し直して上書き。**alpha は表示専用 (噴射炎 / 加速度矢印 / 他者 broadcast)**、物理進行 (位置 / 4-velocity 更新) には不使用
-- **SelfShipRenderer 噴射方向 fix** ([`SelfShipRenderer.tsx:230-247`](src/components/game/SelfShipRenderer.tsx)): 旧 classic では本体回転していたので thrust に yaw 変換が必要だったが、新仕様で本体 world basis 固定 → nozzle outward は world cardinal で固定 → yaw 変換不要、直接 dot product
-
-#### Bug 修正集 (今セッションで surfaceした regression)
-- **WASD で砲が向こう向きになる** → `newYaw: effectiveYaw` を `newYaw: yaw` に変更 ([`gameLoop.ts:188-194`](src/components/game/gameLoop.ts))
-- **レーダーが回る** → HUD に渡す ref を `headingYawRef` から `cameraYawRef` (= 0 固定) に ([`RelativisticGame.tsx:313`](src/components/RelativisticGame.tsx))
-- **aim 線が途中で消える** → cylinder mesh 化で context lost に強い実装に変更 (上記 HeadingMarker 節)
-
-#### 既存の継続項目
+#### 物理関連の維持事項
+- **`phaseSpace.alpha` は thrust only** ([`gameLoop.ts:204-217`](src/components/game/gameLoop.ts)): friction を抜いた thrust 4-加速度を world frame に boost し直して上書き。alpha は表示専用 (噴射炎 / 加速度矢印 / 他者 broadcast)、物理進行には不使用
 - **死亡 event 統一アルゴリズム** は (x_D, u_D, τ_0) ベース、DeathMarker / DeadShipRenderer / LH が一元駆動 (詳細: [`plans/死亡イベント.md`](plans/死亡イベント.md) + [`design/meta-principles.md §M21`](design/meta-principles.md))
-- **加速度表示** はフレーム整合化済: 噴射炎 = 被観測者 rest frame proper acc、加速度矢印 = 観測者 rest frame 4-vector の時空矢印
+- **加速度表示** はフレーム整合化済 (噴射炎 = 被観測者 rest frame proper acc、加速度矢印 = 観測者 rest frame 4-vector の時空矢印)
 - **LH 光源** は観測者視点で死亡観測済なら消灯
-- **射撃 UI** (「射撃中」text / aim arrow 3 本 / inset glow) は silver 統一
+- **射撃 UI** は silver 統一
 
 ## 既知の課題
 
@@ -85,9 +96,8 @@
 
 ### 優先 (次回最初に検討)
 
-- **実機 multi-tab 実戦テスト** (中途半端で終わった): 今セッションの大量変更 (操作系刷新 / 3 viewMode hull dispatch / jellyfish 物理触手 / past-cone heading marker / LightCone one-sided / alpha thrust-only / 噴射方向 fix / WASD newYaw fix / Radar 固定 fix) が deploy 前に **multi-tab 実戦テスト 未完了**。最低でも host + client 2 tab で 3 viewMode 切替・thrust 入力・射撃・死亡/respawn・レーザー軌跡を全て確認。新たな regression があれば session 中の修正を見直す
-- **Shooter (rocket) mode の本体姿勢を classic / jellyfish と統一**: 現状 RocketShipRenderer のみ「本体ごと heading 追従」(= 砲が無いので本体で aim 表示)。新操作系の理屈では「本体 world basis 固定 + 砲塔 heading」が一貫する。Rocket に砲塔相当を追加するか、視点系を別モード化するか要検討
-- **Phase A/B で実装した worldline 向き・加速度の思想・コード対称性 audit**: 今セッションで `phaseSpace.alpha = thrust only` 化 ([`gameLoop.ts`](src/components/game/gameLoop.ts) で上書き) は thrust 単独信号の役割を満たすが、Phase B-5 で別途 wire field 新設するか alpha のままで運用するか方針確認。**そろそろ思想に立ち返って対称性・クリーンさを深く追求するタイミング**。具体候補: (a) component 間の「fade / gate / routing」責務配置の統一 (M21 を広域適用)、(b) Phase B-5 (他機 exhaust の pure thrust broadcast) の再設計、(c) Phase C-1 (wire format 厳格化、heading/alpha optional → required) と整合、(d) 世界線データと描画機構の「対応関係」を DESIGN.md に書き下し
+- **実機 multi-tab 実戦テスト**: legacy_classic デフォルトでの host + client 2 tab、thrust 入力・射撃・死亡/respawn・レーザー軌跡を確認。問題なければ deploy。隠しオプション (`#controls=modern`, `#ship=jellyfish` 等) も合わせて動作確認しておくと future-proof
+- **Phase A/B で実装した worldline 向き・加速度の思想・コード対称性 audit**: `phaseSpace.alpha = thrust only` 化 ([`gameLoop.ts`](src/components/game/gameLoop.ts) で上書き) は thrust 単独信号の役割を満たすが、Phase B-5 で別途 wire field 新設するか alpha のままで運用するか方針確認。具体候補: (a) component 間の「fade / gate / routing」責務配置の統一 (M21 を広域適用)、(b) Phase B-5 (他機 exhaust の pure thrust broadcast) の再設計、(c) Phase C-1 (wire format 厳格化、heading/alpha optional → required)、(d) 世界線データと描画機構の「対応関係」を DESIGN.md に書き下し
 
 ### 既存 (優先順未決定)
 

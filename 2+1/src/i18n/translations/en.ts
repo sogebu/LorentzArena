@@ -3,8 +3,8 @@ import type { TranslationKey } from "./ja";
 export const en: Record<TranslationKey, string> = {
   // HUD - title & controls
   "hud.title": "Relativistic Arena (2+1D Spacetime)",
-  "hud.controls.forward": "WASD: Strafe (screen-relative)",
-  "hud.controls.cameraH": "←/→: Aim rotation (heading)",
+  "hud.controls.forward": "WASD: Move (body-relative)",
+  "hud.controls.cameraH": "←/→: Turn (heading)",
   "hud.controls.cameraV": "↑/↓: Camera pitch",
   "hud.controls.fire": "Space: Fire laser",
   "hud.controls.touch.heading": "Swipe ←→: Turn",

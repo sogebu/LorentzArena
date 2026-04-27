@@ -335,10 +335,13 @@ export const LASER_WORLDLINE_OPACITY = 0.4;
 // 自機の進行方向を null geodesic (Δt = |Δx|) で描画。レーザーの予測線でもあり、
 // 機体姿勢に依存せず「向き」が一目瞭然になる (plans/2026-04-25-viewpoint-controls.md Stage 1)。
 // 色は LASER_PAST_CONE_MARKER_COLOR (silver) を流用。
-// 長さは LASER_RANGE (10) より短く、機体スケール (~1.5) より十分長い中間値。
-export const HEADING_MARKER_LENGTH = 5.0;
-// 1 px LineSegments は背景に紛れて視認困難 → opacity 1.0 で常時はっきり見せる。
-export const HEADING_MARKER_OPACITY = 1.0;
+// aim ガイドは遠方まで伸びる薄い補助線として運用。LASER_RANGE (10) を超えるが、
+// 線そのものは null geodesic の可視化なので長さは物理上限と無関係。
+// 2026-04-27: 5.0 → 15.0 (odakin 指示「3 倍くらい伸ばしちゃおう」)。
+export const HEADING_MARKER_LENGTH = 15.0;
+// cylinder mesh 化で背景に紛れる問題は解消、aim guide は補助線位置付けなので主張控えめに。
+// 2026-04-27: 1.0 → 0.3 → 0.22 (3 倍長くした分の存在感増を相殺、目立ちすぎないよう微減)。
+export const HEADING_MARKER_OPACITY = 0.22;
 
 // --- Debris opacity ---
 // InstancedMesh 全 instance 共通 (per-vertex 時間 fade が shader で乗算される)。

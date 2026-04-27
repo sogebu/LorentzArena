@@ -51,12 +51,13 @@ type LasersUpdater = (prev: Laser[]) => Laser[];
 type SpawnsUpdater = (prev: SpawnEffect[]) => SpawnEffect[];
 
 /**
- * 視点・操作系の mode (plans/2026-04-25-viewpoint-controls.md)。
- * - 'classic': 旧来挙動 = camera が heading に追従 (Chase)、機体本体が heading 方向に回り、
- *   WASD は機体相対 thrust (前後左右)、矢印キーで heading 連続旋回
- * - 'shooter': twin-stick shooter 風 = camera world 基底固定、機体 hull は回らず常に
- *   world basis で表示、砲塔だけが heading 方向に向く。WASD 入力ベクトルが heading
- *   (= 砲方向 = 射撃方向) を即時決定 + thrust。heading 線も砲方向に伸びる。
+ * 機体形状 (hull / 武装の見た目のみ。操作系は controlScheme で別軸)。
+ * - 'classic': 六角プリズム + 4 RCS + 砲塔
+ * - 'shooter': ロケット teardrop body (RocketShipRenderer)
+ * - 'jellyfish': 半透明 dome + Verlet rope 触手
+ *
+ * UI dropdown は撤去 (一時的に classic のみ表示)。コードは 3 種維持、URL hash
+ * `#ship=shooter` / `#ship=jellyfish` で override 可能。
  */
 export type ViewMode = "classic" | "shooter" | "jellyfish";
 
@@ -64,15 +65,51 @@ const VIEW_MODE_LS_KEY = "la-view-mode";
 const VIEW_MODE_VALUES: readonly ViewMode[] = ["classic", "shooter", "jellyfish"];
 
 const loadViewMode = (): ViewMode => {
-  if (typeof localStorage === "undefined") return "shooter";
+  if (typeof localStorage === "undefined") return "classic";
   const v = localStorage.getItem(VIEW_MODE_LS_KEY);
-  // default = shooter (twin-stick rocket)。jellyfish も shooter 系の操作系で動く別 hull 形状。
   return (VIEW_MODE_VALUES as readonly string[]).includes(v ?? "")
     ? (v as ViewMode)
-    : "shooter";
+    : "classic";
 };
 const saveViewMode = (mode: ViewMode) => {
   if (typeof localStorage !== "undefined") localStorage.setItem(VIEW_MODE_LS_KEY, mode);
+};
+
+/**
+ * 操作系 (control scheme)。viewMode (機体形状) と直交軸。
+ *
+ * - 'legacy_classic' (default): 旧 classic 挙動 = camera が heading に追従、機体本体が
+ *   heading 方向に回り、WASD は機体相対 thrust (前後左右)、矢印 ←/→ で heading 連続旋回、
+ *   ↑/↓ で camera pitch
+ * - 'legacy_shooter': 旧 twin-stick = WASD = 画面相対の進みたい方向 → heading 即時スナップ
+ *   + thrust。矢印 ←/→ で camera yaw を機体周りに回転 (camera と heading が独立)。
+ *   機体は heading に追従して回る
+ * - 'modern': 71e5788 で導入した統一操作系 = camera world basis 固定 (cameraYaw=0)、
+ *   WASD は world basis thrust (heading 不変)、矢印 ←/→ で heading 旋回 (砲身/aim のみ)、
+ *   機体本体は world basis 固定で砲塔のみ heading 追従
+ *
+ * UI dropdown は撤去 (一時的に legacy_classic のみ表示)。コードは 3 種維持、URL hash
+ * `#controls=modern` / `#controls=legacy_shooter` で override 可能。
+ */
+export type ControlScheme = "legacy_classic" | "legacy_shooter" | "modern";
+
+const CONTROL_SCHEME_LS_KEY = "la-control-scheme";
+const CONTROL_SCHEME_VALUES: readonly ControlScheme[] = [
+  "legacy_classic",
+  "legacy_shooter",
+  "modern",
+];
+
+const loadControlScheme = (): ControlScheme => {
+  if (typeof localStorage === "undefined") return "legacy_classic";
+  const v = localStorage.getItem(CONTROL_SCHEME_LS_KEY);
+  return (CONTROL_SCHEME_VALUES as readonly string[]).includes(v ?? "")
+    ? (v as ControlScheme)
+    : "legacy_classic";
+};
+const saveControlScheme = (scheme: ControlScheme) => {
+  if (typeof localStorage !== "undefined")
+    localStorage.setItem(CONTROL_SCHEME_LS_KEY, scheme);
 };
 
 export interface GameState {
@@ -111,8 +148,9 @@ export interface GameState {
    */
   hitLog: HitEventRecord[];
 
-  // --- 視点・操作系設定 (plans/2026-04-25-viewpoint-controls.md) ---
+  // --- 視点・操作系設定 ---
   viewMode: ViewMode;
+  controlScheme: ControlScheme;
 
   // --- Actions: state setters ---
   setPlayers: (updater: PlayersUpdater) => void;
@@ -177,6 +215,7 @@ export interface GameState {
 
   // --- 視点・操作系 setters ---
   setViewMode: (mode: ViewMode) => void;
+  setControlScheme: (scheme: ControlScheme) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -204,8 +243,9 @@ export const useGameStore = create<GameState>()((set, get) => ({
   respawnLog: [],
   hitLog: [],
 
-  // 視点・操作系 default は localStorage から復元 (未保存時は classic = 旧挙動)。
+  // 視点・操作系 default は localStorage から復元
   viewMode: loadViewMode(),
+  controlScheme: loadControlScheme(),
 
   // -----------------------------------------------------------------------
   // State setters
@@ -472,6 +512,11 @@ export const useGameStore = create<GameState>()((set, get) => ({
   setViewMode: (viewMode) => {
     saveViewMode(viewMode);
     set({ viewMode });
+  },
+
+  setControlScheme: (controlScheme) => {
+    saveControlScheme(controlScheme);
+    set({ controlScheme });
   },
 }));
 

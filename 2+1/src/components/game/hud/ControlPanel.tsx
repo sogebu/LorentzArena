@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useI18n } from "../../../i18n";
-import { useGameStore, type ViewMode } from "../../../stores/game-store";
+import { useGameStore } from "../../../stores/game-store";
 import { isLighthouse } from "../lighthouse";
 import type { RelativisticPlayer } from "../types";
 import { isTouchDevice } from "./utils";
@@ -111,8 +111,6 @@ export const ControlPanel = ({
   const { t } = useI18n();
   const displayNames = useGameStore((s) => s.displayNames);
   const killLog = useGameStore((s) => s.killLog);
-  const viewMode = useGameStore((s) => s.viewMode);
-  const setViewMode = useGameStore((s) => s.setViewMode);
   const sortedScores = useMemo(
     () => Object.entries(scores).sort(([, a], [, b]) => b - a),
     [scores],
@@ -170,27 +168,6 @@ export const ControlPanel = ({
           labelRight={t("hud.perspective")}
         />
       </ToggleGroup>
-      <div style={{ marginTop: "4px" }}>
-        <label style={{ fontSize: "12px", opacity: 0.8 }}>
-          {`${t("hud.viewMode.classic")} / ${t("hud.viewMode.shooter")} / `}jellyfish:{" "}
-          <select
-            value={viewMode}
-            onChange={(e) => setViewMode(e.target.value as ViewMode)}
-            style={{
-              background: "#222",
-              color: "white",
-              border: "1px solid #555",
-              padding: "1px 4px",
-              fontFamily: "monospace",
-              fontSize: "12px",
-            }}
-          >
-            <option value="classic">{t("hud.viewMode.classic")}</option>
-            <option value="shooter">{t("hud.viewMode.shooter")}</option>
-            <option value="jellyfish">jellyfish</option>
-          </select>
-        </label>
-      </div>
       <div
         style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
       >

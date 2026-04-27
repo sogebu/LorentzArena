@@ -176,9 +176,9 @@ class TentacleRope {
       const phx = this.kickPhases[k * 3 + 0];
       const phy = this.kickPhases[k * 3 + 1];
       const phs = this.kickPhases[k * 3 + 2];
-      let nx =
+      const nx =
         Math.sin(t * fA + phx) + 0.5 * Math.sin(t * fB + phs);
-      let ny =
+      const ny =
         Math.sin(t * fA + phy) + 0.5 * Math.sin(t * fB + phs * 1.31);
       // Tangent (世界座標、length 不問なので正規化のみ)。末端 (k=numPoints-1) では
       // 自身を 1 個ぶん前向き extension と見做す (= positions[k] - positions[k-1])。

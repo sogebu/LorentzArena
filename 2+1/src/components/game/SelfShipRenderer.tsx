@@ -108,6 +108,7 @@ export const SelfShipRenderer = ({
   dorsalStyle = "pod",
   cameraYawRef,
   alpha4,
+  controlScheme = "modern",
 }: {
   player: {
     id: string;
@@ -131,6 +132,11 @@ export const SelfShipRenderer = ({
    *  の代わりに cameraYawRef を直読して useFrame 内で最新値を使う。未指定なら
    *  phaseSpace.heading を使う (他機流用時)。Phase A の re-render 遅延起因のカクカク対策。 */
   cameraYawRef?: React.RefObject<number>;
+  /** 操作系。'legacy_classic' / 'legacy_shooter' では本体 group 全体が heading 方向に回り
+   *  (本体ごと向きが変わる)、nozzle outward は heading basis なので thrust (world) を local
+   *  frame に変換してから dot。'modern' では本体 world basis 固定 + 砲塔のみ heading で、
+   *  nozzle outward は world cardinal なので yaw 変換不要。default 'modern' (他機流用時)。 */
+  controlScheme?: "legacy_classic" | "legacy_shooter" | "modern";
 }) => {
   const groupRef = useRef<THREE.Group>(null);
   // 砲塔 (cannon = laser or gun) のみを heading に追従させるための独立 group。
@@ -221,29 +227,48 @@ export const SelfShipRenderer = ({
       ? cameraYawRef.current
       : quatToYaw(player.phaseSpace.heading);
 
-    // 新操作系: hull 本体は world basis 固定 (回転しない)、砲塔だけ heading に追従。
-    // (旧 classic 挙動は「全体回転」だったが、ASDW 並進 + 矢印 aim の操作系では
-    //  本体姿勢は固定の方が画面相対の感覚と整合する。RocketShipRenderer と同じ思想。)
-    group.rotation.set(0, 0, 0);
-    cannonYawGroupRef.current?.rotation.set(0, 0, yaw);
+    // controlScheme で本体 / 砲塔 / 噴射方向の basis が変わる:
+    //   modern  → 本体 group は world basis 固定 (rotation 0)、砲塔 (cannonYawGroup) のみ
+    //             heading で回る。nozzle outward は world cardinal なので thrust (world)
+    //             を直接 dot。
+    //   legacy_classic / legacy_shooter
+    //           → 本体 group ごと heading で回る (本体に固定の砲塔も一緒に向く)。
+    //             cannonYawGroup の自身 rotation は 0 にしておけば二重回転にならない。
+    //             nozzle outward は heading basis なので thrust (world) を local frame に
+    //             inverse rotate してから dot。
+    const isLegacyHull =
+      controlScheme === "legacy_classic" || controlScheme === "legacy_shooter";
+    if (isLegacyHull) {
+      group.rotation.set(0, 0, yaw);
+      cannonYawGroupRef.current?.rotation.set(0, 0, 0);
+    } else {
+      group.rotation.set(0, 0, 0);
+      cannonYawGroupRef.current?.rotation.set(0, 0, yaw);
+    }
 
     // 4 cardinal nozzle 各々の独立噴射 (RCS の真面目な合成)。
     // 各 nozzle outward に対し intensity = max(0, -thrust · outward) で分解。
     // WASD 単独 → 1 ノズル intensity 1.0、WA 等斜め → 2 ノズル各 intensity 1/√2。
-    //
-    // 新仕様: hull (group) は world basis 固定 (= rotation 0)、nozzle は group の child
-    // として cardinal 方向 (+x, -x, +y, -y) に貼られる → nozzle の outward は world basis
-    // と一致する。よって thrust (world) を local frame に変換する必要は無く、そのまま
-    // dot product。旧コードは hull が heading で回ってた頃の名残で yaw 変換していたが、
-    // 本仕様では yaw 変換すると nozzle position (world cardinal) と方向 (yaw 変換後) が
-    // 食い違って噴射方向がおかしくなる ("WASD で機体の意図しない側から噴射") のを修正。
     const accel = thrustAccelRef.current;
     const ax = accel.x;
     const ay = accel.y;
     const norm = Math.hypot(ax, ay);
     const thrustFrac = Math.min(1, norm / PLAYER_ACCELERATION);
-    const localUx = norm > 1e-6 ? ax / norm : 0;
-    const localUy = norm > 1e-6 ? ay / norm : 0;
+    let localUx = 0;
+    let localUy = 0;
+    if (norm > 1e-6) {
+      if (isLegacyHull) {
+        // hull が heading で回っているので thrust (world) を inverse rotate して local frame に。
+        const cosY = Math.cos(yaw);
+        const sinY = Math.sin(yaw);
+        localUx = (cosY * ax + sinY * ay) / norm;
+        localUy = (-sinY * ax + cosY * ay) / norm;
+      } else {
+        // hull 固定 → world basis = local basis。
+        localUx = ax / norm;
+        localUy = ay / norm;
+      }
+    }
 
     const startOffset =
       SHIP_HULL_RADIUS + SHIP_NOZZLE_OUTWARD_OFFSET + SHIP_NOZZLE_LENGTH;

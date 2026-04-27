@@ -258,22 +258,36 @@ export function useGameLoop({
       }
 
       // --- Camera / 矢印キーによる yaw 操作 ---
-      // 全 viewMode 共通: 矢印キー = heading 連続旋回 (= aim 方向)。
-      // camera 自体は world basis 固定 (cameraYawRef は 0 固定で動かさない) → 「カメラ
-      // 回転は固定で動かさない」要件。WASD は camera basis (= world basis) の純粋並進、
-      // heading 独立。
+      // controlScheme で yaw 回転先が変わる:
+      //   legacy_classic: 矢印 ←/→ → headingYawRef、camera は heading 追従 (cameraYawRef = headingYawRef)
+      //   legacy_shooter: 矢印 ←/→ → cameraYawRef のみ (camera が機体周りを回る)、heading は WASD 即時スナップ
+      //   modern:        矢印 ←/→ → headingYawRef、camera は world basis 固定 (cameraYawRef = 0)
       const touch = touchInput.current;
       const isDeadForCamera = store.players.get(myId)?.isDead ?? false;
+      const controlScheme = store.controlScheme;
+      const yawSourceBefore =
+        controlScheme === "legacy_shooter"
+          ? cameraYawRef.current
+          : headingYawRef.current;
       const cam = processCamera(
         keysPressed.current,
         touch,
         dTau,
-        { yaw: headingYawRef.current, pitch: cameraPitchRef.current },
+        { yaw: yawSourceBefore, pitch: cameraPitchRef.current },
         isDeadForCamera,
       );
-      headingYawRef.current = cam.yaw;
       cameraPitchRef.current = cam.pitch;
-      cameraYawRef.current = 0;
+      if (controlScheme === "legacy_classic") {
+        headingYawRef.current = cam.yaw;
+        cameraYawRef.current = cam.yaw; // camera = heading 同期
+      } else if (controlScheme === "legacy_shooter") {
+        cameraYawRef.current = cam.yaw;
+        // heading は WASD で processPlayerPhysics 内で更新される
+      } else {
+        // modern
+        headingYawRef.current = cam.yaw;
+        cameraYawRef.current = 0;
+      }
       touch.yawDelta = 0;
       // pitch は touch で制御しない (processCamera 内の pitch 処理削除済み)。
       // pitchDelta を毎 tick リセットして蓄積を防ぐ。
@@ -409,7 +423,7 @@ export function useGameLoop({
               dTau,
               otherPositions,
               Number.POSITIVE_INFINITY,
-              fresh.viewMode,
+              fresh.controlScheme,
               cameraYawRef.current,
             );
             thrustRequestedThisTick = physics.thrustRequested;
@@ -456,7 +470,7 @@ export function useGameLoop({
               dTau,
               otherPositions,
               energy,
-              fresh.viewMode,
+              fresh.controlScheme,
               cameraYawRef.current,
             );
             energy = Math.max(0, energy - physics.thrustEnergyConsumed);
