@@ -315,6 +315,20 @@ export function useGameLoop({
       const myPos = store.players.get(myId)?.phaseSpace.pos;
       const causalTorusHalfWidth =
         store.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined;
+      // 観測者中心 image cell index (= image observer past-cone pattern で event の image
+      // position を観測者中心の 9 cells に表示するため)。 Ship renderer 群と統一。
+      const causalObsCellX =
+        causalTorusHalfWidth !== undefined && myPos
+          ? Math.floor(
+              (myPos.x + causalTorusHalfWidth) / (2 * causalTorusHalfWidth),
+            )
+          : 0;
+      const causalObsCellY =
+        causalTorusHalfWidth !== undefined && myPos
+          ? Math.floor(
+              (myPos.y + causalTorusHalfWidth) / (2 * causalTorusHalfWidth),
+            )
+          : 0;
       if (myPos && store.killLog.some((e) => !e.firedForUi)) {
         const result = firePendingKillEvents(
           store.killLog,
@@ -323,6 +337,8 @@ export function useGameLoop({
           store.scores,
           causalTorusHalfWidth,
           LIGHT_CONE_HEIGHT,
+          causalObsCellX,
+          causalObsCellY,
         );
         if (result.firedIndices.length > 0) {
           const firedSet = new Set(result.firedIndices);
@@ -376,6 +392,8 @@ export function useGameLoop({
           store.players,
           causalTorusHalfWidth,
           LIGHT_CONE_HEIGHT,
+          causalObsCellX,
+          causalObsCellY,
         );
         if (result.firedSpawns.length > 0) {
           useGameStore.setState({ pendingSpawnEvents: result.remaining });

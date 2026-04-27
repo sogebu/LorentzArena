@@ -1,6 +1,5 @@
 import {
   createVector4,
-  eventImage,
   type ImageCell,
   imageCellKey,
   isInPastLightCone,
@@ -48,13 +47,18 @@ const PRIMARY_KEY = "0,0";
 /**
  * Fire UI effects for kill events that have just entered the observer's past light cone.
  *
- * **PBC universal cover**: each kill event has `(2R+1)²` image cells in the universal
- * cover; each image is independently checked against the observer's past light cone. As
- * each image enters the cone, its key is appended to `firedImageCells` and visual effects
- * (death flash / kill notification) are triggered (= echo). Score is incremented only for
- * the primary image (= `"0,0"`) firing to prevent double-counting.
+ * **PBC universal cover (image observer past-cone pattern)**: 各 kill event について観測者
+ * 中心の `(2R+1)²` image cells を image observer pattern で判定。 ship renderer 群と統一の
+ * pattern:
+ *   imageObserver = obs - 2L*(obsCell + cell.offset)
+ *   isInPastLightCone(raw event.hitPos, imageObserver)  // raw 距離
+ *   imagePos = event.hitPos + 2L*(obsCell + cell.offset)  // observer 中心 cell 位置で表示
  *
- * `torusHalfWidth === undefined` (open_cylinder) は primary cell 1 つのみ巡回 = 従来挙動。
+ * 各 image が past cone に入ると `firedImageCells` に key を append + visual effect。
+ * Score は primary image (= `"0,0"`) 発火時のみ加算 (= double-count 防止)。 death flash /
+ * kill notification も primary のみ (= 主観体験 1 度)。
+ *
+ * `torusHalfWidth === undefined` (open_cylinder) は primary cell 1 つのみ = 従来挙動。
  */
 export function firePendingKillEvents(
   killLog: KillEventRecord[],
@@ -63,6 +67,8 @@ export function firePendingKillEvents(
   scores: Record<string, number>,
   torusHalfWidth?: number,
   lightConeHeight?: number,
+  obsCellX = 0,
+  obsCellY = 0,
 ): KillEventsResult {
   const firedIndices: number[] = [];
   const firedImageCellsByIndex = new Map<number, string[]>();
@@ -76,6 +82,7 @@ export function firePendingKillEvents(
       : 0;
   const cells = visibleImageCells(torusHalfWidth, R);
   const totalCells = cells.length;
+  const L = torusHalfWidth ?? 0;
 
   for (let i = 0; i < killLog.length; i++) {
     const ev = killLog[i];
@@ -86,25 +93,27 @@ export function firePendingKillEvents(
     for (const cell of cells) {
       const key = imageCellKey(cell);
       if (alreadyFired.has(key)) continue;
-      const imagePos =
-        torusHalfWidth !== undefined
-          ? eventImage(ev.hitPos, cell, torusHalfWidth)
-          : ev.hitPos;
-      const imageV4 = createVector4(
-        imagePos.t,
-        imagePos.x,
-        imagePos.y,
-        imagePos.z,
+      const dx = 2 * L * (obsCellX + cell.kx);
+      const dy = 2 * L * (obsCellY + cell.ky);
+      const imageObserverV4 = createVector4(
+        myPos.t,
+        myPos.x - dx,
+        myPos.y - dy,
+        myPos.z,
       );
-      if (isInPastLightCone(imageV4, myPos)) {
+      const evPosV4 = createVector4(
+        ev.hitPos.t,
+        ev.hitPos.x,
+        ev.hitPos.y,
+        ev.hitPos.z,
+      );
+      if (isInPastLightCone(evPosV4, imageObserverV4)) {
         newlyFired.push(key);
         if (key === PRIMARY_KEY) primaryJustFired = true;
         if (ev.victimId === myId) {
-          // death flash は primary image でのみ trigger (= 主観的には 1 度だけ)
           if (key === PRIMARY_KEY) deathFlash = true;
         }
         if (ev.killerId === myId && ev.victimId !== myId) {
-          // kill notification は primary image でのみ
           if (key === PRIMARY_KEY) {
             killNotification = {
               victimId: ev.victimId,
@@ -120,16 +129,11 @@ export function firePendingKillEvents(
       firedIndices.push(i);
       const merged = [...ev.firedImageCells, ...newlyFired];
       firedImageCellsByIndex.set(i, merged);
-      // Score は primary image 発火時のみ加算 (double-count 防止)。 echo (隣接 image 到達)
-      // は visual effect なし、 score 不変。
       if (primaryJustFired) {
         newScores[ev.killerId] = (newScores[ev.killerId] || 0) + 1;
       }
-      // 全 image fired → firedForUi = true (= caller が既存 logic で消化判定に使う)
-      if (merged.length >= totalCells) {
-        // firedForUi 自体は caller 側 (useGameLoop) で `merged.length >= totalCells` 判定して
-        // 立てる。 ここでは firedImageCells のみ返す。
-      }
+      // firedForUi は caller (useGameLoop) で `merged.length >= totalCells` 判定して立てる。
+      void totalCells;
     }
   }
 
@@ -147,13 +151,17 @@ export interface SpawnEventsResult {
 }
 
 /**
- * **PBC universal cover**: each spawn event has `(2R+1)²` image cells; each independently
- * triggers a spawn ring as it enters the observer's past light cone. `firedImageCells`
- * tracks which images have already triggered. Event is removed from `remaining` only when
- * all images have fired.
+ * **PBC universal cover (image observer past-cone pattern)**: 各 spawn event について観測者
+ * 中心の `(2R+1)²` image cells を image observer pattern で判定。 自機 / 他機 / 灯台 すべて
+ * 対称扱い (= 自分の spawn event の echo image も他人と同じく観測者中心で表示)。
  *
- * Each fired image emits a `SpawnEffect` (= spawn ring), so a single event can produce
- * multiple rings over time as echoes from different image cells reach the observer.
+ *   imageObserver = obs - 2L*(obsCell + cell.offset)
+ *   isInPastLightCone(raw event.pos, imageObserver)  // raw 距離
+ *   imagePos = event.pos + 2L*(obsCell + cell.offset)  // observer 中心 cell 位置で表示
+ *
+ * 各 image が past cone 到達 → spawn ring 1 個発生 (= echo)。 同じ event から複数 ring が
+ * 時間差で出る (= 1 周遠い image は ~2L 古い timestamp で見える)。 全 image 発火で event
+ * 消化 (= remaining から外す)。
  *
  * `torusHalfWidth === undefined` (open_cylinder) は primary 1 image のみ = 従来挙動。
  */
@@ -164,6 +172,8 @@ export function firePendingSpawnEvents(
   players: Map<string, { color: string }>,
   torusHalfWidth?: number,
   lightConeHeight?: number,
+  obsCellX = 0,
+  obsCellY = 0,
 ): SpawnEventsResult {
   const firedSpawns: SpawnEffect[] = [];
   const remaining: PendingSpawnEvent[] = [];
@@ -174,6 +184,7 @@ export function firePendingSpawnEvents(
       : 0;
   const cells = visibleImageCells(torusHalfWidth, R);
   const totalCells = cells.length;
+  const L = torusHalfWidth ?? 0;
 
   for (const ev of pending) {
     const alreadyFired = new Set(ev.firedImageCells);
@@ -181,20 +192,23 @@ export function firePendingSpawnEvents(
     for (const cell of cells) {
       const key = imageCellKey(cell);
       if (alreadyFired.has(key)) continue;
-      const imagePos =
-        torusHalfWidth !== undefined
-          ? eventImage(ev.pos, cell, torusHalfWidth)
-          : ev.pos;
-      const imageV4 = createVector4(
-        imagePos.t,
-        imagePos.x,
-        imagePos.y,
-        imagePos.z,
+      const dx = 2 * L * (obsCellX + cell.kx);
+      const dy = 2 * L * (obsCellY + cell.ky);
+      const imageObserverV4 = createVector4(
+        myPos.t,
+        myPos.x - dx,
+        myPos.y - dy,
+        myPos.z,
       );
-      if (isInPastLightCone(imageV4, myPos)) {
+      const evPosV4 = createVector4(ev.pos.t, ev.pos.x, ev.pos.y, ev.pos.z);
+      if (isInPastLightCone(evPosV4, imageObserverV4)) {
         newlyFired.push(key);
         const resolvedColor = players.get(ev.playerId)?.color ?? ev.color;
-        // 各 image 独立に spawn ring を出す (= echo として複数回 trigger)。
+        const imagePos = {
+          ...ev.pos,
+          x: ev.pos.x + dx,
+          y: ev.pos.y + dy,
+        };
         // id を image key で suffix 化して uniqueness 保証 (= ring が overlap しても別 entity)。
         firedSpawns.push({
           id: key === PRIMARY_KEY ? ev.id : `${ev.id}#${key}`,
@@ -205,7 +219,6 @@ export function firePendingSpawnEvents(
       }
     }
     const merged = [...ev.firedImageCells, ...newlyFired];
-    // 全 image fired なら event を消化 (= remaining から外す)、 そうでなければ更新版を維持。
     if (merged.length < totalCells) {
       remaining.push({ ...ev, firedImageCells: merged });
     }
