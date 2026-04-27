@@ -25,61 +25,11 @@
 
 **思想と全 phase の実装 mapping は [`DESIGN.md` §「PBC torus: Universal cover image observer past-cone pattern」](DESIGN.md) に固定**。 5 行式 + 物理計算 vs 描画の意味的整合 + ad hoc 化脱却の経緯を記録。 helper は [`physics/torus.ts`](src/physics/torus.ts) (36 unit tests pass)。 LightConeRenderer のみ単一描画 (= LCH=L で球面 rim 内接、 隣接 image 重ならない)。 詳細実装ログ: [`plans/2026-04-27-pbc-torus.md`](plans/2026-04-27-pbc-torus.md)。
 
-#### 操作系・機体形状の axis 設計 (2026-04-27 前半 再編)
+#### Reference (= 詳細は別 file、 ここは pointer のみ)
 
-操作系 (`controlScheme`) と機体形状 (`viewMode`) を直交軸として独立に持つ。コードは各軸 3 種すべて保持、UI dropdown は両方撤去 (隠しオプション)、デフォルトは `legacy_classic` × `classic`。
-
-| 軸 | 値 | デフォルト | UI |
-|---|---|---|---|
-| `controlScheme` | `legacy_classic` / `legacy_shooter` / `modern` | `legacy_classic` | 撤去 |
-| `viewMode` | `classic` / `shooter` / `jellyfish` | `classic` | 撤去 |
-
-**切替手段**: URL hash override `#controls=modern` / `#ship=jellyfish` (`&` 区切りで併用可、`#room=test&controls=modern&ship=jellyfish`)。一度 hash で切替えると LS (`la-control-scheme` / `la-view-mode`) に persist、次回 hash 無しでも維持。デフォルト復元は LS 削除 + reload。詳細は `2+1/CLAUDE.md §URL hash override`。
-
-#### 操作系それぞれの挙動
-
-**`legacy_classic` (default、71e5788^ 時点の旧 classic 復元)**:
-- WASD = 機体相対 thrust (前後左右、yaw 基底に投影)
-- 矢印 ←/→ = `headingYawRef` 連続旋回 + camera 同期 (cameraYawRef = headingYawRef)
-- 矢印 ↑/↓ = camera pitch
-- 機体本体 group が heading で回転、cannonYawGroup は 0 (本体に固定)、噴射方向は world thrust を local frame に inverse rotate
-- aim 線 (HeadingMarkerRenderer) **非表示** — 本体 hull が heading 方向を示すため冗長
-
-**`legacy_shooter` (旧 twin-stick、71e5788^ 時点の旧 shooter 復元)**:
-- WASD = camera basis での進みたい方向 → heading 即時スナップ + thrust
-- 矢印 ←/→ = `cameraYawRef` 旋回 (camera が機体周りを回る、heading は WASD で別途決定)
-- 機体本体は heading で回転 (twin-stick 風)
-- aim 線 表示 (opacity 0.22)
-
-**`modern` (71e5788 で導入した新統一操作系)**:
-- WASD = world basis (cameraYaw=0 前提) thrust、heading 不変
-- 矢印 ←/→ = `headingYawRef` 旋回 (砲身/aim のみ)、camera は固定
-- 機体本体は world basis 固定 + 砲塔のみ heading 追従、噴射方向は world thrust そのまま
-- aim 線 表示 (opacity 0.22)
-- 詳細: [`gameLoop.ts:processPlayerPhysics`](src/components/game/gameLoop.ts), [`useGameLoop.ts:260-285`](src/hooks/useGameLoop.ts), [`SceneContent.tsx:189-204`](src/components/game/SceneContent.tsx), [`SelfShipRenderer.tsx`](src/components/game/SelfShipRenderer.tsx) の controlScheme 分岐
-
-#### 機体形状 dispatch (SceneContent)
-- **classic** ([`SelfShipRenderer`](src/components/game/SelfShipRenderer.tsx)): 六角プリズム + 4 RCS。controlScheme で本体 group rotation を切替 (legacy 系で本体 heading 回転 + 噴射 yaw 変換、modern で本体固定 + 砲塔のみ)
-- **shooter** ([`RocketShipRenderer`](src/components/game/RocketShipRenderer.tsx)): ロケット teardrop body。砲が無いので本体ごと heading 追従 (lerp tau=80ms)
-- **jellyfish** ([`JellyfishShipRenderer`](src/components/game/JellyfishShipRenderer.tsx)): 半透明 dome + Verlet rope 触手 14 質点 + 武装触手 (= 砲) のみ heading 方向。ジャパクリップ「クラゲ」を motif にした procedural 派生
-
-#### HeadingMarkerRenderer — 過去光円錐 + cylinder mesh
-- 「laser は観測者の過去光円錐上を流れる」物理整合のため過去光円錐の母線 (= -t 方向) を null geodesic として描画
-- `mesh + cylinder geometry` + 標準 scene graph (旧 LineSegments の context lost 脆弱性回避)、`depthTest=false + renderOrder=20` で常時可視
-- 自機専用 (= observer = self、observer rest frame で origin から direction*L)
-- 寸法 (2026-04-27 odakin 調整): LENGTH `15.0`、RADIUS `0.04`、OPACITY `0.22` で aim ガイドとして主張控えめに
-- **legacy_classic では非表示** (本体が heading を示すため冗長)、modern / legacy_shooter で表示
-
-#### LightConeRenderer — one-sided 表示
-- 4 mesh (future surface/wire + past surface/wire) を future=`BackSide` / past=`FrontSide`(default) に
-- 効果: 未来側から見下ろすと future cone は cull、過去側から見上げると逆、側方視点では両方見える
-
-#### 物理関連の維持事項
-- **`phaseSpace.alpha` は thrust only** ([`gameLoop.ts:204-217`](src/components/game/gameLoop.ts)): friction を抜いた thrust 4-加速度を world frame に boost し直して上書き。alpha は表示専用 (噴射炎 / 加速度矢印 / 他者 broadcast)、物理進行には不使用
-- **死亡 event 統一アルゴリズム** は (x_D, u_D, τ_0) ベース、DeathMarker / DeadShipRenderer / LH が一元駆動 (詳細: [`plans/死亡イベント.md`](plans/死亡イベント.md) + [`design/meta-principles.md §M21`](design/meta-principles.md))
-- **加速度表示** はフレーム整合化済 (噴射炎 = 被観測者 rest frame proper acc、加速度矢印 = 観測者 rest frame 4-vector の時空矢印)
-- **LH 光源** は観測者視点で死亡観測済なら消灯
-- **射撃 UI** は silver 統一
+- **操作系 / 機体形状 / 境界モード の axis 設計 + 各 controlScheme 挙動 + 機体形状 dispatch**: [`CLAUDE.md §「URL hash override」`](CLAUDE.md)
+- **HeadingMarkerRenderer / LightConeRenderer one-sided**: [`design/rendering.md`](design/rendering.md) 末尾 sections
+- **phaseSpace.alpha は thrust only / 死亡 event 統一アルゴリズム / 加速度表示 / LH 光源消灯 / 射撃 UI silver**: [`design/physics.md`](design/physics.md) 末尾 sections
 
 ## 既知の課題
 
@@ -110,66 +60,15 @@
 
 ## 次にやること
 
-### 優先 (次セッション最初に検討)
+### 優先
 
-#### Universal cover refactor の残部 (Phase D 残り)
-
-`DESIGN.md §「PBC torus: Universal cover image observer past-cone pattern」` の core abstraction に従って、 残った D pattern renderer を image observer pattern で対応:
-
-- **DeathMarker** の 9 image 化 (= 死亡 sphere + ring を各 image cell ごとに表示)
-- **HeadingMarkerRenderer** の 9 image 化 (= 自機 aim 線を各 image cell に複製。 ただし aim 線は自機固有方向情報なので primary のみが妥当という判断もあり、 visual 評価必要)
-- **AntennaBeaconRenderer** (= dorsalStyle="antenna" 時の上面 antenna ビーコン) の 9 image 化
-- **レーザー emission marker** (= 過去光円錐到達 marker、 LaserBatchRenderer とは別) の 9 image 化
-- 全 callsite で `pastLightConeIntersectionWorldLine` の `imageObserver = obs - 2L*(obsCell + cell)` pattern を適用
-
-これらは「補助 marker」 で影響軽微 (= 通常時は出ない or 小さい)、 visual judgment 必要なので odakin の確認後着手推奨。
-
-#### timeFade に spatial fade 追加 (任意)
-
-現在 `fade = r²/(r²+dt²)` (dt only) で隣接 image の vertex は dt 同じ → 同強度描画。 「無限平行世界」 が遠方で自然 fade out するには `fade = r²/(r²+dt²+s²)` で spatial 距離 s を加える必要。 ただし既存 timeFade 仕様変更で「等時刻面強調」 visual も変わるので別判断。 詳細: `plans/2026-04-27-pbc-torus.md` Appendix B §(a)
-
-#### innerHide の dispatch 設計
-
-現状: 隣接 image cell の自機 vertex は hide center から world 距離 ~2L で hide されない (= 9 hull が並ぶ visual)。 odakin の好みで:
-- **(b-1)** hide center を 9 image array で全部 hide (= 各 image hull が hide される)
-- **(b-2)** 自機 hull は primary のみ描画 (= 自機 echo を非表示)
-- **(b-3)** 何もしない (= 9 hull 並ぶの許容、 「無限平行世界」 として自然)
-
-詳細: `plans/2026-04-27-pbc-torus.md` Appendix B §(b)
-
-#### 実機 multi-tab 実戦テスト + deploy
-
-universal cover refactor 完遂後、 odakin の visual 評価が OK なら deploy:
-- 自機を境界 (各軸 ±20) 付近に動かして、 自機本体が周囲 8 image cells に echo 表示される (worldLine 履歴 ≥ 2L 必要、 実用的には高速移動でないと echo 届かない)
-- 「右で非表示 / 左で表示」 等の半開区間 flip artifact が消えてる
-- 1 周回ってきた敵の spawn / kill event が echo として複数 image で trigger される
-- 灯台 / 他機 hull / arena 枠 / worldLine / laser / debris すべて 9 image
-- arena 色 magenta が光円錐 cyan と区別できる
-- `pnpm run deploy` + main push
-
-#### 過去光円錐 ∩ 正方形枠 の交線描画 (低優先)
-
-円柱版 ArenaRenderer の `ARENA_PAST_CONE_OPACITY` LineLoop 相当を SquareArenaRenderer でも実装。 4 平面 × 円錐の交線計算。 各 image cell で独立 (= universal cover refactor 後は corner flip 問題消えてるので individual 実装可能になった)。 ゲームプレイ非影響、 描画装飾の completion。
-
-#### 他セルの他機 spawn ring 不発 疑い (= 要実機確認)
-
-odakin 観察 (2026-04-28 朝): 「他セルの他機にスポーンエフェクトが出てなくない？気のせいかな」。 firePendingSpawnEvents は image observer pattern で 9 image 全部に対応してるはずだが、 他機 (= 人間 or 灯台) の echo spawn ring が visual に出てない可能性。 確認手順:
-- 他 player の死亡 → 復活 event を観察
-- 自機本体の spawn echo は出る? 出るなら他機固有問題
-- pendingSpawnEvent の playerId / pos が正しく登録されてるか snapshot で確認
-- 他機 spawn の場合 handleSpawn が他 peer の player に対して trigger される経路を辿る
-- 可能性: 他機の `spawnPos` が「自機からあまりにも遠い world coords」 で、 image observer pattern の R=1 では届かない? でも primary image (= cell (0,0)) には必ず届くはずなので、 問題が起きるとすれば echo image (= cell (±1, 0) etc) のみ
-- 実機で再現確認 + console log で `firedSpawns` を確認
-
-#### 因果律ガードの設計 (= 深く考える必要あり)
-
-odakin 提起 (2026-04-28 朝): 「因果律ガードはどう実装するのがいいか深く考えねば」。 何を guard するか:
-- (推測 1) PBC で観測者の「未来の自分の image」 が過去光円錐に入ってしまうケース? → physically この case はあり得ない (= 観測者の世界線は未来時刻に進む、 過去光円錐は過去のみ)
-- (推測 2) hit detection が PBC の image cell 間で「光速超過 spatial 距離」 を許容するケース? → 最短画像距離で物理計算するので光速以下が保証されてるはずだが、 image cell 跨ぎでの worldLine vertex の dt 整合に何か漏れがあるかも
-- (推測 3) network 受信 phaseSpace と worldLine の causal 整合 (= 受信側で前回 phaseSpace から ballistic 補間する際に、 PBC で「短経路」 と「実際は 1 周してきた」 の判別)
-- (推測 4) その他
-
-odakin 自身 「深く考えねば」 段階。 設計議論を別 plan or DESIGN section で整理してから着手。 universal cover image observer pattern の core abstraction との関係性も検討。
+- **Phase D (b) 残り**: `DeathMarker` / `HeadingMarkerRenderer` / `AntennaBeaconRenderer` / レーザー emission marker の 9 image 化 (image observer pattern 適用)。 影響軽微なので odakin visual 確認後着手
+- **他セルの他機 spawn ring 不発疑い** (odakin 2026-04-28 朝報告): 実機再現確認 + console log で `firedSpawns` 検証 + 自機 echo との比較
+- **因果律ガード設計** (odakin 2026-04-28 朝提起): 「深く考える」 段階。 候補 (PBC future image past-cone 流入 / image cell 間光速超過 / 受信 phaseSpace の causal 整合) を列挙、 設計議論 → DESIGN section 化してから着手
+- **timeFade に spatial fade 追加** (任意、 visual 評価要): 詳細 `plans/2026-04-27-pbc-torus.md` Appendix B §(a)
+- **innerHide dispatch 設計** (b-1/b-2/b-3 いずれか、 odakin 好み): 詳細 `plans/2026-04-27-pbc-torus.md` Appendix B §(b)
+- **実機 multi-tab 検証 + deploy**: visual OK なら `pnpm run deploy` + main push。 確認: 半開区間 flip 解消 / spawn echo 複数 trigger / 灯台他機 hull arena worldLine laser debris 全 9 image / arena magenta vs 光円錐 cyan 識別性
+- **過去光円錐 ∩ 正方形枠 の交線描画** (低優先、 描画装飾): universal cover refactor 後は corner flip 解消で individual 実装可能
 
 ### 既存 (優先順未決定)
 

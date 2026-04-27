@@ -596,3 +596,18 @@ opacity = baseOpacity × fade
 
 ---
 
+
+## HeadingMarkerRenderer — 過去光円錐母線で aim 線を描画
+
+「laser は観測者の過去光円錐上を流れる」 物理整合のため、 過去光円錐の母線 (= -t 方向) を null geodesic として描画。 `mesh + cylinder geometry` + 標準 scene graph (= 旧 LineSegments の context lost 脆弱性回避)、 `depthTest=false + renderOrder=20` で常時可視。
+
+- 自機専用 (= observer = self、 observer rest frame で origin から direction*L)
+- 寸法 (2026-04-27 odakin 調整): LENGTH `15.0`、 RADIUS `0.04`、 OPACITY `0.22` で aim ガイドとして主張控えめに
+- **`legacy_classic` では非表示** (= 本体 hull が heading を示すため冗長)、 `modern` / `legacy_shooter` で表示
+
+## LightConeRenderer — one-sided 表示
+
+4 mesh (future surface/wire + past surface/wire) を `future=BackSide` / `past=FrontSide`(default) に。
+
+- 効果: 未来側から見下ろすと future cone は cull、 過去側から見上げると逆、 側方視点では両方見える
+- 物理視点として「観測者の過去光円錐は下向き sphere、 未来光円錐は上向き sphere」 の rest frame 表現を視覚的に強調

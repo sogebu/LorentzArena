@@ -84,6 +84,31 @@ location.reload();
 
 新操作系 (modern) は 71e5788 で導入したが 2026-04-27 の実機テストで没入感が薄いと判断、デフォルトを旧 classic に戻した。**3 種すべてコード保持**しているのは、将来 UI 復活 / 比較実験 / 別ゲームモードへの転用が見込まれるため。**dropdown を再追加するときは ControlPanel に 2 段 (操作系 / 機体形状) で出す**設計が想定されている (`game-store.ts` の `setControlScheme` / `setViewMode` setter は既に揃っている)。
 
+### 各 controlScheme の挙動
+
+**`legacy_classic` (default、 71e5788^ 旧 classic 復元)**:
+- WASD = 機体相対 thrust (前後左右、 yaw 基底に投影)
+- 矢印 ←/→ = `headingYawRef` 連続旋回 + camera 同期 (cameraYawRef = headingYawRef)、 矢印 ↑/↓ = camera pitch
+- 機体本体 group が heading で回転、 cannonYawGroup は 0 (本体に固定)、 噴射方向は world thrust を local frame に inverse rotate
+- aim 線 (HeadingMarkerRenderer) **非表示** (= 本体 hull が heading を示すため冗長)
+
+**`legacy_shooter` (旧 twin-stick、 71e5788^ 旧 shooter 復元)**:
+- WASD = camera basis での進みたい方向 → heading 即時スナップ + thrust
+- 矢印 ←/→ = `cameraYawRef` 旋回 (camera が機体周りを回る、 heading は WASD で別途決定)
+- 機体本体は heading で回転 (twin-stick 風)、 aim 線 表示 (opacity 0.22)
+
+**`modern` (71e5788 で導入)**:
+- WASD = world basis (cameraYaw=0 前提) thrust、 heading 不変
+- 矢印 ←/→ = `headingYawRef` 旋回 (砲身/aim のみ)、 camera は固定
+- 機体本体は world basis 固定 + 砲塔のみ heading 追従、 噴射方向は world thrust そのまま、 aim 線 表示 (opacity 0.22)
+- 詳細: [`gameLoop.ts:processPlayerPhysics`](src/components/game/gameLoop.ts), [`useGameLoop.ts`](src/hooks/useGameLoop.ts), [`SceneContent.tsx`](src/components/game/SceneContent.tsx), [`SelfShipRenderer.tsx`](src/components/game/SelfShipRenderer.tsx) の controlScheme 分岐
+
+### 機体形状 dispatch (SceneContent)
+
+- **classic** ([`SelfShipRenderer`](src/components/game/SelfShipRenderer.tsx)): 六角プリズム + 4 RCS。 controlScheme で本体 group rotation を切替 (legacy 系で本体 heading 回転 + 噴射 yaw 変換、 modern で本体固定 + 砲塔のみ)
+- **shooter** ([`RocketShipRenderer`](src/components/game/RocketShipRenderer.tsx)): ロケット teardrop body。 砲が無いので本体ごと heading 追従 (lerp tau=80ms)
+- **jellyfish** ([`JellyfishShipRenderer`](src/components/game/JellyfishShipRenderer.tsx)): 半透明 dome + Verlet rope 触手 14 質点 + 武装触手 (= 砲) のみ heading 方向。 ジャパクリップ「クラゲ」 motif の procedural 派生
+
 ## ShipViewer ルート (`#viewer`)
 
 `src/components/ShipViewer.tsx` はゲーム本体 (PeerProvider / GameStore / 光円錐 / network) を一切起動せず、自機 3D モデル (`SelfShipRenderer`) を 360° 回転 / thrust 9 方向ボタン / grid / BG 切替で preview する独立 scene。`http://localhost:5173/LorentzArena/#viewer` (本番も `https://sogebu.github.io/LorentzArena/#viewer`) で起動。`App.tsx` 冒頭で `window.location.hash === '#viewer'` 判定して分岐。
