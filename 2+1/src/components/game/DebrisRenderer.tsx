@@ -1,12 +1,18 @@
 import type React from "react";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
-import { createVector4, minImageDelta1D, type Vector4 } from "../../physics";
+import {
+  createVector4,
+  observableImageCells,
+  requiredImageCellRadius,
+  type Vector4,
+} from "../../physics";
 import {
   DEBRIS_MAX_LAMBDA,
   DEBRIS_WORLDLINE_OPACITY,
   HIT_DEBRIS_MAX_LAMBDA,
   HIT_DEBRIS_WORLDLINE_OPACITY,
+  LIGHT_CONE_HEIGHT,
 } from "./constants";
 import { useDisplayFrame } from "./DisplayFrameContext";
 import { pastLightConeIntersectionDebris } from "./debris";
@@ -45,6 +51,17 @@ export const DebrisRenderer = ({
     useDisplayFrame();
   const explosionMeshRef = useRef<THREE.InstancedMesh>(null);
   const hitMeshRef = useRef<THREE.InstancedMesh>(null);
+
+  // **PBC universal cover**: 各 segment を `(2R+1)²` image cell に複製、 instance count を
+  // 9 倍化。 各 instance matrix = compose(mid + 2L*offset, quat, scale) で各 image cell に
+  // segment を配置。 mesh.matrix = displayMatrix で観測者 rest frame に投影。 timeFade は
+  // 各 image 独立 dt で fade (= 隣接 image は遠方 dt 大で薄く描画 = echo 視覚化)。
+  const cells = useMemo(() => {
+    if (torusHalfWidth === undefined) return [{ kx: 0, ky: 0 }];
+    const R = requiredImageCellRadius(torusHalfWidth, LIGHT_CONE_HEIGHT);
+    return observableImageCells(R);
+  }, [torusHalfWidth]);
+  const L = torusHalfWidth ?? 0;
 
   // collect all debris segments (world frame) + intersection markers (world frame)
   type DebrisSegment = {
@@ -129,13 +146,9 @@ export const DebrisRenderer = ({
     }
   }
 
-  // torus mode: 各 debris segment の中心点 (= instance translation) を観測者中心 primary
-  // cell `[obs±L]²` に最短画像で折る。 cylinder 自体の length / 方向は world から計算
-  // (= 物理的な segment 軸を保持)、 中心点だけ shift。 cylinder length は寿命短く ~1-2s で
-  // ARENA L=20 に対して微小なので、 segment が境界跨ぐエッジケースは限定的 (= cylinder の
-  // 一端が画面外まで伸びる)。 完全な segment 分割描画は Step 2 (3x3 image cell 複製) で吸収予定。
-  const ox = observerPos?.x ?? 0;
-  const oy = observerPos?.y ?? 0;
+  // 各 segment × 各 image cell = `segs.length * cells.length` instances。 vertex は cylinder
+  // local、 instance matrix で「mid + 2L*offset、 quat、 scale」 で配置。 mesh.matrix =
+  // displayMatrix で observer rest frame に投影。
   const writeInstanced = (
     mesh: THREE.InstancedMesh | null,
     segs: DebrisSegment[],
@@ -143,33 +156,41 @@ export const DebrisRenderer = ({
     if (!mesh) return;
     mesh.matrix.copy(displayMatrix);
     mesh.matrixAutoUpdate = false;
-    const colorAttr = new Float32Array(segs.length * 3);
+    const totalInstances = segs.length * cells.length;
+    const colorAttr = new Float32Array(totalInstances * 3);
+    let idx = 0;
     for (let i = 0; i < segs.length; i++) {
       const seg = segs[i];
       _debrisStart.set(seg.sx, seg.sy, seg.st);
       _debrisEnd.set(seg.ex, seg.ey, seg.et);
       _debrisMid.addVectors(_debrisStart, _debrisEnd).multiplyScalar(0.5);
-      if (torusHalfWidth !== undefined && observerPos) {
-        _debrisMid.x = ox + minImageDelta1D(_debrisMid.x - ox, torusHalfWidth);
-        _debrisMid.y = oy + minImageDelta1D(_debrisMid.y - oy, torusHalfWidth);
-      }
       _debrisDir.subVectors(_debrisEnd, _debrisStart);
       const len = _debrisDir.length();
       if (len < 0.001) {
         _debrisScale.set(0, 0, 0);
-        _debrisMatrix.compose(_debrisMid, _debrisQuat, _debrisScale);
       } else {
         _debrisDir.normalize();
         _debrisQuat.setFromUnitVectors(_debrisUp, _debrisDir);
         _debrisScale.set(seg.radius, len, seg.radius);
-        _debrisMatrix.compose(_debrisMid, _debrisQuat, _debrisScale);
       }
-      mesh.setMatrixAt(i, _debrisMatrix);
-      colorAttr[i * 3] = seg.r;
-      colorAttr[i * 3 + 1] = seg.g;
-      colorAttr[i * 3 + 2] = seg.b;
+      const baseMidX = _debrisMid.x;
+      const baseMidY = _debrisMid.y;
+      const baseMidZ = _debrisMid.z;
+      for (const cell of cells) {
+        _debrisMid.set(
+          baseMidX + 2 * L * cell.kx,
+          baseMidY + 2 * L * cell.ky,
+          baseMidZ,
+        );
+        _debrisMatrix.compose(_debrisMid, _debrisQuat, _debrisScale);
+        mesh.setMatrixAt(idx, _debrisMatrix);
+        colorAttr[idx * 3] = seg.r;
+        colorAttr[idx * 3 + 1] = seg.g;
+        colorAttr[idx * 3 + 2] = seg.b;
+        idx++;
+      }
     }
-    mesh.count = segs.length;
+    mesh.count = totalInstances;
     mesh.instanceMatrix.needsUpdate = true;
     mesh.instanceColor = new THREE.InstancedBufferAttribute(colorAttr, 3);
     mesh.instanceColor.needsUpdate = true;
@@ -177,8 +198,9 @@ export const DebrisRenderer = ({
   writeInstanced(explosionMeshRef.current, explosionSegments);
   writeInstanced(hitMeshRef.current, hitSegments);
 
-  // max possible instances: MAX_DEBRIS * EXPLOSION_PARTICLE_COUNT (per mesh cap、余裕で切り上げ)
-  const maxInstances = 20 * 30;
+  // max possible instances: MAX_DEBRIS * EXPLOSION_PARTICLE_COUNT × cells.length
+  // (= 9 image cells max for R=1)。 cap allocation で over-instance 防止。
+  const maxInstances = 20 * 30 * cells.length;
 
   // 時間 fade は per-vertex shader で適用 (USE_INSTANCING 分岐あり)。各 instance の
   // world segment が display frame で自動 fade されるため、死亡時刻から離れた debris
