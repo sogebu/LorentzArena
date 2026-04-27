@@ -184,6 +184,26 @@ universal cover refactor 完遂後、 odakin の visual 評価が OK なら depl
 
 円柱版 ArenaRenderer の `ARENA_PAST_CONE_OPACITY` LineLoop 相当を SquareArenaRenderer でも実装。 4 平面 × 円錐の交線計算。 各 image cell で独立 (= universal cover refactor 後は corner flip 問題消えてるので individual 実装可能になった)。 ゲームプレイ非影響、 描画装飾の completion。
 
+#### 他セルの他機 spawn ring 不発 疑い (= 要実機確認)
+
+odakin 観察 (2026-04-28 朝): 「他セルの他機にスポーンエフェクトが出てなくない？気のせいかな」。 firePendingSpawnEvents は image observer pattern で 9 image 全部に対応してるはずだが、 他機 (= 人間 or 灯台) の echo spawn ring が visual に出てない可能性。 確認手順:
+- 他 player の死亡 → 復活 event を観察
+- 自機本体の spawn echo は出る? 出るなら他機固有問題
+- pendingSpawnEvent の playerId / pos が正しく登録されてるか snapshot で確認
+- 他機 spawn の場合 handleSpawn が他 peer の player に対して trigger される経路を辿る
+- 可能性: 他機の `spawnPos` が「自機からあまりにも遠い world coords」 で、 image observer pattern の R=1 では届かない? でも primary image (= cell (0,0)) には必ず届くはずなので、 問題が起きるとすれば echo image (= cell (±1, 0) etc) のみ
+- 実機で再現確認 + console log で `firedSpawns` を確認
+
+#### 因果律ガードの設計 (= 深く考える必要あり)
+
+odakin 提起 (2026-04-28 朝): 「因果律ガードはどう実装するのがいいか深く考えねば」。 何を guard するか:
+- (推測 1) PBC で観測者の「未来の自分の image」 が過去光円錐に入ってしまうケース? → physically この case はあり得ない (= 観測者の世界線は未来時刻に進む、 過去光円錐は過去のみ)
+- (推測 2) hit detection が PBC の image cell 間で「光速超過 spatial 距離」 を許容するケース? → 最短画像距離で物理計算するので光速以下が保証されてるはずだが、 image cell 跨ぎでの worldLine vertex の dt 整合に何か漏れがあるかも
+- (推測 3) network 受信 phaseSpace と worldLine の causal 整合 (= 受信側で前回 phaseSpace から ballistic 補間する際に、 PBC で「短経路」 と「実際は 1 周してきた」 の判別)
+- (推測 4) その他
+
+odakin 自身 「深く考えねば」 段階。 設計議論を別 plan or DESIGN section で整理してから着手。 universal cover image observer pattern の core abstraction との関係性も検討。
+
 ### 既存 (優先順未決定)
 
 - **Phase A/B で実装した worldline 向き・加速度の思想・コード対称性 audit**: `phaseSpace.alpha = thrust only` 化 ([`gameLoop.ts`](src/components/game/gameLoop.ts) で上書き) は thrust 単独信号の役割を満たすが、Phase B-5 で別途 wire field 新設するか alpha のままで運用するか方針確認。具体候補: (a) component 間の「fade / gate / routing」責務配置の統一 (M21 を広域適用)、(b) Phase B-5 (他機 exhaust の pure thrust broadcast) の再設計、(c) Phase C-1 (wire format 厳格化、heading/alpha optional → required)、(d) 世界線データと描画機構の「対応関係」を DESIGN.md に書き下し
