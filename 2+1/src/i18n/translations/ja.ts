@@ -39,6 +39,8 @@ export const ja = {
   "hud.firing": "射撃中",
   "hud.kill": "撃破",
   "hud.dead": "被撃墜",
+  "hud.causalFreeze.title": "因果律凍結",
+  "hud.causalFreeze.sub": "他機の未来光円錐内",
   "hud.build": "ビルド",
   // Connect panel
   "connect.title": "接続設定",

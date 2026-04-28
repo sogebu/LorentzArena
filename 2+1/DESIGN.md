@@ -22,6 +22,25 @@ DESIGN.md は domain ごとに分割。本ファイルは **index + アーキ ov
 
 全体を貫く設計原理。個別判断の前提になる。
 
+### 共変表現の徹底 (= 非共変量と γ の使用は最小化)
+
+LorentzArena は相対論的 game。 内部表現には **共変な量 (= Lorentz 変換で正則に振る舞う量) を正本** として持ち、 **非共変量 (= 観測者依存値) を state に保存しない**。 計算式にも非共変量への変換 (= 「γ で割る」 「γ を掛ける」) を極力混入させない。
+
+**4-velocity の正本**: 空間成分 `u_sp = (ux, uy, uz)` を `Vector3` で保持。 時間成分 `ut = γ` は **必要な時にのみ** `sqrt(1 + |u_sp|²)` で給与し、 state には保存しない (= 派生量を正本扱いしない)。 この convention は `phaseSpace.u: Vector3` (`physics/mechanics.ts`) で codebase 全体に適用済。
+
+**避けるべき非共変量と変換**:
+- 3-velocity `v = u_sp / γ` — UI 表示 (Speedometer) など本質的に必要な場面に限定
+- 座標時間差 `dt = γ · dτ` — 内部計算は proper time `dτ` で書く
+- coord-time direction (= `(1, dx, dy, 0)` 4-vector の空間成分 `dx, dy`) — proper-time direction `(ut, ux, uy, 0)` で書ければそちらを優先
+
+**過去の事故例 (再発防止用)**:
+- 2026-04-28 [`lighthouse.ts:computeInterceptDirection`](src/components/game/lighthouse.ts) で `phaseSpace.u` (= 既に γv) に更に γ を掛けて `γ²v` として 4-velocity 扱い → quadratic 係数破綻 → LH AI が高速 player に当たらない経年バグ。 docstring が「`(γ, γ·ux, γ·uy, 0)`」 と 3-velocity 前提で書かれていたが caller の実態は 4-velocity だった (= convention の暗黙化が事故の遠因)。 修正時に「`enemyU` は 4-velocity 空間成分」 と docstring 明示。
+
+**コードレビュー時のチェック項目**:
+- `gamma(u)` / `Math.sqrt(1 + ...)` で γ を計算してる場所: 4-vector 形成 (= `(γ, ux, uy, uz)` を作る) 以外で使ってないか
+- `/ γ` `/ ut` `/ g` で割ってる場所: UI 表示か? 内部計算なら共変表現で書き直せないか
+- `phaseSpace.u` を関数に渡す場所: 受け側 docstring と semantics が一致してるか (= 「γv」 か「v」 か)
+
 ### データ層と表現層の分離
 
 全 peer が全プレイヤーの world line を常時共有する (データ層)。相対論的な光円錐遅延は「いつ UI に表示するか」の表現層だけで効かせる。データを光円錐で絞る必要はない。

@@ -100,14 +100,19 @@ export const DebrisRenderer = ({
 
     for (let pi = 0; pi < debris.particles.length; pi++) {
       const p = debris.particles[pi];
+      // particle は 4-velocity 空間成分 (ux, uy) を持つ。 等速直線運動を proper time
+      // dτ ∈ [0, maxLambda] で展開し endpoint 4-vector = deathPos + (ut, ux, uy, 0) * maxLambda
+      // を計算 (DESIGN.md §「共変表現の徹底」)。 ut = sqrt(1 + |u_sp|²) は共変表現を保つため
+      // 必要時のみ給与 (state には保存しない)。
+      const ut = Math.sqrt(1 + p.ux * p.ux + p.uy * p.uy);
 
       segsTarget.push({
         sx: debris.deathPos.x,
         sy: debris.deathPos.y,
         st: debris.deathPos.t,
-        ex: debris.deathPos.x + p.dx * maxLambda,
-        ey: debris.deathPos.y + p.dy * maxLambda,
-        et: debris.deathPos.t + maxLambda,
+        ex: debris.deathPos.x + p.ux * maxLambda,
+        ey: debris.deathPos.y + p.uy * maxLambda,
+        et: debris.deathPos.t + ut * maxLambda,
         r: debrisColor.r,
         g: debrisColor.g,
         b: debrisColor.b,
@@ -116,8 +121,8 @@ export const DebrisRenderer = ({
 
       const intersection = pastLightConeIntersectionDebris(
         deathEvent,
-        p.dx,
-        p.dy,
+        p.ux,
+        p.uy,
         maxLambda,
         myPlayer.phaseSpace.pos,
       );

@@ -33,11 +33,18 @@ export const MAX_LASERS = 1000;
 //
 // 各オブジェクトの「最未来点」:
 // - laser: `emissionPos.t + range`
-// - debris: `deathPos.t + DEBRIS_MAX_LAMBDA` (≈ deathPos.t + 2.5)
+// - debris: `deathPos.t + (ut * DEBRIS_MAX_LAMBDA)` (= particle ごとに ut 異なるので
+//   GC は安全側 `DEBRIS_MAX_LAMBDA * DEBRIS_GC_GAMMA_BOUND` で見積もる)
 // - frozen worldline: `history[last].t` (= 死亡時刻)
 export const GC_PAST_LCH_MULTIPLIER = 5;
-// デブリ 1 粒子の coord time 方向の長さ。DebrisRenderer の segment 生成と GC の両方で参照。
+// デブリ 1 粒子の **proper time** 方向の長さ。 各 particle は 4-velocity 空間成分
+// `(ux, uy)` を持ち、 寿命を proper time `dτ ∈ [0, DEBRIS_MAX_LAMBDA]` で定義
+// (DESIGN.md §「共変表現の徹底」)。 描画 endpoint coord t = `deathPos.t + ut * dτ_max`
+// で particle ごとに異なる (高速 particle ほど coord time 長く生きる)。
 export const DEBRIS_MAX_LAMBDA = 2.5;
+// GC 用 conservative γ 上限。 particle の最高速 (= 大 ut) に備えて GC cutoff を
+// `DEBRIS_MAX_LAMBDA * DEBRIS_GC_GAMMA_BOUND` で見積もる (= 落としすぎ防止 safety margin)。
+export const DEBRIS_GC_GAMMA_BOUND = 5;
 
 // --- Death event (2026-04-22 統一アルゴリズム) ---
 // 死者の extrapolated 世界線 W_D(τ) = x_D + u_D·τ の τ 窓。τ 単位は死者 proper time。

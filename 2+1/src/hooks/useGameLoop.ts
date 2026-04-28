@@ -10,6 +10,7 @@ import {
 } from "../components/game/causalEvents";
 import {
   ARENA_HALF_WIDTH,
+  DEBRIS_GC_GAMMA_BOUND,
   DEBRIS_MAX_LAMBDA,
   DEFAULT_CAMERA_PITCH,
   ENERGY_MAX,
@@ -304,31 +305,15 @@ export function useGameLoop({
       touch.pitchDelta = 0;
 
       // --- Causal events ---
-      // **PBC universal cover**: 各 event は `(2R+1)²` image cell に複製され、 各 image が
-      // 観測者の過去光円錐に独立に到達する (= echo)。 firePendingKillEvents は image cell
-      // loop で各 image を判定、 newly fired image を `firedImageCells` に push、 全 image
-      // 到達で `firedForUi = true` に遷移 (= caller 側で derive)。 score は primary image
-      // 発火時のみ加算 (= double-count 防止)。 visual effect (death flash / kill notification)
-      // は primary image でのみ trigger。 隣接 image 到達は echo として `firedImageCells` を
-      // 育てるだけ (visual effect なし)。
-      // 詳細: physics/torus.ts §「Universal cover image cell」 + causalEvents.ts
+      // **PBC wrap pattern**: causalEvents は内部で observer / event を `displayPos` で
+      // (0,0) cell に折り畳み、 観測者周りの `(2R+1)²` image cells loop で past cone 判定。
+      // 観測者本人 cell image (= cell.kx=0, cell.ky=0) が必ず最短距離で primary fire
+      // (score 加算 / death flash / kill notification trigger)。 隣接 image fire は echo
+      // のみ。 観測者跨ぎ越し問題は wrap で原理的に発生しない (= obsCell 計算不要)。
+      // 詳細: causalEvents.ts の docstring。
       const myPos = store.players.get(myId)?.phaseSpace.pos;
       const causalTorusHalfWidth =
         store.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined;
-      // 観測者中心 image cell index (= image observer past-cone pattern で event の image
-      // position を観測者中心の 9 cells に表示するため)。 Ship renderer 群と統一。
-      const causalObsCellX =
-        causalTorusHalfWidth !== undefined && myPos
-          ? Math.floor(
-              (myPos.x + causalTorusHalfWidth) / (2 * causalTorusHalfWidth),
-            )
-          : 0;
-      const causalObsCellY =
-        causalTorusHalfWidth !== undefined && myPos
-          ? Math.floor(
-              (myPos.y + causalTorusHalfWidth) / (2 * causalTorusHalfWidth),
-            )
-          : 0;
       if (myPos && store.killLog.some((e) => !e.firedForUi)) {
         const result = firePendingKillEvents(
           store.killLog,
@@ -337,8 +322,6 @@ export function useGameLoop({
           store.scores,
           causalTorusHalfWidth,
           LIGHT_CONE_HEIGHT,
-          causalObsCellX,
-          causalObsCellY,
         );
         if (result.firedIndices.length > 0) {
           const firedSet = new Set(result.firedIndices);
@@ -392,8 +375,6 @@ export function useGameLoop({
           store.players,
           causalTorusHalfWidth,
           LIGHT_CONE_HEIGHT,
-          causalObsCellX,
-          causalObsCellY,
         );
         if (result.firedSpawns.length > 0) {
           useGameStore.setState({ pendingSpawnEvents: result.remaining });
@@ -465,6 +446,14 @@ export function useGameLoop({
         const freshDead = freshMe?.isDead ?? true;
 
         if (freshDead) {
+          // 死亡中は causality freeze の概念が N/A (= ghost は物理実体ではない)。
+          // 生存中に立てた frozen 状態がそのまま残ると overlay が ghost 中も出続けるので
+          // ここで reset。 ref も合わせて reset し、 復活直後の checkCausalFreeze で
+          // hysteresis baseline が古い状態に依存しないようにする。
+          if (causalFrozenRef.current) {
+            causalFrozenRef.current = false;
+            fresh.setCausallyFrozen(false);
+          }
           // ghost 中: 生存時物理 (processPlayerPhysics) を流用して ghost phaseSpace
           // を動的更新する。thrust/heading/friction/energy はすべて生存時と同一挙動。
           // ローカルのみ更新・ネットワーク非送信、worldLine 更新もしない。
@@ -520,7 +509,15 @@ export function useGameLoop({
             stale.staleFrozenRef.current,
             causalFrozenRef.current,
             fresh.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined,
+            stale.lastUpdateTimeRef.current,
+            currentTime,
           );
+          // 状態変化時のみ store update (= UI overlay subscriber が re-render)。
+          // ref と store の二重保持: ref はホットパス毎 tick 読み出しを軽くするため、
+          // store は overlay 用の reactive 通知のため。
+          if (causalFrozenRef.current !== frozen) {
+            fresh.setCausallyFrozen(frozen);
+          }
           causalFrozenRef.current = frozen;
 
           if (!frozen) {
@@ -902,13 +899,16 @@ export function useGameLoop({
               gcState.setFrozenWorldLines(() => kept);
             }
           }
-          // debris: 最未来点 = deathPos.t + (hit なら HIT_DEBRIS_MAX_LAMBDA、explosion なら DEBRIS_MAX_LAMBDA)
+          // debris: 最未来点 = deathPos.t + ut * λ_max。 ut は particle 毎に異なる
+          // (= 4-velocity 空間成分から give) ので、 GC は安全側 conservative bound
+          // `λ_max * DEBRIS_GC_GAMMA_BOUND` (= 高速 particle の最大 coord time advance
+          // 想定) で見積もる。 落としすぎ防止 (= visible なものを GC) 優先。
           const debris = gcState.debrisRecords;
           if (debris.length > 0) {
             const kept = debris.filter((d) => {
               const lambda =
                 d.type === "hit" ? HIT_DEBRIS_MAX_LAMBDA : DEBRIS_MAX_LAMBDA;
-              return d.deathPos.t + lambda >= cutoff;
+              return d.deathPos.t + lambda * DEBRIS_GC_GAMMA_BOUND >= cutoff;
             });
             if (kept.length !== debris.length) {
               gcState.setDebrisRecords(() => kept);

@@ -38,6 +38,7 @@ import type {
 import {
   appendWorldLine,
   createPhaseSpace,
+  createVector3,
   createVector4,
   createWorldLine,
   getVelocity4,
@@ -163,6 +164,12 @@ export interface GameState {
   debrisRecords: DebrisRecord[];
   killNotification: KillNotification3D | null;
   myDeathEvent: DeathEvent | null;
+  /**
+   * 自機が他機の未来光円錐内に居て因果律保持のため freeze 中かどうか。 useGameLoop の
+   * `checkCausalFreeze` 結果が変化した tick で update される。 UI overlay (= 「因果律凍結 /
+   * Causal Freeze」 表示) が subscribe する。
+   */
+  causallyFrozen: boolean;
   displayNames: Map<string, string>;
 
   // --- Non-reactive state (read via getState() only, no re-render) ---
@@ -205,6 +212,7 @@ export interface GameState {
   setDebrisRecords: (updater: (prev: DebrisRecord[]) => DebrisRecord[]) => void;
   setKillNotification: (v: KillNotification3D | null) => void;
   setMyDeathEvent: (v: DeathEvent | null) => void;
+  setCausallyFrozen: (v: boolean) => void;
 
   // --- Actions: game logic ---
   handleKill: (
@@ -232,7 +240,15 @@ export interface GameState {
     position: { t: number; x: number; y: number; z: number },
     myId: string | null,
     color: string,
-    options?: { displayName?: string; ownerId?: string },
+    options?: {
+      displayName?: string;
+      ownerId?: string;
+      /**
+       * 4-velocity 空間成分 (= γ·v)。 死亡 → 復活の通常経路では省略 (= u=0 静止)、
+       * stale 復帰の ballistic 経路では凍結時 u を継承するために渡す。
+       */
+      u?: { x: number; y: number; z: number };
+    },
   ) => void;
   /**
    * Phase C1: 被弾処理。energy を damage 減算し、`< 0` なら handleKill を呼ぶ。
@@ -277,6 +293,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   debrisRecords: [],
   killNotification: null,
   myDeathEvent: null,
+  causallyFrozen: false,
   displayNames: new Map(),
 
   // Non-reactive
@@ -314,6 +331,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
 
   setKillNotification: (v) => set({ killNotification: v }),
   setMyDeathEvent: (v) => set({ myDeathEvent: v }),
+  setCausallyFrozen: (v) => set({ causallyFrozen: v }),
 
   // -----------------------------------------------------------------------
   // handleKill — absorbs RelativisticGame.tsx L155-208
@@ -395,10 +413,15 @@ export const useGameStore = create<GameState>()((set, get) => ({
 
     const now = Date.now();
 
-    // Spawn 位置・静止 (u=0) で phaseSpace + worldLine を再生成
+    // Spawn 位置で phaseSpace + worldLine を再生成。 通常 (死亡 → 復活) は u=0 静止、
+    // stale 復帰 ballistic では options.u に凍結時 u を渡して慣性運動継続。
+    const u =
+      options?.u !== undefined
+        ? createVector3(options.u.x, options.u.y, options.u.z)
+        : vector3Zero();
     const ps = createPhaseSpace(
       createVector4(position.t, position.x, position.y, position.z),
-      vector3Zero(),
+      u,
     );
     const newWorldLine = appendWorldLine(
       createWorldLine(MAX_WORLDLINE_HISTORY),

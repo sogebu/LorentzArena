@@ -90,10 +90,14 @@ export type Message =
       /**
        * Respawn command from host.
        * JP: ホストからのリスポーン指示。
+       *
+       * `u`: optional 4-velocity 空間成分 (= γ·v)。 stale 復帰の ballistic 経路で凍結時 u
+       * を継承するために同梱。 死亡 → 復活の通常経路では省略 (= 受信側で u=0 静止)。
        */
       type: "respawn";
       playerId: string;
       position: { t: number; x: number; y: number; z: number };
+      u?: { x: number; y: number; z: number };
     }
   | {
       /**

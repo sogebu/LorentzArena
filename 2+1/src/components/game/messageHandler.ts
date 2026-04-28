@@ -4,6 +4,7 @@ import {
   createVector3,
   createVector4,
   createWorldLine,
+  displayPos,
   type Quaternion,
   quatIdentity,
   type Vector4,
@@ -11,6 +12,7 @@ import {
 } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
 import {
+  ARENA_HALF_WIDTH,
   ENERGY_MAX,
   LIGHTHOUSE_COLOR,
   MAX_FROZEN_WORLDLINES,
@@ -138,20 +140,60 @@ export const createMessageHandler =
       // 新しい WorldLine に古い位置が appendWorldLine される）
       if (playerId === myId) return;
 
-      // Stale 復帰検知: stale 凍結されたプレイヤーから phaseSpace が来た
+      // Stale 復帰検知: stale 凍結されたプレイヤーから phaseSpace が来た。
+      //
+      // Ballistic 復帰: 凍結中も他機は等速直線運動してたとみなし、
+      //   new pos = pos + u * dτ                           (4-velocity を proper time で積分)
+      //   t component:  pos.t + γ * dτ   (= u^0 * dτ)
+      // で凍結直前 phaseSpace から復帰位置を計算 → `displayPos` で torus (0,0) cell に wrap
+      // して torus universe 内に正しく収める (= 「実体は (0,0) cell に閉じる」 設計思想)。
+      // dτ は host 観測者の壁時計経過 (= 厳密には player 本人 proper time とは異なるが、
+      // game 的に十分な近似)。 `oldPs` / `lastUpdateTimeRef` 不在の防御 fallback で
+      // 従来 random 復帰経路を維持。
       if (staleFrozenRef.current.has(playerId)) {
         if (!peerManager.getIsBeaconHolder()) return; // クライアントはホストの respawn を待つ
-        const respawnPos = createRespawnPosition(store.players, playerId);
+        const oldPs = store.players.get(playerId)?.phaseSpace;
+        const oldUpdate = lastUpdateTimeRef.current.get(playerId);
+        let respawnPos: { t: number; x: number; y: number; z: number };
+        if (oldPs && oldUpdate !== undefined) {
+          const dTau = (Date.now() - oldUpdate) / 1000;
+          const u = oldPs.u;
+          const gamma = Math.sqrt(1 + u.x * u.x + u.y * u.y + u.z * u.z);
+          const ballisticPos = createVector4(
+            oldPs.pos.t + gamma * dTau,
+            oldPs.pos.x + u.x * dTau,
+            oldPs.pos.y + u.y * dTau,
+            oldPs.pos.z + u.z * dTau,
+          );
+          const wrapped =
+            useGameStore.getState().boundaryMode === "torus"
+              ? displayPos(ballisticPos, { x: 0, y: 0 }, ARENA_HALF_WIDTH)
+              : ballisticPos;
+          respawnPos = {
+            t: wrapped.t,
+            x: wrapped.x,
+            y: wrapped.y,
+            z: wrapped.z,
+          };
+        } else {
+          respawnPos = createRespawnPosition(store.players, playerId);
+        }
         staleFrozenRef.current.delete(playerId);
         lastUpdateTimeRef.current.set(playerId, Date.now());
+        const ballisticU = oldPs?.u
+          ? { x: oldPs.u.x, y: oldPs.u.y, z: oldPs.u.z }
+          : undefined;
         peerManager.send({
           type: "respawn" as const,
           playerId,
           position: respawnPos,
+          ...(ballisticU ? { u: ballisticU } : {}),
         });
         const existingColor =
           store.players.get(playerId)?.color ?? getPlayerColor(playerId);
-        store.handleSpawn(playerId, respawnPos, myId, existingColor);
+        store.handleSpawn(playerId, respawnPos, myId, existingColor, {
+          ...(ballisticU ? { u: ballisticU } : {}),
+        });
         return;
       }
 
@@ -324,11 +366,24 @@ export const createMessageHandler =
       // Stage D: respawn は owner 発信。host は他 peer の respawn を受信したら
       // handleSpawn を実行 + registerHostRelay が relay を担当。
       if (!isValidString(msg.playerId) || !isValidVector4(msg.position)) return;
+      // 自機 respawn の relay echo は無視 (自機側は useGameLoop の respawn poll が
+      // 直接 handleSpawn 済 → echo で再 handleSpawn すると pendingSpawnEvents が二重に
+      // append され spawn ring が PBC 9 image × 2 = 最大 18 個出る (= 「同セル内に次々と
+      // リスポーンエフェクト」 bug)。 phaseSpace / hit handler と同じ self echo guard。
+      if (msg.playerId === myId) return;
       staleFrozenRef.current.delete(msg.playerId);
       lastUpdateTimeRef.current.set(msg.playerId, Date.now());
       const existingColor =
         store.players.get(msg.playerId)?.color ?? getPlayerColor(msg.playerId);
-      store.handleSpawn(msg.playerId, msg.position, myId, existingColor);
+      // ballistic stale 復帰の場合 msg.u がある (= 凍結時 4-velocity を継承)。
+      // 通常 (死亡 → 復活) は msg.u 省略 = u=0 静止復活 (= 既存挙動)。
+      const ballisticU =
+        msg.u && isValidVector3(msg.u)
+          ? { x: msg.u.x, y: msg.u.y, z: msg.u.z }
+          : undefined;
+      store.handleSpawn(msg.playerId, msg.position, myId, existingColor, {
+        ...(ballisticU ? { u: ballisticU } : {}),
+      });
     } else if (msg.type === "kill") {
       // Stage B: kill は誰からでも受理（host skip を撤去）。
       // host も自身が owner でない player の kill は messageHandler 経由で受信する。

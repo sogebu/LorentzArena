@@ -41,6 +41,8 @@ export const en: Record<TranslationKey, string> = {
   "hud.firing": "FIRING",
   "hud.kill": "KILL",
   "hud.dead": "DEAD",
+  "hud.causalFreeze.title": "Causal Freeze",
+  "hud.causalFreeze.sub": "In another ship's future light cone",
   "hud.build": "build",
   // Connect panel
   "connect.title": "Connection",

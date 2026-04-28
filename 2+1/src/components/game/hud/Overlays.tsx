@@ -45,6 +45,58 @@ const RespawnCountdown = () => {
   );
 };
 
+/**
+ * 因果律凍結 overlay。 自機が他機の未来光円錐内に居る間、 画面中央に「因果律凍結」 と
+ * サブテキスト「他機の未来光円錐内」 を半透明 overlay で表示。 freeze 中ずっと出続け
+ * (= 状態通知)、 freeze off で即消える。 thrust が効かない理由を即座に示すための情報。
+ *
+ * z-index 220: HitFlash (201) より上、 RespawnCountdown (250) より下、 KillNotification
+ * (300) より下 (= kill / respawn の決定的 event は上に重ねる)。
+ */
+const CausalFreezeOverlay = () => {
+  const { t } = useI18n();
+  const frozen = useGameStore((s) => s.causallyFrozen);
+  if (!frozen) return null;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        zIndex: 220,
+        pointerEvents: "none",
+        textAlign: "center",
+        fontFamily: "monospace",
+        padding: "16px 28px",
+        backgroundColor: "rgba(20, 30, 60, 0.55)",
+        border: "1px solid rgba(150, 180, 255, 0.5)",
+        borderRadius: "6px",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "28px",
+          fontWeight: "bold",
+          color: "#aac8ff",
+          textShadow: "0 0 12px rgba(120, 160, 255, 0.7)",
+        }}
+      >
+        {t("hud.causalFreeze.title")}
+      </div>
+      <div
+        style={{
+          fontSize: "14px",
+          color: "rgba(200, 215, 245, 0.85)",
+          marginTop: "6px",
+        }}
+      >
+        {t("hud.causalFreeze.sub")}
+      </div>
+    </div>
+  );
+};
+
 type OverlaysProps = {
   myId: string | null;
   isDead: boolean;
@@ -134,6 +186,9 @@ export const Overlays = ({
 
       {/* 被弾フラッシュ (Phase C1) */}
       <HitFlash myId={myId} />
+
+      {/* 因果律凍結 overlay (= 自機が他機の未来光円錐内に居て freeze 中の状態通知) */}
+      <CausalFreezeOverlay />
 
       {/* 死亡フラッシュ */}
       {deathFlash && (

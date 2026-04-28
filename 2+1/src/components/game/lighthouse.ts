@@ -69,8 +69,10 @@ export const createLighthouse = (
  *
  * Find the direction to fire so the laser hits an inertially-moving enemy.
  *
+ * `enemyU` は phaseSpace.u (= 4-velocity 空間成分 = γ·v、 codebase 全体共通の convention)。
+ * 4-velocity full は `u^μ = (γ, enemyU.x, enemyU.y, 0)` で、 `γ = sqrt(1 + |enemyU|²)`。
+ *
  * The enemy's world line (assuming inertial): p(τ) = p_e + u^μ · τ
- * where u^μ = (γ, γ·ux, γ·uy, 0).
  *
  * The laser from P_t travels at c=1 in direction d: L(λ) = P_t + λ·(1, dx, dy, 0)
  * where dx² + dy² = 1.
@@ -90,8 +92,6 @@ export const computeInterceptDirection = (
   enemyU: Vector3,
   torusHalfWidth?: number,
 ): Vector3 | null => {
-  const g = gamma(enemyU);
-
   // Displacement from turret to enemy observation point.
   // torus mode では最短画像 delta で取る (= 境界跨ぎの enemy にも intercept 計算が機能)。
   const rawDx = enemyPos.x - turretPos.x;
@@ -102,10 +102,12 @@ export const computeInterceptDirection = (
     torusHalfWidth !== undefined ? minImageDelta1D(rawDy, torusHalfWidth) : rawDy;
   const dt = enemyPos.t - turretPos.t;
 
-  // Enemy 4-velocity components
-  const ut = g;
-  const ux = g * enemyU.x;
-  const uy = g * enemyU.y;
+  // Enemy 4-velocity components (= u^μ)。 enemyU は既に 4-velocity 空間成分 (γv) なので
+  // ux/uy はそのまま。 ut (= u^0 = γ) のみ計算。 旧実装で `g * enemyU.{x,y}` と書いて
+  // γ を二重適用 → 高速 enemy で intercept 軌道係数が破綻していた bug を 2026-04-28 に修正。
+  const ut = gamma(enemyU);
+  const ux = enemyU.x;
+  const uy = enemyU.y;
 
   // Quadratic: a·τ² + b·τ + c = 0
   // From (dt + ut·τ)² = (dx + ux·τ)² + (dy + uy·τ)²

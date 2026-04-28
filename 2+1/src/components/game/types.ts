@@ -9,9 +9,14 @@ import type {
 // 等速直線運動、永続データ、同じ `debrisRecords[]` 配列で共存。renderer は type を
 // 参照しないので、個数・size・color の調整は生成器 (`generateExplosionParticles` /
 // `generateHitParticles`) 側で完結させる (tag は GC や snapshot 等の識別用途)。
+//
+// `particles[i].{ux, uy}` は particle の 4-velocity 空間成分 (= γ·v、 codebase 共通
+// convention)。 ut = γ は必要時に `sqrt(1 + ux² + uy²)` で給与し state には保存しない
+// (DESIGN.md §「共変表現の徹底」)。 旧 `{dx, dy}` 表現 (= 3-velocity v) は非共変量を state
+// 化していたため 2026-04-28 に廃止。
 export type DebrisRecord = {
   readonly deathPos: { t: number; x: number; y: number; z: number };
-  readonly particles: ReadonlyArray<{ dx: number; dy: number; size: number }>;
+  readonly particles: ReadonlyArray<{ ux: number; uy: number; size: number }>;
   readonly color: string;
   readonly type: "explosion" | "hit";
 };

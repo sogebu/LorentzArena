@@ -3,12 +3,14 @@ import {
   createPhaseSpace,
   createVector3,
   createVector4,
+  displayPos,
   evolvePhaseSpace,
   inverseLorentzBoost,
   lorentzDotVector4,
   minImageDelta1D,
   multiplyVector4Matrix4,
   pastLightConeIntersectionWorldLine,
+  subVector4,
   subVector4Torus,
   vector3Zero,
   type Vector3,
@@ -476,9 +478,45 @@ export function processHitDetection(
 // --- Causality Guard ---
 
 /**
+ * Causality 判定の wrap origin。 PBC torus universe では「実体は (0,0) cell に閉じる、
+ * universal cover の他 image cells はその描画コピー」 (= odakin 設計思想) を尊重し、
+ * 観測者 / 他機 raw 位置を独立に (0,0) cell の primary domain `[-L, L)²` に折り畳んで
+ * から fundamental domain 内の Lorentz interval で因果律判定する。
+ *
+ * 旧実装 (`subVector4Torus` = 観測者中心 minimum image) は 「universal cover 上の他機の
+ * 最も近い image との距離」 で判定するため、 観測者の PBC 境界跨ぎで minimum image cell
+ * が切り替わる瞬間に距離が discontinuous jump → freeze 誤発動 → thrust skip → 「跨ぎ後
+ * 燃料減らない」 bug の原因だった (2026-04-28)。 (0,0) wrap pattern では universal cover
+ * image を判定対象から外し、 fundamental domain の本物 1 個の他機との関係のみで判定。
+ *
+ * 跨ぎ瞬間の distance jump は (0,0) wrap でも起き得る (= 観測者 raw cell が変わると
+ * wrap 後位置が discontinuous) が、 jump 量が常に minimum image より小さく発動頻度減少 +
+ * 既存 `CAUSAL_FREEZE_HYSTERESIS` で flicker は実用上抑制。
+ */
+const FREEZE_ORIGIN = { x: 0, y: 0 } as const;
+
+/**
+ * Freeze 判定で「最近 update があった他機のみ対象」 にする閾値 (= ms)。 staleFrozen が立つ
+ * 5 秒よりずっと早く skip することで、 「タブ非表示 / network jitter で短期的に phaseSpace
+ * が止まった他機」 が freeze cause にならないようにする。
+ *
+ * 1.5 秒の根拠: 通常 game flow の jitter (= 〜0.5-1 秒沈黙) は許容、 1.5 秒以上沈黙なら
+ * 「動いてない player」 として freeze 判定対象外。 staleFrozen (5s) との中間。
+ */
+const FREEZE_RECENT_UPDATE_MS = 1500;
+
+/**
  * Check if the player is in any other player's future light cone.
  * If so, the player should be frozen to preserve causality.
  * Uses hysteresis: threshold is 2.0 when already frozen, 0 otherwise.
+ *
+ * **PBC**: 観測者 / 他機 を `displayPos(_, FREEZE_ORIGIN, L)` で (0,0) cell に折り畳んで
+ * から `subVector4` (= unwrapped 距離) で判定。 詳細は `FREEZE_ORIGIN` の docstring。
+ *
+ * **Skip 対象**: 自機 / dead / Lighthouse / staleFrozen 既存に加え、 `lastUpdateTime` と
+ * `currentWallTime` が渡されたら「最終 phaseSpace 受信から `FREEZE_RECENT_UPDATE_MS` 以上
+ * 経過した他機」 も skip。 これは staleFrozen (5s) より早く skip することで、 落ちた直後 〜
+ * stale 認定までの sub-grace で freeze cause になるのを防ぐ。
  */
 export function checkCausalFreeze(
   players: Map<string, RelativisticPlayer>,
@@ -487,18 +525,33 @@ export function checkCausalFreeze(
   staleFrozenIds: Set<string>,
   wasFrozen: boolean,
   torusHalfWidth?: number,
+  lastUpdateTime?: Map<string, number>,
+  currentWallTime?: number,
 ): boolean {
+  const wrappedMe =
+    torusHalfWidth !== undefined
+      ? displayPos(me.phaseSpace.pos, FREEZE_ORIGIN, torusHalfWidth)
+      : me.phaseSpace.pos;
   for (const [id, player] of players) {
     if (id === myId) continue;
     if (player.isDead) continue;
     if (isLighthouse(id)) continue;
     if (staleFrozenIds.has(id)) continue;
     if (player.phaseSpace.pos.t > me.phaseSpace.pos.t) continue;
-    const diff = subVector4Torus(
-      player.phaseSpace.pos,
-      me.phaseSpace.pos,
-      torusHalfWidth,
-    );
+    if (lastUpdateTime && currentWallTime !== undefined) {
+      const lastUpdate = lastUpdateTime.get(id);
+      if (
+        lastUpdate !== undefined &&
+        currentWallTime - lastUpdate > FREEZE_RECENT_UPDATE_MS
+      ) {
+        continue;
+      }
+    }
+    const wrappedPlayer =
+      torusHalfWidth !== undefined
+        ? displayPos(player.phaseSpace.pos, FREEZE_ORIGIN, torusHalfWidth)
+        : player.phaseSpace.pos;
+    const diff = subVector4(wrappedPlayer, wrappedMe);
     const l = lorentzDotVector4(diff, diff);
     const threshold = wasFrozen ? CAUSAL_FREEZE_HYSTERESIS : 0;
     if (l < -threshold) {
