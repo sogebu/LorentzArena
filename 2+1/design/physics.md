@@ -68,6 +68,23 @@ Lighthouse (静止 AI) が誰かの過去光円錐内に落ちたら、最も過
 
 安全弁: `maxHistorySize * 2` を超えたら因果的判定を無視して強制削除 (メモリ保護)。コストは O(P) per frame、P = 2-4。無視できる。
 
+### スポーン空間位置: 原点中心 (2026-04-28、 `bbce03f`)
+
+`createRespawnPosition` (`game/respawnTime.ts`) と LH spawn (`lighthouse.ts`) と新 joiner spawn (`snapshot.ts`) と初回 spawn (`RelativisticGame.tsx`) すべて、 `(x, y) = ((Math.random() - 0.5) * SPAWN_RANGE, (Math.random() - 0.5) * SPAWN_RANGE)` で **原点中心の正方形 `[-SPAWN_RANGE/2, +SPAWN_RANGE/2)²` 一様分布** を使う。 `ARENA_CENTER_X / Y` も `0` で arena 枠中心と一致。
+
+**旧 (= `bbce03f^`)**: spawn は `[0, SPAWN_RANGE)²` で中心 (5, 5)、 `ARENA_CENTER` も (5, 5)、 正方形枠 corner が (5±40, 5±40) で原点とずれた non-canonical 配置だった。
+
+**変更理由** (= 「遠くに行って戻れない」 onboarding 問題対策の前準備):
+
+実機テストプレイヤーが事故的に arena 遠方へ飛び戻れなくなる事例が頻出 (2026-04-28 odakin 観察)。 後続の onboarding UX (HUD 中心方向矢印 / radar center dot 等) は「中心への方向 / 距離」 を毎 frame 計算する。 中心が (5, 5) のままだと:
+- HUD / radar の target 計算に offset が常駐 (= bug 源)
+- spawn の中心 (5, 5) と arena 枠中心 (5, 5) と原点 (0, 0) が乖離していて「中心」 概念が曖昧
+- テスト・レビュー・new contributor 認知すべて煩雑
+
+原点に統一することで `(0, 0)` を target 固定にでき、 後続 UX 実装が単純化される。 当変更単独では「遠くに行って戻れない」 は解消しない (= 純粋な前準備)。
+
+選択肢空間と un-defer トリガーは [`EXPLORING.md §「遠くに行って戻れない」 問題`](../EXPLORING.md) を参照。
+
 ### スポーン座標時刻: alive 非 stale player の (min + max) / 2 中間 (2026-04-28)
 
 `computeSpawnCoordTime(players, excludeId?, staleFrozenIds?)` (`game/respawnTime.ts`): excludeId を除いた **alive で broadcast している** (= dead 除外 + stale 除外) player の `phaseSpace.pos.t` の **min と max の中間値**。 初回スポーン・リスポーン・新 joiner スポーンの 3 経路で共通。

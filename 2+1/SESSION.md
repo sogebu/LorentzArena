@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-**本番デプロイ済**: `3ba639a` (build `2026/04/28 13:27:59 JST`、 https://sogebu.github.io/LorentzArena/)。 main は origin と同期。
+**本番デプロイ済**: `bbce03f` (build `2026/04/28 21:50:37 JST`、 https://sogebu.github.io/LorentzArena/)。 main は origin と同期。
 
 **2026-04-28 セッションの大物 fix 群** (詳細 git log):
 - causalEvents observer-centered wrap、 lighthouse γ² bug、 ballistic catchup self-authoritative、 共変表現徹底 (`cb9fa10` / `8c02c0f`)
@@ -12,6 +12,7 @@
 - ARENA_RADIUS 20 → 40、 ARENA_SQUARE 系 opacity 0.5/0.6/0.5 (= 旧円柱と整合) (`e32cc6e`)
 - PR #2 merge: PLC スライスモード (時空図 ↔ PLC slice、 2D 全画面 radar / 3D 斜め俯瞰) (`e645aef`)
 - 後 join client 永遠凍結 fix 段階2 (root cause): spawn 時刻を `max` から `(min+max)/2` 中間に + DESIGN に「pos.t は per-player coord time、 wall_clock 同期は誤り」 銘記 (`3ba639a`)
+- spawn / arena 中心を原点に統一 (`bbce03f`、 「遠くに行って戻れない」 onboarding 問題対策の前準備、 後続 UX の target 座標を `(0,0)` 固定で扱える)
 
 ### 設計思想 (永続化)
 
@@ -46,12 +47,26 @@
 
 ## 次にやること
 
+### 「遠くに行って戻れない」 問題 (2026-04-28、 onboarding 課題)
+
+実機テストプレイヤーが事故的に遠出 → 戻れず迷子化、 を頻出観察 (odakin 報告)。 競技的な「逃げ」 ではなく onboarding 問題。
+
+詳細な subproblem 分解 / 選択肢空間 / un-defer トリガーは [`EXPLORING.md §「遠くに行って戻れない」 問題`](EXPLORING.md) を参照。
+
+**着手済**: spawn / arena 中心を原点に統一 (`bbce03f`、 後続 UX の target 座標を `(0,0)` 固定で扱える前準備)。
+
+**未着手 (推奨順、 効果 / 工数の見積りも EXPLORING.md)**:
+1. **HUD 中心方向矢印 + radar center dot** (= 物理に手を入れず即効、 計 2-3h)
+2. 1 で帰れない事例が残れば → 中心方向 thrust 燃料優遇 or soft pull
+3. 枠半幅 `ARENA_RADIUS = 40` の縮小 (40 → 15-20) は UX 改善後に効果評価して判断
+
 ### 実機検証待ち (2026-04-28 セッション全 fix)
 
 3+ tab multi-player で:
 - 後 join client 永遠凍結 が `3ba639a` の spawn 時刻 (min+max)/2 中間化で治癒したか
 - 逆 bug 疑い: 高 γ host から見て新 joiner が close-spatial に着地して **host が freeze** する race (SESSION 「defer 中」 参照)
 - spawn ring / 撃破 / 燃料消費 / Causal Freeze overlay / debris 等の通常 multiplay flow
+- **`bbce03f` 後の spawn 位置 / 枠位置**: 原点中心 spawn `[-5, +5)²`、 正方形枠 `[-40, +40]²` で挙動確認
 
 ### Phase 2 議論 (PBC torus 復活時に再着手)
 
