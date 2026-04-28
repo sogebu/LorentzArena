@@ -170,6 +170,35 @@ const saveArenaWallsVisible = (v: boolean) => {
     localStorage.setItem(ARENA_WALLS_LS_KEY, v ? "1" : "0");
 };
 
+/**
+ * `boundaryMode === "open_cylinder"` 時の視覚 shape:
+ * - 'square' (default): SquareArenaRenderer (= 正四角柱、 旧円柱と光円錐がどちらも円形で
+ *   「壁の裏に居る」 感が出にくい問題への対応、 2026-04-28 から default)
+ * - 'cylinder': CylinderArenaRenderer (= 旧円柱、 隠しオプションとして保持)
+ *
+ * `boundaryMode === "torus"` 時は無視 (常に SquareArenaRenderer)。
+ * 切替は URL hash `#shape=cylinder` / `#shape=square`。
+ */
+export type OpenCylinderShape = "square" | "cylinder";
+
+const OPEN_CYLINDER_SHAPE_LS_KEY = "la-open-cylinder-shape";
+const OPEN_CYLINDER_SHAPE_VALUES: readonly OpenCylinderShape[] = [
+  "square",
+  "cylinder",
+];
+
+const loadOpenCylinderShape = (): OpenCylinderShape => {
+  if (typeof localStorage === "undefined") return "square";
+  const v = localStorage.getItem(OPEN_CYLINDER_SHAPE_LS_KEY);
+  return (OPEN_CYLINDER_SHAPE_VALUES as readonly string[]).includes(v ?? "")
+    ? (v as OpenCylinderShape)
+    : "square";
+};
+const saveOpenCylinderShape = (v: OpenCylinderShape) => {
+  if (typeof localStorage !== "undefined")
+    localStorage.setItem(OPEN_CYLINDER_SHAPE_LS_KEY, v);
+};
+
 export interface GameState {
   // --- Reactive state (components subscribe via selectors) ---
   players: Map<string, RelativisticPlayer>;
@@ -217,6 +246,7 @@ export interface GameState {
   controlScheme: ControlScheme;
   boundaryMode: BoundaryMode;
   arenaWallsVisible: boolean;
+  openCylinderShape: OpenCylinderShape;
 
   /**
    * Stale 判定済 peer ID 集合 (= 5s 以上 phaseSpace が来てない) の **store mirror**。
@@ -309,6 +339,7 @@ export interface GameState {
   setControlScheme: (scheme: ControlScheme) => void;
   setBoundaryMode: (mode: BoundaryMode) => void;
   setArenaWallsVisible: (v: boolean) => void;
+  setOpenCylinderShape: (v: OpenCylinderShape) => void;
 
   /** stale set の mirror update 用。 useStaleDetection が ref 変更時に同期コピー。 */
   setStaleFrozenIds: (ids: ReadonlySet<string>) => void;
@@ -345,6 +376,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   controlScheme: loadControlScheme(),
   boundaryMode: loadBoundaryMode(),
   arenaWallsVisible: loadArenaWallsVisible(),
+  openCylinderShape: loadOpenCylinderShape(),
 
   staleFrozenIds: new Set<string>(),
 
@@ -640,6 +672,11 @@ export const useGameStore = create<GameState>()((set, get) => ({
   setArenaWallsVisible: (v) => {
     saveArenaWallsVisible(v);
     set({ arenaWallsVisible: v });
+  },
+
+  setOpenCylinderShape: (v) => {
+    saveOpenCylinderShape(v);
+    set({ openCylinderShape: v });
   },
 
   setStaleFrozenIds: (ids) => set({ staleFrozenIds: ids }),

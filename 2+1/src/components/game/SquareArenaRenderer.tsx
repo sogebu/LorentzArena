@@ -9,6 +9,7 @@ import {
   ARENA_CENTER_Y,
   ARENA_HALF_WIDTH,
   ARENA_MIN_HALF_HEIGHT,
+  ARENA_RADIUS,
   ARENA_SQUARE_COLOR,
   ARENA_SQUARE_EDGE_OPACITY,
   ARENA_SQUARE_RIM_OPACITY,
@@ -20,16 +21,20 @@ import { getThreeColor } from "./threeCache";
 import { applyTimeFadeShader } from "./timeFadeShader";
 
 /**
- * Torus PBC mode 用の正方形アリーナ枠。 中心 `(CX, CY)`、 半幅 `L`、 4 corner で時間方向
- * `[obs.t - H, obs.t + H]` (H = ARENA_MIN_HALF_HEIGHT = LCH) に伸ばす。
+ * 正方形アリーナ枠 (= 正四角柱)。 中心 `(CX, CY)`、 半幅 `effectiveHalfWidth`、 4 corner で
+ * 時間方向 `[obs.t - H, obs.t + H]` (H = ARENA_MIN_HALF_HEIGHT = LCH) に伸ばす。
  *
- * **PBC universal cover**: 各 corner は **raw world coords** (= fold せず固定)、 4 geometry
- * (surface / edges / topRim / botRim) を `(2R+1)²` image cell ごとに mesh.matrix で
- * `displayMatrix × translate(2L*offset)` で配置。 これで observer がどこにいても arena が
- * 各 image cell に独立描画され、 「観測者が境界中央で 4 corner が片側 flip して縮退する」
- * (= 半開区間 mod 由来の visual artifact) が原理的に発生しない。
+ * **2 つの mode で共用** (2026-04-28 統合):
  *
- * 描画要素 (× 9 image cells、 R=1):
+ * - `boundaryMode === "torus"` (PBC): 半幅 `ARENA_HALF_WIDTH`、 universal cover の `(2R+1)²`
+ *   image cell に独立描画 (= observer-follow translation)。 「観測者が境界中央で 4 corner が
+ *   片側 flip して縮退する」 (= 半開区間 mod 由来 artifact) を回避する core 設計。
+ *   `arenaWallsVisible` flag で gate 可能 (default 非表示、 隠しオプション)。
+ * - `boundaryMode === "open_cylinder"` (= 旧視覚円柱の代替): 半幅 `ARENA_RADIUS`、 image cell
+ *   は primary 1 個のみ、 observer-follow なし。 物理的閉じ込めなし、 視覚 guide のみ。
+ *   常時表示 (= `arenaWallsVisible` flag は torus 専用、 open_cylinder では無視)。
+ *
+ * 描画要素 (× cells.length: torus=9 / open_cylinder=1):
  *   - 4 縦エッジ (corner ごとに上下方向の line): 「アリーナの柱」
  *   - 上端 rim (4 corner を結ぶ正方形 LineLoop): 観測者の future cone と同階層
  *   - 下端 rim (同 past cone と同階層)
@@ -38,6 +43,7 @@ import { applyTimeFadeShader } from "./timeFadeShader";
  * 詳細: plans/2026-04-27-pbc-torus.md (universal cover refactor)
  */
 export const SquareArenaRenderer = () => {
+  const boundaryMode = useGameStore((s) => s.boundaryMode);
   const arenaWallsVisible = useGameStore((s) => s.arenaWallsVisible);
   const { displayMatrix, observerPos } = useDisplayFrame();
   const torusHalfWidth = useTorusHalfWidth();
@@ -47,7 +53,13 @@ export const SquareArenaRenderer = () => {
 
   const color = useMemo(() => getThreeColor(ARENA_SQUARE_COLOR), []);
 
-  // 観測者から見える image cells。 open_cylinder mode は primary 1 個 (= 従来挙動)。
+  // mode 別の effective 半幅: torus は PBC topology の `ARENA_HALF_WIDTH`、 open_cylinder は
+  // 視覚境界としての `ARENA_RADIUS` (= 旧円柱半径と同値)。
+  const effectiveHalfWidth =
+    boundaryMode === "torus" ? ARENA_HALF_WIDTH : ARENA_RADIUS;
+
+  // 観測者から見える image cells。 open_cylinder mode は primary 1 個 (= observer-follow なし)、
+  // torus mode は universal cover の `(2R+1)²` image cells を画像描画。
   const cells = useMemo(() => {
     if (torusHalfWidth === undefined) return [{ kx: 0, ky: 0 }];
     const R = requiredImageCellRadius(torusHalfWidth, LIGHT_CONE_HEIGHT);
@@ -55,15 +67,15 @@ export const SquareArenaRenderer = () => {
   }, [torusHalfWidth]);
 
   // 4 corner の world 位置 (CX±L, CY±L)。 raw 固定 (= fold せず)、 各 image cell の mesh
-  // matrix で 2L*offset 並進。 順番: BL → BR → TR → TL (左下→右下→右上→左上)。
+  // matrix で 2L*offset 並進 (torus のみ)。 順番: BL → BR → TR → TL。
   const cornerWorldXY = useMemo<readonly [number, number][]>(
     () => [
-      [ARENA_CENTER_X - ARENA_HALF_WIDTH, ARENA_CENTER_Y - ARENA_HALF_WIDTH],
-      [ARENA_CENTER_X + ARENA_HALF_WIDTH, ARENA_CENTER_Y - ARENA_HALF_WIDTH],
-      [ARENA_CENTER_X + ARENA_HALF_WIDTH, ARENA_CENTER_Y + ARENA_HALF_WIDTH],
-      [ARENA_CENTER_X - ARENA_HALF_WIDTH, ARENA_CENTER_Y + ARENA_HALF_WIDTH],
+      [ARENA_CENTER_X - effectiveHalfWidth, ARENA_CENTER_Y - effectiveHalfWidth],
+      [ARENA_CENTER_X + effectiveHalfWidth, ARENA_CENTER_Y - effectiveHalfWidth],
+      [ARENA_CENTER_X + effectiveHalfWidth, ARENA_CENTER_Y + effectiveHalfWidth],
+      [ARENA_CENTER_X - effectiveHalfWidth, ARENA_CENTER_Y + effectiveHalfWidth],
     ],
-    [],
+    [effectiveHalfWidth],
   );
 
   // BufferAttribute: 4 corner × 2 (上 / 下) = 8 vertex。 in-place 更新 (= top z / bot z は
@@ -180,9 +192,11 @@ export const SquareArenaRenderer = () => {
     }
   });
 
-  // 隠しオプション: arenaWallsVisible=false (default) で完全非表示。 物理 PBC は
-  // 引き続き有効、 視覚ガイドだけ消える。 切替は URL hash `#walls=show`。
-  if (!arenaWallsVisible) return null;
+  // 表示判定: torus mode は arenaWallsVisible flag で gate (= 隠しオプション、 default
+  // 非表示)。 open_cylinder mode は常時表示 (= 旧円柱の置き換えなので、 デフォルトで見える
+  // ことが期待される)。
+  const visible = boundaryMode === "torus" ? arenaWallsVisible : true;
+  if (!visible) return null;
 
   return (
     <>

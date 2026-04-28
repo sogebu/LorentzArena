@@ -6,6 +6,7 @@ import {
   useGameStore,
   type BoundaryMode,
   type ControlScheme,
+  type OpenCylinderShape,
   type ViewMode,
 } from "./stores/game-store";
 
@@ -51,6 +52,10 @@ const CONTROL_SCHEME_VALUES: readonly ControlScheme[] = [
   "modern",
 ];
 const BOUNDARY_MODE_VALUES: readonly BoundaryMode[] = ["torus", "open_cylinder"];
+const OPEN_CYLINDER_SHAPE_VALUES: readonly OpenCylinderShape[] = [
+  "square",
+  "cylinder",
+];
 
 /**
  * 起動時 1 回、URL hash の `#controls=` / `#ship=` / `#boundary=` / `#walls=` を読んで
@@ -63,6 +68,7 @@ const useUrlHashOverrides = () => {
   const setControlScheme = useGameStore((s) => s.setControlScheme);
   const setBoundaryMode = useGameStore((s) => s.setBoundaryMode);
   const setArenaWallsVisible = useGameStore((s) => s.setArenaWallsVisible);
+  const setOpenCylinderShape = useGameStore((s) => s.setOpenCylinderShape);
   useEffect(() => {
     const { params } = parseHash();
     const ship = params.ship;
@@ -86,7 +92,17 @@ const useUrlHashOverrides = () => {
     const walls = params.walls;
     if (walls === "show") setArenaWallsVisible(true);
     else if (walls === "hide") setArenaWallsVisible(false);
-  }, [setViewMode, setControlScheme, setBoundaryMode, setArenaWallsVisible]);
+    const shape = params.shape;
+    if (shape && (OPEN_CYLINDER_SHAPE_VALUES as readonly string[]).includes(shape)) {
+      setOpenCylinderShape(shape as OpenCylinderShape);
+    }
+  }, [
+    setViewMode,
+    setControlScheme,
+    setBoundaryMode,
+    setArenaWallsVisible,
+    setOpenCylinderShape,
+  ]);
 };
 
 const STORAGE_KEY_NAME = "la-playerName";

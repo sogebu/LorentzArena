@@ -19,7 +19,28 @@ import { SquareArenaRenderer } from "./SquareArenaRenderer";
 import { getThreeColor } from "./threeCache";
 import { applyTimeFadeShader } from "./timeFadeShader";
 
-// Arena: world-frame static cylinder (x − cx)² + (y − cy)² = R², 視覚ガイドのみ (物理判定なし)。
+// アリーナ視覚ガイド (= 物理判定なし)。 2026-04-28 から default は正四角柱 (= 旧円柱と
+// 光円錐がどちらも円形で「壁の裏に居る」 感が出にくい問題への対応)。 旧円柱は隠しオプション
+// として保持: `#shape=cylinder` で revive。
+//
+// dispatch ロジック:
+//   - boundaryMode === "torus": 常に SquareArenaRenderer (PBC universal cover image cells)
+//   - boundaryMode === "open_cylinder":
+//       - openCylinderShape === "square" (default): SquareArenaRenderer (single cell、
+//         半幅 ARENA_RADIUS = 旧円柱半径と同値)
+//       - openCylinderShape === "cylinder" (hidden option): CylinderArenaRenderer (= 旧円柱、
+//         circular surface + 縦線 + 過去/未来光円錐 ∩ 円柱 の 2 ringline)
+//
+// 詳細は SquareArenaRenderer.tsx の docstring。
+export const ArenaRenderer = () => {
+  const boundaryMode = useGameStore((s) => s.boundaryMode);
+  const openCylinderShape = useGameStore((s) => s.openCylinderShape);
+  if (boundaryMode === "torus") return <SquareArenaRenderer />;
+  if (openCylinderShape === "cylinder") return <CylinderArenaRenderer />;
+  return <SquareArenaRenderer />;
+};
+
+// 旧 open_cylinder mode 用の視覚円柱 renderer。 隠しオプション `#shape=cylinder` で revive。
 //
 // **時間方向は「光円錐交線」と「下限半幅」の max で広げる**:
 //   各 θ で円柱側面上の点から観測者への空間距離 ρ(θ) を計算し、円柱本体 (surface / 垂直線 /
@@ -27,14 +48,12 @@ import { applyTimeFadeShader } from "./timeFadeShader";
 //     上端 = observer.t + max(ρ, H)、下端 = observer.t − max(ρ, H)。
 //   ρ が小さい θ (観測者に近い円柱上の点) では固定半幅 H でガードし円柱が極端に狭く
 //   ならないようにし、ρ が大きい (観測者が円柱から遠い) θ では光円錐 ∩ 円柱 の
-//   交点まで伸ばす (= 従来動作の 2026-04-17 版を上書き)。
+//   交点まで伸ばす。
 //
 // **過去光円錐 × 円柱交線は独立描画 (下限 H なしで素の ρ)**:
 //   `pos.t − ρ(θ)` をそのまま辿る LineLoop として、円柱本体 (max(ρ, H)) とは別の
-//   position attribute で描画。ρ < H の θ では円柱下端 (= pos.t − H) より未来側 (= pos.t − ρ)
-//   に入り、観測者に近い θ では pastCone が円柱内部に位置する。物理的意味は「今まさに光が
-//   届いている円柱側面 (無限延長) 上の事象の集合」で、円柱本体の時間方向ガード (H 下限) と
-//   独立に観測者光円錐に沿う。
+//   position attribute で描画。物理的意味は「今まさに光が届いている円柱側面 (無限延長)
+//   上の事象の集合」で、円柱本体の時間方向ガード (H 下限) と独立に観測者光円錐に沿う。
 //
 // **頂点 layout**:
 //   - clamped (共有): 各 θ に対して 2 vertex `[上 (i*2+0), 下 (i*2+1)]`, 計 N×2
@@ -47,12 +66,6 @@ import { applyTimeFadeShader } from "./timeFadeShader";
 //
 // 各 mesh は `frustumCulled={false}` で bounding sphere 依存の culling を無効化 (本
 // geometry は position が毎 frame 変わるので初期 boundingSphere が意味を持たない)。
-export const ArenaRenderer = () => {
-  const boundaryMode = useGameStore((s) => s.boundaryMode);
-  if (boundaryMode === "torus") return <SquareArenaRenderer />;
-  return <CylinderArenaRenderer />;
-};
-
 const CylinderArenaRenderer = () => {
   const { displayMatrix, observerPos } = useDisplayFrame();
 
@@ -161,9 +174,6 @@ const CylinderArenaRenderer = () => {
   });
 
   // 4 material すべてに per-vertex 時間 fade shader を適用。
-  // - surface / 垂直線 / 上端 rim: 半幅 max(ρ, H) で円柱は常に ±H 以上、遠い θ (ρ 大) で
-  //   光円錐まで広がる。ρ が大きい θ は time fade (Lorentzian, r=LCH) で自然に薄くなる
-  // - pastCone: |dt| = ρ で ρ が大きい θ は fade で自然に薄くなる
   return (
     <>
       <mesh

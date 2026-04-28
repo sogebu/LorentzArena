@@ -241,11 +241,12 @@ export const CAMERA_PITCH_MIN = (-Math.PI * 89.9) / 180;
 export const CAMERA_PITCH_MAX = (Math.PI * 89.9) / 180;
 export const CAMERA_DISTANCE_ORTHOGRAPHIC = 50;
 export const CAMERA_DISTANCE_PERSPECTIVE = 10;
-// 70 度 = 7π/18。 camera position の time component = `distance·sin(pitch)`、 spatial =
+// 60 度 = π/3。 camera position の time component = `distance·sin(pitch)`、 spatial =
 // `distance·cos(pitch)` なので `tan(pitch) > 1` (= pitch > 45 度) で camera は観測者の
-// 未来光円錐内 (= 時間的に未来側) に居る扱いになる。 70 度は光円錐 45 度を 25 度上回り、
-// 真上に近い俯瞰でアリーナ全体 + 過去世界線群が広く見える (odakin 指定 2026-04-28)。
-export const DEFAULT_CAMERA_PITCH = (7 * Math.PI) / 18;
+// 未来光円錐内 (= 時間的に未来側) に居る扱いになる。 60 度は光円錐 45 度を 15 度上回り、
+// 俯瞰でアリーナ全体 + 過去世界線群が広く見える (odakin 指定 2026-04-28、 70° → 60° に
+// 微調整)。
+export const DEFAULT_CAMERA_PITCH = Math.PI / 3;
 
 // PLC スライス 3D mode (= PR #2、 過去光円錐 spatial slice の x-y 平面斜め俯瞰) で使う
 // camera 距離 + pitch。 観測者から `distance` 離れた点に camera を置き、 pitch ~22° で
@@ -635,8 +636,10 @@ export const KILL_NOTIFICATION_RING_OPACITY = 0.8;
 // スポーン中心 (= [0, SPAWN_RANGE]² 一様分布の中心) に配置。
 export const ARENA_CENTER_X = SPAWN_RANGE / 2;
 export const ARENA_CENTER_Y = SPAWN_RANGE / 2;
-// open_cylinder mode 用の円柱半径: LASER_RANGE (=10) の 2 倍、光円錐 HEIGHT と同じスケール感。
-export const ARENA_RADIUS = 20;
+// open_cylinder mode 用の円柱半径。 LASER_RANGE (=10) の 4 倍、 攻防成立スケールを
+// 広げる目的で 2026-04-28 に 20 → 40 に bump。 LightConeRenderer の rim と Radar の
+// view radius は本値由来で連動して広がる。
+export const ARENA_RADIUS = 40;
 // torus (PBC) mode 用の正方形半幅。 アリーナは `[-L+CX, L+CX) × [-L+CY, L+CY)` の torus、
 // プレイヤーが境界を超えると反対側から出現、 距離計算も最短画像。 LASER_RANGE (=10) の 2 倍で
 // 攻防成立スケール。 円柱半径と同値にして既存設計から geometry スケール感を継承。
@@ -666,14 +669,13 @@ export const ARENA_PAST_CONE_OPACITY = 0.5;
 // pastCone の 1.0 より控えめ (既に起きた event vs まだ起きていない event の情報量差)。
 export const ARENA_FUTURE_CONE_OPACITY = 0.3;
 
-// --- Square arena (torus PBC mode) ---
+// --- Square arena (torus PBC mode + open_cylinder square shape mode 共用) ---
 // hue 320° (magenta、 cyan 200° の対立色) + saturation 60% で光円錐と最大限区別。
-// universal cover の隣接 image cells が並ぶ visual で、 arena 枠と光円錐の重なりを
-// hue で完全切り分け (warm amber 35° では薄かったため magenta に強化)。
+// 2026-04-28: opacity 全体 bump (= open_cylinder default 化に伴う視認性確保、 旧
+// 円柱の `ARENA_SURFACE_OPACITY = 0.5` と整合)。
 export const ARENA_SQUARE_COLOR = "hsl(320, 60%, 70%)";
-export const ARENA_SQUARE_SURFACE_OPACITY = 0.06;
-// 4 辺の縦エッジ (時間方向に伸びる線) の opacity。 円柱の vertical line と同等。
-export const ARENA_SQUARE_EDGE_OPACITY = 0.25;
+export const ARENA_SQUARE_SURFACE_OPACITY = 0.5;
+// 4 辺の縦エッジ (時間方向に伸びる線) の opacity。
+export const ARENA_SQUARE_EDGE_OPACITY = 0.6;
 // 上端/下端 rim (= 観測者光円錐 ∩ 正方形 の交線、 簡略版) の opacity。
-// 当面は固定半幅で rim を描き、 過去/未来光円錐との交線は後続検討。
-export const ARENA_SQUARE_RIM_OPACITY = 0.2;
+export const ARENA_SQUARE_RIM_OPACITY = 0.5;
