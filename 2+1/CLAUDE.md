@@ -56,17 +56,19 @@ deploy 後に報告する項目:
 | `controlScheme` | `legacy_classic` / `legacy_shooter` / `modern` | `legacy_classic` | `la-control-scheme` |
 | `viewMode` | `classic` / `shooter` / `jellyfish` | `classic` | `la-view-mode` |
 | `boundaryMode` | `torus` / `open_cylinder` | `torus` | `la-boundary-mode` |
+| `arenaWallsVisible` | `walls=show` / `walls=hide` | `hide` (= 非表示) | `la-arena-walls-visible` (`"1"` / `"0"`) |
 
 ### URL hash 形式
 
 `&` 区切りで `key=value` 併用可、値なしフラグ (例: `viewer`) も同居可。[`App.tsx:parseHash`](src/App.tsx) で起動時 1 回 store に適用、適用と同時に LS (`la-control-scheme` / `la-view-mode`) に persist → 次回 hash 無しでも維持。
 
 ```
-#room=test                                   → デフォルト (legacy_classic × classic × torus)
+#room=test                                   → デフォルト (legacy_classic × classic × torus, walls hidden)
 #room=test&controls=modern                   → 71e5788 の新統一操作系
 #room=test&controls=legacy_shooter           → 旧 twin-stick
 #room=test&ship=jellyfish                    → クラゲ機体
 #room=test&boundary=open_cylinder            → 旧円柱アリーナ (壁無し)
+#room=test&walls=show                        → torus PBC 正方形枠を表示 (default 非表示)
 #room=test&controls=modern&ship=shooter&boundary=open_cylinder  → 全部 override
 ```
 
@@ -77,6 +79,7 @@ LS を削除 + reload:
 localStorage.removeItem('la-control-scheme');
 localStorage.removeItem('la-view-mode');
 localStorage.removeItem('la-boundary-mode');
+localStorage.removeItem('la-arena-walls-visible');
 location.reload();
 ```
 

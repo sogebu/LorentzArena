@@ -3,6 +3,7 @@ import { Fragment, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
 import { observableImageCells, requiredImageCellRadius } from "../../physics";
+import { useGameStore } from "../../stores/game-store";
 import {
   ARENA_CENTER_X,
   ARENA_CENTER_Y,
@@ -37,6 +38,7 @@ import { applyTimeFadeShader } from "./timeFadeShader";
  * 詳細: plans/2026-04-27-pbc-torus.md (universal cover refactor)
  */
 export const SquareArenaRenderer = () => {
+  const arenaWallsVisible = useGameStore((s) => s.arenaWallsVisible);
   const { displayMatrix, observerPos } = useDisplayFrame();
   const torusHalfWidth = useTorusHalfWidth();
 
@@ -177,6 +179,10 @@ export const SquareArenaRenderer = () => {
       }
     }
   });
+
+  // 隠しオプション: arenaWallsVisible=false (default) で完全非表示。 物理 PBC は
+  // 引き続き有効、 視覚ガイドだけ消える。 切替は URL hash `#walls=show`。
+  if (!arenaWallsVisible) return null;
 
   return (
     <>

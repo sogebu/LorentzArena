@@ -53,14 +53,16 @@ const CONTROL_SCHEME_VALUES: readonly ControlScheme[] = [
 const BOUNDARY_MODE_VALUES: readonly BoundaryMode[] = ["torus", "open_cylinder"];
 
 /**
- * 起動時 1 回、URL hash の `#controls=` / `#ship=` / `#boundary=` を読んで store に override
- * 適用。 UI dropdown は撤去済 (隠しオプション) なので、 これが唯一の切替経路 (LS 直接編集を
- * 除く)。 適用後は LS にも書かれるため、 F5 後も維持される (URL hash を消した場合も保持)。
+ * 起動時 1 回、URL hash の `#controls=` / `#ship=` / `#boundary=` / `#walls=` を読んで
+ * store に override 適用。 UI dropdown は撤去済 (隠しオプション) なので、 これが唯一の
+ * 切替経路 (LS 直接編集を除く)。 適用後は LS にも書かれるため、 F5 後も維持される
+ * (URL hash を消した場合も保持)。
  */
 const useUrlHashOverrides = () => {
   const setViewMode = useGameStore((s) => s.setViewMode);
   const setControlScheme = useGameStore((s) => s.setControlScheme);
   const setBoundaryMode = useGameStore((s) => s.setBoundaryMode);
+  const setArenaWallsVisible = useGameStore((s) => s.setArenaWallsVisible);
   useEffect(() => {
     const { params } = parseHash();
     const ship = params.ship;
@@ -81,7 +83,10 @@ const useUrlHashOverrides = () => {
     ) {
       setBoundaryMode(boundary as BoundaryMode);
     }
-  }, [setViewMode, setControlScheme, setBoundaryMode]);
+    const walls = params.walls;
+    if (walls === "show") setArenaWallsVisible(true);
+    else if (walls === "hide") setArenaWallsVisible(false);
+  }, [setViewMode, setControlScheme, setBoundaryMode, setArenaWallsVisible]);
 };
 
 const STORAGE_KEY_NAME = "la-playerName";

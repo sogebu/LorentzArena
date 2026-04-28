@@ -1,6 +1,7 @@
 import { useMemo, useRef } from "react";
 import { isLighthouse } from "../components/game/lighthouse";
 import type { RelativisticPlayer } from "../components/game/types";
+import { useGameStore } from "../stores/game-store";
 
 const STALE_WALL_THRESHOLD = 5000; // 5 seconds with no phaseSpace update → stale
 const STALE_RATE_WINDOW = 3000; // 3 second window for rate calculation
@@ -25,6 +26,15 @@ export function useStaleDetection() {
   // Stage 3: freeze が発生した wallTime を記録、GC threshold 判定に使う。
   // staleFrozenRef と常に同じキー集合を保つ (add/delete を同期)。
   const staleFrozenAtRef = useRef<Map<string, number>>(new Map());
+
+  /**
+   * staleFrozenRef を変更した直後に zustand store の `staleFrozenIds` ミラーを同期する。
+   * `buildSnapshot` 等の zustand-only コンテキスト (PeerProvider 周期 broadcast 等) から
+   * stale 集合を読むため。 詳細: game-store.ts の `staleFrozenIds` docstring。
+   */
+  const syncStoreMirror = () => {
+    useGameStore.getState().setStaleFrozenIds(new Set(staleFrozenRef.current));
+  };
 
   /**
    * 各フレームで呼ぶ。freeze 候補を staleFrozenRef に追加し、Stage 3 で GC
@@ -93,6 +103,22 @@ export function useStaleDetection() {
         }
       }
     }
+    // 本 tick で staleFrozenRef.current が変わったか、 外部の ad-hoc delete (messageHandler /
+     // RelativisticGame / useGameLoop §self-kill が staleFrozenRef.current.delete を直接
+     // 呼ぶ) で store mirror が drift していたら同期。 毎 tick の O(n) compare、 peer 数は
+     // 小 (<10) なので cost 無視できる。
+     const stored = useGameStore.getState().staleFrozenIds;
+     const cur = staleFrozenRef.current;
+     let drifted = cur.size !== stored.size;
+     if (!drifted) {
+       for (const id of cur) {
+         if (!stored.has(id)) {
+           drifted = true;
+           break;
+         }
+       }
+     }
+     if (drifted) syncStoreMirror();
     return gcIds;
   };
 
@@ -101,6 +127,10 @@ export function useStaleDetection() {
     staleFrozenAtRef.current.delete(playerId);
     // S-4: リセットして即座再 stale を防止
     lastCoordTimeRef.current.delete(playerId);
+    // store mirror は次の checkStale 呼び出しで drift 検出されて同期される。
+    // ここで明示的に同期しないのは、 ad-hoc delete 経路 (messageHandler / RelativisticGame /
+    // useGameLoop §self-kill が staleFrozenRef.current.delete を直接呼ぶ) と統一して
+    // 「ref 変更後の同期は checkStale tick に任せる」 設計にしたいため。
   };
 
   // 単一 peer の stale 関連 ref をまとめて purge。grace period 付き peer removal
@@ -111,6 +141,7 @@ export function useStaleDetection() {
     staleFrozenAtRef.current.delete(playerId);
     lastUpdateTimeRef.current.delete(playerId);
     lastCoordTimeRef.current.delete(playerId);
+    // store mirror は次 checkStale で同期。 上記 recoverStale と同じ理由。
   };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: all values are stable refs or closures over refs — never change

@@ -42,7 +42,15 @@ export const buildSnapshot = (myId: string, isBeaconHolder: boolean) => {
   const s = useGameStore.getState();
   // 新 joiner のスポーン時刻は「宇宙の最新時刻」= 全プレイヤーの .pos.t の max。
   // beacon holder が高 γ で座標時間が遅れている / ghosting 等でも正しい時刻が取れる。
-  const hostTime = computeSpawnCoordTime(s.players);
+  // stale 判定済 peer は max 算定からも除外 (= 新 joiner に渡す snapshot.players からも
+  // 除外しているため一貫させる、 さもないと「stale な高 pos.t player のせいで joiner
+  // spawn t が異常に未来側に飛ぶ」 ことが起こり得る)。
+  const stalePlayersFiltered = new Map<string, RelativisticPlayer>();
+  for (const [id, p] of s.players) {
+    if (s.staleFrozenIds.has(id)) continue;
+    stalePlayersFiltered.set(id, p);
+  }
+  const hostTime = computeSpawnCoordTime(stalePlayersFiltered);
 
   type PhaseSpaceWire = {
     pos: { t: number; x: number; y: number; z: number };
@@ -80,7 +88,14 @@ export const buildSnapshot = (myId: string, isBeaconHolder: boolean) => {
     return wire;
   };
 
+  // stale 判定済 peer は新 joiner 向け snapshot から除外。 stale player は host が
+  // 「もう居ない」 と判定済 (5s 以上 phaseSpace なし) で、 古い pos.t を持ったまま
+  // 新 joiner に渡すと **新 joiner の過去光円錐内 phantom → freeze 永続** の bug に
+  // なる (2026-04-28「後から入った client 永遠凍結」 root cause)。 既存 peer の view
+  // は applySnapshot の local-only 保護で維持される (= 周期 broadcast でも消えない)。
+  const staleFrozenIds = s.staleFrozenIds;
   for (const [, p] of s.players) {
+    if (staleFrozenIds.has(p.id)) continue;
     // LH owner: BH caller のみ自分に強制 rewrite (migration 安全弁)。非 BH caller
     // (Stage 1.5 client) は preserve — 非 BH が LH 所有権を主張すると BH が merge
     // 時に lh.ownerId を汚染される (BH の LH AI 沈黙の catastrophic bug)。

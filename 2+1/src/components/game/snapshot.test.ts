@@ -87,6 +87,7 @@ function resetStore() {
     respawnLog: [],
     displayNames: new Map(),
     pendingSpawnEvents: [],
+    staleFrozenIds: new Set(),
   });
 }
 
@@ -503,6 +504,52 @@ describe("buildSnapshot", () => {
     //  BH の LH AI 沈黙という catastrophic bug になる)
     expect(lhEntry?.ownerId).toBe(bhId);
     expect(lhEntry?.ownerId).not.toBe(clientId);
+  });
+
+  it("staleFrozenIds の peer は snapshot.players から除外 (= 「永遠凍結」 bug 治癒)", () => {
+    const myId = "host";
+    const stalePeer = "stale-disconnected";
+    const alivePeer = "alive";
+    useGameStore.setState({
+      players: new Map([
+        [myId, makePlayer(myId, 100.0, 0, "#fff")],
+        // stale な peer は古い pos.t を持つ (= disconnect 時の値で停止)
+        [stalePeer, makePlayer(stalePeer, 50.0, 0, "#888")],
+        [alivePeer, makePlayer(alivePeer, 99.0, 0, "#0f0")],
+      ]),
+      // host は stale-disconnected を 5s 以上沈黙で stale 判定済
+      staleFrozenIds: new Set([stalePeer]),
+    });
+
+    const msg = buildSnapshot(myId, true);
+
+    // stale peer は snapshot から除外
+    expect(msg.players.find((p) => p.id === stalePeer)).toBeUndefined();
+    // 生きてる peer / 自機は含まれる
+    expect(msg.players.find((p) => p.id === myId)).toBeDefined();
+    expect(msg.players.find((p) => p.id === alivePeer)).toBeDefined();
+    // hostTime も stale 除外で計算 (= 100、 stale の 50 や lag した数値に振られない)
+    expect(msg.hostTime).toBe(100.0);
+  });
+
+  it("staleFrozenIds の peer が hostTime に影響しない (= stale が高 pos.t でも除外)", () => {
+    const myId = "host";
+    const stalePeer = "stale-with-high-t";
+    useGameStore.setState({
+      players: new Map([
+        [myId, makePlayer(myId, 30.0, 0, "#fff")],
+        // stale peer は disconnect 前に高 γ で走り続けて高い pos.t に居た
+        [stalePeer, makePlayer(stalePeer, 200.0, 0, "#888")],
+      ]),
+      staleFrozenIds: new Set([stalePeer]),
+    });
+
+    const msg = buildSnapshot(myId, true);
+
+    // hostTime = 30 (stale の 200 を採用しない)。 さもないと新 joiner が
+    // 異常に未来側 (t=200) で spawn → 多数 player 過去光円錐内 → freeze 連鎖。
+    expect(msg.hostTime).toBe(30.0);
+    expect(msg.players.find((p) => p.id === stalePeer)).toBeUndefined();
   });
 });
 

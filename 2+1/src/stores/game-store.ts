@@ -154,6 +154,21 @@ const saveBoundaryMode = (mode: BoundaryMode) => {
     localStorage.setItem(BOUNDARY_MODE_LS_KEY, mode);
 };
 
+/**
+ * Torus PBC の正方形枠 (SquareArenaRenderer) を視覚表示するか。 default false
+ * (= 完全非表示)、 物理 PBC は引き続き有効。 オプション保持目的の隠しフラグで、
+ * 切替は URL hash `#walls=show` または LS 直接編集。
+ */
+const ARENA_WALLS_LS_KEY = "la-arena-walls-visible";
+const loadArenaWallsVisible = (): boolean => {
+  if (typeof localStorage === "undefined") return false;
+  return localStorage.getItem(ARENA_WALLS_LS_KEY) === "1";
+};
+const saveArenaWallsVisible = (v: boolean) => {
+  if (typeof localStorage !== "undefined")
+    localStorage.setItem(ARENA_WALLS_LS_KEY, v ? "1" : "0");
+};
+
 export interface GameState {
   // --- Reactive state (components subscribe via selectors) ---
   players: Map<string, RelativisticPlayer>;
@@ -200,6 +215,21 @@ export interface GameState {
   viewMode: ViewMode;
   controlScheme: ControlScheme;
   boundaryMode: BoundaryMode;
+  arenaWallsVisible: boolean;
+
+  /**
+   * Stale 判定済 peer ID 集合 (= 5s 以上 phaseSpace が来てない) の **store mirror**。
+   * 正本は `useStaleDetection.staleFrozenRef` (hot path 用 ref)、 ここは
+   * `buildSnapshot` 等の zustand-only コードから読むための同期コピー。 ref と store
+   * の二重保持: ref は tick 毎読みを軽くする、 store は外側コンテキスト (PeerProvider
+   * 周期 broadcast) から見るため。
+   *
+   * **用途**: `buildSnapshot` で stale 判定済 peer を新 joiner 向け snapshot から
+   * 除外する。 stale player は host が「もう居ない」 と判定済なので、 新 joiner に
+   * 渡すと **古い pos.t を持つ phantom player → 新 joiner の過去光円錐内 → freeze 永続**
+   * の bug 源になる (2026-04-28 「後から入った client 永遠凍結」 root cause)。
+   */
+  staleFrozenIds: ReadonlySet<string>;
 
   // --- Actions: state setters ---
   setPlayers: (updater: PlayersUpdater) => void;
@@ -277,6 +307,10 @@ export interface GameState {
   setViewMode: (mode: ViewMode) => void;
   setControlScheme: (scheme: ControlScheme) => void;
   setBoundaryMode: (mode: BoundaryMode) => void;
+  setArenaWallsVisible: (v: boolean) => void;
+
+  /** stale set の mirror update 用。 useStaleDetection が ref 変更時に同期コピー。 */
+  setStaleFrozenIds: (ids: ReadonlySet<string>) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -309,6 +343,9 @@ export const useGameStore = create<GameState>()((set, get) => ({
   viewMode: loadViewMode(),
   controlScheme: loadControlScheme(),
   boundaryMode: loadBoundaryMode(),
+  arenaWallsVisible: loadArenaWallsVisible(),
+
+  staleFrozenIds: new Set<string>(),
 
   // -----------------------------------------------------------------------
   // State setters
@@ -598,6 +635,13 @@ export const useGameStore = create<GameState>()((set, get) => ({
     saveBoundaryMode(boundaryMode);
     set({ boundaryMode });
   },
+
+  setArenaWallsVisible: (v) => {
+    saveArenaWallsVisible(v);
+    set({ arenaWallsVisible: v });
+  },
+
+  setStaleFrozenIds: (ids) => set({ staleFrozenIds: ids }),
 }));
 
 // ---------------------------------------------------------------------------
