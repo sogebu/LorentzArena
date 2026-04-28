@@ -2,7 +2,9 @@
 
 ## 現在のステータス
 
-**未デプロイ**: `8c02c0f` (2026-04-28 push)。 本番デプロイ済は `e6c17cc` (build `2026/04/27 15:15:46 JST`、 https://sogebu.github.io/LorentzArena/)。 実機 multi-tab 検証で 2026-04-28 fix 群の動作確認待ち、 OK なら deploy。
+**未デプロイ**: `8c02c0f` (2026-04-28 push) + 後続 fix。 本番デプロイ済は `e6c17cc` (build `2026/04/27 15:15:46 JST`、 https://sogebu.github.io/LorentzArena/)。 実機 multi-tab 検証で 2026-04-28 fix 群の動作確認待ち、 OK なら deploy。
+
+**PBC torus は default から外し、 隠しオプション化** (= `#boundary=torus` で有効化、 default = `open_cylinder` の旧視覚円柱に戻した、 2026-04-28)。 PBC は新 client 永遠凍結等の派生 bug + 視覚的不整合が複数残っており、 一旦保留。 関連 fix (causalEvents observer-centered wrap, ballistic catchup, lighthouse γ² bug, 共変表現徹底) は default open_cylinder 環境でも有効なので残す。
 
 ### 2026-04-28 セッション (2 commit、 詳細は git log)
 

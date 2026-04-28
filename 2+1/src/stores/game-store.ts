@@ -126,13 +126,14 @@ const saveControlScheme = (scheme: ControlScheme) => {
 /**
  * アリーナ境界の挙動 (plans/2026-04-27-pbc-torus.md)。
  *
- * - 'torus' (default): PBC = 周期的境界条件。 アリーナは正方形 `[-L, L]²` のトーラス、
+ * - 'open_cylinder' (default): 視覚ガイドのみの円柱、 物理的な閉じ込めなし、
+ *   プレイヤーはどこまでも飛んでいける。 元の ArenaRenderer (= 2026-04-28 以前の
+ *   default に戻した: PBC torus は新 client 永遠凍結等の派生 bug が複数あり一旦保留)。
+ * - 'torus': PBC = 周期的境界条件。 アリーナは正方形 `[-L, L]²` のトーラス、
  *   プレイヤーが境界を超えると反対側から出現、 距離計算 (hit detection / 過去光円錐) も
- *   最短画像。 視覚は正方形枠。
- * - 'open_cylinder': 旧挙動。 物理的な閉じ込めなし、 プレイヤーはどこまでも飛んでいける。
- *   視覚は円柱 (= 元の ArenaRenderer)。
+ *   最短画像。 視覚は正方形枠 (= `arenaWallsVisible=true` の時のみ表示)。
  *
- * UI dropdown は撤去 (隠しオプション)。 切替は URL hash `#boundary=open_cylinder`。
+ * UI dropdown は撤去 (隠しオプション)。 切替は URL hash `#boundary=torus`。
  */
 export type BoundaryMode = "torus" | "open_cylinder";
 
@@ -143,11 +144,11 @@ const BOUNDARY_MODE_VALUES: readonly BoundaryMode[] = [
 ];
 
 const loadBoundaryMode = (): BoundaryMode => {
-  if (typeof localStorage === "undefined") return "torus";
+  if (typeof localStorage === "undefined") return "open_cylinder";
   const v = localStorage.getItem(BOUNDARY_MODE_LS_KEY);
   return (BOUNDARY_MODE_VALUES as readonly string[]).includes(v ?? "")
     ? (v as BoundaryMode)
-    : "torus";
+    : "open_cylinder";
 };
 const saveBoundaryMode = (mode: BoundaryMode) => {
   if (typeof localStorage !== "undefined")

@@ -646,7 +646,9 @@ export const ARENA_RADIAL_SEGMENTS = 128;
 // 暫定色 (シアン, 仮想空間境界のメタファー)。パステル化時に再検討。
 // プレイヤー色 (HSL 黄金角分散) と Lighthouse (hsl(220,70%,75%)) の色相帯を避ける
 export const ARENA_COLOR = "hsl(180, 40%, 70%)";
-export const ARENA_SURFACE_OPACITY = 0.1;
+// 2026-04-28: 0.1 → 0.5 に bump (= 円柱を default に戻した際に視認性向上、
+// 物理的には何もしない visual guide のまま)。
+export const ARENA_SURFACE_OPACITY = 0.5;
 // 時間方向に伸びる垂直線 ARENA_RADIAL_SEGMENTS 本の opacity (対角線のない純粋な縦線)
 export const ARENA_VERTICAL_LINE_OPACITY = 0.05;
 // 過去光円錐 × 円柱交線 LineLoop の透明度。clamp されず `pos.t - ρ(θ)` をそのまま
