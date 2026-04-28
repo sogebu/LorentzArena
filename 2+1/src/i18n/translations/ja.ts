@@ -24,6 +24,9 @@ export const ja = {
   // shooter: twin-stick 風 (camera 固定、機体 hull 固定、砲だけ入力方向に向く、heading 線も砲方向)
   "hud.viewMode.classic": "従来",
   "hud.viewMode.shooter": "シューター",
+  // PLC スライスモード (PR #2): 時空図 ↔ PLC slice (= 過去光円錐 spatial slice の x-y 平面)
+  "hud.spacetime": "時空図",
+  "hud.plcSlice": "PLCスライス",
   // HUD - stats
   "hud.speed": "速さ",
   "hud.gamma": "ガンマ因子",

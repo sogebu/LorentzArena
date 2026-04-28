@@ -12,6 +12,10 @@ type HUDProps = {
   setShowInRestFrame: (v: boolean) => void;
   useOrthographic: boolean;
   setUseOrthographic: (v: boolean) => void;
+  showPLCSlice: boolean;
+  setShowPLCSlice: (v: boolean) => void;
+  plcMode: "2d" | "3d";
+  setPlcMode: (v: "2d" | "3d") => void;
   cameraYawRef: React.RefObject<number>;
   energy: number;
   isFiring: boolean;
@@ -27,6 +31,10 @@ export const HUD = ({
   setShowInRestFrame,
   useOrthographic,
   setUseOrthographic,
+  showPLCSlice,
+  setShowPLCSlice,
+  plcMode,
+  setPlcMode,
   cameraYawRef,
   energy,
   isFiring,
@@ -62,11 +70,17 @@ export const HUD = ({
         setShowInRestFrame={setShowInRestFrame}
         useOrthographic={useOrthographic}
         setUseOrthographic={setUseOrthographic}
+        showPLCSlice={showPLCSlice}
+        setShowPLCSlice={setShowPLCSlice}
+        plcMode={plcMode}
+        setPlcMode={setPlcMode}
         killGlow={killGlow}
         getPlayerColor={getPlayerColor}
       />
 
-      <Radar myId={myId} cameraYawRef={cameraYawRef} />
+      {(!showPLCSlice || plcMode === "2d") && (
+        <Radar myId={myId} cameraYawRef={cameraYawRef} fullscreen={showPLCSlice} />
+      )}
 
       {myPlayer && (
         <Speedometer

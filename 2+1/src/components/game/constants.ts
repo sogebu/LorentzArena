@@ -247,6 +247,12 @@ export const CAMERA_DISTANCE_PERSPECTIVE = 10;
 // 真上に近い俯瞰でアリーナ全体 + 過去世界線群が広く見える (odakin 指定 2026-04-28)。
 export const DEFAULT_CAMERA_PITCH = (7 * Math.PI) / 18;
 
+// PLC スライス 3D mode (= PR #2、 過去光円錐 spatial slice の x-y 平面斜め俯瞰) で使う
+// camera 距離 + pitch。 観測者から `distance` 離れた点に camera を置き、 pitch ~22° で
+// x-y 平面を俯瞰。 spacetime 図とは別 view なので CAMERA_DISTANCE_PERSPECTIVE と独立。
+export const CAMERA_DISTANCE_PLC_SLICE = 22;
+export const PLC_SLICE_PITCH = Math.PI / 8;
+
 // --- Causality guard ---
 export const CAUSAL_FREEZE_HYSTERESIS = 2.0; // ヒステリシス: 既に凍結中は閾値を上げて振動防止
 
