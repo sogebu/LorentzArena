@@ -528,8 +528,10 @@ describe("buildSnapshot", () => {
     // 生きてる peer / 自機は含まれる
     expect(msg.players.find((p) => p.id === myId)).toBeDefined();
     expect(msg.players.find((p) => p.id === alivePeer)).toBeDefined();
-    // hostTime も stale 除外で計算 (= 100、 stale の 50 や lag した数値に振られない)
-    expect(msg.hostTime).toBe(100.0);
+    // hostTime = (min + max) / 2 = (99 + 100) / 2 = 99.5 (= stale 50 を除外して計算)。
+    // 旧仕様 (max only) では 100 だったが 2026-04-28 から中間値 (= 後 join client 永遠
+    // 凍結 bug 治癒)。
+    expect(msg.hostTime).toBe(99.5);
   });
 
   it("staleFrozenIds の peer が hostTime に影響しない (= stale が高 pos.t でも除外)", () => {

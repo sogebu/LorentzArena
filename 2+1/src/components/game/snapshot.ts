@@ -40,17 +40,11 @@ import type {
  */
 export const buildSnapshot = (myId: string, isBeaconHolder: boolean) => {
   const s = useGameStore.getState();
-  // 新 joiner のスポーン時刻は「宇宙の最新時刻」= 全プレイヤーの .pos.t の max。
-  // beacon holder が高 γ で座標時間が遅れている / ghosting 等でも正しい時刻が取れる。
-  // stale 判定済 peer は max 算定からも除外 (= 新 joiner に渡す snapshot.players からも
-  // 除外しているため一貫させる、 さもないと「stale な高 pos.t player のせいで joiner
-  // spawn t が異常に未来側に飛ぶ」 ことが起こり得る)。
-  const stalePlayersFiltered = new Map<string, RelativisticPlayer>();
-  for (const [id, p] of s.players) {
-    if (s.staleFrozenIds.has(id)) continue;
-    stalePlayersFiltered.set(id, p);
-  }
-  const hostTime = computeSpawnCoordTime(stalePlayersFiltered);
+  // 新 joiner のスポーン時刻 = alive で broadcast している player の pos.t の min と max
+  // の中間 (詳細: respawnTime.ts の computeSpawnCoordTime docstring)。 旧「max」 仕様では
+  // 高 γ 累積 player に引っ張られ、 静止気味 alive player が新 joiner 過去光円錐内に入って
+  // 永遠凍結する bug が起きていた (2026-04-28)。
+  const hostTime = computeSpawnCoordTime(s.players, undefined, s.staleFrozenIds);
 
   type PhaseSpaceWire = {
     pos: { t: number; x: number; y: number; z: number };

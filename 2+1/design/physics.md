@@ -68,25 +68,70 @@ Lighthouse (静止 AI) が誰かの過去光円錐内に落ちたら、最も過
 
 安全弁: `maxHistorySize * 2` を超えたら因果的判定を無視して強制削除 (メモリ保護)。コストは O(P) per frame、P = 2-4。無視できる。
 
-### スポーン座標時刻: 自分以外の全プレイヤー最大値
+### スポーン座標時刻: alive 非 stale player の (min + max) / 2 中間 (2026-04-28)
 
-`computeSpawnCoordTime(players, excludeId?)` (`game/respawnTime.ts`): excludeId を除いた全プレイヤー (生存/死亡/LH 問わず) の `phaseSpace.pos.t` 最大値。初回スポーン・リスポーン・新 joiner スポーンの 3 経路で共通。
+`computeSpawnCoordTime(players, excludeId?, staleFrozenIds?)` (`game/respawnTime.ts`): excludeId を除いた **alive で broadcast している** (= dead 除外 + stale 除外) player の `phaseSpace.pos.t` の **min と max の中間値**。 初回スポーン・リスポーン・新 joiner スポーンの 3 経路で共通。
 
-**2 つの原則**:
+**2026-04-28 「max」 → 「中間」 への変更理由** (= 後 join client 永遠凍結 bug の根本治癒):
 
-1. **自機除外 (excludeId)**: 自機 ghost の自己 respawn で自分の ghost.pos.t 参照を防ぐ。ghost は thrust 自由 + energy 消費で生存時と同じ物理、自由加速で `pos.t` が γ に比例先走るため自己参照を排除。初回スポーン・新 joiner 経路では自機が未登録で渡さなくても結果同じだが、意味論統一のため呼び分けは呼び出し元責務。
+旧仕様 (= max only) では 高 γ 累積 player に hostTime が引っ張られ、 静止気味 alive player が新 joiner の **過去光円錐内 (timelike)** に入って永遠凍結する bug が起きていた。 詳細は本節末尾の「pos.t の物理的意味」 と「再発防止メモ」 を参照。
 
-2. **死亡プレイヤー (LH 含む) は死亡時刻で固定される placeholder**: 死亡中の entity は tick されず `pos.t` は死亡時刻で固定、`players` Map に残り max 計算参加。他人間 ghost は死亡中 phaseSpace 非送信で自然に固定、LH ghost は `useGameLoop` が `if (lh.isDead) continue;` で tick skip。対称扱い。alive entity が 1 人でもいれば進行中 `pos.t` が max に勝ち死亡時刻は背景化、全員死亡では「最後に死んだ event 時刻」で respawn (coord time 巻き戻るが wall clock 10s DELAY は回る)。
+中間値にすることで:
+- max の動いた player は新 joiner の **未来側** (= 新 joiner.t < other.t、 freeze check で skip)
+- min の静止気味 player は新 joiner の **過去側** だが lag は ±(max-min)/2 に半減 → typical な spatial 距離より dt が小さくなり 過去光円錐内に入りにくい
 
-**将来耐性**: 原則 2 の「他人間 ghost 死亡時刻固定」は「死亡中 phaseSpace 非送信」というネットワーク仕様依存。変更時は `computeSpawnCoordTime` に明示 `isDead` フィルタが必要 (LH は tick skip 担保で影響なし)。respawnTime.ts 冒頭コメントで依存明示。
+**3 つの原則**:
 
-**fallback 0 は形式保険のみ** (空 players map の一瞬、LH 登録で通常は有限)。**LH alive 時の役割**: 常に `pos.t` 進行している構成員、solo でも maxT 確保、wall clock 依存が完全消失して peer 合意だけで閉じた coord-time モデル。**buildSnapshot 統一**: `snapshot.hostTime` も `computeSpawnCoordTime(players)` で算出 (旧 `me?.phaseSpace.pos.t` は beacon holder が γ で遅れた/ghost 中で新 joiner が過去 spawn する bug)。
+1. **自機除外 (excludeId)**: 自機 ghost の自己 respawn で自分の ghost.pos.t 参照を防ぐ。ghost は thrust 自由 + energy 消費で生存時と同じ物理、自由加速で `pos.t` が γ に比例先走るため自己参照を排除。
 
-**History**: ホスト時刻 → maxT 全 → (minT+maxT)/2 (`36abf67`) → maxT 生存のみ → maxT 全 (2026-04-16) → **maxT 自機除外 + 死亡者 LH 含め placeholder** (2026-04-17、ghost thrust 自由化対応)。
+2. **dead 除外**: 死亡 placeholder の `pos.t` (= 死亡時刻で固定) は alive な「現在 broadcasting している player」 を代表しないため min/max 算定から外す。 全員死亡の稀ケースでは fallback として全 player の max を使う (= 旧仕様の挙動)。
 
-**なぜ対称設計か**: 自機除外なし → ghost 自機 respawn が遠未来暴走 / LH 幽霊化 (死亡中も tick) → 非対称 + tick コスト + 肥大 / LH 除外 → solo で fallback 要で複雑化 → **自機除外 + 死亡者 placeholder** が対称・実装・エッジケースすべてで最シンプル。全員死亡の視点巻き戻りは許容。
+3. **stale 除外** (`staleFrozenIds`): broadcast 停止後 5s 以上経過の player を含めると min が異常に過去側に振れる。 `useGameStore.getState().staleFrozenIds` を渡す。
 
-`createRespawnPosition(players, excludeId?)`: 座標時間 + ランダム空間位置 (`[0, SPAWN_RANGE]²`) もここに抽出。
+**fallback**: alive non-stale が居ない場合、 全 player (dead 含む) の max にフォールバック (= ゲーム初期化前 / 全員死亡の瞬間 等)。 通常 LH が常時 alive のため実害稀。
+
+**呼び出し元の責務**:
+- 自機 respawn (useGameLoop): `excludeId = victimId`、 `staleFrozenIds` 必須
+- 新 joiner snapshot (snapshot.ts): `excludeId` 不要 (= 自機未登録)、 `staleFrozenIds` 必須
+
+`createRespawnPosition(players, excludeId?, staleFrozenIds?)`: 座標時間 + ランダム空間位置 (`[0, SPAWN_RANGE]²`)。
+
+**History**: ホスト時刻 → maxT 全 → (minT+maxT)/2 (`36abf67`) → maxT 生存のみ → maxT 全 (2026-04-16) → maxT 自機除外 + 死亡者 LH 含め placeholder (2026-04-17、ghost thrust 自由化対応) → **(min+max)/2 alive 非 stale** (2026-04-28、 高 γ 累積 lag による永遠凍結 bug 治癒)。
+
+### pos.t の物理的意味 と「再発防止メモ」 (2026-04-28 銘記)
+
+> ## ❌ これは誤り
+>
+> > 「物理的に正しい SR、 pos.t は全 player で wall_clock 同期」
+>
+> ## ❌ これも誤り
+>
+> > 「`dτ = wall_dt / γ` にすべき (= proper SR の time dilation を反映)」
+>
+> ## ✅ これが本ゲームの設計
+>
+> > **`dτ = wall_dt`**。 全 player で `dτ` は wall clock と同期する (= 各 player の固有時間が wall time)。 結果として `pos.t = γ * wall_clock` (= 動いた player ほど pos.t が未来へ進む)、 player 間で pos.t lag が生じる。 **これは意図された game design**。
+
+**詳細**:
+
+`evolvePhaseSpace` で `pos.t += γ * dτ` (`dτ = wall_dt`、 = 「各 player の固有時間 = wall clock」)。 結果として:
+- 動き回ってる player (γ_avg=2): `pos.t ≈ 2 × wall_clock`
+- 静止気味 player (γ=1): `pos.t ≈ wall_clock`
+- 30 秒経過すると **dt = 30 単位の lag** が累積し得る
+
+これは **意図された game design**: 各 player は自分の rest frame で時間が wall clock 速度で流れる体験をする (= 自分の clock が遅くなる感覚を排除)。 標準 SR の「全 observer が共有する coord time = lab frame t」 モデルでは **ない**。
+
+**📛 Claude が複数回再発した誤った fix 提案** (再発するので明示銘記):
+
+| 誤った主張 | 実態 |
+|---|---|
+| 「物理的に正しい SR、 pos.t は全 player で wall_clock 同期すべき」 | game の `pos.t` は **per-player coord time** であって lab frame time ではない。 wall_clock 同期は標準 SR の lab frame 解釈で、 本ゲームの design ではない |
+| 「`dτ = wall_dt / γ` にすれば lag が消える」 | `dτ = wall_dt` は意図的設計。 変えると 高 γ player の固有時間が wall より遅くなり「自分の時間が遅くなる」 体験になる (= 不自然、 design に反する) |
+| 「pos.t lag が積もるのは bug」 | 意図された結果。 動いた人ほど未来へ進む (浦島効果の inverse) はゲーム体験としての design 選択 |
+
+**正しい認識**: pos.t lag は **意図された結果**。 freeze 等で lag が問題になるのは **アルゴリズム側の責任** (= 「max を取る」 等の設計選択が過剰な lag を引き起こすのが原因)。 dτ semantics を変えるのではなく、 lag を前提として hostTime / freeze check 等を設計する。
+
+**この誤解を修正に持ち込まないこと**。 `dτ` / `pos.t` の semantics を変える PR / 提案は **基本却下**、 アルゴリズム側で lag を許容する設計にする。
 
 ### Thrust energy: laser と同一プール
 

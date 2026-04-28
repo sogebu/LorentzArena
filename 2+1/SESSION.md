@@ -38,6 +38,12 @@
 - 色調をポップで明るく (方向性未定)
 - スマホ横画面 (fullscreen 表示) 対応
 - **ballistic 軌跡 frozenWorldLines 描画** — 死から復帰までの世界線連続性、 odakin defer 判断 2026-04-28
+- **spawn time が「ホストよりずっと未来」 になって既存 client が軒並み凍結する逆 bug 疑い** —
+  2026-04-28 spawn time を `(min+max)/2` 中間に変更 (= 後 join client 永遠凍結 fix) したが、
+  逆に高 γ host から見て新 joiner が過去側 (close-spatial) に来ると **host が freeze** する
+  race が起こり得る。 typical な spatial spread (random spawn within `[0, SPAWN_RANGE]²` =
+  10) より `(max-min)/2` lag が大きい場面で顕在化。 実機検証 + 顕在化したら spawn 位置を
+  既存 player から `LCH` 以上離す等の追加対策検討
 
 ### マルチプレイ state バグ 5 点 (全修正済 → 再発監視のみ)
 詳細 [`plans/2026-04-20-multiplayer-state-bugs.md`](plans/2026-04-20-multiplayer-state-bugs.md)

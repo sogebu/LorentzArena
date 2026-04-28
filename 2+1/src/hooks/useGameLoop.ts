@@ -777,6 +777,7 @@ export function useGameLoop({
               const respawnPos = createRespawnPosition(
                 currentStore.players,
                 victimId,
+                currentStore.staleFrozenIds,
               );
               sendToNetwork({
                 type: "respawn" as const,
@@ -839,6 +840,7 @@ export function useGameLoop({
             const respawnPos = createRespawnPosition(
               pollState.players,
               victimId,
+              pollState.staleFrozenIds,
             );
             sendToNetwork({
               type: "respawn" as const,
