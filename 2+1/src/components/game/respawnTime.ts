@@ -81,8 +81,8 @@ export const createRespawnPosition = (
   staleFrozenIds?: ReadonlySet<string>,
 ): { t: number; x: number; y: number; z: number } => ({
   t: computeSpawnCoordTime(players, excludeId, staleFrozenIds),
-  x: Math.random() * SPAWN_RANGE,
-  y: Math.random() * SPAWN_RANGE,
+  x: (Math.random() - 0.5) * SPAWN_RANGE,
+  y: (Math.random() - 0.5) * SPAWN_RANGE,
   z: 0,
 });
 

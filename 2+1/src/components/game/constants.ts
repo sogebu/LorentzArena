@@ -59,7 +59,7 @@ export const HIT_RADIUS = 0.25;
 // 灯台専用の当たり判定半径 (塔底面の円柱半径 0.40 と同値、見た目に合わせて広め)
 export const LIGHTHOUSE_HIT_RADIUS = 0.2;
 
-// スポーン範囲（x, y）
+// スポーン範囲（x, y）。 原点中心の正方形 `[-SPAWN_RANGE/2, +SPAWN_RANGE/2)²` 一様分布。
 export const SPAWN_RANGE = 10;
 
 // レーザー連射間隔（ミリ秒）
@@ -633,9 +633,10 @@ export const KILL_NOTIFICATION_SPHERE_OPACITY = 0.6;
 export const KILL_NOTIFICATION_RING_OPACITY = 0.8;
 
 // --- Arena ---
-// スポーン中心 (= [0, SPAWN_RANGE]² 一様分布の中心) に配置。
-export const ARENA_CENTER_X = SPAWN_RANGE / 2;
-export const ARENA_CENTER_Y = SPAWN_RANGE / 2;
+// アリーナ中心 = 原点 (= spawn 範囲の中心と一致、 2026-04-28 「遠くに行って戻れない」
+// 観察を受けて spawn と枠の幾何学的中心を原点に統一)。
+export const ARENA_CENTER_X = 0;
+export const ARENA_CENTER_Y = 0;
 // open_cylinder mode 用の円柱半径。 LASER_RANGE (=10) の 4 倍、 攻防成立スケールを
 // 広げる目的で 2026-04-28 に 20 → 40 に bump。 LightConeRenderer の rim と Radar の
 // view radius は本値由来で連動して広がる。

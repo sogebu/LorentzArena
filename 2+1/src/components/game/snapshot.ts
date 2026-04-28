@@ -338,8 +338,8 @@ export const applySnapshot = (
       myId,
       {
         t: msg.hostTime,
-        x: Math.random() * SPAWN_RANGE,
-        y: Math.random() * SPAWN_RANGE,
+        x: (Math.random() - 0.5) * SPAWN_RANGE,
+        y: (Math.random() - 0.5) * SPAWN_RANGE,
         z: 0,
       },
       myId,

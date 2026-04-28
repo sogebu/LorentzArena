@@ -103,8 +103,8 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         myId,
         {
           t,
-          x: Math.random() * SPAWN_RANGE,
-          y: Math.random() * SPAWN_RANGE,
+          x: (Math.random() - 0.5) * SPAWN_RANGE,
+          y: (Math.random() - 0.5) * SPAWN_RANGE,
           z: 0,
         },
         myId,
@@ -126,8 +126,8 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         lighthouseId,
         {
           t,
-          x: Math.random() * SPAWN_RANGE,
-          y: Math.random() * SPAWN_RANGE,
+          x: (Math.random() - 0.5) * SPAWN_RANGE,
+          y: (Math.random() - 0.5) * SPAWN_RANGE,
           z: 0,
         },
         myId,

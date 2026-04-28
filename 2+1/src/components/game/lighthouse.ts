@@ -41,8 +41,8 @@ export const createLighthouse = (
   time: number,
   ownerId: string,
 ): RelativisticPlayer => {
-  const spawnX = Math.random() * SPAWN_RANGE;
-  const spawnY = Math.random() * SPAWN_RANGE;
+  const spawnX = (Math.random() - 0.5) * SPAWN_RANGE;
+  const spawnY = (Math.random() - 0.5) * SPAWN_RANGE;
   const ps = createPhaseSpace(
     createVector4(time, spawnX, spawnY, 0),
     vector3Zero(),
