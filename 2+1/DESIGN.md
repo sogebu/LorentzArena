@@ -209,6 +209,14 @@ primary cell に fold」 する ad hoc な pattern (= GPU shader fold / CPU mid 
 非対称等の問題が次々顕在化したため、 2026-04-28 に **universal cover image observer past-cone
 pattern** に統一した。 詳細実装ログ: `plans/2026-04-27-pbc-torus.md`。
 
+> **2026-04-28 後半 update**: causalEvents (= spawn ring / kill UI) は観測者跨ぎ越し問題が
+> 顕在化したため **observer-centered minimum image folding pattern** (= `displayPos(event,
+> observer, L)` で event を観測者中心の primary cell に折り畳んでから 9 image cells loop) に
+> 書き換えた。 観測者は universal cover 上常に primary cell 内に居る扱い → 跨ぎ越し問題が
+> 原理的に消える。 ship / worldLine / debris / laser renderer は依然旧 pattern (= obsCell 入り
+> dx) のまま動作中、 視覚的不整合が出るかは実機確認後 Phase 2 として議論予定 (SESSION.md
+> 「Phase 2 議論」 項目参照)。
+
 ### Core abstraction (= 全 phase で唯一の rule)
 
 PBC では同じ event/object が universal cover に無限の image として複製される (`(kx, ky) ∈ Z²`
