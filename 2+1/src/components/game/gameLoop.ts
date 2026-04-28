@@ -6,6 +6,7 @@ import {
   displayPos,
   evolvePhaseSpace,
   inverseLorentzBoost,
+  lorentzBoost,
   lorentzDotVector4,
   minImageDelta1D,
   multiplyVector4Matrix4,
@@ -23,7 +24,9 @@ import {
   CAMERA_PITCH_SPEED,
   CAMERA_YAW_SPEED,
   CAUSAL_FREEZE_HYSTERESIS,
+  ENERGY_MAX,
   ENERGY_PER_SHOT,
+  ENERGY_RECOVERY_RATE,
   FRICTION_COEFFICIENT,
   HIT_RADIUS,
   LASER_COOLDOWN,
@@ -232,40 +235,90 @@ export function processPlayerPhysics(
 }
 
 /**
- * タブ hidden 復帰時の ballistic catchup。thrust 入力なしで friction のみ適用し、
- * phaseSpace を sub-step で前進させる。
+ * タブ hidden 復帰時の ballistic catchup。 hidden 中も「最後 thrust 入力が継続されてた」
+ * (= odakin 設計 2026-04-28) として通常 tick と同じ物理 (thrust + friction + energy
+ * 消費) を sub-step で再生する。 燃料切れたら thrust 自動停止、 以降は friction のみで
+ * 自然減速 → 暴走防止。 通常 tick との挙動対称性を保つ。
  *
- * 目的: hidden 中は game loop が tick しないため、単純に `lastTimeRef` を fresh に
- * 保つ従来実装だと自 pos.t が他 peer と drift する (= 症状 5 と同系の副作用)。
- * hidden も「プレイヤーは coast (操縦入力なし) していた」として pos.t・u・x を
- * 連続に進めることで universal wall-clock と自 proper time が乖離しない。
+ * 「最後 thrust」 の取得: phaseSpace.alpha は world frame thrust 4-加速度 (= 通常 tick
+ * の processPlayerPhysics で thrust pure を格納してる、 friction は含まない)。 これを
+ * `lorentzBoost(u)` で rest 系に逆変換すれば「機体 rest frame での入力 thrust 方向 +
+ * 強度」 が取れる。 hidden 中は機体姿勢 / 入力 thrust 不変仮定で毎 sub-step この rest
+ * thrust を適用 (= 通常 tick と同じ pattern。 friction は world frame で u に比例 damping)。
  *
- * sub-step 幅 `STEP = 0.1s` は通常 tick の skip 閾値 (0.2s) より小さく、friction の
- * 数値安定性 (FRICTION_COEFFICIENT = 0.5 → 時間定数 2s、STEP*FRICTION < 0.05 で線形
- * 近似誤差 < 0.1%) を確保。worldLine は呼び出し側が freeze + 1 点 reset で clean に
- * 連続化させる (渡さない、返さない)。
+ * 目的: hidden 中は game loop が tick しないため、 単純に `lastTimeRef` を fresh に
+ * 保つ従来実装だと自 pos.t が他 peer と drift する。 hidden 中も物理を tick 相当で
+ * 再生して universal wall-clock と自 proper time の乖離を防ぐ。
  *
- * 非常に長い hidden (例えば > 数時間) でも while ループは O(N) で完結する
- * (N=1 時間 ≈ 36000 iterations、JS 実行時間 < 50ms 想定)。上限指定は現状なし。
+ * 計算結果は self が phaseSpace broadcast する (= 自己申告)。 host 側で再計算しない
+ * (= Authority 解体 architecture と整合、 messageHandler.ts の stale 復帰経路は
+ * staleFrozen 解除のみで通常 phaseSpace 経路に流す)。 sub-step `STEP = 0.1s` は friction
+ * 線形近似誤差 < 0.1% を保つ。
  */
+export interface BallisticCatchupResult {
+  newPs: ReturnType<typeof createPhaseSpace>;
+  newEnergy: number;
+}
+
 export function ballisticCatchupPhaseSpace(
   ps: ReturnType<typeof createPhaseSpace>,
   totalDTau: number,
-): ReturnType<typeof createPhaseSpace> {
+  initialEnergy: number,
+): BallisticCatchupResult {
+  // 凍結時 alpha (= world frame thrust 4-加速度) を rest 系に逆 boost。
+  // alpha は phaseSpace.alpha に格納済 (gameLoop.ts processPlayerPhysics で pure thrust
+  // のみ格納、 friction は混じらない、 messageHandler 経由で broadcast/受信されてる)。
+  const restBoost = lorentzBoost(ps.u);
+  const alphaRest4 = multiplyVector4Matrix4(restBoost, ps.alpha);
+  const thrustAxRest = alphaRest4.x;
+  const thrustAyRest = alphaRest4.y;
+  const thrustAzRest = alphaRest4.z;
+  const thrustMag = Math.sqrt(
+    thrustAxRest * thrustAxRest +
+      thrustAyRest * thrustAyRest +
+      thrustAzRest * thrustAzRest,
+  );
+  const thrustFrac =
+    thrustMag > 0 ? Math.min(1, thrustMag / PLAYER_ACCELERATION) : 0;
+
   const STEP = 0.1;
   let current = ps;
+  let energy = initialEnergy;
   let remaining = totalDTau;
+
   while (remaining > 1e-6) {
     const step = Math.min(STEP, remaining);
-    const friction = createVector3(
-      -current.u.x * FRICTION_COEFFICIENT,
-      -current.u.y * FRICTION_COEFFICIENT,
-      0,
-    );
-    current = evolvePhaseSpace(current, friction, step);
+
+    // Energy management (通常 tick = processPlayerPhysics + useGameLoop と同 pattern)。
+    // thrust ON: energy 消費、 燃料切れたら thrustScale=0 → friction のみ。
+    // thrust なし: energy 回復 (= 通常 tick の useGameLoop:569 と同じ)。
+    let thrustScale = 1;
+    if (thrustFrac > 0) {
+      const required = THRUST_ENERGY_RATE * thrustFrac * step;
+      if (energy <= 0) {
+        thrustScale = 0;
+      } else if (required > energy) {
+        thrustScale = energy / required;
+        energy = 0;
+      } else {
+        energy -= required;
+      }
+    } else {
+      energy = Math.min(ENERGY_MAX, energy + ENERGY_RECOVERY_RATE * step);
+    }
+
+    // Acceleration = scaled rest thrust + world-frame friction (= gameLoop.ts:201-202 と同 pattern)
+    const ax =
+      thrustAxRest * thrustScale + -current.u.x * FRICTION_COEFFICIENT;
+    const ay =
+      thrustAyRest * thrustScale + -current.u.y * FRICTION_COEFFICIENT;
+    const accel = createVector3(ax, ay, 0);
+
+    current = evolvePhaseSpace(current, accel, step);
     remaining -= step;
   }
-  return current;
+
+  return { newPs: current, newEnergy: energy };
 }
 
 // --- Lighthouse AI ---

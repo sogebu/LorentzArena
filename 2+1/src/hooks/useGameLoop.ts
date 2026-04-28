@@ -45,6 +45,7 @@ import type { Laser, RelativisticPlayer } from "../components/game/types";
 import type { NetworkManager } from "../contexts/PeerProvider";
 import {
   type createPhaseSpace,
+  displayPos,
   type Vector3,
   type Vector4,
   vector3Zero,
@@ -162,19 +163,33 @@ export function useGameLoop({
       const currentTime = Date.now();
       const dTau = (currentTime - lastTimeRef.current) / 1000;
       lastTimeRef.current = currentTime;
-      // 大 dTau (hidden 復帰 / setInterval 一時停止復帰) は ballistic catchup で
-      // 吸収: 自機は thrust 入力なし・friction のみで phaseSpace を前進、worldLine は
-      // freeze + 1 点 reset で clean 切断。他 peer の phaseSpace は受信ハンドラで独立に
-      // 更新される。入力・laser・LH AI・衝突判定・描画状態更新はこの frame で skip。
+      // 大 dTau (hidden 復帰 / setInterval 一時停止復帰) は ballistic catchup で吸収。
+      // hidden 中も「最後 thrust 入力が継続されていた」 として thrust + friction + energy
+      // 消費を sub-step で再生 (= odakin 設計 2026-04-28、 通常 tick との対称性)。
+      // 燃料切れたら friction のみ → 自然減速 → 暴走防止。 worldLine は freeze + 1 点
+      // reset で clean 切断。
       if (dTau > 0.2) {
         const store = useGameStore.getState();
         const me = store.players.get(myId);
         if (me && !me.isDead) {
-          const evolved = ballisticCatchupPhaseSpace(me.phaseSpace, dTau);
+          const { newPs: evolved, newEnergy } = ballisticCatchupPhaseSpace(
+            me.phaseSpace,
+            dTau,
+            me.energy,
+          );
+          // 復帰 pos を (0,0) cell に wrap (= 「実体は (0,0) cell に閉じる」 設計、
+          // odakin 2026-04-28)。 hidden 中の ballistic 移動で raw cell 跨ぎが起きても
+          // state.pos は必ず [-L, L)² に収める → broadcast 後の他 peer 側でも整合。
+          const torusHalfWidth =
+            store.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined;
+          const wrappedPos =
+            torusHalfWidth !== undefined
+              ? displayPos(evolved.pos, { x: 0, y: 0 }, torusHalfWidth)
+              : evolved.pos;
           // 自機 heading = 現カメラ yaw (ballistic 中も yaw は入力で変化し得る)。
-          // alpha は catchup 内の友動摩擦しかないので evolvePhaseSpace が既に格納済。
           const newPhaseSpace = {
             ...evolved,
+            pos: wrappedPos,
             heading: yawToQuat(headingYawRef.current),
           };
           store.setPlayers((prev) => {
@@ -185,6 +200,7 @@ export function useGameLoop({
             next.set(myId, {
               ...cur,
               phaseSpace: newPhaseSpace,
+              energy: newEnergy,
               // 既存 history を捨てて 1 点から再スタート。
               // (凍結側は下の setFrozenWorldLines で保存する)
               worldLine: { ...cur.worldLine, history: [newPhaseSpace] },

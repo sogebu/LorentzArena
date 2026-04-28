@@ -3,70 +3,81 @@ import {
   createPhaseSpace,
   createVector3,
   createVector4,
+  vector4Zero,
 } from "../../physics";
-import { FRICTION_COEFFICIENT } from "./constants";
+import { ENERGY_MAX } from "./constants";
 import { ballisticCatchupPhaseSpace } from "./gameLoop";
 
-describe("ballisticCatchupPhaseSpace", () => {
-  it("stationary player: pos.t advances by dTau, pos.xy and u unchanged", () => {
+describe("ballisticCatchupPhaseSpace — thrust + friction + energy 込み 通常 tick 再生", () => {
+  it("alpha=0 (= thrust なし) + u=0: 不動、 energy は recovery で満タン維持", () => {
     const ps = createPhaseSpace(
       createVector4(100, 3, 4, 0),
       createVector3(0, 0, 0),
+      undefined,
+      vector4Zero(), // alpha=0 → thrust なし
     );
-    const result = ballisticCatchupPhaseSpace(ps, 2.57);
-    expect(result.pos.t).toBeCloseTo(102.57, 6);
-    expect(result.pos.x).toBeCloseTo(3, 6);
-    expect(result.pos.y).toBeCloseTo(4, 6);
-    expect(result.u.x).toBeCloseTo(0, 10);
-    expect(result.u.y).toBeCloseTo(0, 10);
+    const { newPs, newEnergy } = ballisticCatchupPhaseSpace(
+      ps,
+      2.57,
+      ENERGY_MAX,
+    );
+    expect(newPs.pos.t).toBeCloseTo(102.57, 6);
+    expect(newPs.pos.x).toBeCloseTo(3, 6);
+    expect(newPs.pos.y).toBeCloseTo(4, 6);
+    expect(newPs.u.x).toBeCloseTo(0, 10);
+    expect(newPs.u.y).toBeCloseTo(0, 10);
+    expect(newEnergy).toBe(ENERGY_MAX); // 既に MAX、 recovery clamp
   });
 
-  it("moving player: u decays exponentially toward 0 via friction", () => {
-    // 初期 u = (0.5, 0, 0)、十分長い catchup で u が 0 に収束することを確認。
-    // 時間定数 1/FRICTION_COEFFICIENT = 2s、dTau = 30s で e^-15 ≈ 3e-7、実質 0。
+  it("alpha=0 + u≠0: thrust なし → friction で減速 → 通常 tick 互換", () => {
+    // 初期 u = (0.5, 0, 0)、 alpha=0、 friction で指数減衰 (= 通常 tick の friction-only
+    // 漂流停止 UX と同じ)。 u → 0 に向かう、 energy は thrust なしで recovery。
     const ps = createPhaseSpace(
       createVector4(0, 0, 0, 0),
       createVector3(0.5, 0, 0),
+      undefined,
+      vector4Zero(),
     );
-    const result = ballisticCatchupPhaseSpace(ps, 30);
-    expect(Math.abs(result.u.x)).toBeLessThan(1e-3);
-    expect(Math.abs(result.u.y)).toBeLessThan(1e-6);
-    // pos.x は有限の漸近値に到達 (数値積分なので exact には解析解と一致しないが有限)。
-    expect(Number.isFinite(result.pos.x)).toBe(true);
+    const { newPs, newEnergy } = ballisticCatchupPhaseSpace(ps, 30, ENERGY_MAX);
+    // 30 秒 friction (FRICTION_COEFFICIENT = 0.5、 時間定数 2s) で u → 0 に近く
+    expect(Math.abs(newPs.u.x)).toBeLessThan(1e-3);
+    expect(Math.abs(newPs.u.y)).toBeLessThan(1e-6);
+    // energy は recovery で満タン
+    expect(newEnergy).toBe(ENERGY_MAX);
   });
 
-  it("zero dTau: phaseSpace unchanged", () => {
-    const ps = createPhaseSpace(
-      createVector4(5, 1, 2, 0),
-      createVector3(0.3, -0.2, 0),
-    );
-    const result = ballisticCatchupPhaseSpace(ps, 0);
-    expect(result.pos.t).toBe(5);
-    expect(result.pos.x).toBe(1);
-    expect(result.pos.y).toBe(2);
-    expect(result.u.x).toBeCloseTo(0.3, 10);
-    expect(result.u.y).toBeCloseTo(-0.2, 10);
-  });
-
-  it("short dTau: friction linear approximation holds", () => {
-    // dTau = 0.1s で u.x が FRICTION_COEFFICIENT * dTau * u.x = 0.05 * 0.5 = 0.025 分
-    // 減衰する近似値 (sub-step で 1 step 分、ほぼ線形領域)。
-    const ps = createPhaseSpace(
-      createVector4(0, 0, 0, 0),
-      createVector3(0.5, 0, 0),
-    );
-    const result = ballisticCatchupPhaseSpace(ps, 0.1);
-    const expectedU = 0.5 * (1 - FRICTION_COEFFICIENT * 0.1);
-    expect(result.u.x).toBeCloseTo(expectedU, 2);
-  });
-
-  it("dTau covers exactly N sub-steps: no remainder drift", () => {
-    // STEP = 0.1 内部定数、dTau = 1.0 で 10 sub-steps、remainder = 0。
+  it("regression: thrust 継続中の player は energy 切れまで加速、 切れたら friction のみ", () => {
+    // alpha = 機体 +x 方向に最大 thrust (= world frame thrust accel ≈ rest 系で同じ、 u=0 開始時)。
+    // PLAYER_ACCELERATION = 0.8、 hidden 中 thrust 継続 → energy 消費 (THRUST_ENERGY_RATE = 1/9)。
+    // ENERGY_MAX (default 1) なら 9 秒で枯渇 → 以降 friction のみ。
     const ps = createPhaseSpace(
       createVector4(0, 0, 0, 0),
       createVector3(0, 0, 0),
+      undefined,
+      createVector4(0, 0.8, 0, 0), // alpha world ≈ rest at u=0
     );
-    const result = ballisticCatchupPhaseSpace(ps, 1.0);
-    expect(result.pos.t).toBeCloseTo(1.0, 6);
+    const { newPs, newEnergy } = ballisticCatchupPhaseSpace(ps, 30, 1);
+    expect(newEnergy).toBe(0); // 完全枯渇
+    // 30 秒経過: 9 秒加速 → terminal velocity 達するまで thrust=friction で釣り合い
+    // (terminal: thrust = friction → 0.8 = 0.5 * |u| → |u|=1.6)、 その後 21 秒 friction
+    // 単独で減速。 final u は friction 減衰で大きく下がってる。
+    expect(newPs.u.x).toBeGreaterThan(0); // 何らかの forward velocity 残る
+    expect(newPs.u.x).toBeLessThan(1.6); // terminal 以下
+  });
+
+  it("zero dTau: phaseSpace + energy 不変", () => {
+    const ps = createPhaseSpace(
+      createVector4(5, 1, 2, 0),
+      createVector3(0.3, -0.2, 0),
+      undefined,
+      vector4Zero(),
+    );
+    const { newPs, newEnergy } = ballisticCatchupPhaseSpace(ps, 0, 0.5);
+    expect(newPs.pos.t).toBe(5);
+    expect(newPs.pos.x).toBe(1);
+    expect(newPs.pos.y).toBe(2);
+    expect(newPs.u.x).toBeCloseTo(0.3, 10);
+    expect(newPs.u.y).toBeCloseTo(-0.2, 10);
+    expect(newEnergy).toBe(0.5);
   });
 });

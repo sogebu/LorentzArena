@@ -4,7 +4,6 @@ import {
   createVector3,
   createVector4,
   createWorldLine,
-  displayPos,
   type Quaternion,
   quatIdentity,
   type Vector4,
@@ -12,7 +11,6 @@ import {
 } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
 import {
-  ARENA_HALF_WIDTH,
   ENERGY_MAX,
   LIGHTHOUSE_COLOR,
   MAX_FROZEN_WORLDLINES,
@@ -21,7 +19,6 @@ import {
   WORLDLINE_GAP_THRESHOLD_MS,
 } from "./constants";
 import { isLighthouse } from "./lighthouse";
-import { createRespawnPosition } from "./respawnTime";
 import { applySnapshot, buildSnapshot } from "./snapshot";
 import type { FrozenWorldLine, Laser, RelativisticPlayer } from "./types";
 
@@ -140,61 +137,15 @@ export const createMessageHandler =
       // 新しい WorldLine に古い位置が appendWorldLine される）
       if (playerId === myId) return;
 
-      // Stale 復帰検知: stale 凍結されたプレイヤーから phaseSpace が来た。
-      //
-      // Ballistic 復帰: 凍結中も他機は等速直線運動してたとみなし、
-      //   new pos = pos + u * dτ                           (4-velocity を proper time で積分)
-      //   t component:  pos.t + γ * dτ   (= u^0 * dτ)
-      // で凍結直前 phaseSpace から復帰位置を計算 → `displayPos` で torus (0,0) cell に wrap
-      // して torus universe 内に正しく収める (= 「実体は (0,0) cell に閉じる」 設計思想)。
-      // dτ は host 観測者の壁時計経過 (= 厳密には player 本人 proper time とは異なるが、
-      // game 的に十分な近似)。 `oldPs` / `lastUpdateTimeRef` 不在の防御 fallback で
-      // 従来 random 復帰経路を維持。
+      // Stale 復帰検知: stale 凍結されたプレイヤーから phaseSpace が来たら、 単に
+      // staleFrozen 解除して通常 phaseSpace 受信経路 (= 下の gap 検出 + setPlayers) に
+      // 流す。 復帰 pos / u / energy の計算は **stale player 本人** が `useGameLoop` の
+      // `ballisticCatchupPhaseSpace` で行い、 通常 phaseSpace broadcast 経路で送出する
+      // (= 自己申告、 Authority 解体 architecture と整合、 odakin 設計 2026-04-28)。
+      // 旧実装は host 側で ballistic 計算 + handleSpawn broadcast していたが、 二重計算 +
+      // 本人 catchup 結果との divergence の原因になるため撤去。
       if (staleFrozenRef.current.has(playerId)) {
-        if (!peerManager.getIsBeaconHolder()) return; // クライアントはホストの respawn を待つ
-        const oldPs = store.players.get(playerId)?.phaseSpace;
-        const oldUpdate = lastUpdateTimeRef.current.get(playerId);
-        let respawnPos: { t: number; x: number; y: number; z: number };
-        if (oldPs && oldUpdate !== undefined) {
-          const dTau = (Date.now() - oldUpdate) / 1000;
-          const u = oldPs.u;
-          const gamma = Math.sqrt(1 + u.x * u.x + u.y * u.y + u.z * u.z);
-          const ballisticPos = createVector4(
-            oldPs.pos.t + gamma * dTau,
-            oldPs.pos.x + u.x * dTau,
-            oldPs.pos.y + u.y * dTau,
-            oldPs.pos.z + u.z * dTau,
-          );
-          const wrapped =
-            useGameStore.getState().boundaryMode === "torus"
-              ? displayPos(ballisticPos, { x: 0, y: 0 }, ARENA_HALF_WIDTH)
-              : ballisticPos;
-          respawnPos = {
-            t: wrapped.t,
-            x: wrapped.x,
-            y: wrapped.y,
-            z: wrapped.z,
-          };
-        } else {
-          respawnPos = createRespawnPosition(store.players, playerId);
-        }
         staleFrozenRef.current.delete(playerId);
-        lastUpdateTimeRef.current.set(playerId, Date.now());
-        const ballisticU = oldPs?.u
-          ? { x: oldPs.u.x, y: oldPs.u.y, z: oldPs.u.z }
-          : undefined;
-        peerManager.send({
-          type: "respawn" as const,
-          playerId,
-          position: respawnPos,
-          ...(ballisticU ? { u: ballisticU } : {}),
-        });
-        const existingColor =
-          store.players.get(playerId)?.color ?? getPlayerColor(playerId);
-        store.handleSpawn(playerId, respawnPos, myId, existingColor, {
-          ...(ballisticU ? { u: ballisticU } : {}),
-        });
-        return;
       }
 
       // Gap 検出: 前回 phaseSpace 受信からの wall-time gap が閾値超なら、
