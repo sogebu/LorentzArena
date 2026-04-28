@@ -241,7 +241,11 @@ export const CAMERA_PITCH_MIN = (-Math.PI * 89.9) / 180;
 export const CAMERA_PITCH_MAX = (Math.PI * 89.9) / 180;
 export const CAMERA_DISTANCE_ORTHOGRAPHIC = 50;
 export const CAMERA_DISTANCE_PERSPECTIVE = 10;
-export const DEFAULT_CAMERA_PITCH = Math.PI / 6;
+// 60 度 = π/3。 camera position の time component = `distance·sin(pitch)`、 spatial =
+// `distance·cos(pitch)` なので `tan(pitch) > 1` (= pitch > 45 度) で camera は観測者の
+// 未来光円錐内 (= 時間的に未来側) に居る扱いになる。 60 度は光円錐 45 度を 15 度上回り、
+// 「未来側からの見下ろし俯瞰」 として安定する角度 (odakin 指定 2026-04-28)。
+export const DEFAULT_CAMERA_PITCH = Math.PI / 3;
 
 // --- Causality guard ---
 export const CAUSAL_FREEZE_HYSTERESIS = 2.0; // ヒステリシス: 既に凍結中は閾値を上げて振動防止
