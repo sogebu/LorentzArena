@@ -243,6 +243,34 @@ export const Radar = ({
           ctx.fill();
         }
 
+        // Arena 中心 (= 原点) past-cone 交点。 自機の現在地から見た「中心方向」 を可視化、
+        // 「遠くに行って戻れない」 onboarding 問題対策 (EXPLORING.md §「遠くに行って
+        // 戻れない」 問題 1b、 2026-05-02 odakin 自律実装)。 観測者の過去光円錐と
+        // worldline {(t, 0, 0): t ∈ ℝ} の交点 = `(obs.t − |obs.xy|, 0, 0)`。 torus mode は
+        // subVector4Torus で最短画像 origin に折り畳まれるので「最寄り image cell の中心」
+        // が表示される。 自機本体 (中心) との重なり対策で半径小、 視認性は cross "+" で補強。
+        {
+          const originDist = Math.hypot(obsPos.x, obsPos.y);
+          const originT = obsPos.t - originDist;
+          const [oSx, oSy] = projectEvent(originT, 0, 0);
+          ctx.fillStyle = "rgba(220, 220, 220, 0.85)";
+          ctx.strokeStyle = "rgba(0, 0, 0, 0.7)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(oSx, oSy, 3, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          // cross "+" で「中心」 感を補強 (= 単純な dot だと他機と区別しにくい)
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(oSx - 5, oSy);
+          ctx.lineTo(oSx + 5, oSy);
+          ctx.moveTo(oSx, oSy - 5);
+          ctx.lineTo(oSx, oSy + 5);
+          ctx.stroke();
+        }
+
         // 自機 (中心、白縁取り)。heading-up なので上方向 = 自機前方。
         if (!myPlayer.isDead) {
           ctx.fillStyle = myPlayer.color;
