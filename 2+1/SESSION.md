@@ -53,6 +53,10 @@ deploy 後の追加 commit (= localhost only、 push 済 / deploy 未): `75aaae8
 | 8 | 長時間 tab hidden 復帰後、 灯台が遥か未来に行ってて見えない (= 自機の現在 pos.t より大幅に LH.pos.t が進んでる) | **調査** | runtime instrumentation 要 (= LH.pos.t を hidden 中 / 復帰直後で log)。 仮説: hidden 中 host 側の `processLighthouseAI` が普通に進行 → host が backgrounded で `setInterval` 1Hz throttle → `pos.t += dτ` で wall_clock より遅延、 復帰時 `dTau > 0.2` の ballistic catchup 経路は `if (me && !me.isDead)` で alive 自機のみ → LH 経路は無し → 復帰直後 fresh tick で LH.pos.t は依然 hidden 開始時刻、 が **逆**: hidden 中 host が他 player を見て jump し続けて LH.pos.t がどんどん上がる? もしくは host migration で LH ownership 移譲時の刻ベース drift |
 | 9 | 新規 tab で join した瞬間に「因果律凍結」 即発生 | **既知 (defer 中項目と整合)** | SESSION の「逆 bug 疑い: spawn time `(min+max)/2` 中間化で host が freeze する race」 と整合。 新 joiner の pos.t が host の未来光円錐内 (= timelike 分離 + spatial 近) → host の `checkCausalFreeze` が true → physics skip → 永遠凍結。 fix 候補は spawn 位置を既存 player から `LIGHT_CONE_HEIGHT` 以上離す (= timelike を spacelike に押す)。 EXPLORING.md / 現 SESSION の defer 中項目に既に記載 |
 
+### 中期 plan (= 設計合意済、 実装未着手)
+
+**[`plans/2026-05-02-causality-symmetric-jump.md`](plans/2026-05-02-causality-symmetric-jump.md)** — Bug 5 / 8 / 9 を共通根因 (per-player coord time gap 蓄積) で同時解消する大型 refactor。 思想は「Rule A 凍結 (= 既存) + Rule B 因果律ジャンプ (= 新設) の対称化」 + 「alive / stale / dead を統一 virtualPos モデルで扱う」。 数学 (λ_exit 公式) / 二本世界線モデル (virtual + ghost) / Stage 1-8 詳細 / edge case / 移行戦略 / reject alternatives / cold-start チェックリストまで完備。 odakin 自律実装 plan。
+
 ### defer 中 (= 既存)
 - DESIGN.md 残存する設計臭 #2 (PeerProvider Phase 1 effect コールバックネスト)
 - snapshot に `frozenWorldLines` / `debrisRecords` 同梱 — un-defer: リスポーン世界線連続観測時
