@@ -1,5 +1,5 @@
 import { Canvas } from "@react-three/fiber";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePeer } from "../hooks/usePeer";
 import { vector3Zero } from "../physics";
 import { useGameStore } from "../stores/game-store";
@@ -297,35 +297,50 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   });
 
   /**
-   * Canvas mount 時に `webglcontextlost` / `webglcontextrestored` listener を attach。
-   * lost 検知で `webglContextLost` state を立て、 `WebGLLostOverlay` が「再読込」 UI を出す。
-   * restored event は記録のみ (= scene 全体の reinit が複雑なため自動復帰せず、 ユーザー
-   * 操作で reload する設計、 詳細は WebGLLostOverlay の docstring)。
+   * WebGL context loss listener を DOM polling で attach。
    *
-   * ref capture: handler は `useCallback` で stable、 各 Canvas (= 3 mode + ShipPreview を
-   * 経由しないこの component) で同じ handler を共有。 Canvas unmount で DOM の listener も
-   * 自動 GC されるため明示 cleanup は不要。
+   * R3F の `<Canvas onCreated>` および `useThree` ベースの attach は実機検証で listener が
+   * fire しないケースを観測 (= preview 環境 + おそらく real Brave でも) したため、 確実に
+   * 効く `document.querySelector('canvas')` ベースの polling pattern に倒す。
+   *
+   * 戦略:
+   * - mount 時に setInterval で canvas DOM 要素を探索
+   * - WebGL context を持つ canvas (= 2D radar canvas は除外) を見つけたら listener を
+   *   attach、 重複防止のため `__webglLostAttached` フラグを立てる
+   * - 全 canvas に attach 完了するまで polling 継続 (= mode 切替で新 Canvas mount に追従)
+   *
+   * cleanup は不要 (= unmount 時に DOM canvas も外れる、 listener は GC で消える)。
    */
-  const handleCanvasCreated = useCallback(
-    ({ gl }: { gl: { domElement: HTMLCanvasElement } }) => {
-      const canvas = gl.domElement;
-      const onLost = (e: Event) => {
-        e.preventDefault(); // restored event の発火を許可するために必須
-        // biome-ignore lint/suspicious/noConsole: diagnostic for rare event
-        console.warn("[WebGL] context lost");
-        useGameStore.getState().setWebglContextLost(true);
-      };
-      const onRestored = () => {
-        // biome-ignore lint/suspicious/noConsole: diagnostic for rare event
-        console.log(
-          "[WebGL] context restored (reload recommended for clean reinit)",
-        );
-      };
-      canvas.addEventListener("webglcontextlost", onLost);
-      canvas.addEventListener("webglcontextrestored", onRestored);
-    },
-    [],
-  );
+  useEffect(() => {
+    const tryAttach = () => {
+      const canvases = document.querySelectorAll<HTMLCanvasElement>("canvas");
+      for (const canvas of canvases) {
+        const tagged = canvas as HTMLCanvasElement & {
+          __webglLostAttached?: boolean;
+        };
+        if (tagged.__webglLostAttached) continue;
+        // WebGL context を持つ canvas のみ対象 (= 2D radar / Speedometer canvas は除外)
+        const ctx = canvas.getContext("webgl2") || canvas.getContext("webgl");
+        if (!ctx) continue;
+        tagged.__webglLostAttached = true;
+        canvas.addEventListener("webglcontextlost", (e) => {
+          e.preventDefault();
+          console.warn(
+            "[WebGL] context lost — overlay will appear, user reload required",
+          );
+          useGameStore.getState().setWebglContextLost(true);
+        });
+        canvas.addEventListener("webglcontextrestored", () => {
+          console.log(
+            "[WebGL] context restored (reload still recommended for clean reinit)",
+          );
+        });
+      }
+    };
+    tryAttach(); // 即時 attach 試行 (mount 直後)
+    const intervalId = setInterval(tryAttach, 500); // 0.5s 間隔で新 Canvas に追従
+    return () => clearInterval(intervalId);
+  }, []);
 
   return (
     <div
@@ -366,7 +381,6 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         <Canvas
           key="plc3d"
           camera={{ position: [0, -12, 20], fov: 60 }}
-          onCreated={handleCanvasCreated}
         >
           <SceneContent
             myId={myId}
@@ -390,7 +404,6 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             near: -10000,
             far: 10000,
           }}
-          onCreated={handleCanvasCreated}
         >
           <SceneContent
             myId={myId}
@@ -408,7 +421,6 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         <Canvas
           key="persp"
           camera={{ position: [0, 0, 0], fov: 75 }}
-          onCreated={handleCanvasCreated}
         >
           <SceneContent
             myId={myId}

@@ -15,15 +15,18 @@ import { useGameStore } from "../../stores/game-store";
  * 現実装ではユーザーに「再読込」 (= page reload) を促す方が確実 + シンプル。
  *
  * **設計選択**:
- * - state ソース: `useGameStore.webglContextLost` (= `RelativisticGame.tsx` の Canvas
- *   `onCreated` で `webglcontextlost` listener が `setWebglContextLost(true)` を呼ぶ)
+ * - state ソース: `useGameStore.webglContextLost` (= `RelativisticGame.tsx` の `useEffect`
+ *   で DOM canvas を polling して listener 直 attach、 R3F の `<Canvas onCreated>` や
+ *   `useThree` 経由は実機検証で listener が fire しないケースを観測 — `useEffect` ベース
+ *   の DOM polling が確実)
  * - 復元: 現状なし、 ユーザー操作で `location.reload()` のみ
  * - 一度 lost 検知したら overlay は出っ放し (= context restore でも自動 hide しない、
  *   reinit が確実に成功するか保証できないため)
  *
- * 詳細: `plans/2026-05-02-causality-symmetric-jump.md` 後の WebGL Context Lost 調査。
- * 構造的問題として `<Canvas key="...">` を mode 切替で 3 instance churn しているのも
- * 寄与因 (= 段階 2 で unify 検討)。 本 overlay は段階 1 の最低限 recovery path。
+ * 詳細: WebGL Context Lost 調査 (= odakin 実機検証で「全世界凍結 + 星屑も止まる」 症状が
+ * 再現される頻度を観察)。 構造的問題として `<Canvas key="...">` を mode 切替で 3 instance
+ * churn しているのも寄与因 (= 段階 2 で unify 検討)。 本 overlay は段階 1 の最低限
+ * recovery path。
  */
 export const WebGLLostOverlay = () => {
   const { t } = useI18n();
