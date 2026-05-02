@@ -216,13 +216,21 @@ export interface GameState {
    */
   causallyFrozen: boolean;
   /**
-   * WebGL context が失われたかどうか (= `webglcontextlost` event 検出)。 true のとき
-   * R3F の rAF / useFrame は走り続けるが Three.js の描画は黒になる (= 背景の星屑 / 自機 /
-   * 他機 / LH すべて固まる症状)。 復元には scene 全体の reinit が必要で複雑なため、 overlay
-   * で「再読込」 をユーザーに促す UI を出す。 詳細: `RelativisticGame.tsx` の Canvas
-   * `onCreated` handler + `WebGLLostOverlay`。
+   * WebGL context が失われた状態が **連続して短時間で再発** したとき (= 自動 remount で
+   * 復帰できない catastrophic 状態) に立つ flag。 通常の context loss は `canvasGeneration`
+   * 増分で React に Canvas を unmount + remount させ、 R3F が新 WebGL context を作って scene
+   * を再構築する透過的復旧で吸収する設計のため、 本 flag は watchdog 専用 (= overlay 表示
+   * 条件)。 詳細: `RelativisticGame.tsx` の polling listener + `WebGLLostOverlay`。
    */
   webglContextLost: boolean;
+  /**
+   * Canvas remount 用の generation counter。 WebGL context loss 検知のたびに increment、
+   * 各 `<Canvas key="...">` に含めることで React が Canvas を unmount + mount し直し、 R3F
+   * が新 WebGL context を作る → scene 全体を seamless に再構築する自動復旧経路。 user は
+   * 1-2 frame の flash で済み、 page reload 不要。 詳細は `RelativisticGame.tsx` の useEffect
+   * polling listener。
+   */
+  canvasGeneration: number;
   displayNames: Map<string, string>;
 
   // --- Non-reactive state (read via getState() only, no re-render) ---
@@ -283,6 +291,7 @@ export interface GameState {
   setMyDeathEvent: (v: DeathEvent | null) => void;
   setCausallyFrozen: (v: boolean) => void;
   setWebglContextLost: (v: boolean) => void;
+  incrementCanvasGeneration: () => void;
 
   // --- Actions: game logic ---
   handleKill: (
@@ -370,6 +379,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   myDeathEvent: null,
   causallyFrozen: false,
   webglContextLost: false,
+  canvasGeneration: 0,
   displayNames: new Map(),
 
   // Non-reactive
@@ -413,6 +423,8 @@ export const useGameStore = create<GameState>()((set, get) => ({
   setMyDeathEvent: (v) => set({ myDeathEvent: v }),
   setCausallyFrozen: (v) => set({ causallyFrozen: v }),
   setWebglContextLost: (v) => set({ webglContextLost: v }),
+  incrementCanvasGeneration: () =>
+    set((s) => ({ canvasGeneration: s.canvasGeneration + 1 })),
 
   // -----------------------------------------------------------------------
   // handleKill — absorbs RelativisticGame.tsx L155-208

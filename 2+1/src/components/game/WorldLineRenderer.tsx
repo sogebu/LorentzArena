@@ -98,8 +98,16 @@ export const WorldLineRenderer = ({
   // 観測者 cell に追従。
   const _instanceMatrix = useMemo(() => new THREE.Matrix4(), []);
 
-  // version を TUBE_REGEN_INTERVAL で量子化して再生成を間引く
-  // wl オブジェクト自体が変わった時（リスポーン）も確実に再生成するため wl を依存に含める
+  // **wl 参照は ref 経由で保持** (= 2026-05-02 perf 根本対策):
+  // useMemo deps に wl を含めると「wl オブジェクトは appendWorldLine で毎 tick 新参照になる」
+  // ため `geoVersion` の `Math.floor(version/8)` 量子化 throttle が事実上死に、 毎 tick で
+  // 高コストな TubeGeometry rebuild (= ~24000 vertex 構築 + GPU upload + 旧 geometry dispose)
+  // が走っていた。 これが 5 分プレイで setInterval Violation を 16+ 累積 → main thread 飽和
+  // → rAF starve → 全世界凍結 + 星屑停止 → 最終的に GPU 資源枯渇で WebGL Context Lost、
+  // という連鎖の根本原因だった。 ref で latest wl を保持し useMemo は `geoVersion` の量子化
+  // step (= 8 tick = ~130ms) でのみ rebuild する設計に正規化。
+  const wlRef = useRef(wl);
+  wlRef.current = wl;
   const geoVersion = Math.floor(wl.version / TUBE_REGEN_INTERVAL);
   // 観測者 cell index で gating: segment 構造は obs cell 跨ぎでのみ変わる (= cell 内 obs
   // 動きでは isWrapCrossing 結果不変)。 cell 内 obs 動きは mesh.matrix (= displayMatrix)
@@ -112,8 +120,9 @@ export const WorldLineRenderer = ({
     torusHalfWidth !== undefined && observerPos
       ? Math.floor((observerPos.y + torusHalfWidth) / (2 * torusHalfWidth))
       : 0;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: geoVersion throttles rebuild; wl included for respawn identity change; observerPos resolved through obsCellX/Y
+  // biome-ignore lint/correctness/useExhaustiveDependencies: geoVersion throttles rebuild; wl 参照は wlRef 経由で memo 内部から最新値を読む (= deps に wl を含めると毎 tick rebuild で throttle が死ぬ); observerPos resolved through obsCellX/Y
   const tubeGeos = useMemo(() => {
+    const wl = wlRef.current; // memo 実行時点の最新 wl
     for (const g of prevTubeGeosRef.current) g.dispose();
     prevTubeGeosRef.current = [];
     if (wl.history.length < 2) return [];
@@ -149,7 +158,7 @@ export const WorldLineRenderer = ({
     }
     prevTubeGeosRef.current = geos;
     return geos;
-  }, [geoVersion, wl, torusHalfWidth, obsCellX, obsCellY]);
+  }, [geoVersion, torusHalfWidth, obsCellX, obsCellY]);
 
   // Dispose on unmount
   useEffect(() => {

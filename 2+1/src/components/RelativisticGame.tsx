@@ -297,20 +297,27 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   });
 
   /**
-   * WebGL context loss listener を DOM polling で attach。
+   * WebGL context loss を **invisible auto-recovery** で透過的に吸収する設計。
    *
-   * R3F の `<Canvas onCreated>` および `useThree` ベースの attach は実機検証で listener が
-   * fire しないケースを観測 (= preview 環境 + おそらく real Brave でも) したため、 確実に
-   * 効く `document.querySelector('canvas')` ベースの polling pattern に倒す。
+   * **戦略**:
+   * 1. DOM polling で canvas 要素を探し、 webglcontextlost listener を attach (R3F の
+   *    `onCreated` / `useThree` 経由は実機で fire しないケースを確認したため DOM 直)
+   * 2. context loss 検知時、 store の `incrementCanvasGeneration()` を call (= state 変更)
+   * 3. 各 `<Canvas key="...">` に generation を含めているので、 React が **古い Canvas を
+   *    unmount → 新 generation の Canvas を mount** → R3F が新 WebGL context を作成 →
+   *    scene tree (= geometry / material / texture) を全て新規構築 → render 復帰
+   * 4. zustand store (= physics / killLog / score / players) は unmount に左右されず保持、
+   *    user は 1-2 frame の flash で済む (= page reload 不要)
    *
-   * 戦略:
-   * - mount 時に setInterval で canvas DOM 要素を探索
-   * - WebGL context を持つ canvas (= 2D radar canvas は除外) を見つけたら listener を
-   *   attach、 重複防止のため `__webglLostAttached` フラグを立てる
-   * - 全 canvas に attach 完了するまで polling 継続 (= mode 切替で新 Canvas mount に追従)
+   * **watchdog**: 通常 1 回の loss は auto-remount で消化されるが、 短時間 (= 1.5s) 内に
+   * 2 回目の loss が起きたら catastrophic と判定 (= remount しても loss が連発する状況、
+   * GPU 圧が解消していない) して `webglContextLost: true` を立て、 `WebGLLostOverlay` で
+   * 「再読込」 UI を出す escape hatch にする。
    *
-   * cleanup は不要 (= unmount 時に DOM canvas も外れる、 listener は GC で消える)。
+   * 注意: 2D radar / Speedometer canvas は対象外 (= WebGL context を持たないため
+   * `getContext("webgl2") || getContext("webgl")` で除外)。
    */
+  const lastLostAtRef = useRef<number>(0);
   useEffect(() => {
     const tryAttach = () => {
       const canvases = document.querySelectorAll<HTMLCanvasElement>("canvas");
@@ -319,28 +326,37 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
           __webglLostAttached?: boolean;
         };
         if (tagged.__webglLostAttached) continue;
-        // WebGL context を持つ canvas のみ対象 (= 2D radar / Speedometer canvas は除外)
         const ctx = canvas.getContext("webgl2") || canvas.getContext("webgl");
         if (!ctx) continue;
         tagged.__webglLostAttached = true;
         canvas.addEventListener("webglcontextlost", (e) => {
           e.preventDefault();
+          const now = Date.now();
+          const sinceLast = now - lastLostAtRef.current;
+          lastLostAtRef.current = now;
           console.warn(
-            "[WebGL] context lost — overlay will appear, user reload required",
+            `[WebGL] context lost (sinceLast=${sinceLast}ms) — auto-remounting Canvas`,
           );
-          useGameStore.getState().setWebglContextLost(true);
+          useGameStore.getState().incrementCanvasGeneration();
+          // watchdog: 1.5s 以内の 2 回目は auto-remount で復旧不能と判断、 overlay 表示
+          if (sinceLast > 0 && sinceLast < 1500) {
+            console.error(
+              "[WebGL] chronic context loss detected (2 losses within 1.5s) — showing reload overlay",
+            );
+            useGameStore.getState().setWebglContextLost(true);
+          }
         });
         canvas.addEventListener("webglcontextrestored", () => {
-          console.log(
-            "[WebGL] context restored (reload still recommended for clean reinit)",
-          );
+          console.log("[WebGL] context restored");
         });
       }
     };
-    tryAttach(); // 即時 attach 試行 (mount 直後)
-    const intervalId = setInterval(tryAttach, 500); // 0.5s 間隔で新 Canvas に追従
+    tryAttach();
+    const intervalId = setInterval(tryAttach, 200);
     return () => clearInterval(intervalId);
   }, []);
+
+  const canvasGeneration = useGameStore((s) => s.canvasGeneration);
 
   return (
     <div
@@ -379,7 +395,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
 
       {showPLCSlice && plcMode === "3d" ? (
         <Canvas
-          key="plc3d"
+          key={`plc3d-gen${canvasGeneration}`}
           camera={{ position: [0, -12, 20], fov: 60 }}
         >
           <SceneContent
@@ -396,7 +412,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         </Canvas>
       ) : useOrthographic ? (
         <Canvas
-          key="ortho"
+          key={`ortho-gen${canvasGeneration}`}
           orthographic
           camera={{
             zoom: 30,
@@ -419,7 +435,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         </Canvas>
       ) : (
         <Canvas
-          key="persp"
+          key={`persp-gen${canvasGeneration}`}
           camera={{ position: [0, 0, 0], fov: 75 }}
         >
           <SceneContent
