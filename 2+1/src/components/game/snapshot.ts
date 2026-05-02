@@ -40,11 +40,33 @@ import type {
  */
 export const buildSnapshot = (myId: string, isBeaconHolder: boolean) => {
   const s = useGameStore.getState();
-  // 新 joiner のスポーン時刻 = alive で broadcast している player の pos.t の min と max
-  // の中間 (詳細: respawnTime.ts の computeSpawnCoordTime docstring)。 旧「max」 仕様では
-  // 高 γ 累積 player に引っ張られ、 静止気味 alive player が新 joiner 過去光円錐内に入って
-  // 永遠凍結する bug が起きていた (2026-04-28)。
-  const hostTime = computeSpawnCoordTime(s.players, undefined, s.staleFrozenIds);
+  // 新 joiner のスポーン時刻 = 全 peer の virtualPos.t の min と max の中間。 Stage 7
+  // 以降は alive / stale / dead を `virtualPos` で統一処理 (= 詳細: respawnTime.ts の
+  // computeSpawnCoordTime docstring)。 ここから lastUpdateTimes は取れない (= zustand
+  // store に持っていない、 useStaleDetection 内 ref 専有) ため `undefined` を渡す
+  // (= τ=0 fallback、 alive peer は phaseSpace.pos.t そのまま、 dead は killLog から
+  // lastSyncForDead で extrapolate される)。
+  //
+  // **stale pre-filter**: snapshot 側では stale peer を hostTime 算出から除外する。
+  // 理由: 新 joiner spawn の安全弁として、 broadcast 停止済 peer の (= 古くなって信頼でき
+  // ない) pos.t に新 joiner が引っ張られる事故を防ぐ。 Stage 5 の Rule B convergence
+  // でも事後的に収束するが、 buildSnapshot 時点での pull を未然に防ぐ caller-level
+  // safeguard として維持。 plan §6 Stage 7 は plan-level で stale 除外撤廃を提唱するが、
+  // buildSnapshot のような「broadcast せず内部で snapshot を組む」 経路では lastUpdateTimes
+  // が無いため virtualPos も極端値になる → 旧 「stale は寄与させない」 セマンティクスを
+  // pre-filter で保持。
+  const aliveMap = new Map<string, RelativisticPlayer>();
+  for (const [id, p] of s.players) {
+    if (s.staleFrozenIds.has(id)) continue;
+    aliveMap.set(id, p);
+  }
+  const hostTime = computeSpawnCoordTime(
+    aliveMap,
+    s.killLog,
+    undefined,
+    Date.now(),
+    undefined,
+  );
 
   type PhaseSpaceWire = {
     pos: { t: number; x: number; y: number; z: number };

@@ -1,86 +1,81 @@
 import { SPAWN_RANGE } from "./constants";
-import type { RelativisticPlayer, RespawnEventRecord } from "./types";
+import type {
+  KillEventRecord,
+  RelativisticPlayer,
+  RespawnEventRecord,
+} from "./types";
+import { lastSyncForDead, virtualPos } from "./virtualWorldLine";
 
 /**
  * 初回スポーン / リスポーン / 新 joiner スポーンで共通に使う座標時刻を算出。
  *
- * ルール: **alive で broadcast している player (= dead 除外 + stale 除外 + excludeId 除外)
- * の `phaseSpace.pos.t` の min と max の中間値**。
+ * **Stage 7 (`plans/2026-05-02-causality-symmetric-jump.md`)**: alive / stale / dead を
+ * `virtualPos` で統一処理。 旧仕様の `staleFrozenIds` 除外 + `isDead` 除外を撤廃し、
+ * 全 peer を「最後に信じた phaseSpace から `pos + u·τ` で inertial 延長した virtualPos」
+ * の coord time で扱う:
  *
- * 2026-04-28 に旧「全 player の max」 から変更。 旧仕様では 高 γ 累積 player に
- * hostTime が引っ張られ、 静止気味 alive player が新 joiner の過去光円錐内に入って
- * 永遠凍結する bug が起きていた (= `evolvePhaseSpace` で `pos.t += γ * dτ` (dτ = wall_dt)
- * のため、 動いた player の pos.t は wall_clock より速く進み、 player 間 lag が累積する)。
+ * - alive (= broadcast 受信中): `lastSyncWall = lastUpdateTimes.get(id)`、 提供されない
+ *   場合は `nowWall` (= τ=0、 `phaseSpace.pos` そのまま) で fallback
+ * - stale (= 5s+ broadcast 停止): 同 alive (= 最後の broadcast 値から forward 延長)
+ * - dead: `lastSyncWall = lastSyncForDead(id, killLog)` (= killLog の最新 wallTime)、
+ *   未登録なら `nowWall` で fallback
  *
- * 中間値にすることで:
- *  - max の動いた player は新 joiner の **未来側** (= 新 joiner.t < other.t、 freeze check
- *    の line 593 で skip)
- *  - min の静止気味 player は新 joiner の **過去側** だが lag は ±(max-min)/2 に半減 →
- *    typical な spatial 距離より dt が小さくなり 過去光円錐内に入りにくい
+ * 算出値は `(min + max) / 2` で「両側 lag を半減」 する 4/28 的中間値仕様 (= `3ba639a`
+ * 由来)。 Stage 8 で「self の wall_clock 自分基準 (α 案)」 等への変更を検討中、 現時点で
+ * は中間値を維持。
  *
- * 原則:
- *
- *  1. **自機除外** (`excludeId`): 呼び出し元が自機 ID を渡すと除外される。
- *     自機が ghost 中の自己 respawn 計算で自分の ghost.pos.t を参照するのを防ぐ。
- *     ghost は生存時と同じ物理で進むが pos.t が γ で先走るため、 自己参照すると
- *     自機 respawn が遠未来へ暴走する。
- *
- *  2. **dead player は除外**: 死亡 placeholder の pos.t (= 死亡時刻で固定) は alive な
- *     「現在 broadcasting している player」 を代表しないため min/max 算定から外す。
- *     全員死亡の稀ケースでは fallback として全 player の max を使う (= 旧仕様の挙動)。
- *
- *  3. **stale player は除外**: `staleFrozenIds` で渡された ID は除外。 broadcast 停止後
- *     5s 経過の player を含めると min が異常に過去側に振れる。
- *
- * **fallback**: alive non-stale が居ない場合、 全 player (dead 含む) の max にフォールバック
- * (= ゲーム初期化前 / 全員死亡の瞬間 等)。 通常 LH が常時 alive のため実害稀。
+ * 旧仕様 (~ Stage 7) との挙動差:
+ * - dead 含めて min/max 算定 → 死後しばらくは死亡 player の virtualPos.t も寄与
+ * - stale 別扱いなし → broadcast 停止中の peer も予測値で寄与
+ * - 結果として min/max の spread が「各 peer の純 inertial 予測」 に基づき、 broadcast
+ *   gap や death event で discrete jump しなくなる
  *
  * **呼び出し元の責務**:
- *  - 自機 respawn 計算: `excludeId = myId` を渡す
- *  - 初回スポーン / 新 joiner (snapshot.hostTime): 自機がまだ players に未登録なので
- *    excludeId 省略可
- *  - stale 集合は基本的に `useGameStore.getState().staleFrozenIds` を渡す
+ *  - 自機 respawn 計算: `excludeId = myId` を渡す (= 自分の現状 pos を反映しない)
+ *  - 初回スポーン / 新 joiner: 自機未登録なので `excludeId` 省略可
+ *  - `lastUpdateTimes` は `useStaleDetection` の `lastUpdateTimeRef.current` を渡す。
+ *    取得困難な caller (= snapshot から呼ぶ場合等) は `undefined` → τ=0 fallback で OK
+ *  - `nowWall` は `Date.now()`
+ *
+ * **fallback**: 全 peer が excludeId に該当 / 空 → 0 を返す。
  */
 export const computeSpawnCoordTime = (
   players: Map<string, RelativisticPlayer>,
+  killLog: readonly KillEventRecord[],
+  lastUpdateTimes: ReadonlyMap<string, number> | undefined,
+  nowWall: number,
   excludeId?: string | null,
-  staleFrozenIds?: ReadonlySet<string>,
 ): number => {
   let minT = Number.POSITIVE_INFINITY;
   let maxT = Number.NEGATIVE_INFINITY;
   for (const [id, p] of players) {
     if (excludeId != null && id === excludeId) continue;
-    if (p.isDead) continue;
-    if (staleFrozenIds?.has(id)) continue;
-    const t = p.phaseSpace.pos.t;
-    if (!Number.isFinite(t)) continue;
-    if (t < minT) minT = t;
-    if (t > maxT) maxT = t;
+    const lastSync = p.isDead
+      ? (lastSyncForDead(id, killLog) ?? nowWall)
+      : (lastUpdateTimes?.get(id) ?? nowWall);
+    const vp = virtualPos(p, lastSync, nowWall);
+    if (!Number.isFinite(vp.t)) continue;
+    if (vp.t < minT) minT = vp.t;
+    if (vp.t > maxT) maxT = vp.t;
   }
   if (Number.isFinite(minT) && Number.isFinite(maxT)) {
     return (minT + maxT) / 2;
   }
-  // Fallback: alive non-stale が居ない (= ゲーム初期化前 / 全員死亡の瞬間 等)。
-  // 全 player (dead 含む) の max を使う = 旧仕様の挙動。
-  let fallbackMaxT = Number.NEGATIVE_INFINITY;
-  for (const [id, p] of players) {
-    if (excludeId != null && id === excludeId) continue;
-    const t = p.phaseSpace.pos.t;
-    if (Number.isFinite(t) && t > fallbackMaxT) fallbackMaxT = t;
-  }
-  return Number.isFinite(fallbackMaxT) ? fallbackMaxT : 0;
+  return 0;
 };
 
 /**
  * リスポーン/スポーン位置を生成（座標時間 + ランダム空間位置）。
- * `excludeId` / `staleFrozenIds` の扱いは `computeSpawnCoordTime` に準拠。
+ * `excludeId` の扱いは `computeSpawnCoordTime` に準拠。
  */
 export const createRespawnPosition = (
   players: Map<string, RelativisticPlayer>,
+  killLog: readonly KillEventRecord[],
+  lastUpdateTimes: ReadonlyMap<string, number> | undefined,
+  nowWall: number,
   excludeId?: string | null,
-  staleFrozenIds?: ReadonlySet<string>,
 ): { t: number; x: number; y: number; z: number } => ({
-  t: computeSpawnCoordTime(players, excludeId, staleFrozenIds),
+  t: computeSpawnCoordTime(players, killLog, lastUpdateTimes, nowWall, excludeId),
   x: (Math.random() - 0.5) * SPAWN_RANGE,
   y: (Math.random() - 0.5) * SPAWN_RANGE,
   z: 0,

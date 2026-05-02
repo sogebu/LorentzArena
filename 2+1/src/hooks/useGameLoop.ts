@@ -469,7 +469,7 @@ export function useGameLoop({
             fresh.players,
             myId,
             freshMe,
-            stale.staleFrozenRef.current,
+            fresh.killLog,
             causalFrozenRef.current,
             fresh.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined,
             stale.lastUpdateTimeRef.current,
@@ -797,8 +797,10 @@ export function useGameLoop({
               if (!selectIsDead(currentStore, victimId)) return; // poll 先行 or 別経路で respawn 済
               const respawnPos = createRespawnPosition(
                 currentStore.players,
+                currentStore.killLog,
+                stale.lastUpdateTimeRef.current,
+                Date.now(),
                 victimId,
-                currentStore.staleFrozenIds,
               );
               sendToNetwork({
                 type: "respawn" as const,
@@ -860,8 +862,10 @@ export function useGameLoop({
 
             const respawnPos = createRespawnPosition(
               pollState.players,
+              pollState.killLog,
+              stale.lastUpdateTimeRef.current,
+              Date.now(),
               victimId,
-              pollState.staleFrozenIds,
             );
             sendToNetwork({
               type: "respawn" as const,

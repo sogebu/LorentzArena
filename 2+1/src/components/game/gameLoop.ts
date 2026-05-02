@@ -498,34 +498,53 @@ const FREEZE_RECENT_UPDATE_MS = 1500;
  * If so, the player should be frozen to preserve causality.
  * Uses hysteresis: threshold is 2.0 when already frozen, 0 otherwise.
  *
+ * **Stage 7 (`plans/2026-05-02-causality-symmetric-jump.md`)**: alive / stale / dead を
+ * `virtualPos` で統一処理。 旧仕様の `staleFrozenIds` 除外 + `isDead` 除外を撤廃し、
+ * 全 peer を「最後に信じた phaseSpace から `pos + u·τ` で inertial 延長した virtualPos」
+ * で判定対象にする (= dead や stale も予測値で causality cone に寄与)。
+ *
  * **PBC**: 観測者 / 他機 を `displayPos(_, FREEZE_ORIGIN, L)` で (0,0) cell に折り畳んで
  * から `subVector4` (= unwrapped 距離) で判定。 詳細は `FREEZE_ORIGIN` の docstring。
  *
- * **Skip 対象**: 自機 / dead / Lighthouse / staleFrozen 既存に加え、 `lastUpdateTime` と
+ * **Skip 対象 (Stage 7 後)**: 自機 / Lighthouse のみ。 加えて `lastUpdateTime` と
  * `currentWallTime` が渡されたら「最終 phaseSpace 受信から `FREEZE_RECENT_UPDATE_MS` 以上
- * 経過した他機」 も skip。 これは staleFrozen (5s) より早く skip することで、 落ちた直後 〜
- * stale 認定までの sub-grace で freeze cause になるのを防ぐ。
+ * 経過した他機」 も skip (= 1.5s grace、 落ちた直後 〜 stale 認定までの sub-grace で
+ * freeze cause にしない、 plan §6 Stage 7 で「概念別」 として維持)。
+ *
+ * **dead を含める意味**: 死亡 player も virtualPos の inertial 予測線 (= `xD + uD·τ`)
+ * を持つ。 self が dead の予測線の future cone に深く入り込むと freeze するのが対称設計。
+ * 1.5s grace でも skip されるので「最近死んだ peer」 は短期的に freeze cause になり得るが、
+ * grace 経過後は skip。
  */
 export function checkCausalFreeze(
   players: Map<string, RelativisticPlayer>,
   myId: string,
   me: RelativisticPlayer,
-  staleFrozenIds: Set<string>,
+  killLog: readonly KillEventRecord[],
   wasFrozen: boolean,
   torusHalfWidth?: number,
-  lastUpdateTime?: Map<string, number>,
+  lastUpdateTime?: ReadonlyMap<string, number>,
   currentWallTime?: number,
 ): boolean {
   const wrappedMe =
     torusHalfWidth !== undefined
       ? displayPos(me.phaseSpace.pos, FREEZE_ORIGIN, torusHalfWidth)
       : me.phaseSpace.pos;
+  const nowWall = currentWallTime ?? Date.now();
   for (const [id, player] of players) {
     if (id === myId) continue;
-    if (player.isDead) continue;
     if (isLighthouse(id)) continue;
-    if (staleFrozenIds.has(id)) continue;
-    if (player.phaseSpace.pos.t > me.phaseSpace.pos.t) continue;
+
+    // alive / stale / dead 統一: virtualPos で peer の予測 pos を取得
+    const lastSync = player.isDead
+      ? (lastSyncForDead(id, killLog) ?? nowWall)
+      : (lastUpdateTime?.get(id) ?? nowWall);
+    const peerVPos = virtualPos(player, lastSync, nowWall);
+
+    if (peerVPos.t > me.phaseSpace.pos.t) continue; // peer が me の未来 → Rule A 領域外
+
+    // 1.5s grace: 最後 broadcast から FREEZE_RECENT_UPDATE_MS 以上経過した peer は skip
+    // (= 落ちた直後 〜 stale 認定までの sub-grace、 plan §6 Stage 7 で「概念別」 として維持)
     if (lastUpdateTime && currentWallTime !== undefined) {
       const lastUpdate = lastUpdateTime.get(id);
       if (
@@ -535,10 +554,11 @@ export function checkCausalFreeze(
         continue;
       }
     }
+
     const wrappedPlayer =
       torusHalfWidth !== undefined
-        ? displayPos(player.phaseSpace.pos, FREEZE_ORIGIN, torusHalfWidth)
-        : player.phaseSpace.pos;
+        ? displayPos(peerVPos, FREEZE_ORIGIN, torusHalfWidth)
+        : peerVPos;
     const diff = subVector4(wrappedPlayer, wrappedMe);
     const l = lorentzDotVector4(diff, diff);
     const threshold = wasFrozen ? CAUSAL_FREEZE_HYSTERESIS : 0;
