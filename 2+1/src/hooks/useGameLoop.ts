@@ -23,7 +23,6 @@ import {
   LASER_RANGE,
   LIGHT_CONE_HEIGHT,
   LIGHTHOUSE_HIT_DAMAGE,
-  MAX_FROZEN_WORLDLINES,
   MAX_LASERS,
   MAX_WORLDLINE_HISTORY,
   PROCESSED_LASERS_CLEANUP_THRESHOLD,
@@ -32,7 +31,6 @@ import {
 } from "../components/game/constants";
 import { causalityJumpLambda } from "../components/game/causalityRules";
 import {
-  ballisticCatchupPhaseSpace,
   checkCausalFreeze,
   processCamera,
   processHitDetection,
@@ -167,85 +165,21 @@ export function useGameLoop({
     };
 
     const gameLoop = () => {
-      // hidden 中は game loop を skip。lastTimeRef は fresh に保たず、復帰時の
-      // 最初の tick で dTau = hidden 全体の wall delta として ballistic catchup を
-      // 走らせる (下の `if (dTau > 0.2)` branch)。hidden 中に fresh 化する旧実装は
-      // 自 pos.t を universal wall-clock から drift させていた。
-      if (document.hidden) return;
+      // hidden 中は game loop を skip。 lastTimeRef は **毎 throttle tick で current に更新**
+      // して復帰時の dτ を最後の throttle tick 以降の小値に抑える (= 旧実装は lastTimeRef
+      // を fresh 化せず復帰時 dτ が hidden 全体 = 巨大値になり ballistic catchup branch が
+      // 必要だった)。 復帰後の convoy 合流は Stage 5 の Rule B が毎 tick 評価で処理する
+      // (= λ_exit max まで forward jump、 大 λ なら worldLine 凍結 + 新セグメント)。
+      // 詳細: plans/2026-05-02-causality-symmetric-jump.md §6 Stage 6 +
+      // design/state-ui.md:156。
+      if (document.hidden) {
+        lastTimeRef.current = Date.now();
+        return;
+      }
 
       const currentTime = Date.now();
       const dTau = (currentTime - lastTimeRef.current) / 1000;
       lastTimeRef.current = currentTime;
-      // 大 dTau (hidden 復帰 / setInterval 一時停止復帰) は ballistic catchup で吸収。
-      // hidden 中も「最後 thrust 入力が継続されていた」 として thrust + friction + energy
-      // 消費を sub-step で再生 (= odakin 設計 2026-04-28、 通常 tick との対称性)。
-      // 燃料切れたら friction のみ → 自然減速 → 暴走防止。 worldLine は freeze + 1 点
-      // reset で clean 切断。
-      if (dTau > 0.2) {
-        const store = useGameStore.getState();
-        const me = store.players.get(myId);
-        if (me && !me.isDead) {
-          const { newPs: evolved, newEnergy } = ballisticCatchupPhaseSpace(
-            me.phaseSpace,
-            dTau,
-            me.energy,
-          );
-          // 復帰 pos を (0,0) cell に wrap (= 「実体は (0,0) cell に閉じる」 設計、
-          // odakin 2026-04-28)。 hidden 中の ballistic 移動で raw cell 跨ぎが起きても
-          // state.pos は必ず [-L, L)² に収める → broadcast 後の他 peer 側でも整合。
-          const torusHalfWidth =
-            store.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined;
-          const wrappedPos =
-            torusHalfWidth !== undefined
-              ? displayPos(evolved.pos, { x: 0, y: 0 }, torusHalfWidth)
-              : evolved.pos;
-          // 自機 heading = 現カメラ yaw (ballistic 中も yaw は入力で変化し得る)。
-          const newPhaseSpace = {
-            ...evolved,
-            pos: wrappedPos,
-            heading: yawToQuat(headingYawRef.current),
-          };
-          store.setPlayers((prev) => {
-            const cur = prev.get(myId);
-            if (!cur) return prev;
-            if (cur.worldLine !== me.worldLine) return prev; // respawn race guard
-            const next = new Map(prev);
-            next.set(myId, {
-              ...cur,
-              phaseSpace: newPhaseSpace,
-              energy: newEnergy,
-              // 既存 history を捨てて 1 点から再スタート。
-              // (凍結側は下の setFrozenWorldLines で保存する)
-              worldLine: { ...cur.worldLine, history: [newPhaseSpace] },
-            });
-            return next;
-          });
-          // 既存 worldLine が空でなければ凍結 (messageHandler の gap reset と同じ semantic)。
-          if (me.worldLine.history.length > 0) {
-            store.setFrozenWorldLines((prev) =>
-              [
-                ...prev,
-                {
-                  playerId: myId,
-                  worldLine: me.worldLine,
-                  color: me.color,
-                },
-              ].slice(-MAX_FROZEN_WORLDLINES),
-            );
-          }
-          // network に catchup 後の phaseSpace を通知。受信側は gap 検出で
-          // 自動 freeze + 新セグメント開始する。
-          sendToNetwork({
-            type: "phaseSpace" as const,
-            senderId: myId,
-            position: newPhaseSpace.pos,
-            velocity: newPhaseSpace.u,
-            heading: newPhaseSpace.heading,
-            alpha: newPhaseSpace.alpha,
-          });
-        }
-        return;
-      }
 
       const store = useGameStore.getState();
 

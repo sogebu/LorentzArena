@@ -6,7 +6,6 @@ import {
   displayPos,
   evolvePhaseSpace,
   inverseLorentzBoost,
-  lorentzBoost,
   lorentzDotVector4,
   minImageDelta1D,
   multiplyVector4Matrix4,
@@ -23,9 +22,7 @@ import {
   CAMERA_PITCH_SPEED,
   CAMERA_YAW_SPEED,
   CAUSAL_FREEZE_HYSTERESIS,
-  ENERGY_MAX,
   ENERGY_PER_SHOT,
-  ENERGY_RECOVERY_RATE,
   FRICTION_COEFFICIENT,
   HIT_RADIUS,
   LASER_COOLDOWN,
@@ -235,92 +232,12 @@ export function processPlayerPhysics(
   };
 }
 
-/**
- * タブ hidden 復帰時の ballistic catchup。 hidden 中も「最後 thrust 入力が継続されてた」
- * (= odakin 設計 2026-04-28) として通常 tick と同じ物理 (thrust + friction + energy
- * 消費) を sub-step で再生する。 燃料切れたら thrust 自動停止、 以降は friction のみで
- * 自然減速 → 暴走防止。 通常 tick との挙動対称性を保つ。
- *
- * 「最後 thrust」 の取得: phaseSpace.alpha は world frame thrust 4-加速度 (= 通常 tick
- * の processPlayerPhysics で thrust pure を格納してる、 friction は含まない)。 これを
- * `lorentzBoost(u)` で rest 系に逆変換すれば「機体 rest frame での入力 thrust 方向 +
- * 強度」 が取れる。 hidden 中は機体姿勢 / 入力 thrust 不変仮定で毎 sub-step この rest
- * thrust を適用 (= 通常 tick と同じ pattern。 friction は world frame で u に比例 damping)。
- *
- * 目的: hidden 中は game loop が tick しないため、 単純に `lastTimeRef` を fresh に
- * 保つ従来実装だと自 pos.t が他 peer と drift する。 hidden 中も物理を tick 相当で
- * 再生して universal wall-clock と自 proper time の乖離を防ぐ。
- *
- * 計算結果は self が phaseSpace broadcast する (= 自己申告)。 host 側で再計算しない
- * (= Authority 解体 architecture と整合、 messageHandler.ts の stale 復帰経路は
- * staleFrozen 解除のみで通常 phaseSpace 経路に流す)。 sub-step `STEP = 0.1s` は friction
- * 線形近似誤差 < 0.1% を保つ。
- */
-export interface BallisticCatchupResult {
-  newPs: ReturnType<typeof createPhaseSpace>;
-  newEnergy: number;
-}
-
-export function ballisticCatchupPhaseSpace(
-  ps: ReturnType<typeof createPhaseSpace>,
-  totalDTau: number,
-  initialEnergy: number,
-): BallisticCatchupResult {
-  // 凍結時 alpha (= world frame thrust 4-加速度) を rest 系に逆 boost。
-  // alpha は phaseSpace.alpha に格納済 (gameLoop.ts processPlayerPhysics で pure thrust
-  // のみ格納、 friction は混じらない、 messageHandler 経由で broadcast/受信されてる)。
-  const restBoost = lorentzBoost(ps.u);
-  const alphaRest4 = multiplyVector4Matrix4(restBoost, ps.alpha);
-  const thrustAxRest = alphaRest4.x;
-  const thrustAyRest = alphaRest4.y;
-  const thrustAzRest = alphaRest4.z;
-  const thrustMag = Math.sqrt(
-    thrustAxRest * thrustAxRest +
-      thrustAyRest * thrustAyRest +
-      thrustAzRest * thrustAzRest,
-  );
-  const thrustFrac =
-    thrustMag > 0 ? Math.min(1, thrustMag / PLAYER_ACCELERATION) : 0;
-
-  const STEP = 0.1;
-  let current = ps;
-  let energy = initialEnergy;
-  let remaining = totalDTau;
-
-  while (remaining > 1e-6) {
-    const step = Math.min(STEP, remaining);
-
-    // Energy management (通常 tick = processPlayerPhysics + useGameLoop と同 pattern)。
-    // thrust ON: energy 消費、 燃料切れたら thrustScale=0 → friction のみ。
-    // thrust なし: energy 回復 (= 通常 tick の useGameLoop:569 と同じ)。
-    let thrustScale = 1;
-    if (thrustFrac > 0) {
-      const required = THRUST_ENERGY_RATE * thrustFrac * step;
-      if (energy <= 0) {
-        thrustScale = 0;
-      } else if (required > energy) {
-        thrustScale = energy / required;
-        energy = 0;
-      } else {
-        energy -= required;
-      }
-    } else {
-      energy = Math.min(ENERGY_MAX, energy + ENERGY_RECOVERY_RATE * step);
-    }
-
-    // Acceleration = scaled rest thrust + world-frame friction (= gameLoop.ts:201-202 と同 pattern)
-    const ax =
-      thrustAxRest * thrustScale + -current.u.x * FRICTION_COEFFICIENT;
-    const ay =
-      thrustAyRest * thrustScale + -current.u.y * FRICTION_COEFFICIENT;
-    const accel = createVector3(ax, ay, 0);
-
-    current = evolvePhaseSpace(current, accel, step);
-    remaining -= step;
-  }
-
-  return { newPs: current, newEnergy: energy };
-}
+// `ballisticCatchupPhaseSpace` (= タブ hidden 復帰の thrust 継続 sub-step 再生) は
+// 2026-05-02 に Stage 6 で撤廃 (`plans/2026-05-02-causality-symmetric-jump.md` §5.1 +
+// §6 Stage 6)。 hidden 中の進行は: useGameLoop の hidden 早期 return で `lastTimeRef` を
+// 毎 throttle tick 更新 → 復帰時 dτ は小値、 通常 tick で Rule B (Stage 5) が convoy
+// 合流の jump を毎 tick 評価する純 inertial 統一に置き換え。 旧仕様の commit 履歴は
+// `8c02c0f` (= 2026-04-28、 thrust 継続再生実装) を参照。
 
 // --- Lighthouse AI ---
 
