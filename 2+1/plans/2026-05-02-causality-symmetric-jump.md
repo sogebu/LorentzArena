@@ -85,14 +85,19 @@
 
 ## 3. 数学: λ_exit の計算
 
+> **Signature 注記**: 本節の B / C は座標直接計算 (= Minkowski 内積を介さず `Δt² − |Δxy|²` 等を
+> 直書き) で signature 不変。 codebase `physics/vector.ts` の `lorentzDotVector4` は
+> **(+,+,+,-)** signature (= spacelike positive、 timelike では `lorentzDot < 0`)。 cf. plan
+> 初版の (+,-,-,-) 表記は撤去済 (= 内部不整合だったため)。
+
 ### 3.1 設定
 
 - `me = (t_m, x_m, y_m, 0)` (現在位置)
 - `me.u = (u_x, u_y, 0)` (3-velocity 空間成分)
-- `γ = √(1 + u_x² + u_y²)` (= time component の 4-velocity)
-- `u^μ = (γ, u_x, u_y, 0)` (timelike 規格化、 u·u = 1 in (+,-,-,-) Minkowski)
+- `γ = √(1 + u_x² + u_y²)` (= 4-velocity の time 成分)
+- `u^μ = (γ, u_x, u_y, 0)` (timelike 規格化、 制約 `γ² − u_x² − u_y² = 1` が常に成立)
 - `other = (t_o, x_o, y_o, 0)`
-- `Δ ≡ other - me = (Δt, Δx, Δy, 0)` で `Δt > 0` (= other は me の未来) AND `Δ·Δ > 0` (= timelike past、 me は other の過去 cone 内)
+- `Δ ≡ other - me = (Δt, Δx, Δy, 0)` で `Δt > 0` (= other は me の未来) AND `Δt² − Δx² − Δy² > 0` (= timelike past、 me は other の過去 cone 内)
 
 ### 3.2 cone 表面到達条件
 
@@ -110,20 +115,36 @@
 λ² - 2Bλ + C = 0
 
 ただし
-  B = γΔt - u_x·Δx - u_y·Δy   (= u·Δ in (+,-,-,-) Minkowski)
-  C = Δt² - Δx² - Δy²          (= Δ·Δ、 timelike past で C > 0)
+  B = γΔt - u_x·Δx - u_y·Δy
+  C = Δt² - Δx² - Δy²          (= timelike past で C > 0、 codebase signature (+,+,+,-) では `lorentzDot(Δ, Δ) = -C < 0` に対応)
 ```
 
 ### 3.3 forward exit の選択
 
 `f(λ) = λ² - 2Bλ + C` は parabola opens up。 `f(0) = C > 0` (= λ=0 で me は cone 内 timelike past)。
 
-実根条件: `disc = B² - C ≥ 0`。 timelike past で B > 0 (= u·Δ > 0、 u と Δ が同じ time-forward 向き)。
+**B > 0 の保証**: timelike past で `Δt > |Δxy|`。 さらに `|u|² = γ² − 1 < γ²` から `|u| < γ`、 通常の Cauchy-Schwarz で `|u·Δxy| ≤ |u|·|Δxy| < γ|Δxy| < γΔt`。 ゆえに `B = γΔt − u·Δxy > 0` (厳密)。
 
-forward exit (= 小さい方の正根、 λ 増加で f が 0 を切る最初の点):
+**disc ≥ 0 の保証** (= forward-directed timelike vectors の reverse Cauchy-Schwarz inequality):
+
+```
+B² = (γΔt - u·Δxy)² ≥ (γ² - |u|²)(Δt² - |Δxy|²) = 1 · C = C
+```
+
+から `B² ≥ C`、 ゆえに `disc = B² − C ≥ 0`。 **等号は `u^μ ∝ Δ` の degenerate case で達成可能** (= `u^μ = (1/√C)·Δ` と置くと `γ = Δt/√C`、 `u = Δxy/√C`、 `γ² − |u|² = (Δt²−|Δxy|²)/C = 1` で内部整合、 me が peer の 4-position に向けてちょうど飛んでいるケース)。 この場合 `λ_exit = B = √C` で me_new = peer のスポット (= cone 頂点) に到達。 数値誤差以外で disc < 0 にはならないため、 実装は `if (disc < 0) return 0` で safety net をかけるのみ。
+
+**forward exit の選択** (= 2 根のうち時系列の早い方):
+
 ```
 λ_exit = B - √(B² - C)
 ```
+
+cone surface 通過の物理意味:
+- `λ ∈ [0, λ₁]` (λ₁ ≡ λ_exit): peer's past cone **内側** (= timelike past、 peer は me を「未来からの像」 として観測中)
+- `λ ∈ (λ₁, λ₂)` (λ₂ = B + √(B²−C)): cone **外側** (= spacelike、 peer は me を観測不可)
+- `λ ∈ [λ₂, ∞)`: peer's **future** cone 内側 (= timelike future、 me_new が peer を観測可能側)
+
+Rule B は「peer から見て me が観測される境界に達する瞬間」 を取る = λ₁ = forward exit。
 
 ### 3.4 全 peer に対する max
 
@@ -131,7 +152,7 @@ forward exit (= 小さい方の正根、 λ 増加で f が 0 を切る最初の
 λ = max_{P ∈ peers, in_past_timelike(me, P)} λ_exit(P)
 ```
 
-`in_past_timelike(me, P)`: `P.t > me.t AND (P - me)·(P - me) > 0`。 spacelike / future / dead-future 対象外。
+`in_past_timelike(me, P)`: `P.t > me.t AND (P.t - me.t)² > (P.x - me.x)² + (P.y - me.y)²` (= 座標直接、 signature 不変)。 spacelike / future / dead-future 対象外。
 
 ### 3.5 適用後
 
@@ -145,14 +166,24 @@ me_new.y = me.y + λu_y
 
 ### 3.6 特殊ケース
 
+> **直感は逆になる**: 「peer に向かって進めば cone 脱出が速い」 と思いがちだが、 peer の past
+> null cone は peer.t に向けて狭くなる (= 円錐の頂点)。 空間的に peer に近づくと「狭くなる
+> cone の中央軸」 を追走する形になり、 むしろ cone 脱出に時間がかかる。 逆に peer から空間的
+> に離れる方向は、 cone surface を spatial 方向で速やかに突破する。
+
 | ケース | 数式 | 意味 |
 |---|---|---|
 | `me.u = 0` (静止 LH / 死亡静止) | `γ=1, u_x=u_y=0` → `B = Δt`, `C = Δt² - |Δxy|²`、 `λ_exit = Δt - |Δxy|`、 `me.t_new = max_P(P.t - |P.xy - me.xy|)` | 全 peer の最大「P.t − P からの距離」 surface へ catch up |
-| `me.u` が `other` から離れる方向 | B 小、 C 大 → λ_exit 大 | 遠ざかる方向は cone 脱出に長距離 |
-| `me.u` が `other` に向かう方向 | B 大、 C 同 → λ_exit 小 | 近づく方向は cone 脱出にすぐ |
+| `me.u` が `other` から **離れる** 方向 (= u·Δxy < 0) | B **大** (= γΔt - 負値 = γΔt + |u·Δxy|)、 C 不変 → λ_exit **小** | 空間方向に逃げ切れるので cone 脱出すぐ |
+| `me.u` が `other` に **向かう** 方向 (= u·Δxy > 0) | B **小** (= γΔt - 正値)、 C 不変 → λ_exit **大** | peer の time-axis を追走する形で cone 脱出に時間 (= 直感とは逆) |
 | `C ≤ 0` (spacelike already) | skip | Rule B 対象外 |
 | `Δt ≤ 0` (other は me の過去) | skip | Rule B は「自分が past cone に入った」 用、 反対の Rule A 領域 |
 | `disc < 0` (理論上 timelike past で起きないはず、 数値誤差ガード) | skip | 防御コード |
+
+> **plan v1 → v2 (2026-05-02 同日) で table 修正**: 初版は「向かう → B 大、 λ_exit 小」「離れる
+> → B 小、 λ_exit 大」 と書いていたが両方逆 (= 著者の直感誤り) + 「C 大/同」 も誤り (C は u に
+> 依存せず常に固定)。 公式 `λ_exit = B - √(B² - C)` 自体は signature-agnostic に正しく、
+> Stage 2 実装の `causalityRules.test.ts` が両方向の数値検証を内蔵して固定化を防ぐ。
 
 ---
 
@@ -385,10 +416,11 @@ export const causalityJumpLambda = (
 - solo (= peers 空): λ = 0
 - spacelike already: λ = 0
 - 静止 me (u=0)、 peer 1 人 future timelike: `λ = peer.t - me.t - |spatial|`
-- 動き me、 peer 1 人 同方向 future: B 大、 λ 小
-- 動き me、 peer 1 人 反対方向: λ 大
+- 動き me が peer の方向に **向かう** (u·Δxy > 0): B 小、 λ_exit **大** (= cone 脱出が遅い、 §3.6)
+- 動き me が peer から **離れる** (u·Δxy < 0): B 大、 λ_exit **小** (= 空間方向に逃げ切れる)
 - 多 peer: 全 max が選ばれる
 - 数値誤差ガード: `C` が極小負値 (1e-12) → 0 return
+- 適用後 `me_new` が cone 表面上 (= `Δt² - |Δxy|²` → 0)
 
 **dependency**: なし。
 
