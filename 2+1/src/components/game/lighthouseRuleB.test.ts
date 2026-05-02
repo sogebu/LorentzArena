@@ -136,12 +136,11 @@ describe("processLighthouseAI Rule B integration", () => {
     expect(result.newPs.pos.t).toBeGreaterThan(100); // 旧仕様の「host 時刻に anchor」 ではない
   });
 
-  it("dead peer: virtualPos が lastSyncForDead から inertial 延長され Rule B に貢献", () => {
-    // dead peer は lastSyncForDead で kill wallTime を取り virtualPos で前進。
-    // 死亡時 (kill.wallTime=0、 phaseSpace.pos.t=80, u=(1,0)) → currentTime=2000 (= 2s 経過)
-    // で virtualPos.t = 80 + γ·2 = 80 + √2·2 ≈ 82.83、 virtualPos.x = 0 + 1·2 = 2
-    // LH (50, 0, 0) からの λ = (82.83 - 50) - |2 - 0| = 32.83 - 2 = 30.83
-    // → LH.t_new ≈ 50 + 30.83 = 80.83
+  it("dead peer は LH の Rule B target から除外 (= 2026-05-02 hotfix で dead skip 復活)", () => {
+    // 旧 plan §6 Stage 7 / §7.10 では dead を LH Rule B に含める方針 (= dead.virtualPos の
+    // inertial 延長で LH catchup) だったが、 実機検証で「dead-me の virtualPos が alive
+    // peer (= LH 含む) を不当に追従させる」 regression が判明、 hotfix で dead skip 復活。
+    // dead 単独 + 他 alive 無しの状況では LH は通常 advance (= λ=0) のみ。
     const lh = makePlayer(LH_ID, { t: 50, x: 0, y: 0 });
     const dead = makePlayer(
       "victim",
@@ -166,12 +165,8 @@ describe("processLighthouseAI Rule B integration", () => {
       },
     ];
     const result = callLH(players, { killLog, currentTime: 2000 });
-    const tauExpected = 2.0;
-    const gammaExpected = Math.sqrt(1 + 1);
-    const vPosT = 80 + gammaExpected * tauExpected;
-    const vPosX = 0 + 1 * tauExpected;
-    const lambdaExpected = vPosT - 50 - Math.abs(vPosX);
-    expect(result.newPs.pos.t).toBeCloseTo(50 + lambdaExpected, 6);
+    // dead skip → peer 0 → λ=0 → LH は dτ=0 + λ=0 で 50 のまま
+    expect(result.newPs.pos.t).toBeCloseTo(50, 9);
   });
 
   it("multi peer mix (alive + dead): max λ over all virtualPos", () => {

@@ -39,7 +39,7 @@ import { computeInterceptDirection, isLighthouse, perturbDirection } from "./lig
 import { findLaserHitPosition } from "./laserPhysics";
 import type { ControlScheme } from "../../stores/game-store";
 import type { KillEventRecord, Laser, RelativisticPlayer } from "./types";
-import { lastSyncForDead, virtualPos } from "./virtualWorldLine";
+import { virtualPos } from "./virtualWorldLine";
 
 // --- Camera ---
 
@@ -255,7 +255,11 @@ export function processLighthouseAI(
   currentTime: number,
   lastFireMap: Map<string, number>,
   spawnTimeMap: Map<string, number>,
-  killLog: readonly KillEventRecord[],
+  // _killLog は 2026-05-02 dead-skip hotfix 後は未使用 (= dead を Rule B target から除外
+  // しているため lastSyncForDead を呼ばない)。 signature は caller との後方互換 + 将来
+  // 「dead 包含 case を asymmetric に再導入」 する場合の再利用余地のため保持、 underscore
+  // 接頭辞で TypeScript の noUnusedParameters 警告を抑制。
+  _killLog: readonly KillEventRecord[],
   lastUpdateTimes: ReadonlyMap<string, number>,
   torusHalfWidth?: number,
 ): LighthouseResult {
@@ -281,9 +285,14 @@ export function processLighthouseAI(
   for (const [pId, p] of players) {
     if (isLighthouse(pId)) continue;
     if (pId === lhId) continue;
-    const lastSync = p.isDead
-      ? (lastSyncForDead(pId, killLog) ?? currentTime)
-      : (lastUpdateTimes.get(pId) ?? currentTime);
+    // dead は LH の Rule B target から除外 (= 死亡 player の virtualPos に LH が引っ張られ
+    // ない、 ゲームプレイ上 alive peer 追従が natural)。 plan §6 Stage 7 / §7.10 は dead
+    // 包含を提唱するが、 Stage 1-8 実機検証で「dead-me の virtualPos が alive other を
+    // 不当に freeze させる」 regression が判明したため Stage 7 後の hotfix で除外復活。
+    // 死後 inertial 線の数学概念は spawn time 計算 (= computeSpawnCoordTime) に局所化し、
+    // 走行中の causality 判定 (Rule A / B) では除外する asymmetric 採用。
+    if (p.isDead) continue;
+    const lastSync = lastUpdateTimes.get(pId) ?? currentTime;
     const vPos = virtualPos(p, lastSync, currentTime);
     // PBC torus: peer の virtual pos を LH 中心の最小画像 cell に shift (= 既存
     // subVector4Torus ベースの causality 判定と同等の min-image 折り畳み)。
@@ -520,7 +529,10 @@ export function checkCausalFreeze(
   players: Map<string, RelativisticPlayer>,
   myId: string,
   me: RelativisticPlayer,
-  killLog: readonly KillEventRecord[],
+  // _killLog は 2026-05-02 dead-skip hotfix 後は未使用 (= dead を judgement 対象から除外
+  // しているため lastSyncForDead を呼ばない)。 signature は caller との後方互換 + 将来
+  // 「dead 包含 case を asymmetric に再導入」 する場合の再利用余地のため保持。
+  _killLog: readonly KillEventRecord[],
   wasFrozen: boolean,
   torusHalfWidth?: number,
   lastUpdateTime?: ReadonlyMap<string, number>,
@@ -534,11 +546,16 @@ export function checkCausalFreeze(
   for (const [id, player] of players) {
     if (id === myId) continue;
     if (isLighthouse(id)) continue;
+    // dead skip (= 2026-05-02 hotfix、 plan §6 Stage 7 の「dead 包含」 案を実機検証で撤回):
+    // dead-me の virtualPos が alive other を不当に freeze させる regression が判明したため、
+    // Rule A (本関数) と Rule B (LH AI / alive 自機) で dead を除外。 死後 inertial の
+    // 数学概念は spawn time 計算 (= computeSpawnCoordTime) に局所化、 走行中の causality
+    // 判定では除外する asymmetric 採用。 `killLog` 引数は spawn 経路と signature を揃える
+    // ためだけに残し、 本関数では現在使用しない (= 将来 dead 包含案へ swap する場合の前提)。
+    if (player.isDead) continue;
 
-    // alive / stale / dead 統一: virtualPos で peer の予測 pos を取得
-    const lastSync = player.isDead
-      ? (lastSyncForDead(id, killLog) ?? nowWall)
-      : (lastUpdateTime?.get(id) ?? nowWall);
+    // alive / stale 統一: virtualPos で peer の予測 pos を取得
+    const lastSync = lastUpdateTime?.get(id) ?? nowWall;
     const peerVPos = virtualPos(player, lastSync, nowWall);
 
     if (peerVPos.t > me.phaseSpace.pos.t) continue; // peer が me の未来 → Rule A 領域外

@@ -42,10 +42,7 @@ import { isLighthouse } from "../components/game/lighthouse";
 import { createRespawnPosition } from "../components/game/respawnTime";
 import type { useTouchInput } from "../components/game/touchInput";
 import type { Laser, RelativisticPlayer } from "../components/game/types";
-import {
-  lastSyncForDead,
-  virtualPos,
-} from "../components/game/virtualWorldLine";
+import { virtualPos } from "../components/game/virtualWorldLine";
 import {
   isLargeJump,
   pushFrozenWorldLine,
@@ -536,9 +533,14 @@ export function useGameLoop({
           const peerVirtualPositions: { pos: Vector4 }[] = [];
           for (const [pId, p] of fresh.players) {
             if (pId === myId) continue;
-            const lastSync = p.isDead
-              ? (lastSyncForDead(pId, fresh.killLog) ?? currentTime)
-              : (stale.lastUpdateTimeRef.current.get(pId) ?? currentTime);
+            // dead skip (= 2026-05-02 hotfix、 plan §6 Stage 7 の「dead 包含」 案を実機検証で
+            // 撤回): dead-me の virtualPos が alive other を不当に freeze させる regression が
+            // 判明したため Rule A (checkCausalFreeze) と同様 Rule B でも dead を除外。 死後
+            // inertial の数学概念は spawn time 計算 (= computeSpawnCoordTime) に局所化、 走行中の
+            // causality 判定では除外する asymmetric 採用。
+            if (p.isDead) continue;
+            const lastSync =
+              stale.lastUpdateTimeRef.current.get(pId) ?? currentTime;
             const vPos = virtualPos(p, lastSync, currentTime);
             const peerEffective =
               torusHalfWidthForRuleB !== undefined

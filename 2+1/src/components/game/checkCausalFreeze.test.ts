@@ -127,11 +127,14 @@ describe("checkCausalFreeze — Stage 7 (virtualPos 統一)", () => {
     expect(checkCausalFreeze(players, "me", me, NO_KILLS, false, L)).toBe(false);
   });
 
-  it("dead は判定対象 (= virtualPos 経由)、 死亡時 phaseSpace + 経過 τ で評価", () => {
-    // dead.phaseSpace は死亡時値で固定 (applyKill が残す)、 virtualPos は killLog の
-    // wallTime から forward 延長。 nowWall = killWall (= τ=0) なら virtualPos = phaseSpace.pos
-    // そのまま → 旧仕様 dead skip と同じ「death pos.t で評価」 だが今回は scope に含まれる。
+  it("dead は判定対象外 (= 2026-05-02 hotfix で dead skip 復活)", () => {
+    // 元 plan §6 Stage 7 では dead を virtualPos で含める方針だったが、 実機検証で「dead-me
+    // の virtualPos が alive other を不当に freeze させる」 regression が判明、 hotfix で
+    // dead skip を復活させた (= Rule A / Rule B asymmetric: spawn time 計算では dead 含む
+    // virtualPos、 走行中の causality 判定 (本関数 + Rule B) では dead 除外)。
     const me = makePlayer("me", { t: 101, x: 10, y: 0 });
+    // dead at (100, 10, 0) は通常なら timelike near で freeze trigger となる位置だが、
+    // dead skip により判定対象外で freeze なし。
     const dead = makePlayer("o1", { t: 100, x: 10, y: 0 }, { isDead: true });
     const killLog: KillEventRecord[] = [
       {
@@ -149,7 +152,6 @@ describe("checkCausalFreeze — Stage 7 (virtualPos 統一)", () => {
       ["me", me],
       ["o1", dead],
     ]);
-    // currentWallTime = 1000 → τ=0 → virtualPos = (100, 10, 0)、 me と timelike near → freeze
     expect(
       checkCausalFreeze(
         players,
@@ -158,10 +160,10 @@ describe("checkCausalFreeze — Stage 7 (virtualPos 統一)", () => {
         killLog,
         false,
         L,
-        new Map([["o1", 1_000]]), // lastUpdate = killTime (= within grace)
+        new Map([["o1", 1_000]]),
         1_000,
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("他機の最終 phaseSpace 受信が 1.5 秒以上前なら freeze 判定対象外 (= 落ちてる人 sub-grace)", () => {
