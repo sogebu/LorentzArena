@@ -15,6 +15,13 @@ deploy 後の追加 commit (= localhost only、 push 済 / deploy 未): `75aaae8
 6. `75aaae8` **ballisticCatchup test 追従** — df98bb4 で THRUST_ENERGY_RATE 変更により dτ=30 では枯渇しないため dτ=100 に拡張 (= 90 秒 thrust + 10 秒 friction 単独)。
 7. `c7f7960` **Bug 7 fix: past-cone marker の isDead filter 除去 (因果律違反修復)** — `worldLineMarkerEntries` useMemo で `if (player.isDead) continue;` が past-cone marker と future marker の両方を一気に skip していた。 past-cone marker は **観測者本人の過去光円錐 ∩ worldLine** で gate されるべき causal hint で death event が past cone 到達前なら表示継続が正解。 future marker (= world-now god view) のみ isDead で skip。 PLC slice mode の past-cone disc も同 useMemo を使うので同時修復。
 
+**5/2 セッション後半 (= 安田くん退場後の autonomous 作業)**:
+
+8. `099e072` / `25b5ded` SESSION.md を 5/2 セッションの全 commit + Bug ledger で正規化、 Bug 1 (ghost freeze) の最有力仮説を「DevTools console focus による WASD non-routing (= false alarm)」 に更新。
+9. `bedae12` ShipViewer の `<a href="#">` を `href="./"` に置き換え (= biome useValidAnchor a11y error 解消)。 `#` は a11y anti-pattern + App.tsx に hashchange listener なし → reload 経由が動作的にも正解。
+10. `7a12ddf` **Radar に arena 中心 (= 原点) past-cone marker 追加** (EXPLORING.md §1b)。 観測者の過去光円錐 ∩ {(t, 0, 0): t ∈ ℝ} の交点 = `(obs.t − |obs.xy|, 0, 0)` を projectEvent で投影、 半径 3 の白丸 + cross "+" で表示。 torus mode は subVector4Torus で最短画像 origin に折り畳み。 「上方向に行けば帰れる」 が一目で読める。
+11. `08944d3` **HUD CenterCompass 追加** (EXPLORING.md §1a)。 画面上中央に SVG chevron + 距離 (m)、 自機 cameraYaw 基準で原点方向の screen-space angle を計算し CSS rotate に渡す。 modern (cameraYaw=0) / legacy (cameraYaw=heading) いずれも screen 「上」 = 自機の前方として動作。 死亡中は ghost phaseSpace で観測者位置取得。 1m 以内は arrow hide で「● 中心」 表示。 (1b) radar dot と相補的に onboarding fix を完成。
+
 **2026-04-28 セッションの大物 fix 群** (`bbce03f` build `2026/04/28 21:50:37 JST`、 詳細 git log):
 - causalEvents observer-centered wrap、 lighthouse γ² bug、 ballistic catchup self-authoritative、 共変表現徹底 (`cb9fa10` / `8c02c0f`)
 - camera pitch default 60° (`3ba639a` までに 30 → 60 → 75 → 70 → 60 と微調整)
@@ -76,9 +83,14 @@ deploy 後の追加 commit (= localhost only、 push 済 / deploy 未): `75aaae8
 
 **着手済**: spawn / arena 中心を原点に統一 (`bbce03f`、 後続 UX の target 座標を `(0,0)` 固定で扱える前準備)。
 
+**着手済**:
+- spawn / arena 中心を原点に統一 (`bbce03f`、 後続 UX の target 座標を `(0,0)` 固定で扱える前準備)
+- (1a) HUD 中心方向矢印 + 距離 (`08944d3`、 CenterCompass.tsx 新設)
+- (1b) Radar 中心 past-cone marker (`7a12ddf`、 origin event を radar に projectEvent 投影 + cross "+")
+
 **未着手 (推奨順、 効果 / 工数の見積りも EXPLORING.md)**:
-1. **HUD 中心方向矢印 + radar center dot** (= 物理に手を入れず即効、 計 2-3h)
-2. 1 で帰れない事例が残れば → 中心方向 thrust 燃料優遇 or soft pull
+1. (1a) + (1b) の実機評価。 帰れない事例が残れば次へ
+2. 中心方向 thrust 燃料優遇 or soft pull (= EXPLORING.md §2)
 3. 枠半幅 `ARENA_RADIUS = 40` の縮小 (40 → 15-20) は UX 改善後に効果評価して判断
 
 ### 実機検証待ち (2026-04-28 セッション全 fix)
