@@ -902,8 +902,12 @@ cold-start から再開する際、 以下を順に確認:
 
 ## 12. 未決問題 (= odakin 再協議要)
 
-1. **Stage 8 spawn 時刻仕様の最終決定**: (α)(β)(γ)(δ) どれを採用するか。 推奨 (α) だが、 動作確認後再判断
-2. **Stage 4 後の mid-deploy するか**: LH 単独で実機検証する価値 vs 全 stage 一括 deploy のシンプルさ
+1. **Stage 8 spawn 時刻仕様**: 2026-05-02 実装で **(γ) `(min + max) / 2` を確定仕様** とした
+   (詳細: `respawnTime.ts` の `computeSpawnCoordTime` docstring)。 plan 当初推奨 (α) は
+   実機検証 + odakin 同意後に別 commit で switch する余地を残す。 Bug 9 解消は Stage 5
+   Rule B convergence が担うため spawn formula 単体に強く依存しない
+2. **Stage 4 後の mid-deploy するか**: 2026-05-02 セッションで Stage 1-8 一括実装 + 末-deploy
+   候補に到達。 LH 単独 mid-deploy は skip した
 3. **multi-LH 将来計画**: 1 LH 前提を維持するか、 multi-LH を見据えた Rule B 拡張するか (= 現時点では 1 LH 前提で実装、 後で必要時に拡張)
 4. **ghost に Rule B 適用するか**: §7.5 で案 2 (= 適用しない、 自由 fly) を推奨。 odakin 同意要
 

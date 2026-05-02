@@ -20,9 +20,24 @@ import { lastSyncForDead, virtualPos } from "./virtualWorldLine";
  * - dead: `lastSyncWall = lastSyncForDead(id, killLog)` (= killLog の最新 wallTime)、
  *   未登録なら `nowWall` で fallback
  *
- * 算出値は `(min + max) / 2` で「両側 lag を半減」 する 4/28 的中間値仕様 (= `3ba639a`
- * 由来)。 Stage 8 で「self の wall_clock 自分基準 (α 案)」 等への変更を検討中、 現時点で
- * は中間値を維持。
+ * **Stage 8 仕様確定 (= γ 案、 4/28 由来の中間値仕様を継続)**:
+ * 算出値は `(min + max) / 2` で「両側 lag を半減」 する `3ba639a` (2026-04-28) の中間値
+ * 仕様を維持する。 plan §6 Stage 8 で検討された 4 案:
+ * - (α) `now wall_clock` 自分基準 (= joiner fresh start、 Rule B が convoy 合流): plan
+ *   推奨だが「実機検証後に再判断」 と明記、 また「joiner.t = 0 で peer が高 t のとき初回
+ *   tick で巨大 λ jump → worldLine 凍結 + 新セグメント」 の振る舞いが UX 的にどう感じる
+ *   か未検証
+ * - (β) `max(virtualPos)`: 全 peer から見て joiner が future、 全 peer が Rule A 凍結
+ *   待ち (= Bug 9 の旧仕様再現)
+ * - (γ) `(min + max) / 2` (本実装): 中間値、 Rule A / B どちらも軽微発火、 4/28 fix と
+ *   整合。 dead / stale も含めた min/max なので安定性は Stage 7 より向上
+ * - (δ) `min(virtualPos)`: 最遅時刻、 joiner 即 Rule B catch up (= 急ジャンプ)
+ *
+ * (γ) を Stage 8 確定仕様とする理由: (α) は plan 推奨だが lastUpdateTimes 取得不可な
+ * caller (= snapshot.ts) で fallback 挙動が複雑、 また実機未検証。 (γ) は 4/28 fix から
+ * 連続的で snapshot 経由 spawn / self respawn の両方で同じ formula で動く。 Bug 9 (= 新
+ * join 即凍結) の構造的解消は Stage 5 Rule B convergence が担い、 spawn formula 単体に
+ * 依存しない。 将来 (α) への switch は実機検証 + odakin 同意後に別 commit。
  *
  * 旧仕様 (~ Stage 7) との挙動差:
  * - dead 含めて min/max 算定 → 死後しばらくは死亡 player の virtualPos.t も寄与
