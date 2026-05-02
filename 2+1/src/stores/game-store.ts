@@ -840,3 +840,11 @@ export const gcLogs = (
     respawnLog: capResp.length === respawnLog.length ? respawnLog : capResp,
   };
 };
+
+// Diagnostic helper: dev console から store を覗けるようにする (2026-05-02 ghost
+// freeze bug の調査用)。 全 ship 後も残してある — `window.__game.getState()` で
+// 任意フィールド (myDeathEvent / players / ...) を取れる。 prod でも有効、 leak は
+// なし (game state のみ、 secrets 無し)。
+if (typeof window !== "undefined") {
+  (window as unknown as { __game: typeof useGameStore }).__game = useGameStore;
+}
