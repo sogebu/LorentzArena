@@ -525,9 +525,10 @@ export function useGameLoop({
           // 過去 cone 内にいれば u^μ 方向に λ だけ advance。 plan §7.4 に従い frozen でも
           // 評価 (= jump で frozen 状態から脱出するため)。
           //
-          // dead / stale も含めて統一処理 (= virtualPos の inertial 延長)、 Rule B 内部で
-          // dt ≤ 0 / spacelike を skip するため不要 peer は自動除外。 PBC torus は peer の
-          // virtual pos を自機中心の最小画像 cell に shift。
+          // alive / stale を統一処理 (= virtualPos の inertial 延長)、 dead は asymmetric
+          // hotfix で除外 (= 詳細は内部 if (p.isDead) continue 注記)。 Rule B 内部で
+          // dt ≤ 0 / spacelike を skip するため不要 peer (= future / spacelike) は自動除外。
+          // PBC torus は peer の virtual pos を自機中心の最小画像 cell に shift。
           const torusHalfWidthForRuleB =
             fresh.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined;
           const peerVirtualPositions: { pos: Vector4 }[] = [];

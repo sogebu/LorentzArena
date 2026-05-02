@@ -507,23 +507,20 @@ const FREEZE_RECENT_UPDATE_MS = 1500;
  * If so, the player should be frozen to preserve causality.
  * Uses hysteresis: threshold is 2.0 when already frozen, 0 otherwise.
  *
- * **Stage 7 (`plans/2026-05-02-causality-symmetric-jump.md`)**: alive / stale / dead を
- * `virtualPos` で統一処理。 旧仕様の `staleFrozenIds` 除外 + `isDead` 除外を撤廃し、
- * 全 peer を「最後に信じた phaseSpace から `pos + u·τ` で inertial 延長した virtualPos」
- * で判定対象にする (= dead や stale も予測値で causality cone に寄与)。
+ * **Stage 7 (`plans/2026-05-02-causality-symmetric-jump.md`) + dead-skip hotfix
+ * (2026-05-02)**: alive / stale を `virtualPos` で統一処理 (= 旧 `staleFrozenIds` 除外を
+ * 撤廃、 1.5s grace に集約)。 dead は plan §6 Stage 7 / §7.10 で「含める」 と提唱されたが、
+ * 実機検証で「dead-me の virtualPos が alive other を不当に freeze させる」 regression が
+ * 判明したため hotfix で除外復活 (= asymmetric: spawn time 計算では含む、 走行中の
+ * causality 判定では除外)。
  *
  * **PBC**: 観測者 / 他機 を `displayPos(_, FREEZE_ORIGIN, L)` で (0,0) cell に折り畳んで
  * から `subVector4` (= unwrapped 距離) で判定。 詳細は `FREEZE_ORIGIN` の docstring。
  *
- * **Skip 対象 (Stage 7 後)**: 自機 / Lighthouse のみ。 加えて `lastUpdateTime` と
- * `currentWallTime` が渡されたら「最終 phaseSpace 受信から `FREEZE_RECENT_UPDATE_MS` 以上
- * 経過した他機」 も skip (= 1.5s grace、 落ちた直後 〜 stale 認定までの sub-grace で
- * freeze cause にしない、 plan §6 Stage 7 で「概念別」 として維持)。
- *
- * **dead を含める意味**: 死亡 player も virtualPos の inertial 予測線 (= `xD + uD·τ`)
- * を持つ。 self が dead の予測線の future cone に深く入り込むと freeze するのが対称設計。
- * 1.5s grace でも skip されるので「最近死んだ peer」 は短期的に freeze cause になり得るが、
- * grace 経過後は skip。
+ * **Skip 対象**: 自機 / Lighthouse / 死亡 peer。 加えて `lastUpdateTime` と `currentWallTime`
+ * が渡されたら「最終 phaseSpace 受信から `FREEZE_RECENT_UPDATE_MS` (= 1.5s) 以上経過した
+ * 他機」 も skip (= 落ちた直後 〜 stale 認定までの sub-grace、 plan §6 Stage 7 で「概念別」
+ * として維持)。
  */
 export function checkCausalFreeze(
   players: Map<string, RelativisticPlayer>,
