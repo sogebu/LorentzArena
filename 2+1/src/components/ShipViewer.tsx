@@ -263,7 +263,7 @@ export const ShipViewer = () => {
         </div>
 
         <div style={{ marginTop: 12, paddingTop: 8, borderTop: "1px solid #333" }}>
-          <a href="#" style={{ color: "#6cf" }}>← ゲームに戻る</a>
+          <a href="./" style={{ color: "#6cf" }}>← ゲームに戻る</a>
         </div>
       </div>
     </div>
