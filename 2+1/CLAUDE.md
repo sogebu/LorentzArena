@@ -142,6 +142,12 @@ location.reload();
 - **Claude Preview 動的挙動検証不能問題**: Claude Preview の headless Chrome は rAF / timer を強制 throttle するため、**game loop が走らず FPS 0**。death routing / hit 検出 / ghost 物理等の動的挙動は視覚検証不可能。一般機構・実測値・回避策は [`claude-config/conventions/preview.md §Claude Preview の headless throttling 制約`](../../claude-config/conventions/preview.md)。
   - LorentzArena 固有の影響範囲: damage / debris / hit / 死亡 routing / ghost 物理の検証は**全て実ブラウザ (`http://localhost:5173/LorentzArena/` multi-tab、または本番) を odakin に依頼**。単独 tab で完結する初期レンダ (ShipViewer の静止 preview 等) のみ `preview_screenshot` で撮れる。Pure 関数 (`debris.ts` 等) の入出力 assert は `preview_eval` + `await import('.../pure-module')` で可 (store は別 instance quirk で不可、§preview_eval quirk 参照)。Phase C1 hit debris 例: `generateHitParticles` の scatter 方向を stationary + laser → mean dx ≈ 0.693 ≈ 1/√2、u=(0,0.8) + laser(x) → (0.608, 0.480) で検証済。
 
+## R3F 落とし穴 (2026-05-02 知見、 詳細は DESIGN.md §因果律対称化 + WebGL recovery)
+
+- **`<Canvas onCreated>` / `useThree` 経由の listener attach は信頼できない**: HMR / Fast Refresh の干渉で fire しないケースが実機検証で発生。 確実に attach したい listener (= `webglcontextlost` 等の rare event) は **`useEffect` + `setInterval(200ms)` で `document.querySelectorAll('canvas')` を polling して DOM 直 attach** に倒す。 重複防止は `__webglLostAttached` 等の flag で管理。 LorentzArena 実装は `RelativisticGame.tsx` の useEffect。
+- **`useMemo` deps に毎 tick 変わる object 参照を入れると throttle が死ぬ**: `appendWorldLine` 等の immutable update で毎 tick 新 object 参照になる state を `useMemo` deps に直接含めると、 `Math.floor(version/N)` のような量子化 throttle 値があっても **dep 配列のいずれかが変わる時点で memo 再計算** される (= `wl` が毎 tick 変わる以上 `geoVersion` の変化を待たずに再計算)。 修正: `useRef` で latest 参照を保持 (`refX.current = obj` を毎 render)、 `useMemo` body 内で `refX.current` を読む、 deps から object 自体を撤去する。 `WorldLineRenderer.tsx` の wlRef pattern が実装例。 これを怠ると重 rebuild が毎 tick 走り main thread saturation → setInterval Violation 累積 → rAF starve → 全世界凍結 → GPU 圧で WebGL Context Lost、 という連鎖を起こす (= 5/2 観測 Bug 10)。
+- **WebGL Context Lost は invisible recovery 設計が現実的**: GPU/OS は外部要因 (= macOS の background tab 解放、 driver reset、 power saving 等) で context を reclaim するため「起こさない」 は不可能。 「起きても気付かない」 設計に倒す: store に `canvasGeneration: number` を持ち、 polling listener で `webglcontextlost` 検知時 `incrementCanvasGeneration()` → `<Canvas key="...-gen{N}">` が変化 → React unmount + remount → R3F が新 WebGL context 作成 → scene tree 再構築 (= zustand store は preserve、 user は 1-2 frame の flash で済む)。 連続 loss (= 1.5s 以内 2 回目) のみ catastrophic とみなして escape hatch overlay (= `WebGLLostOverlay`) で「再読込」 UI を出す 2 段構成。
+
 ## ネットワーク設定
 
 `.env.local` (この `2+1/` 直下) で設定:

@@ -303,3 +303,148 @@ worldLine / laser / debris / arena の「mesh.matrix translate」 は image obse
 過去事例として、 「個別 fix が積み上がった結果 visual artifact が次々顕在化した」 → 「一気に
 core abstraction で refactor」 という pattern は LorentzArena で **再現性のある成功 pattern**。
 似たような ad hoc 化が累積し始めたら早めに「universal な統一概念は何か」 を問う。
+
+---
+
+## 因果律対称化 + WebGL recovery (2026-05-02)
+
+5/2 セッションで Bug 5 (LH host 時刻 anchor) / Bug 8 (hidden 復帰 LH 巨大 jump) / Bug 9 (新
+join 即凍結) を共通根因 (= per-player coord time gap 蓄積) で同時解消する大型 refactor +
+「全世界凍結」 root cause 撃滅 + WebGL Context Lost recovery を実装。 plan 正本は
+[`plans/2026-05-02-causality-symmetric-jump.md`](plans/2026-05-02-causality-symmetric-jump.md)
+v2、 本節は plan に書ききれない設計判断と Bug 10 (= plan 外で発覚した「全世界凍結」) の
+fundamental fix design を記録。
+
+### Rule A + Rule B 対称設計の核心
+
+設計柱 (= 維持すべき) と破綻点を明文化したのが plan §1 の P1/P2/P3 表。 P1 (per-player coord
+time、 `pos.t = γ·wall_clock`) と P3 (有界アリーナ + 有限 LIGHT_CONE_HEIGHT) の衝突で「`pos.t`
+gap が `LIGHT_CONE_HEIGHT` を超えた瞬間、 全 causality 判定が cliff edge で破綻」 する構造
+問題が共通根因。
+
+対症療法 (`(min+max)/2` spawn、 minPlayerT LH jump 等) では cliff edge を半分先に押すだけで
+根治しないため、 plan §2 の **対称ルール** を導入:
+
+- **Rule A** (既存維持): me が peer の **未来光円錐内** (= other.t < me.t timelike) → me 凍結
+- **Rule B** (新設): me が peer の **過去光円錐内** (= other.t > me.t timelike) → me を u^μ
+  方向に λ_exit ジャンプ
+
+両ルールが同時 trigger するときは Rule B 優先 (= jump で frozen 脱出経路、 plan §2.3 + §7.4)。
+これで「離れすぎたら待つ / 戻ってくる」 が emergent な convoy 性質を獲得 (= 任意 2 peer は
+常に互いの過去光円錐境界付近で causal 接触状態を保つ)。
+
+### asymmetric 設計: dead skip の選択 (2026-05-02 hotfix)
+
+plan 当初 (§6 Stage 7 / §7.10) は「dead を virtualPos の inertial 線として **全 causality 判定**
+(Rule A / Rule B / spawn time) で含む」 統一案だった。 しかし実機検証で **dead-me の
+virtualPos が alive other を不当に freeze させる regression** が判明 → hotfix で asymmetric に倒した:
+
+| 計算 | dead 扱い | 理由 |
+|---|---|---|
+| `computeSpawnCoordTime` (spawn time) | **含む** (= virtualPos extrapolation) | dead の inertial 線は数学的に意味があり、 spawn 時刻計算では「全 peer の連続時空分布」 を反映する方が安定 |
+| `checkCausalFreeze` (Rule A) | **除外** (= `if (player.isDead) continue`) | dead-me が alive other の future cone を引き起こして freeze させる症状が gameplay 上 unacceptable |
+| `processLighthouseAI` Rule B | **除外** | LH が dead 追跡で aim / jump するのは gameplay 上 natural ではない |
+| `useGameLoop` alive 自機 Rule B | **除外** | 同上、 dead は走行中 causality 判定の対象外 |
+
+設計思想: **dead は数学的 entity (= 4-velocity 線が継続する) としては有効だが、 ゲームメカニクス
+上は「死んでいる → 既に退場」 として扱う**。 spawn 計算は前者、 走行中 Rule A/B は後者。
+plan v2 + dead-skip hotfix で本判断は plan §6 Stage 7 / §7.10 から逸脱、 SESSION + commit
+`99f86b9` の docstring が単一 source of truth。 将来 「dead 包含」 を再導入する場合のための
+`_killLog` 引数 (= unused 警告抑制 underscore prefix) を `processLighthouseAI` /
+`checkCausalFreeze` の signature に保持してある。
+
+### Stage 8 spawn 時刻仕様 (γ) `(min + max) / 2` 確定の理由
+
+plan §6 Stage 8 で 4 案 (α / β / γ / δ) を比較、 (γ) の中間値仕様を確定。 (α) `now wall_clock`
+自分基準は plan 当初推奨だったが、 lastUpdateTimes 取得不可な caller (= snapshot.ts) で fallback
+挙動が複雑 + 「joiner.t=0 で peer が高 t のとき初回 tick で巨大 λ jump → worldLine 凍結 + 新
+セグメント」 の UX が未検証だったため deferred。 (γ) は 4/28 fix `3ba639a` から連続的で snapshot
+経由 spawn / self respawn の両方で同 formula、 dead / stale も含めた virtualPos で安定性向上。
+Bug 9 (= 新 join 即凍結) の構造的解消は Rule B convergence が担うため spawn formula 単体に
+強く依存しない設計を維持。 詳細: [`respawnTime.ts`](src/components/game/respawnTime.ts) の
+`computeSpawnCoordTime` docstring、 plan §12 #1。
+
+### Bug 10 「全世界凍結」 の真因と fundamental fix
+
+5/2 セッション末、 odakin が「世界全体 + 背景の星屑も止まる」 と詳細観察。 SESSION の Bug 1
+(= 自機のみ固まる) と統合 / 別問題として再分類した結果、 真因が `WorldLineRenderer.tsx` の
+`useMemo` 依存配列設計バグだったと特定 (= commit `453fca6`)。
+
+**根因 chain**: `WorldLineRenderer` の `useMemo` deps に `wl` (worldLine オブジェクト) を含めた
+ため、 `appendWorldLine` で毎 tick 新参照になる `wl` が `geoVersion = floor(version/8)` の
+8-tick throttle を事実上無効化。 alive 自機 + 他機 + LH = 3 worldLine × **毎 tick 60Hz** で
+高コスト TubeGeometry rebuild (= ~24000 vertex 構築 + GPU upload + 旧 dispose) が発生 → main
+thread saturation → `setInterval` Violation 累積 (= 16+ 観測) → rAF starve → 全世界 + 星屑
+凍結 → 最終的に GPU 資源枯渇で WebGL Context Lost という連鎖。
+
+**Fundamental fix (3 段)**:
+
+1. **`useRef` で wl 参照保持 + deps から撤去** (= 8-tick throttle 真の有効化):
+
+```ts
+// 修正前 (= bug)
+const tubeGeos = useMemo(() => {
+  // ... uses wl directly
+}, [geoVersion, wl, torusHalfWidth, obsCellX, obsCellY]);  // wl が毎 tick 変わって throttle 死
+
+// 修正後 (= fundamental fix)
+const wlRef = useRef(wl);
+wlRef.current = wl; // 毎 render 更新
+const tubeGeos = useMemo(() => {
+  const wl = wlRef.current; // memo 実行時点の最新 wl
+  // ... uses wl
+}, [geoVersion, torusHalfWidth, obsCellX, obsCellY]);  // wl 撤去、 真に geoVersion で制御
+```
+
+これで rebuild 頻度が **60Hz → 7.5Hz (1/8)** に正規化、 main thread 負荷が劇的削減。
+
+2. **Canvas auto-remount on context loss** (= invisible recovery):
+
+GPU/OS は外部要因 (= macOS の background tab GPU 解放、 driver reset、 power saving 等) で
+WebGL context を reclaim するため、 「context loss を起こさない」 は不可能。 代わりに **透過的
+に復旧** する設計:
+
+- `game-store` に `canvasGeneration: number` 追加
+- `RelativisticGame` の DOM polling listener が `webglcontextlost` 検知時に `incrementCanvasGeneration()`
+- 各 `<Canvas key="...-gen{N}">` に generation を含めることで、 React が古い Canvas を unmount
+  + 新 Canvas を mount → R3F が新 WebGL context 作成 → scene tree 再構築
+- zustand store (= physics / killLog / score / players) は preserve、 user は **1-2 frame の
+  flash で済み page reload 不要**
+
+設計思想は「**loss を起こさない**」 → 「**起きても気付かない**」。
+
+3. **Watchdog (= chronic loss escape hatch)**:
+
+1.5s 以内に 2 回目の loss が起きたら auto-remount でも復旧不能と判定 (= GPU 圧解消してない)、
+`webglContextLost: true` で `WebGLLostOverlay` の「再読込」 UI を出す。 これで通常 1 回の loss
+は invisible、 chronic は明示的に user 操作で reload する 2 段の recovery path が完成。
+
+### `<Canvas onCreated>` / `useThree` listener attach の信頼性問題
+
+WebGL context loss listener attach の最初の試みで、 R3F の `<Canvas onCreated={fn}>` callback も
+`useThree(state => state.gl)` 経由の useEffect attach も **実機で fire しなかった**。 preview
+ベースの test でも同様に listener が fire しないことを確認。 原因は深く追わず、 **`useEffect`
++ `setInterval(200ms)` で `document.querySelectorAll('canvas')` を走査する DOM polling pattern**
+に倒したら確実に attach した。 重複防止は `__webglLostAttached` フラグで管理。
+
+教訓: **R3F の lifecycle hook (`onCreated` / `useThree`) は HMR や Fast Refresh の干渉で listener
+attach が信頼できないケースがある**。 確実性が必要な listener (= context loss 等の rare event)
+は DOM 直 attach に倒す。 性能影響は無視可 (= setInterval 200ms × 数 canvas で数 op/sec)。
+詳細実装は [`RelativisticGame.tsx`](src/components/RelativisticGame.tsx) の useEffect。
+
+### 物理 math 表記の signature 中立化 (plan v2 で実施)
+
+plan 初版 (§3) は Lorentzian 内積を `(+,-,-,-)` signature で書いていたが、 codebase の
+`physics/vector.ts` `lorentzDotVector4` は `(+,+,+,-)` signature (= spacelike positive)。
+内積の符号が逆になり整合性が崩れていた。 plan v2 (`10c802a`) で修正:
+
+- 「`u·u = 1`」 → 「`γ² − |u|² = 1`」 (= signature 不変な代数恒等式)
+- 「`Δ·Δ > 0` (= timelike past)」 → 「`Δt² − |Δxy|² > 0`」 (= 座標直接)
+- B / C の定義は signature 不変 (= 座標直接で `B = γΔt − u·Δxy`, `C = Δt² − |Δxy|²`)
+
+教訓: **物理 math docstring で Lorentzian 内積を使う場合は signature を明記するか、 座標直接
+表記に倒す**。 plan / docstring の signature が codebase の signature と矛盾すると refactor の
+trace が困難になる。 さらに plan §3.6 の intuition 表 (「向かう方向 → λ_exit 小」) も逆向き
+で記載されていたため (= 著者の幾何直感誤り、 cone は peer.t に向けて狭くなるため空間的接近は
+脱出に寄与しない)、 reverse Cauchy-Schwarz `B² ≥ C` で正しい関係を再記述 + Stage 2 test で
+両方向 (向かう/離れる) を numeric assert して固定化。
