@@ -8,6 +8,11 @@ export const ja = {
   "hud.controls.touch.heading": "スワイプ ←→: 方向転換",
   "hud.controls.touch.thrust": "スワイプ ↑: 前進 ↓: 後退",
   "hud.controls.touch.fire": "ダブルタップ+ホールドで連射",
+  // WebGL context loss overlay
+  "webglLost.title": "描画 (WebGL) が一時停止しました",
+  "webglLost.body":
+    "ブラウザが GPU リソースを解放しました。 物理計算は内部で進んでいますが画面が固まって見えます。 「再読込」 で復帰できます。",
+  "webglLost.reloadButton": "再読込",
   // Tutorial overlay (mobile only, shown once per browser)
   "tutorial.title": "操作方法",
   "tutorial.swipeHorizontal": "左右スワイプ：方向転換",

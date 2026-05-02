@@ -10,6 +10,11 @@ export const en: Record<TranslationKey, string> = {
   "hud.controls.touch.heading": "Swipe ←→: Turn",
   "hud.controls.touch.thrust": "Swipe ↑: Forward ↓: Backward",
   "hud.controls.touch.fire": "Double-tap and hold to fire rapidly",
+  // WebGL context loss overlay
+  "webglLost.title": "Rendering (WebGL) paused",
+  "webglLost.body":
+    "The browser reclaimed GPU resources. Physics still runs internally but the screen appears frozen. Click \"Reload\" to recover.",
+  "webglLost.reloadButton": "Reload",
   // Tutorial overlay (mobile only, shown once per browser)
   "tutorial.title": "Controls",
   "tutorial.swipeHorizontal": "Horizontal swipe: Turn",

@@ -215,6 +215,14 @@ export interface GameState {
    * Causal Freeze」 表示) が subscribe する。
    */
   causallyFrozen: boolean;
+  /**
+   * WebGL context が失われたかどうか (= `webglcontextlost` event 検出)。 true のとき
+   * R3F の rAF / useFrame は走り続けるが Three.js の描画は黒になる (= 背景の星屑 / 自機 /
+   * 他機 / LH すべて固まる症状)。 復元には scene 全体の reinit が必要で複雑なため、 overlay
+   * で「再読込」 をユーザーに促す UI を出す。 詳細: `RelativisticGame.tsx` の Canvas
+   * `onCreated` handler + `WebGLLostOverlay`。
+   */
+  webglContextLost: boolean;
   displayNames: Map<string, string>;
 
   // --- Non-reactive state (read via getState() only, no re-render) ---
@@ -274,6 +282,7 @@ export interface GameState {
   setKillNotification: (v: KillNotification3D | null) => void;
   setMyDeathEvent: (v: DeathEvent | null) => void;
   setCausallyFrozen: (v: boolean) => void;
+  setWebglContextLost: (v: boolean) => void;
 
   // --- Actions: game logic ---
   handleKill: (
@@ -360,6 +369,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   killNotification: null,
   myDeathEvent: null,
   causallyFrozen: false,
+  webglContextLost: false,
   displayNames: new Map(),
 
   // Non-reactive
@@ -402,6 +412,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   setKillNotification: (v) => set({ killNotification: v }),
   setMyDeathEvent: (v) => set({ myDeathEvent: v }),
   setCausallyFrozen: (v) => set({ causallyFrozen: v }),
+  setWebglContextLost: (v) => set({ webglContextLost: v }),
 
   // -----------------------------------------------------------------------
   // handleKill — absorbs RelativisticGame.tsx L155-208

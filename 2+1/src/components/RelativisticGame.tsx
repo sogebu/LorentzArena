@@ -1,5 +1,5 @@
 import { Canvas } from "@react-three/fiber";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePeer } from "../hooks/usePeer";
 import { vector3Zero } from "../physics";
 import { useGameStore } from "../stores/game-store";
@@ -15,6 +15,7 @@ import {
 } from "./game/constants";
 import { HUD } from "./game/HUD";
 import { TutorialOverlay } from "./game/TutorialOverlay";
+import { WebGLLostOverlay } from "./game/WebGLLostOverlay";
 import { isLighthouse } from "./game/lighthouse";
 import { createMessageHandler } from "./game/messageHandler";
 import { SceneContent } from "./game/SceneContent";
@@ -295,6 +296,37 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     keysPressed, touchInput, stale,
   });
 
+  /**
+   * Canvas mount 時に `webglcontextlost` / `webglcontextrestored` listener を attach。
+   * lost 検知で `webglContextLost` state を立て、 `WebGLLostOverlay` が「再読込」 UI を出す。
+   * restored event は記録のみ (= scene 全体の reinit が複雑なため自動復帰せず、 ユーザー
+   * 操作で reload する設計、 詳細は WebGLLostOverlay の docstring)。
+   *
+   * ref capture: handler は `useCallback` で stable、 各 Canvas (= 3 mode + ShipPreview を
+   * 経由しないこの component) で同じ handler を共有。 Canvas unmount で DOM の listener も
+   * 自動 GC されるため明示 cleanup は不要。
+   */
+  const handleCanvasCreated = useCallback(
+    ({ gl }: { gl: { domElement: HTMLCanvasElement } }) => {
+      const canvas = gl.domElement;
+      const onLost = (e: Event) => {
+        e.preventDefault(); // restored event の発火を許可するために必須
+        // biome-ignore lint/suspicious/noConsole: diagnostic for rare event
+        console.warn("[WebGL] context lost");
+        useGameStore.getState().setWebglContextLost(true);
+      };
+      const onRestored = () => {
+        // biome-ignore lint/suspicious/noConsole: diagnostic for rare event
+        console.log(
+          "[WebGL] context restored (reload recommended for clean reinit)",
+        );
+      };
+      canvas.addEventListener("webglcontextlost", onLost);
+      canvas.addEventListener("webglcontextrestored", onRestored);
+    },
+    [],
+  );
+
   return (
     <div
       style={{
@@ -331,7 +363,11 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       />
 
       {showPLCSlice && plcMode === "3d" ? (
-        <Canvas key="plc3d" camera={{ position: [0, -12, 20], fov: 60 }}>
+        <Canvas
+          key="plc3d"
+          camera={{ position: [0, -12, 20], fov: 60 }}
+          onCreated={handleCanvasCreated}
+        >
           <SceneContent
             myId={myId}
             showInRestFrame={false}
@@ -354,6 +390,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             near: -10000,
             far: 10000,
           }}
+          onCreated={handleCanvasCreated}
         >
           <SceneContent
             myId={myId}
@@ -368,7 +405,11 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
           />
         </Canvas>
       ) : (
-        <Canvas key="persp" camera={{ position: [0, 0, 0], fov: 75 }}>
+        <Canvas
+          key="persp"
+          camera={{ position: [0, 0, 0], fov: 75 }}
+          onCreated={handleCanvasCreated}
+        >
           <SceneContent
             myId={myId}
             showInRestFrame={showInRestFrame}
@@ -382,6 +423,10 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
           />
         </Canvas>
       )}
+
+      {/* WebGL context lost recovery: 全世界凍結 (= GPU resource 回収) 時に再読込 UI を出す。
+          詳細: WebGLLostOverlay の docstring。 */}
+      <WebGLLostOverlay />
 
       {/* モバイル初回チュートリアル (localStorage でブラウザ毎 1 回のみ)。
           touch 非対応端末では render されない。z-index: 1000 で HUD 上に overlay。 */}
