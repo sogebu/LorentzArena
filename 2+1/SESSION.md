@@ -2,12 +2,12 @@
 
 ## 現在のステータス
 
-**本番最新 deploy**: `df98bb4` (build `2026/05/02 16:22:07 JST`、 https://sogebu.github.io/LorentzArena/、 安田くんと 2-player demo 用途)。 main は origin と同期。
+**本番最新 deploy**: `df98bb4` (build `2026/05/02 16:22:07 JST`、 https://sogebu.github.io/LorentzArena/、 2-player demo 用途)。 main は origin と同期。
 deploy 後の追加 commit (= localhost only、 push 済 / deploy 未): `75aaae8` (test 追従) + `c7f7960` (Bug 7 fix)。 次回 deploy 時にまとめて反映。
 
 **2026-05-02 セッション** (時系列 commit、 build 値 / 影響範囲付き):
 
-1. `f573b20` **viewMode / controlScheme 2 段 dropdown 復活** — Lobby (START の下) + HUD ControlPanel (in-arena 左上) の 2 ヶ所、 e6c17cc で hidden オプション化していたものを CLAUDE.md 設計通り復活。 Lobby 背景の ShipPreview を `viewMode` 連動化 (= 安田くん demo で「見た目」 を即時切替できる)。 i18n に `viewMode.label` / `viewMode.jellyfish` / `controlScheme.{label,legacy_classic,legacy_shooter,modern}` 追加。 URL hash + LS 永続化は併存。
+1. `f573b20` **viewMode / controlScheme 2 段 dropdown 復活** — Lobby (START の下) + HUD ControlPanel (in-arena 左上) の 2 ヶ所、 e6c17cc で hidden オプション化していたものを CLAUDE.md 設計通り復活。 Lobby 背景の ShipPreview を `viewMode` 連動化 (= demo で「見た目」 を即時切替できる)。 i18n に `viewMode.label` / `viewMode.jellyfish` / `controlScheme.{label,legacy_classic,legacy_shooter,modern}` 追加。 URL hash + LS 永続化は併存。
 2. `e27b9ea` **jellyfish 機体の 2 bug fix** — (a) Bug 3: `alpha4` 加速度矢印が出てなかった (props 宣言だけ destructure 無しの TODO 残存) → RocketShipRenderer 同等仕様で sibling mesh 配置。 (b) Bug 4: legacy_classic で触手の振れる方向が逆 (= dropdown 復活で combo 到達可能になり顕在化)、 `thrustAccelRef.current` を world frame と認識せず machine local 仮定していた → `group.rotation.z` で R(-θ) 適用、 全 controlScheme で正しく動く。
 3. `054a595` **window.__game diagnostic helper** — Bug 1 (ghost freeze) 調査用、 dev console から `__game.getState().myDeathEvent.ghostPhaseSpace.{u,pos}` で観察可能。 prod でも有効、 secrets 無し、 perf 影響 0、 調査終了後削除予定。
 4. `0e18fc9` **LASER_WORLDLINE_OPACITY 0.4 → 0.2** — odakin 指示、 demo 視認性。
@@ -15,7 +15,7 @@ deploy 後の追加 commit (= localhost only、 push 済 / deploy 未): `75aaae8
 6. `75aaae8` **ballisticCatchup test 追従** — df98bb4 で THRUST_ENERGY_RATE 変更により dτ=30 では枯渇しないため dτ=100 に拡張 (= 90 秒 thrust + 10 秒 friction 単独)。
 7. `c7f7960` **Bug 7 fix: past-cone marker の isDead filter 除去 (因果律違反修復)** — `worldLineMarkerEntries` useMemo で `if (player.isDead) continue;` が past-cone marker と future marker の両方を一気に skip していた。 past-cone marker は **観測者本人の過去光円錐 ∩ worldLine** で gate されるべき causal hint で death event が past cone 到達前なら表示継続が正解。 future marker (= world-now god view) のみ isDead で skip。 PLC slice mode の past-cone disc も同 useMemo を使うので同時修復。
 
-**5/2 セッション後半 (= 安田くん退場後の autonomous 作業)**:
+**5/2 セッション後半 (= demo 終了後の autonomous 作業)**:
 
 8. `099e072` / `25b5ded` SESSION.md を 5/2 セッションの全 commit + Bug ledger で正規化、 Bug 1 (ghost freeze) の最有力仮説を「DevTools console focus による WASD non-routing (= false alarm)」 に更新。
 9. `bedae12` ShipViewer の `<a href="#">` を `href="./"` に置き換え (= biome useValidAnchor a11y error 解消)。 `#` は a11y anti-pattern + App.tsx に hashchange listener なし → reload 経由が動作的にも正解。
