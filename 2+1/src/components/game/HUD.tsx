@@ -1,5 +1,6 @@
 import { useI18n } from "../../i18n";
 import { useGameStore } from "../../stores/game-store";
+import { CenterCompass } from "./hud/CenterCompass";
 import { ControlPanel } from "./hud/ControlPanel";
 import { Overlays } from "./hud/Overlays";
 import { Radar } from "./hud/Radar";
@@ -81,6 +82,11 @@ export const HUD = ({
       {(!showPLCSlice || plcMode === "2d") && (
         <Radar myId={myId} cameraYawRef={cameraYawRef} fullscreen={showPLCSlice} />
       )}
+
+      {/* Arena 中心方向矢印 + 距離 (= 「遠くに行って戻れない」 onboarding fix、
+          EXPLORING.md §1a)。 自機 cameraYaw を screen up と仮定して原点方向を chevron で
+          表示。 PLC fullscreen 時も使える (= 2D radar mode で迷子になりやすいため)。 */}
+      <CenterCompass myId={myId} cameraYawRef={cameraYawRef} />
 
       {myPlayer && (
         <Speedometer
