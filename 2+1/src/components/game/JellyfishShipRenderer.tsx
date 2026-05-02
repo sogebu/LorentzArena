@@ -3,13 +3,28 @@ import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { lorentzBoost } from "../../physics";
 import {
+  multiplyVector4Matrix4,
   type Quaternion,
   quatToYaw,
   type Vector3,
   type Vector4,
 } from "../../physics";
-import { SHIP_HULL_RADIUS, SHIP_LIFT_Z, SHIP_MODEL_SCALE } from "./constants";
+import {
+  ARROW_BASE_LENGTH,
+  ARROW_BASE_OFFSET,
+  ARROW_BASE_WIDTH,
+  ARROW_COLOR,
+  ARROW_MAX_OPACITY,
+  EXHAUST_ATTACK_TIME,
+  EXHAUST_RELEASE_TIME,
+  EXHAUST_VISIBILITY_THRESHOLD,
+  PLAYER_ACCELERATION,
+  SHIP_HULL_RADIUS,
+  SHIP_LIFT_Z,
+  SHIP_MODEL_SCALE,
+} from "./constants";
 import { transformEventForDisplay } from "./displayTransform";
+import { getThreeColor, sharedGeometries } from "./threeCache";
 
 // 機体モチーフ: ジャパクリップ「クラゲ」 (https://japaclip.com/jellyfish/)。
 // 規約: https://japaclip.com/terms/ — 商用 OK / 改変 OK / クレジット任意。
@@ -267,6 +282,7 @@ export const JellyfishShipRenderer = ({
   observerPos,
   observerBoost,
   cameraYawRef,
+  alpha4,
   firingRef,
 }: {
   player: {
@@ -296,6 +312,17 @@ export const JellyfishShipRenderer = ({
   const tipQuat = useMemo(() => new THREE.Quaternion(), []);
   // 物理 step に渡す累積時刻 (turbulence kick の sin 引数に使う)。
   const physicsTimeRef = useRef(0);
+
+  // Spacetime acceleration arrow (= alpha4 4-加速度を observer rest frame に boost して
+  // display 矢印として描画)。 RocketShipRenderer / SelfShipRenderer と同じパターン:
+  // ship body group の外側 sibling として配置し、 yaw / scale 非適用。
+  const arrowMeshRef = useRef<THREE.Mesh>(null);
+  const arrowMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const arrowSmoothedMagRef = useRef(0);
+  const arrowTmpQuat = useMemo(() => new THREE.Quaternion(), []);
+  const arrowVecY = useMemo(() => new THREE.Vector3(0, 1, 0), []);
+  const arrowVecDir = useMemo(() => new THREE.Vector3(), []);
+  const arrowColor = useMemo(() => getThreeColor(ARROW_COLOR), []);
 
   // Dome geometry: 半球 + 下端を少しフリル状に外側へ広げ、開口は閉じない (内部見える)。
   // LatheGeometry default は Y 軸回転 → 後で rotation.x = π/2 で Z up world に合わせる。
@@ -407,15 +434,24 @@ export const JellyfishShipRenderer = ({
 
     // 触手物理 step。
     // - 重力: 機体 local -z (= dome 下方向) 方向に穏やかに。
-    // - 慣性反作用: 機体加速度 (thrustAccelRef、player local frame) の逆方向。
-    //   dome group の yaw 回転は parent 側で適用済 → 触手 local frame は player local
-    //   frame と一致するため、thrustAccelRef.x/y をそのまま符号反転で使える。
+    // - 慣性反作用: 機体加速度 (thrustAccelRef = **world frame**) を group の現 yaw
+    //   (= group.rotation.z、 cameraYawRef を lerp 追従中) で local frame に rotate して
+    //   から符号反転して rope に渡す。
+    //   元コードは「thrustAccel が機体 local frame」と誤仮定しており、 group が yaw
+    //   回転していると inertia 方向が world 軸に固定されたまま (= 旧 classic で heading
+    //   が回ると足の振られ方向が逆転する 2026-05-02 報告 bug)。
     const dt = Math.min(0.033, Math.max(0.001, delta)); // tab 復帰時の暴れ防止
     physicsTimeRef.current += dt;
     const t = physicsTimeRef.current;
     const accel = thrustAccelRef.current;
-    const inertX = -accel.x * TENTACLE_INERTIA_SCALE;
-    const inertY = -accel.y * TENTACLE_INERTIA_SCALE;
+    const groupYaw = group.rotation.z;
+    const cosY = Math.cos(groupYaw);
+    const sinY = Math.sin(groupYaw);
+    // world → local: 逆 yaw 回転 (R(-θ) = [[cosθ, sinθ], [-sinθ, cosθ]])
+    const localAccelX = cosY * accel.x + sinY * accel.y;
+    const localAccelY = -sinY * accel.x + cosY * accel.y;
+    const inertX = -localAccelX * TENTACLE_INERTIA_SCALE;
+    const inertY = -localAccelY * TENTACLE_INERTIA_SCALE;
     const inertZ = -TENTACLE_GRAVITY;
 
     const firing = firingRef ? firingRef.current : false;
@@ -483,125 +519,237 @@ export const JellyfishShipRenderer = ({
         }
       }
     }
+
+    // Spacetime acceleration arrow: SelfShipRenderer / RocketShipRenderer と同等仕様。
+    // 4-加速度 α_world を observerBoost で rest frame に戻し、 display 矢印として描画。
+    const arrowMesh = arrowMeshRef.current;
+    const arrowMat = arrowMatRef.current;
+    if (arrowMesh && arrowMat && alpha4) {
+      const alphaObs = observerBoost
+        ? multiplyVector4Matrix4(observerBoost, alpha4)
+        : alpha4;
+      const ax4 = alphaObs.x;
+      const ay4 = alphaObs.y;
+      const at4 = alphaObs.t;
+      const mag4 = Math.sqrt(ax4 * ax4 + ay4 * ay4 + at4 * at4);
+      const rawTarget = mag4 / PLAYER_ACCELERATION;
+      const current = arrowSmoothedMagRef.current;
+      const tauMs =
+        rawTarget > current ? EXHAUST_ATTACK_TIME : EXHAUST_RELEASE_TIME;
+      const rate = 1 - Math.exp(-(delta * 1000) / tauMs);
+      const smoothed = current + (rawTarget - current) * rate;
+      arrowSmoothedMagRef.current = smoothed;
+
+      if (smoothed < EXHAUST_VISIBILITY_THRESHOLD || mag4 < 1e-6) {
+        arrowMesh.visible = false;
+      } else {
+        arrowMesh.visible = true;
+        const invMag = 1 / mag4;
+        const dirX = ax4 * invMag;
+        const dirY = ay4 * invMag;
+        const dirT = at4 * invMag;
+        const arrowLen = ARROW_BASE_LENGTH * smoothed;
+        const originOffset =
+          (SHIP_HULL_RADIUS + ARROW_BASE_OFFSET) * SHIP_MODEL_SCALE +
+          0.5 * arrowLen;
+        const hullCenterT = dp.t + SHIP_LIFT_Z * SHIP_MODEL_SCALE;
+        arrowMesh.position.set(
+          dp.x + dirX * originOffset,
+          dp.y + dirY * originOffset,
+          hullCenterT + dirT * originOffset,
+        );
+        arrowVecDir.set(dirX, dirY, dirT);
+        arrowTmpQuat.setFromUnitVectors(arrowVecY, arrowVecDir);
+        arrowMesh.quaternion.copy(arrowTmpQuat);
+        arrowMesh.scale.set(ARROW_BASE_WIDTH * smoothed, arrowLen, 1);
+        arrowMat.opacity = smoothed * ARROW_MAX_OPACITY;
+      }
+    } else if (arrowMesh) {
+      arrowMesh.visible = false;
+    }
   });
 
   return (
-    <group ref={groupRef} scale={SHIP_MODEL_SCALE}>
-      <group position={[0, 0, SHIP_LIFT_Z]}>
-        {/* Dome: ぷよぷよ半透明ゼリー。LatheGeometry default Y-up を Z-up world に合わせる。 */}
-        <mesh geometry={domeGeometry} rotation={[Math.PI / 2, 0, 0]}>
-          <meshPhysicalMaterial
-            color={domeColor}
-            transparent
-            opacity={0.7}
-            transmission={0.55}
-            thickness={0.3}
-            roughness={0.18}
-            metalness={0.0}
-            clearcoat={0.6}
-            clearcoatRoughness={0.25}
-            ior={1.33}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
+    <>
+      <group ref={groupRef} scale={SHIP_MODEL_SCALE}>
+        <group position={[0, 0, SHIP_LIFT_Z]}>
+          {/* Dome: ぷよぷよ半透明ゼリー。LatheGeometry default Y-up を Z-up world に合わせる。 */}
+          <mesh geometry={domeGeometry} rotation={[Math.PI / 2, 0, 0]}>
+            <meshPhysicalMaterial
+              color={domeColor}
+              transparent
+              opacity={0.7}
+              transmission={0.55}
+              thickness={0.3}
+              roughness={0.18}
+              metalness={0.0}
+              clearcoat={0.6}
+              clearcoatRoughness={0.25}
+              ior={1.33}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
 
-        {/* Eyes */}
-        <mesh position={[EYE_OFFSET_X, EYE_OFFSET_Y, EYE_OFFSET_Z]}>
-          <sphereGeometry args={[EYE_RADIUS, 14, 14]} />
-          <meshStandardMaterial color={EYE_COLOR} roughness={0.35} />
-        </mesh>
-        <mesh position={[EYE_OFFSET_X, -EYE_OFFSET_Y, EYE_OFFSET_Z]}>
-          <sphereGeometry args={[EYE_RADIUS, 14, 14]} />
-          <meshStandardMaterial color={EYE_COLOR} roughness={0.35} />
-        </mesh>
+          {/* Eyes */}
+          <mesh position={[EYE_OFFSET_X, EYE_OFFSET_Y, EYE_OFFSET_Z]}>
+            <sphereGeometry args={[EYE_RADIUS, 14, 14]} />
+            <meshStandardMaterial color={EYE_COLOR} roughness={0.35} />
+          </mesh>
+          <mesh position={[EYE_OFFSET_X, -EYE_OFFSET_Y, EYE_OFFSET_Z]}>
+            <sphereGeometry args={[EYE_RADIUS, 14, 14]} />
+            <meshStandardMaterial color={EYE_COLOR} roughness={0.35} />
+          </mesh>
 
-        {/* Cheeks: 「血色がうっすら透けている」感を狙う。物質感を消すため:
+          {/* Cheeks: 「血色がうっすら透けている」感を狙う。物質感を消すため:
             - opacity 低め (0.4) で透けを強く
             - depthWrite=false で奥のものを遮らない
             - 弱い emissive で内側からのほんのり発光 (頬の血色)
             - z 方向 scale 圧縮で扁平化 → 球感を消して dome 表面の「染み」っぽく
             - roughness=1.0 で specular を抑え物体感を消す */}
-        <mesh
-          position={[CHEEK_OFFSET_X, CHEEK_OFFSET_Y, CHEEK_OFFSET_Z]}
-          scale={[1, 1, 0.45]}
-        >
-          <sphereGeometry args={[CHEEK_RADIUS, 14, 14]} />
-          <meshStandardMaterial
-            color={CHEEK_COLOR}
-            emissive={CHEEK_COLOR}
-            emissiveIntensity={0.35}
-            transparent
-            opacity={0.4}
-            roughness={1.0}
-            metalness={0.0}
-            depthWrite={false}
-            toneMapped={false}
-          />
-        </mesh>
-        <mesh
-          position={[CHEEK_OFFSET_X, -CHEEK_OFFSET_Y, CHEEK_OFFSET_Z]}
-          scale={[1, 1, 0.45]}
-        >
-          <sphereGeometry args={[CHEEK_RADIUS, 14, 14]} />
-          <meshStandardMaterial
-            color={CHEEK_COLOR}
-            emissive={CHEEK_COLOR}
-            emissiveIntensity={0.35}
-            transparent
-            opacity={0.4}
-            roughness={1.0}
-            metalness={0.0}
-            depthWrite={false}
-            toneMapped={false}
-          />
-        </mesh>
+          <mesh
+            position={[CHEEK_OFFSET_X, CHEEK_OFFSET_Y, CHEEK_OFFSET_Z]}
+            scale={[1, 1, 0.45]}
+          >
+            <sphereGeometry args={[CHEEK_RADIUS, 14, 14]} />
+            <meshStandardMaterial
+              color={CHEEK_COLOR}
+              emissive={CHEEK_COLOR}
+              emissiveIntensity={0.35}
+              transparent
+              opacity={0.4}
+              roughness={1.0}
+              metalness={0.0}
+              depthWrite={false}
+              toneMapped={false}
+            />
+          </mesh>
+          <mesh
+            position={[CHEEK_OFFSET_X, -CHEEK_OFFSET_Y, CHEEK_OFFSET_Z]}
+            scale={[1, 1, 0.45]}
+          >
+            <sphereGeometry args={[CHEEK_RADIUS, 14, 14]} />
+            <meshStandardMaterial
+              color={CHEEK_COLOR}
+              emissive={CHEEK_COLOR}
+              emissiveIntensity={0.35}
+              transparent
+              opacity={0.4}
+              roughness={1.0}
+              metalness={0.0}
+              depthWrite={false}
+              toneMapped={false}
+            />
+          </mesh>
 
-        {/* Tentacles: dome 底面 (z=0) 円周に 5 本。i=0 は武装触手 (+x = heading 方向)。
+          {/* Tentacles: dome 底面 (z=0) 円周に 5 本。i=0 は武装触手 (+x = heading 方向)。
             mesh / bulb は ref で保持し、useFrame で物理 rope の状態に追従更新。 */}
-        {tentacleLayout.map((tp, i) => {
-          const baseR = DOME_RADIUS * 0.82;
-          const x = baseR * Math.cos(tp.angle);
-          const y = baseR * Math.sin(tp.angle);
-          const tentacleKey = `tentacle-${i}`;
-          return (
-            <group key={tentacleKey} position={[x, y, 0]}>
-              <mesh
-                geometry={tentacleInitialGeometries[i]}
-                ref={(el) => {
-                  tentacleMeshRefs.current[i] = el;
-                }}
-              >
-                <meshPhysicalMaterial
-                  color={tentacleColor}
-                  transparent
-                  opacity={0.7}
-                  transmission={0.3}
-                  thickness={0.15}
-                  roughness={0.35}
-                  metalness={0.0}
-                  side={THREE.DoubleSide}
-                />
-              </mesh>
-              {/* 先端 cap: 物理 rope の最終質点に追従。
+          {tentacleLayout.map((tp, i) => {
+            const baseR = DOME_RADIUS * 0.82;
+            const x = baseR * Math.cos(tp.angle);
+            const y = baseR * Math.sin(tp.angle);
+            const tentacleKey = `tentacle-${i}`;
+            return (
+              <group key={tentacleKey} position={[x, y, 0]}>
+                <mesh
+                  geometry={tentacleInitialGeometries[i]}
+                  ref={(el) => {
+                    tentacleMeshRefs.current[i] = el;
+                  }}
+                >
+                  <meshPhysicalMaterial
+                    color={tentacleColor}
+                    transparent
+                    opacity={0.7}
+                    transmission={0.3}
+                    thickness={0.15}
+                    roughness={0.35}
+                    metalness={0.0}
+                    side={THREE.DoubleSide}
+                  />
+                </mesh>
+                {/* 先端 cap: 物理 rope の最終質点に追従。
                   - 武装触手 (=laser emitter): player 色 + emissive、目立つ球。
                   - 通常触手: tube material と完全同一の半透明水色。tube radius と同径 sphere
                     を xy で広げ z 方向に圧縮して扁平化することで、触手末端で「ぷくっと丸く
                     閉じる滴」の輪郭にし球感を消す。 */}
-              {tp.armed ? (
-                // 武装触手末端: 外殻 (通常触手と同じ touch material の半球 cap) + 内核
-                // (player 色 emissive sphere)。group の position/rotation を rope tip に
-                // 追従させると、外殻 disc 面が tube 末端と継ぎ目なし接続、内核は外殻 dome
-                // 内に内包されて「内側からゆらぐ光るゼリー先端」の見え方になる。
-                <group
-                  ref={(el) => {
-                    bulbMeshRefs.current[i] = el;
-                  }}
-                >
-                  {/* 外殻: tube radius と同径の半球、touch material と完全同一。 */}
-                  <mesh>
+                {tp.armed ? (
+                  // 武装触手末端: 外殻 (通常触手と同じ touch material の半球 cap) + 内核
+                  // (player 色 emissive sphere)。group の position/rotation を rope tip に
+                  // 追従させると、外殻 disc 面が tube 末端と継ぎ目なし接続、内核は外殻 dome
+                  // 内に内包されて「内側からゆらぐ光るゼリー先端」の見え方になる。
+                  <group
+                    ref={(el) => {
+                      bulbMeshRefs.current[i] = el;
+                    }}
+                  >
+                    {/* 外殻: tube radius と同径の半球、touch material と完全同一。 */}
+                    <mesh>
+                      <sphereGeometry
+                        args={[
+                          ARMED_TENTACLE_RADIUS,
+                          TIP_HEMISPHERE_PHI_SEGS,
+                          TIP_HEMISPHERE_THETA_SEGS,
+                          0,
+                          Math.PI * 2,
+                          0,
+                          Math.PI / 2,
+                        ]}
+                      />
+                      <meshPhysicalMaterial
+                        color={tentacleColor}
+                        transparent
+                        opacity={0.7}
+                        transmission={0.3}
+                        thickness={0.15}
+                        roughness={0.35}
+                        metalness={0.0}
+                        side={THREE.DoubleSide}
+                      />
+                    </mesh>
+                    {/* 内核 emitter: 外殻 (半球) の中心 = group 原点 = tube 末端の disc 面中心。
+                      emissive を HDR 値 (>1) に上げ、toneMapped=false で tone mapping を
+                      スキップ → 真っ白に飽和するくらい強く光る。 */}
+                    <mesh>
+                      <sphereGeometry
+                        args={[ARMED_INNER_EMITTER_RADIUS, 14, 14]}
+                      />
+                      <meshPhysicalMaterial
+                        color={new THREE.Color(player.color)}
+                        emissive={new THREE.Color(player.color)}
+                        emissiveIntensity={3.0}
+                        roughness={0.4}
+                        metalness={0.0}
+                        toneMapped={false}
+                      />
+                    </mesh>
+                    {/* Halo: 内核より大きい sphere に additive blending を掛けて「光の周りに
+                      コロナが広がる」見た目を作る。bloom 無しでも輝いて見えるためのフェイク。
+                      depthWrite=false で他のオブジェクトを遮らず、touch 越しでも滲み出る。 */}
+                    <mesh>
+                      <sphereGeometry args={[ARMED_HALO_RADIUS, 16, 16]} />
+                      <meshBasicMaterial
+                        color={new THREE.Color(player.color)}
+                        transparent
+                        opacity={0.35}
+                        depthWrite={false}
+                        blending={THREE.AdditiveBlending}
+                        toneMapped={false}
+                      />
+                    </mesh>
+                  </group>
+                ) : (
+                  <mesh
+                    ref={(el) => {
+                      bulbMeshRefs.current[i] = el;
+                    }}
+                  >
+                    {/* 半球 (上半分のみ): tube radius と同径、disc 面が tube 末端と接続。
+                      thetaStart=0, thetaLength=π/2 で「+y 側 (北極) 半球」。useFrame で
+                      rotation を tangent 方向に合わせるので、disc 法線が tube tangent と
+                      一致 → 継ぎ目なく丸く閉じる。 */}
                     <sphereGeometry
                       args={[
-                        ARMED_TENTACLE_RADIUS,
+                        TENTACLE_RADIUS,
                         TIP_HEMISPHERE_PHI_SEGS,
                         TIP_HEMISPHERE_THETA_SEGS,
                         0,
@@ -621,74 +769,29 @@ export const JellyfishShipRenderer = ({
                       side={THREE.DoubleSide}
                     />
                   </mesh>
-                  {/* 内核 emitter: 外殻 (半球) の中心 = group 原点 = tube 末端の disc 面中心。
-                      emissive を HDR 値 (>1) に上げ、toneMapped=false で tone mapping を
-                      スキップ → 真っ白に飽和するくらい強く光る。 */}
-                  <mesh>
-                    <sphereGeometry
-                      args={[ARMED_INNER_EMITTER_RADIUS, 14, 14]}
-                    />
-                    <meshPhysicalMaterial
-                      color={new THREE.Color(player.color)}
-                      emissive={new THREE.Color(player.color)}
-                      emissiveIntensity={3.0}
-                      roughness={0.4}
-                      metalness={0.0}
-                      toneMapped={false}
-                    />
-                  </mesh>
-                  {/* Halo: 内核より大きい sphere に additive blending を掛けて「光の周りに
-                      コロナが広がる」見た目を作る。bloom 無しでも輝いて見えるためのフェイク。
-                      depthWrite=false で他のオブジェクトを遮らず、touch 越しでも滲み出る。 */}
-                  <mesh>
-                    <sphereGeometry args={[ARMED_HALO_RADIUS, 16, 16]} />
-                    <meshBasicMaterial
-                      color={new THREE.Color(player.color)}
-                      transparent
-                      opacity={0.35}
-                      depthWrite={false}
-                      blending={THREE.AdditiveBlending}
-                      toneMapped={false}
-                    />
-                  </mesh>
-                </group>
-              ) : (
-                <mesh
-                  ref={(el) => {
-                    bulbMeshRefs.current[i] = el;
-                  }}
-                >
-                  {/* 半球 (上半分のみ): tube radius と同径、disc 面が tube 末端と接続。
-                      thetaStart=0, thetaLength=π/2 で「+y 側 (北極) 半球」。useFrame で
-                      rotation を tangent 方向に合わせるので、disc 法線が tube tangent と
-                      一致 → 継ぎ目なく丸く閉じる。 */}
-                  <sphereGeometry
-                    args={[
-                      TENTACLE_RADIUS,
-                      TIP_HEMISPHERE_PHI_SEGS,
-                      TIP_HEMISPHERE_THETA_SEGS,
-                      0,
-                      Math.PI * 2,
-                      0,
-                      Math.PI / 2,
-                    ]}
-                  />
-                  <meshPhysicalMaterial
-                    color={tentacleColor}
-                    transparent
-                    opacity={0.7}
-                    transmission={0.3}
-                    thickness={0.15}
-                    roughness={0.35}
-                    metalness={0.0}
-                    side={THREE.DoubleSide}
-                  />
-                </mesh>
-              )}
-            </group>
-          );
-        })}
+                )}
+              </group>
+            );
+          })}
+        </group>
       </group>
-    </group>
+
+      {/* Spacetime acceleration arrow (sibling、ship body group の外側、yaw/scale 非適用)。
+          RocketShipRenderer / SelfShipRenderer と同じ pattern。 */}
+      <mesh
+        ref={arrowMeshRef}
+        geometry={sharedGeometries.accelerationArrowFlat}
+        visible={false}
+      >
+        <meshBasicMaterial
+          ref={arrowMatRef}
+          color={arrowColor}
+          transparent
+          depthWrite={false}
+          toneMapped={false}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+    </>
   );
 };
