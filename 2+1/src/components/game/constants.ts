@@ -347,7 +347,8 @@ export const PLAYER_WORLDLINE_OPACITY = 0.4;
 // 0.55 に bump で「光線」感強化 (per-vertex time fade で先端は自然に減衰するため
 // 全体厚塗りにはならない)。
 // 2026-04-22: 0.55 → 0.4 (odakin 指示、世界線がやや主張強すぎた)
-export const LASER_WORLDLINE_OPACITY = 0.4;
+// 2026-05-02: 0.4 → 0.2 (odakin 指示、 demo 視認性調整、 4/19 当時の値に回帰)
+export const LASER_WORLDLINE_OPACITY = 0.2;
 
 // --- Heading marker (未来光円錐の母線として heading 方向を可視化) ---
 // 自機の進行方向を null geodesic (Δt = |Δx|) で描画。レーザーの予測線でもあり、
