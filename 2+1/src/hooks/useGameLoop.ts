@@ -644,6 +644,8 @@ export function useGameLoop({
             currentTime,
             freshForLH.lighthouseLastFireTime,
             freshForLH.lighthouseSpawnTime,
+            freshForLH.killLog,
+            stale.lastUpdateTimeRef.current,
             freshForLH.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined,
           );
 

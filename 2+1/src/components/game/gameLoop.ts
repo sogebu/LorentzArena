@@ -12,7 +12,6 @@ import {
   multiplyVector4Matrix4,
   pastLightConeIntersectionWorldLine,
   subVector4,
-  subVector4Torus,
   vector3Zero,
   type Vector3,
   type Vector4,
@@ -38,10 +37,12 @@ import {
   PLAYER_ACCELERATION,
   THRUST_ENERGY_RATE,
 } from "./constants";
+import { causalityJumpLambda } from "./causalityRules";
 import { computeInterceptDirection, isLighthouse, perturbDirection } from "./lighthouse";
 import { findLaserHitPosition } from "./laserPhysics";
 import type { ControlScheme } from "../../stores/game-store";
-import type { Laser, RelativisticPlayer } from "./types";
+import type { KillEventRecord, Laser, RelativisticPlayer } from "./types";
+import { lastSyncForDead, virtualPos } from "./virtualWorldLine";
 
 // --- Camera ---
 
@@ -337,6 +338,8 @@ export function processLighthouseAI(
   currentTime: number,
   lastFireMap: Map<string, number>,
   spawnTimeMap: Map<string, number>,
+  killLog: readonly KillEventRecord[],
+  lastUpdateTimes: ReadonlyMap<string, number>,
   torusHalfWidth?: number,
 ): LighthouseResult {
   // 死亡中 LH は呼び出し側 (useGameLoop) で既に continue されているため、ここには
@@ -344,24 +347,39 @@ export function processLighthouseAI(
   // 他の死亡プレイヤーと対称的に扱われる (DESIGN.md §物理「スポーン座標時刻」原則 2)。
   let lhNewPs = evolvePhaseSpace(lh.phaseSpace, vector3Zero(), dTau);
 
-  // 因果律ジャンプ: 灯台が誰かの過去光円錐内に落ちたら、
-  // 一番過去にいる生存プレイヤーの座標時間までジャンプして因果律を保つ
-  let needsJump = false;
-  let minPlayerT = Number.POSITIVE_INFINITY;
-  for (const [pId, player] of players) {
+  // Rule B (= 因果律対称ジャンプ): LH が誰かの過去光円錐内に落ちたら、 全 peer の
+  // virtualPos を計算し、 全 cone から脱出する λ_exit max まで u^μ 方向に advance。
+  // LH は u=0 (γ=1) なので t 方向にのみ jump (= 既存挙動の対称化拡張)。
+  //
+  // 旧仕様 (~ 2026-04-28) との違い:
+  // - 旧: alive non-LH の min(pos.t) に jump (= host が静止 + client が高 γ で移動の場面で
+  //   LH = host.t に anchor、 user 観察「いちばん未来側ではなくホスト時刻」 = Bug 5)
+  // - 新: max_P (P.t - |P.xy - LH.xy|) に jump = 各 peer の past null cone surface のうち
+  //   最も未来。 spatial 距離も考慮するため lead client に追従しやすい
+  //
+  // dead / stale も含めて統一処理 (= Rule B 内部で dt ≤ 0 / spacelike を skip するため、
+  // 不要な peer は自動除外される)。 詳細: plans/2026-05-02-causality-symmetric-jump.md §3
+  // + Stage 4。
+  const peerVirtualPositions: { pos: Vector4 }[] = [];
+  for (const [pId, p] of players) {
     if (isLighthouse(pId)) continue;
-    if (player.isDead) continue;
-    minPlayerT = Math.min(minPlayerT, player.phaseSpace.pos.t);
-    if (player.phaseSpace.pos.t <= lhNewPs.pos.t) continue;
-    const diff = subVector4Torus(lhNewPs.pos, player.phaseSpace.pos, torusHalfWidth);
-    const l = lorentzDotVector4(diff, diff);
-    if (l < 0) {
-      needsJump = true;
-    }
+    if (pId === lhId) continue;
+    const lastSync = p.isDead
+      ? (lastSyncForDead(pId, killLog) ?? currentTime)
+      : (lastUpdateTimes.get(pId) ?? currentTime);
+    const vPos = virtualPos(p, lastSync, currentTime);
+    // PBC torus: peer の virtual pos を LH 中心の最小画像 cell に shift (= 既存
+    // subVector4Torus ベースの causality 判定と同等の min-image 折り畳み)。
+    const peerEffective = torusHalfWidth !== undefined
+      ? displayPos(vPos, lhNewPs.pos, torusHalfWidth)
+      : vPos;
+    peerVirtualPositions.push({ pos: peerEffective });
   }
-  if (needsJump && minPlayerT > lhNewPs.pos.t) {
+  const lambda = causalityJumpLambda(lhNewPs.pos, lhNewPs.u, peerVirtualPositions);
+  if (lambda > 0) {
+    // u=0 (γ=1) なので jump は時間軸沿いのみ
     lhNewPs = createPhaseSpace(
-      createVector4(minPlayerT, lhNewPs.pos.x, lhNewPs.pos.y, 0),
+      createVector4(lhNewPs.pos.t + lambda, lhNewPs.pos.x, lhNewPs.pos.y, 0),
       vector3Zero(),
     );
   }
