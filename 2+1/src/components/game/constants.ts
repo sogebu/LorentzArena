@@ -77,10 +77,12 @@ export const LASER_LIGHTNESS_MAX = 85;
 
 // レーザー + スラスト共用エネルギー
 export const ENERGY_MAX = 1.0;
-export const ENERGY_PER_SHOT = 1.0 / 30; // 30 発で枯渇（≈3 秒連射）
-// フル thrust 連続で満タン→0 に 9 秒。fire の 3 倍長持ち。
+// 2026-05-02: 1/30 → 1/300 (odakin 指示で 1/10 に減)。 300 発 ≈ 30 秒連射で枯渇。
+export const ENERGY_PER_SHOT = 1.0 / 300;
+// フル thrust 連続で満タン→0 に 90 秒。 fire の 3 倍長持ちは維持。
 // 部分 thrust (|a|/PLAYER_ACCELERATION < 1) の場合は使用率に比例。
-export const THRUST_ENERGY_RATE = 1.0 / 9;
+// 2026-05-02: 1/9 → 1/90 (odakin 指示で 1/10 に減)。
+export const THRUST_ENERGY_RATE = 1.0 / 90;
 export const ENERGY_RECOVERY_RATE = 1.0 / 6; // 6 秒で 0→満タン（撃/推どちらもしていないときのみ回復）
 
 // Damage model (Phase C1):
