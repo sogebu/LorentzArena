@@ -95,10 +95,11 @@ describe("pushFrozenWorldLine — 旧 WL を frozenWorldLines に容量上限付
     expect(next[next.length - 1].playerId).toBe("new");
   });
 
-  it("immutable: prev を mutate しない", () => {
-    const prev: readonly FrozenWorldLine[] = [];
+  it("immutable: prev を mutate しない (= push 時は新規 array)", () => {
+    const prev: FrozenWorldLine[] = [];
     const p = makePlayer("p");
-    pushFrozenWorldLine(prev, p);
-    expect(prev).toHaveLength(0);
+    const next = pushFrozenWorldLine(prev, p);
+    expect(prev).toHaveLength(0); // 元 array は未変更
+    expect(next).not.toBe(prev); // push 時は新規 array
   });
 });

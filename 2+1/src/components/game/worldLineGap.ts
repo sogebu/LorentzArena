@@ -33,9 +33,11 @@ export const isLargeJump = (lambda: number): boolean =>
  *   ガード重複で防御。
  */
 export const pushFrozenWorldLine = (
-  prev: readonly FrozenWorldLine[],
+  prev: FrozenWorldLine[],
   player: RelativisticPlayer,
-): readonly FrozenWorldLine[] => {
+): FrozenWorldLine[] => {
+  // caller (= zustand store の `setFrozenWorldLines` updater) が mutable array を渡す
+  // 想定。 no-op 時は prev 同一参照を返す (= test で identity 検査)、 push 時は新規 array。
   if (player.isDead) return prev;
   if (player.worldLine.history.length === 0) return prev;
   const entry: FrozenWorldLine = {

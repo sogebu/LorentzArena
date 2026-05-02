@@ -25,10 +25,12 @@ import {
   LIGHTHOUSE_HIT_DAMAGE,
   MAX_FROZEN_WORLDLINES,
   MAX_LASERS,
+  MAX_WORLDLINE_HISTORY,
   PROCESSED_LASERS_CLEANUP_THRESHOLD,
   RESPAWN_DELAY,
   SPAWN_EFFECT_DURATION,
 } from "../components/game/constants";
+import { causalityJumpLambda } from "../components/game/causalityRules";
 import {
   ballisticCatchupPhaseSpace,
   checkCausalFreeze,
@@ -42,10 +44,21 @@ import { isLighthouse } from "../components/game/lighthouse";
 import { createRespawnPosition } from "../components/game/respawnTime";
 import type { useTouchInput } from "../components/game/touchInput";
 import type { Laser, RelativisticPlayer } from "../components/game/types";
+import {
+  lastSyncForDead,
+  virtualPos,
+} from "../components/game/virtualWorldLine";
+import {
+  isLargeJump,
+  pushFrozenWorldLine,
+} from "../components/game/worldLineGap";
 import type { NetworkManager } from "../contexts/PeerProvider";
 import {
+  appendWorldLine,
   type createPhaseSpace,
+  createWorldLine,
   displayPos,
+  gamma,
   type Vector3,
   type Vector4,
   vector3Zero,
@@ -536,11 +549,17 @@ export function useGameLoop({
           }
           causalFrozenRef.current = frozen;
 
+          // Rule A は physics を skip させるが、 Rule B は frozen 状態からの脱出経路として
+          // 常に評価する (plan §7.4)。 frozen + λ=0 のときだけ完全 skip + 既存挙動維持。
+          let newPs = freshMe.phaseSpace;
+          let updatedWorldLine = freshMe.worldLine;
+          let didPhysics = false;
+          const otherPositions: Vector4[] = [];
+          for (const [id, p] of fresh.players) {
+            if (id !== myId) otherPositions.push(p.phaseSpace.pos);
+          }
+
           if (!frozen) {
-            const otherPositions: Vector4[] = [];
-            for (const [id, p] of fresh.players) {
-              if (id !== myId) otherPositions.push(p.phaseSpace.pos);
-            }
             const physics = processPlayerPhysics(
               freshMe,
               keysPressed.current,
@@ -563,10 +582,76 @@ export function useGameLoop({
             // worldLine history にも同じ heading で格納したいが、physics.updatedWorldLine
             // は既に appendWorldLine 済 (前 heading 入り)。renderer 側は latest phaseSpace
             // を読むので実害は小さい (履歴 replay 精度のみ影響、角速度無しの現仕様で顕在化せず)。
-            const newPs = {
+            newPs = {
               ...physics.newPhaseSpace,
               heading: yawToQuat(headingYawRef.current),
             };
+            updatedWorldLine = physics.updatedWorldLine;
+            didPhysics = true;
+          }
+
+          // Rule B (= 因果律対称ジャンプ): peer の virtualPos を計算し、 自機が peer の
+          // 過去 cone 内にいれば u^μ 方向に λ だけ advance。 plan §7.4 に従い frozen でも
+          // 評価 (= jump で frozen 状態から脱出するため)。
+          //
+          // dead / stale も含めて統一処理 (= virtualPos の inertial 延長)、 Rule B 内部で
+          // dt ≤ 0 / spacelike を skip するため不要 peer は自動除外。 PBC torus は peer の
+          // virtual pos を自機中心の最小画像 cell に shift。
+          const torusHalfWidthForRuleB =
+            fresh.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined;
+          const peerVirtualPositions: { pos: Vector4 }[] = [];
+          for (const [pId, p] of fresh.players) {
+            if (pId === myId) continue;
+            const lastSync = p.isDead
+              ? (lastSyncForDead(pId, fresh.killLog) ?? currentTime)
+              : (stale.lastUpdateTimeRef.current.get(pId) ?? currentTime);
+            const vPos = virtualPos(p, lastSync, currentTime);
+            const peerEffective =
+              torusHalfWidthForRuleB !== undefined
+                ? displayPos(vPos, newPs.pos, torusHalfWidthForRuleB)
+                : vPos;
+            peerVirtualPositions.push({ pos: peerEffective });
+          }
+          const lambda = causalityJumpLambda(
+            newPs.pos,
+            newPs.u,
+            peerVirtualPositions,
+          );
+
+          if (lambda > 0) {
+            const g = gamma(newPs.u);
+            const adjustedPs = {
+              ...newPs,
+              pos: {
+                t: newPs.pos.t + lambda * g,
+                x: newPs.pos.x + lambda * newPs.u.x,
+                y: newPs.pos.y + lambda * newPs.u.y,
+                z: 0,
+              },
+            };
+            newPs = adjustedPs;
+            if (isLargeJump(lambda)) {
+              // 大ジャンプ: 旧 worldLine を frozenWorldLines に保存し、 新セグメントを 1 点
+              // から開始 (= CatmullRomCurve3 が「滑らかな嘘」 で gap 補間しないようにする)。
+              fresh.setFrozenWorldLines((prev) =>
+                pushFrozenWorldLine(prev, freshMe),
+              );
+              updatedWorldLine = appendWorldLine(
+                createWorldLine(MAX_WORLDLINE_HISTORY),
+                adjustedPs,
+              );
+            } else {
+              // 微小 correction: freshMe.worldLine から再 append (= physics の updatedWorldLine
+              // は pre-Rule-B 点を含むため捨てて、 adjusted な finalPs で正規化)。
+              updatedWorldLine = appendWorldLine(
+                freshMe.worldLine,
+                adjustedPs,
+                otherPositions,
+              );
+            }
+          }
+
+          if (didPhysics || lambda > 0) {
             fresh.setPlayers((prev) => {
               const me = prev.get(myId);
               if (!me) return prev;
@@ -575,7 +660,7 @@ export function useGameLoop({
               next.set(myId, {
                 ...me,
                 phaseSpace: newPs,
-                worldLine: physics.updatedWorldLine,
+                worldLine: updatedWorldLine,
               });
               return next;
             });
