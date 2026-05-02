@@ -305,15 +305,22 @@ export const SceneContent = ({
     for (const player of playerList) {
       if (player.id === myId) continue;
       if (isLighthouse(player.id)) continue;
-      if (player.isDead) continue;
-      // (B) future-most は常時 push (光到達を待たない神の視点 marker)。
-      future.push({
-        key: `future-pt-${player.id}`,
-        playerId: player.id,
-        color: player.color,
-        pos: player.phaseSpace.pos,
-      });
-      // (A) past-cone は光が届いたときのみ push。
+      // (B) future-most: omniscient view の世界線末端 marker。 死亡 player は world-now が
+      // 存在しない (= 凍結) ため skip。 isDead は神視点の存在論的 gate (因果律無関係)。
+      if (!player.isDead) {
+        future.push({
+          key: `future-pt-${player.id}`,
+          playerId: player.id,
+          color: player.color,
+          pos: player.phaseSpace.pos,
+        });
+      }
+      // (A) past-cone: 観測者が **今見てる** 位置の causal marker。 死亡 player でも
+      // past cone が worldLine 末端まで到達してない間は引き続き表示する。 isDead で
+      // 即 skip すると 「相手が死んだ瞬間に kill event 到達前に描画消える」 因果律違反
+      // bug (2026-05-02 odakin 報告)。 OtherShipRenderer の本体描画も同じ gate (=
+      // pastLightConeIntersectionWorldLine 結果非 null) で動くので、 marker と本体が
+      // 同期して光速遅延ぶん表示される。
       const intersection = pastLightConeIntersectionWorldLine(
         player.worldLine,
         observerPos,
