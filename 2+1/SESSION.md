@@ -2,9 +2,17 @@
 
 ## 現在のステータス
 
-**本番デプロイ済**: `bbce03f` (build `2026/04/28 21:50:37 JST`、 https://sogebu.github.io/LorentzArena/)。 main は origin と同期。
+**本番デプロイ済**: 2026-05-02 セッションで viewMode / controlScheme の 2 段 dropdown 復活 (Lobby + in-arena ControlPanel) + Lobby ShipPreview の viewMode 連動を追加 → deploy。 main は origin と同期。
+
+**2026-05-02 セッション**:
+- viewMode (機体形状) / controlScheme (操作系) の 2 段 dropdown を **Lobby (START の下、 安田くんへの demo 用途)** と **HUD ControlPanel (in-arena 左上、 ゲーム中切替用)** の 2 ヶ所に追加。 e6c17cc で hidden オプション化していたものを CLAUDE.md の事前設計通り復活させた。
+- Lobby 背景の `ShipPreview` を `viewMode` 連動化 (`viewModeToHullStyle`: `shooter` ⇒ `rocket` / `jellyfish` ⇒ `jellyfish` / それ以外 ⇒ `classic`)。 タイトル画面で見た目を切り替えると即時反映。
+- i18n: `hud.viewMode.label` / `hud.viewMode.jellyfish` / `hud.controlScheme.label` + 3 種を ja / en に追加。
+- URL hash override (`#ship=...` / `#controls=...`) と LS 永続化は従来通り併存。
 
 **2026-04-28 セッションの大物 fix 群** (詳細 git log):
+
+**2026-04-28 セッションの大物 fix 群** (`bbce03f` build `2026/04/28 21:50:37 JST`、 詳細 git log):
 - causalEvents observer-centered wrap、 lighthouse γ² bug、 ballistic catchup self-authoritative、 共変表現徹底 (`cb9fa10` / `8c02c0f`)
 - camera pitch default 60° (`3ba639a` までに 30 → 60 → 75 → 70 → 60 と微調整)
 - 後 join client 永遠凍結 fix 段階1: stale player を snapshot から除外 (`d75c93a`)

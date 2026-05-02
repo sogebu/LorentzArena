@@ -49,7 +49,10 @@ deploy 後に報告する項目:
 
 ## 操作系・機体形状・境界モードの隠しオプション (URL hash override)
 
-操作系 (`controlScheme`)・機体形状 (`viewMode`)・境界モード (`boundaryMode`) は直交軸として独立に持ち、 各軸の値すべてコードに保持。 UI dropdown は撤去 (隠す)、 切替は **URL hash override** または LS 直接編集。
+操作系 (`controlScheme`)・機体形状 (`viewMode`)・境界モード (`boundaryMode`) は直交軸として独立に持ち、 各軸の値すべてコードに保持。
+
+- **`controlScheme` / `viewMode`**: UI dropdown を Lobby (タイトル画面、ship preview と並ぶ) と HUD ControlPanel (in-arena 左上) の 2 ヶ所に復活 (2026-05-02)。 同時に URL hash override / LS 直接編集も従来通り併存。
+- **`boundaryMode` / `arenaWallsVisible` / `openCylinderShape`**: UI 無し、 切替は **URL hash override** または LS 直接編集のみ (隠しオプションのまま)。
 
 | 軸 | 値 | デフォルト | LS key |
 |---|---|---|---|
@@ -88,7 +91,7 @@ location.reload();
 
 ### 維持の意図
 
-新操作系 (modern) は 71e5788 で導入したが 2026-04-27 の実機テストで没入感が薄いと判断、デフォルトを旧 classic に戻した。**3 種すべてコード保持**しているのは、将来 UI 復活 / 比較実験 / 別ゲームモードへの転用が見込まれるため。**dropdown を再追加するときは ControlPanel に 2 段 (操作系 / 機体形状) で出す**設計が想定されている (`game-store.ts` の `setControlScheme` / `setViewMode` setter は既に揃っている)。
+新操作系 (modern) は 71e5788 で導入したが 2026-04-27 の実機テストで没入感が薄いと判断、デフォルトを旧 classic に戻した。**3 種すべてコード保持**して隠しオプション化していたが、2026-05-02 に 2 段 dropdown (操作系 / 機体形状) を Lobby + ControlPanel に復活 (= 事前想定通りの配置)。`game-store.ts` の `setControlScheme` / `setViewMode` setter にそのまま wire。背景の Lobby ShipPreview は `viewMode` 連動 (`shooter` ⇒ rocket hull / `jellyfish` ⇒ jellyfish renderer) で即時反映する。
 
 ### 各 controlScheme の挙動
 

@@ -1,6 +1,10 @@
 import { useMemo } from "react";
 import { useI18n } from "../../../i18n";
-import { useGameStore } from "../../../stores/game-store";
+import {
+  type ControlScheme,
+  useGameStore,
+  type ViewMode,
+} from "../../../stores/game-store";
 import { isLighthouse } from "../lighthouse";
 import type { RelativisticPlayer } from "../types";
 import { isTouchDevice } from "./utils";
@@ -119,6 +123,10 @@ export const ControlPanel = ({
   const { t } = useI18n();
   const displayNames = useGameStore((s) => s.displayNames);
   const killLog = useGameStore((s) => s.killLog);
+  const viewMode = useGameStore((s) => s.viewMode);
+  const setViewMode = useGameStore((s) => s.setViewMode);
+  const controlScheme = useGameStore((s) => s.controlScheme);
+  const setControlScheme = useGameStore((s) => s.setControlScheme);
   const sortedScores = useMemo(
     () => Object.entries(scores).sort(([, a], [, b]) => b - a),
     [scores],
@@ -190,6 +198,63 @@ export const ControlPanel = ({
           />
         )}
       </ToggleGroup>
+      {/* 2 段 dropdown: 機体形状 (見た目) と 操作系 を直交軸として独立選択。
+          CLAUDE.md §URL hash override の設計通り、UI は復活、URL hash override も併存。 */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "max-content max-content",
+          rowGap: "4px",
+          columnGap: "6px",
+          marginTop: "6px",
+          fontSize: "12px",
+          opacity: 0.85,
+          alignItems: "center",
+        }}
+      >
+        <label htmlFor="cp-view-mode">{t("hud.viewMode.label")}:</label>
+        <select
+          id="cp-view-mode"
+          value={viewMode}
+          onChange={(e) => setViewMode(e.target.value as ViewMode)}
+          style={{
+            background: "#222",
+            color: "white",
+            border: "1px solid #555",
+            padding: "1px 4px",
+            fontFamily: "monospace",
+            fontSize: "12px",
+          }}
+        >
+          <option value="classic">{t("hud.viewMode.classic")}</option>
+          <option value="shooter">{t("hud.viewMode.shooter")}</option>
+          <option value="jellyfish">{t("hud.viewMode.jellyfish")}</option>
+        </select>
+        <label htmlFor="cp-control-scheme">
+          {t("hud.controlScheme.label")}:
+        </label>
+        <select
+          id="cp-control-scheme"
+          value={controlScheme}
+          onChange={(e) => setControlScheme(e.target.value as ControlScheme)}
+          style={{
+            background: "#222",
+            color: "white",
+            border: "1px solid #555",
+            padding: "1px 4px",
+            fontFamily: "monospace",
+            fontSize: "12px",
+          }}
+        >
+          <option value="legacy_classic">
+            {t("hud.controlScheme.legacy_classic")}
+          </option>
+          <option value="legacy_shooter">
+            {t("hud.controlScheme.legacy_shooter")}
+          </option>
+          <option value="modern">{t("hud.controlScheme.modern")}</option>
+        </select>
+      </div>
       <div
         style={{ marginTop: "5px", color: fps < 30 ? "#ff6666" : "#66ff66" }}
       >
@@ -209,7 +274,9 @@ export const ControlPanel = ({
             transformOrigin: "top left",
           }}
         >
-          <div style={{ fontWeight: "bold", marginBottom: "2px" }}>{t("hud.kills")}</div>
+          <div style={{ fontWeight: "bold", marginBottom: "2px" }}>
+            {t("hud.kills")}
+          </div>
           {sortedScores.map(([id, kills]) => (
             <div
               key={id}
@@ -218,7 +285,7 @@ export const ControlPanel = ({
               }}
             >
               {id === myId
-                ? players.get(myId)?.displayName ?? t("hud.you")
+                ? (players.get(myId)?.displayName ?? t("hud.you"))
                 : isLighthouse(id)
                   ? t("hud.lighthouse")
                   : resolveName(id)}

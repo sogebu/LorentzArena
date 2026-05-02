@@ -26,6 +26,13 @@ export const en: Record<TranslationKey, string> = {
   // shooter: twin-stick (fixed camera, ship hull stationary, cannon points to input dir)
   "hud.viewMode.classic": "Classic",
   "hud.viewMode.shooter": "Shooter",
+  "hud.viewMode.jellyfish": "Jellyfish",
+  "hud.viewMode.label": "Hull",
+  // controlScheme (orthogonal axis to viewMode, see game-store.ts §ControlScheme)
+  "hud.controlScheme.label": "Controls",
+  "hud.controlScheme.legacy_classic": "Legacy Classic",
+  "hud.controlScheme.legacy_shooter": "Legacy Shooter",
+  "hud.controlScheme.modern": "Modern",
   // PLC slice mode (PR #2): spacetime ↔ PLC slice (= past light cone spatial slice on x-y plane)
   "hud.spacetime": "Spacetime",
   "hud.plcSlice": "PLC Slice",

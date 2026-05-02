@@ -62,8 +62,8 @@ type SpawnsUpdater = (prev: SpawnEffect[]) => SpawnEffect[];
  * - 'shooter': ロケット teardrop body (RocketShipRenderer)
  * - 'jellyfish': 半透明 dome + Verlet rope 触手
  *
- * UI dropdown は撤去 (一時的に classic のみ表示)。コードは 3 種維持、URL hash
- * `#ship=shooter` / `#ship=jellyfish` で override 可能。
+ * UI dropdown は Lobby (タイトル画面) + ControlPanel (in-arena) の 2 段 dropdown
+ * として復活 (2026-05-02)。 URL hash `#ship=shooter` / `#ship=jellyfish` も併存。
  */
 export type ViewMode = "classic" | "shooter" | "jellyfish";
 
@@ -99,8 +99,8 @@ const saveViewMode = (mode: ViewMode) => {
  *   WASD は world basis thrust (heading 不変)、矢印 ←/→ で heading 旋回 (砲身/aim のみ)、
  *   機体本体は world basis 固定で砲塔のみ heading 追従
  *
- * UI dropdown は撤去 (一時的に legacy_classic のみ表示)。コードは 3 種維持、URL hash
- * `#controls=modern` / `#controls=legacy_shooter` で override 可能。
+ * UI dropdown は Lobby (タイトル画面) + ControlPanel (in-arena) の 2 段 dropdown
+ * として復活 (2026-05-02)。 URL hash `#controls=modern` / `#controls=legacy_shooter` も併存。
  */
 export type ControlScheme = "legacy_classic" | "legacy_shooter" | "modern";
 
