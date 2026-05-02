@@ -28,6 +28,9 @@ export const en: Record<TranslationKey, string> = {
   "hud.viewMode.shooter": "Shooter",
   "hud.viewMode.jellyfish": "Jellyfish",
   "hud.viewMode.label": "Hull",
+  // Distance unit (internal c=1 natural unit = light-second).
+  "hud.distanceUnit": "ls",
+  "hud.center": "Center",
   // controlScheme (orthogonal axis to viewMode, see game-store.ts §ControlScheme)
   "hud.controlScheme.label": "Controls",
   "hud.controlScheme.legacy_classic": "Legacy Classic",

@@ -26,6 +26,9 @@ export const ja = {
   "hud.viewMode.shooter": "シューター",
   "hud.viewMode.jellyfish": "クラゲ",
   "hud.viewMode.label": "見た目",
+  // 距離表示の単位 (= 内部は c=1 自然単位 = 光秒)。 CenterCompass 等で使う。
+  "hud.distanceUnit": "光秒",
+  "hud.center": "中心",
   // 操作系 (controlScheme = viewMode と直交軸、game-store.ts §ControlScheme)
   "hud.controlScheme.label": "操作系",
   "hud.controlScheme.legacy_classic": "旧クラシック",

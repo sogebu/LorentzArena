@@ -1,3 +1,4 @@
+import { useI18n } from "../../../i18n";
 import { useGameStore } from "../../../stores/game-store";
 import type { RelativisticPlayer } from "../types";
 
@@ -25,6 +26,7 @@ export const CenterCompass = ({
   myId: string | null;
   cameraYawRef: React.RefObject<number>;
 }) => {
+  const { t } = useI18n();
   const players = useGameStore((s) => s.players);
   const myDeathEvent = useGameStore((s) => s.myDeathEvent);
   const rawMyPlayer = myId ? players.get(myId) : undefined;
@@ -45,7 +47,8 @@ export const CenterCompass = ({
   const screenRotationRad = yaw - dirAngle;
 
   // 中心近傍は矢印 hide、 「中心」 だけ表示 (= ノイズ抑制)。
-  const NEAR_CENTER_THRESHOLD = 1.0; // m
+  // 単位は内部 c=1 自然単位の光秒 (= ls)。 1 光秒 ≈ 30 万 km なので「中心」 圏は十分狭い。
+  const NEAR_CENTER_THRESHOLD = 1.0; // ls
 
   return (
     <div
@@ -64,7 +67,7 @@ export const CenterCompass = ({
       }}
     >
       {dist < NEAR_CENTER_THRESHOLD ? (
-        <div style={{ opacity: 0.6 }}>● 中心</div>
+        <div style={{ opacity: 0.6 }}>● {t("hud.center")}</div>
       ) : (
         <>
           <svg
@@ -89,7 +92,9 @@ export const CenterCompass = ({
               strokeLinejoin="round"
             />
           </svg>
-          <div style={{ marginTop: "2px" }}>{dist.toFixed(0)} m</div>
+          <div style={{ marginTop: "2px" }}>
+            {dist.toFixed(0)} {t("hud.distanceUnit")}
+          </div>
         </>
       )}
     </div>
