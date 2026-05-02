@@ -109,6 +109,15 @@ export const POST_HIT_IFRAME_MS = 500;
 // 詳細: DESIGN.md § migration 「phaseSpace gap → worldLine 凍結」
 export const WORLDLINE_GAP_THRESHOLD_MS = 500;
 
+// Rule B (= 因果律対称ジャンプ) が 1 tick で λ > これ の jump を出したとき、 旧 worldLine
+// を frozenWorldLines に押して新セグメントを 1 点から開始する閾値 (= 単位は座標時 ls)。
+// 視覚的に CatmullRomCurve3 が「滑らかな嘘」 で補間する distance に到達する手前で切る。
+// 0.5 ls は WORLDLINE_GAP_THRESHOLD_MS (= wall_time 500ms) と同オーダーだが概念は別:
+// - WORLDLINE_GAP_THRESHOLD_MS: 受信側の wall_time gap (= broadcast 停止検出)
+// - LARGE_JUMP_THRESHOLD_LS: Rule B の coord time ジャンプ量 (= 自機側の発生検出)
+// 詳細: plans/2026-05-02-causality-symmetric-jump.md §6 Stage 3 + Stage 5
+export const LARGE_JUMP_THRESHOLD_LS = 0.5;
+
 // connections から peer が消えた時、即座に players map から削除せずに猶予時間を置く。
 // 目的: host migration / 短時間 tab hidden / 一過的 network blip で一瞬 connection が
 // 切れた相手を、猶予内に再接続したら players map に残したまま復帰させる。
