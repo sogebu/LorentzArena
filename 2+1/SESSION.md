@@ -2,15 +2,18 @@
 
 ## 現在のステータス
 
-**本番デプロイ済**: 2026-05-02 セッションで viewMode / controlScheme の 2 段 dropdown 復活 (Lobby + in-arena ControlPanel) + Lobby ShipPreview の viewMode 連動を追加 → deploy。 main は origin と同期。
+**本番最新 deploy**: `df98bb4` (build `2026/05/02 16:22:07 JST`、 https://sogebu.github.io/LorentzArena/、 安田くんと 2-player demo 用途)。 main は origin と同期。
+deploy 後の追加 commit (= localhost only、 push 済 / deploy 未): `75aaae8` (test 追従) + `c7f7960` (Bug 7 fix)。 次回 deploy 時にまとめて反映。
 
-**2026-05-02 セッション**:
-- viewMode (機体形状) / controlScheme (操作系) の 2 段 dropdown を **Lobby (START の下、 安田くんへの demo 用途)** と **HUD ControlPanel (in-arena 左上、 ゲーム中切替用)** の 2 ヶ所に追加。 e6c17cc で hidden オプション化していたものを CLAUDE.md の事前設計通り復活させた。
-- Lobby 背景の `ShipPreview` を `viewMode` 連動化 (`viewModeToHullStyle`: `shooter` ⇒ `rocket` / `jellyfish` ⇒ `jellyfish` / それ以外 ⇒ `classic`)。 タイトル画面で見た目を切り替えると即時反映。
-- i18n: `hud.viewMode.label` / `hud.viewMode.jellyfish` / `hud.controlScheme.label` + 3 種を ja / en に追加。
-- URL hash override (`#ship=...` / `#controls=...`) と LS 永続化は従来通り併存。
+**2026-05-02 セッション** (時系列 commit、 build 値 / 影響範囲付き):
 
-**2026-04-28 セッションの大物 fix 群** (詳細 git log):
+1. `f573b20` **viewMode / controlScheme 2 段 dropdown 復活** — Lobby (START の下) + HUD ControlPanel (in-arena 左上) の 2 ヶ所、 e6c17cc で hidden オプション化していたものを CLAUDE.md 設計通り復活。 Lobby 背景の ShipPreview を `viewMode` 連動化 (= 安田くん demo で「見た目」 を即時切替できる)。 i18n に `viewMode.label` / `viewMode.jellyfish` / `controlScheme.{label,legacy_classic,legacy_shooter,modern}` 追加。 URL hash + LS 永続化は併存。
+2. `e27b9ea` **jellyfish 機体の 2 bug fix** — (a) Bug 3: `alpha4` 加速度矢印が出てなかった (props 宣言だけ destructure 無しの TODO 残存) → RocketShipRenderer 同等仕様で sibling mesh 配置。 (b) Bug 4: legacy_classic で触手の振れる方向が逆 (= dropdown 復活で combo 到達可能になり顕在化)、 `thrustAccelRef.current` を world frame と認識せず machine local 仮定していた → `group.rotation.z` で R(-θ) 適用、 全 controlScheme で正しく動く。
+3. `054a595` **window.__game diagnostic helper** — Bug 1 (ghost freeze) 調査用、 dev console から `__game.getState().myDeathEvent.ghostPhaseSpace.{u,pos}` で観察可能。 prod でも有効、 secrets 無し、 perf 影響 0、 調査終了後削除予定。
+4. `0e18fc9` **LASER_WORLDLINE_OPACITY 0.4 → 0.2** — odakin 指示、 demo 視認性。
+5. `df98bb4` **ENERGY 消費 1/10** — `ENERGY_PER_SHOT` 1/30 → 1/300、 `THRUST_ENERGY_RATE` 1/9 → 1/90 (= 90 秒で枯渇)。 `ENERGY_RECOVERY_RATE` 据え置き (= 撃 / 推いずれもしてない時の 6 秒で 0 → 満タン)。
+6. `75aaae8` **ballisticCatchup test 追従** — df98bb4 で THRUST_ENERGY_RATE 変更により dτ=30 では枯渇しないため dτ=100 に拡張 (= 90 秒 thrust + 10 秒 friction 単独)。
+7. `c7f7960` **Bug 7 fix: past-cone marker の isDead filter 除去 (因果律違反修復)** — `worldLineMarkerEntries` useMemo で `if (player.isDead) continue;` が past-cone marker と future marker の両方を一気に skip していた。 past-cone marker は **観測者本人の過去光円錐 ∩ worldLine** で gate されるべき causal hint で death event が past cone 到達前なら表示継続が正解。 future marker (= world-now god view) のみ isDead で skip。 PLC slice mode の past-cone disc も同 useMemo を使うので同時修復。
 
 **2026-04-28 セッションの大物 fix 群** (`bbce03f` build `2026/04/28 21:50:37 JST`、 詳細 git log):
 - causalEvents observer-centered wrap、 lighthouse γ² bug、 ballistic catchup self-authoritative、 共変表現徹底 (`cb9fa10` / `8c02c0f`)
@@ -31,7 +34,17 @@
 
 ## 既知の課題
 
-### defer 中
+### Bug ledger (2026-05-02 demo 中に発見、 順番は user 報告順)
+
+| # | bug | 状態 | メモ |
+|---|---|---|---|
+| 1 | 死後 ghost が時間発展しない (= 「死後硬直」、 WASD 効かないが arrow keys は効く、 他機は普通に未来へ動く、 自機は時空間で固まる) | **調査中** | `054a595` で `window.__game` 診断 helper 設置済 (= `__game.getState().myDeathEvent.ghostPhaseSpace.{u,pos}` 観察可)。 cold-read で setMyDeathEvent / processPlayerPhysics の chain は正しく見えるが再現条件不明。 host migration thrashing (= console に `Host heartbeat timeout` ↔ `Becoming solo host` ↔ `split detected — demoting self` の cycling) と同時発生してることが多い → useEffect deps `[peerManager, myId]` 経由で gameLoop が頻繁に re-init される race の疑い。 user hypothesis 「u=0 だと固まる」 を直接検証する必要 (= 実 browser で診断 helper 走らせる) |
+| 2 | 相手機が見えたり見えなくなったり (flicker) | **あとで** | 4/28 sweep 以降に regression。 OtherShipRenderer / past-cone intersection / universal cover refactor 周辺の疑い。 Bug 1 と共通根因 (pos.t 比較不安定) の可能性 |
+| 5 | 灯台の時刻ジャンプ — user 仮説 「クライアント含めたいちばん未来側 ではなく ホストだけの時刻に飛んでる」 | **あとで (設計判断)** | `processLighthouseAI` (gameLoop.ts:347-367) は **`minPlayerT`** に jump する仕様 (cb9fa10 以降不変、 コメントは「一番過去にいる生存プレイヤー」)。 多人数で host が静止 + client が動いた場面で host.t < client.t → minPlayerT = host.t、 LH は host time に jump。 user 観察と一致。 fix は **意図が `minPlayerT` か `maxPlayerT` か** の設計判断、 user input 待ち |
+| 6 | PLC スライス 3D で こちらに飛んでくる弾がゆっくり見える (2D は正しい) | **あとで** | 3D 視点での visual artifact、 2D radar mode は正常 |
+| 7 | 相手が死んだ瞬間 (kill event が past cone に到達する前) に描画消える | ✅ **fix 済 (`c7f7960`)** | `SceneContent.tsx` `worldLineMarkerEntries` の `isDead` filter が past-cone marker (causal) と future marker (god view) を区別してなかった。 past-cone marker は OtherShipRenderer 本体描画と同じ causal gate のみ、 future marker のみ isDead で skip に refactor |
+
+### defer 中 (= 既存)
 - DESIGN.md 残存する設計臭 #2 (PeerProvider Phase 1 effect コールバックネスト)
 - snapshot に `frozenWorldLines` / `debrisRecords` 同梱 — un-defer: リスポーン世界線連続観測時
 - host migration の LH 時刻 anchor 見直し
