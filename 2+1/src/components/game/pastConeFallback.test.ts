@@ -65,7 +65,7 @@ describe("pastConeIntersectionWithFrozenFallback", () => {
       { t: 10, x: 0, y: 0 },
     ]);
     const frozen: FrozenWorldLine[] = [
-      { playerId: "lh-0", worldLine: oldWl, color: "#abc" },
+      { id: "lh-0-0", playerId: "lh-0", worldLine: oldWl, color: "#abc" },
     ];
     const observer = createVector4(5, 0, 0, 0);
     const result = pastConeIntersectionWithFrozenFallback(
@@ -90,8 +90,8 @@ describe("pastConeIntersectionWithFrozenFallback", () => {
       { t: 60, x: 0, y: 0 },
     ]);
     const frozen: FrozenWorldLine[] = [
-      { playerId: "lh-0", worldLine: frozenOld, color: "#abc" },
-      { playerId: "lh-0", worldLine: frozenNew, color: "#abc" },
+      { id: "lh-0-0", playerId: "lh-0", worldLine: frozenOld, color: "#abc" },
+      { id: "lh-0-1", playerId: "lh-0", worldLine: frozenNew, color: "#abc" },
     ];
     const observer = createVector4(55, 0, 0, 0);
     const result = pastConeIntersectionWithFrozenFallback(
@@ -117,8 +117,8 @@ describe("pastConeIntersectionWithFrozenFallback", () => {
       { t: 15, x: 0, y: 0 },
     ]);
     const frozen: FrozenWorldLine[] = [
-      { playerId: "other-player", worldLine: otherWl, color: "#fff" },
-      { playerId: "lh-0", worldLine: ownWl, color: "#abc" },
+      { id: "other-0", playerId: "other-player", worldLine: otherWl, color: "#fff" },
+      { id: "lh-0-0", playerId: "lh-0", worldLine: ownWl, color: "#abc" },
     ];
     const observer = createVector4(10, 0, 0, 0);
     const result = pastConeIntersectionWithFrozenFallback(

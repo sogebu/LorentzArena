@@ -23,6 +23,25 @@ export type DebrisRecord = {
 
 // 世界に残された凍結世界線（死んだプレイヤーの痕跡）
 export type FrozenWorldLine = {
+  /**
+   * 各 frozen entry を unique に識別する id。 SceneContent の renderer key に使う
+   * (`key={frozen-${id}}`)、 frozenWorldLines 配列の cycling (= MAX_FROZEN_WORLDLINES
+   * truncate で先頭削除 + 末尾追加) で「同じ entry が配列上の位置を変える」 ケースで
+   * **同一 React mount を維持**するための identity。
+   *
+   * 旧設計 (= `key={frozen-${i}-${first.pos.t}}` で配列 index と first event の coord
+   * time から構築) は cycling で「異なる entry が同じ i に来る → key 変化 → unmount/
+   * mount 連発」 を起こし、 mount 毎に WorldLineRenderer の TubeGeometry build
+   * (≈24000 vertex) が走って main thread saturation → setInterval Violation → rAF
+   * starve → 全世界凍結 + Context Lost (= 2026-05-04 user 観察「星屑が固まる」 の真因
+   * 残存分)。 5/2 fix の wlRef pattern は同 component instance 内 rebuild throttle で
+   * mount/unmount 自体には効かない、 stable id で mount 維持して根本解消する。
+   *
+   * id 生成: `pushFrozenWorldLine` / `messageHandler` 等の生成箇所で monotonic counter
+   * 採番 (= `worldLineGap.ts` の `nextFrozenId` helper)、 形式 `${playerId}-${counter}`
+   * で human readable + 衝突なし。
+   */
+  readonly id: string;
   readonly playerId: string;
   readonly worldLine: WorldLine;
   readonly color: string;

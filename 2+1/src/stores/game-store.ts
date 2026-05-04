@@ -18,6 +18,7 @@ import {
   generateHitParticles,
 } from "../components/game/debris";
 import { applyKill } from "../components/game/killRespawn";
+import { nextFrozenId } from "../components/game/worldLineGap";
 import {
   isLighthouse,
   LIGHTHOUSE_DISPLAY_NAME,
@@ -456,6 +457,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
 
     // Freeze world line
     const frozen: FrozenWorldLine = {
+      id: nextFrozenId(victimId),
       playerId: victimId,
       worldLine: victim.worldLine,
       color: victim.color,

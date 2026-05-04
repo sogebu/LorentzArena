@@ -21,6 +21,7 @@ import {
 import { isLighthouse } from "./lighthouse";
 import { applySnapshot, buildSnapshot } from "./snapshot";
 import type { FrozenWorldLine, Laser, RelativisticPlayer } from "./types";
+import { nextFrozenId } from "./worldLineGap";
 
 export type MessageHandlerDeps = {
   myId: string;
@@ -166,6 +167,7 @@ export const createMessageHandler =
           existingPlayer.worldLine.history.length > 0
         ) {
           const frozen: FrozenWorldLine = {
+            id: nextFrozenId(playerId),
             playerId,
             worldLine: existingPlayer.worldLine,
             color: existingPlayer.color,

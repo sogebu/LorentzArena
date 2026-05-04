@@ -83,6 +83,7 @@ describe("pushFrozenWorldLine — 旧 WL を frozenWorldLines に容量上限付
     const prev: FrozenWorldLine[] = Array.from(
       { length: MAX_FROZEN_WORLDLINES },
       (_, i) => ({
+        id: `old-${i}-pre`,
         playerId: `old-${i}`,
         worldLine: createWorldLine(MAX_WORLDLINE_HISTORY),
         color: "#000",
@@ -101,5 +102,19 @@ describe("pushFrozenWorldLine — 旧 WL を frozenWorldLines に容量上限付
     const next = pushFrozenWorldLine(prev, p);
     expect(prev).toHaveLength(0); // 元 array は未変更
     expect(next).not.toBe(prev); // push 時は新規 array
+  });
+
+  it("entry に stable id を採番 (= renderer mount 維持の identity、 連続 push で id 一意)", () => {
+    // Fix (2026-05-04): mount/unmount storm 防止のため `FrozenWorldLine.id` を採番。
+    // 同 push で id 重複しないこと、 同 player の 2 回連続 push でも別 id を verify。
+    const a = makePlayer("p-a");
+    const b = makePlayer("p-a"); // 同 player を 2 回 push (= 大ジャンプ連発シナリオ)
+    let acc: FrozenWorldLine[] = [];
+    acc = pushFrozenWorldLine(acc, a);
+    acc = pushFrozenWorldLine(acc, b);
+    expect(acc).toHaveLength(2);
+    expect(acc[0].id).not.toBe(acc[1].id); // 異 id
+    expect(acc[0].id).toMatch(/^p-a-/); // playerId prefix
+    expect(acc[1].id).toMatch(/^p-a-/);
   });
 });

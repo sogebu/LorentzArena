@@ -2,6 +2,23 @@ import { LARGE_JUMP_THRESHOLD_LS, MAX_FROZEN_WORLDLINES } from "./constants";
 import type { FrozenWorldLine, RelativisticPlayer } from "./types";
 
 /**
+ * Module-local monotonic counter for `FrozenWorldLine.id` 採番。 全 frozen entry に
+ * stable identity を与えて SceneContent renderer の React mount を維持する用途
+ * (= 詳細: types.ts `FrozenWorldLine.id` docstring)。
+ *
+ * Counter は app 起動時 0 から始まる。 HMR で module reload されると counter reset
+ * されるが、 dev only なので影響無視 (= 同 id collision で React は内容差で再 render、
+ * visual flicker 可能性ありだが実害最小)。
+ *
+ * `nextFrozenId(playerId)` は `${playerId}-${counter++}` を返す純関数 (= side effect は
+ * counter increment のみ)。 export 経路は本 module + messageHandler / snapshot (= broadcast
+ * 受信側) も同 helper を使って統一採番。
+ */
+let frozenIdCounter = 0;
+export const nextFrozenId = (playerId: string): string =>
+  `${playerId}-${frozenIdCounter++}`;
+
+/**
  * Rule B (= 因果律対称ジャンプ) の λ_exit が「視覚的に gap を作るレベル」 か判定。
  *
  * `lambda >= LARGE_JUMP_THRESHOLD_LS` のとき true (= 旧 worldLine を frozenWorldLines に
@@ -41,6 +58,7 @@ export const pushFrozenWorldLine = (
   if (player.isDead) return prev;
   if (player.worldLine.history.length === 0) return prev;
   const entry: FrozenWorldLine = {
+    id: nextFrozenId(player.id),
     playerId: player.id,
     worldLine: player.worldLine,
     color: player.color,

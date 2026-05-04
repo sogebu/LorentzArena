@@ -551,10 +551,16 @@ export const SceneContent = ({
       <ArenaRenderer />
 
       {/* 凍結世界線（世界オブジェクト）を描画。観測者過去光円錐との交差点周辺を hide
-          (DeathMarker / 塔等との被り解消)。LH の凍結世界線は LH 専用半径で狭く隠す。 */}
-      {frozenWorldLines.map((fw, i) => (
+          (DeathMarker / 塔等との被り解消)。LH の凍結世界線は LH 専用半径で狭く隠す。
+          key は entry stable id (= types.ts FrozenWorldLine.id docstring 参照) で、
+          配列 cycling (= 容量 truncate で先頭削除 + 末尾追加) で「同 entry が配列上の
+          位置を変える」 場合も同 React mount を維持し、 WorldLineRenderer の TubeGeometry
+          rebuild storm を抑止する。 旧 key (= `frozen-${i}-${first.pos.t}`) は cycling で
+          mount/unmount 連発 → main thread saturation → setInterval Violation → rAF starve
+          → Bug 10 (= 全世界凍結) の真因残存分だった (2026-05-04)。 */}
+      {frozenWorldLines.map((fw) => (
         <WorldLineRenderer
-          key={`frozen-${i}-${fw.worldLine.history[0]?.pos.t ?? 0}`}
+          key={`frozen-${fw.id}`}
           worldLine={fw.worldLine}
           color={fw.color}
           observerPos={observerPos}
