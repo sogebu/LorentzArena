@@ -91,12 +91,13 @@ const saveViewMode = (mode: ViewMode) => {
  * - 'legacy_classic' (default): 旧 classic 挙動 = camera が heading に追従、機体本体が
  *   heading 方向に回り、WASD は機体相対 thrust (前後左右)、矢印 ←/→ で heading 連続旋回、
  *   ↑/↓ で camera pitch
- * - 'legacy_shooter': twin-stick = 2 軸独立 (WASD=move / 矢印=aim / Shift+矢印=camera)。
- *   WASD = 画面相対の進みたい方向 thrust (heading 不変)、矢印 ←/→ で heading 旋回 (= 砲身/aim、
- *   機体本体の向き)、 Shift+矢印 ←/→ で camera yaw を機体周りに回転 (free-look)。 mobile の
- *   touch swipe は cameraYaw 旋回 (= Shift 等価)。 機体は heading に追従して回る。
- *   旧仕様 (~ 2026-05-04 まで) は WASD で heading 即時スナップしていたが、 aim と move を
- *   独立させたい UX 意図と合わず撤廃
+ * - 'legacy_shooter': twin-stick = PC 2 軸独立 / mobile 1 軸縮退。
+ *   WASD = 画面相対の進みたい方向 thrust (heading 不変)、PC 矢印 ←/→ で heading 旋回 (= 砲身/aim、
+ *   機体本体の向き)、 PC Shift+矢印 ←/→ で camera yaw を機体周りに回転 (free-look)。 mobile では
+ *   1-finger swipe で 2 軸独立は不可のため、 swipe ←→ は **heading + camera を一体回転** (= 1 軸
+ *   縮退、 機体追従と挙動同一に degenerate、 aim 優先で camera を heading に lock)。 機体は
+ *   heading に追従して回る。 旧仕様 (~ 2026-05-04 まで) は WASD で heading 即時スナップしていたが、
+ *   aim と move を独立させたい UX 意図と合わず撤廃
  * - 'modern': 71e5788 で導入した統一操作系 = camera world basis 固定 (cameraYaw=0)、
  *   WASD は world basis thrust (heading 不変)、矢印 ←/→ で heading 旋回 (砲身/aim のみ)、
  *   機体本体は world basis 固定で砲塔のみ heading 追従

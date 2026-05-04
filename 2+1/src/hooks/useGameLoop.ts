@@ -38,6 +38,7 @@ import {
   processLighthouseAI,
   processPlayerPhysics,
 } from "../components/game/gameLoop";
+import { isTouchDevice } from "../components/game/hud/utils";
 import { isLighthouse } from "../components/game/lighthouse";
 import { createRespawnPosition } from "../components/game/respawnTime";
 import type { useTouchInput } from "../components/game/touchInput";
@@ -235,10 +236,11 @@ export function useGameLoop({
       // --- Camera / 矢印キーによる yaw 操作 ---
       // controlScheme で yaw 回転先が変わる:
       //   legacy_classic: 矢印 ←/→ → headingYawRef、camera は heading 追従 (cameraYawRef = headingYawRef)
-      //   legacy_shooter: 2 軸独立 twin-stick
-      //                   - 矢印 ←/→ (Shift 無し) → headingYawRef (= 砲身/aim、 機体本体の向き)
-      //                   - Shift+矢印 ←/→ → cameraYawRef (= camera が機体周りを回る、 free-look)
-      //                   - touch swipe (mobile) → cameraYawRef (= keyboard の Shift 経路と同じ役割)
+      //   legacy_shooter: PC では 2 軸独立 twin-stick、 mobile では 1 軸縮退
+      //                   - PC arrow ←/→ (Shift 無し) → headingYawRef (= 砲身/aim、 機体本体の向き)
+      //                   - PC Shift+arrow ←/→ → cameraYawRef (= camera が機体周りを回る、 free-look)
+      //                   - mobile swipe ←→ → headingYawRef + cameraYawRef を一体回転 (= 1 軸縮退、
+      //                     mobile では 1-finger 入力で 2 軸独立は不可、 aim 優先で camera を heading に lock)
       //                   - WASD は heading に touch しない (= aim と move の独立、 旧仕様の即時 snap 撤廃 2026-05-04)
       //   modern:        矢印 ←/→ → headingYawRef、camera は world basis 固定 (cameraYawRef = 0)
       const touch = touchInput.current;
@@ -246,20 +248,12 @@ export function useGameLoop({
       const controlScheme = store.controlScheme;
       // legacy_shooter で Shift 押下中なら矢印 → camera (= 旧来の挙動)、 そうでなければ heading。
       // Shift は normalizeKey で lowercase 化されるため "shift" で check (useKeyboardInput.ts)。
+      // mobile (= isTouchDevice) では Shift キーが無いため shooterShiftHeld = false 固定。
       const shooterShiftHeld =
         controlScheme === "legacy_shooter" && keysPressed.current.has("shift");
       const yawSourceBefore = shooterShiftHeld
         ? cameraYawRef.current
         : headingYawRef.current;
-      // legacy_shooter で Shift 無しのとき、 touch.yawDelta は camera に流したい (= mobile
-      // twin-stick の 2 軸独立性を温存)。 processCamera は touch.yawDelta を yawSourceBefore
-      // に加算するため、 ここで先に touch を退避してから touch.yawDelta=0 で渡し、 後段で
-      // cameraYawRef に直接加算する。
-      let touchYawForCamera = 0;
-      if (controlScheme === "legacy_shooter" && !shooterShiftHeld) {
-        touchYawForCamera = touch.yawDelta;
-        touch.yawDelta = 0;
-      }
       const cam = processCamera(
         keysPressed.current,
         touch,
@@ -273,10 +267,16 @@ export function useGameLoop({
         cameraYawRef.current = cam.yaw; // camera = heading 同期
       } else if (controlScheme === "legacy_shooter") {
         if (shooterShiftHeld) {
+          // PC Shift+arrow: camera 単独 (heading 不変)
           cameraYawRef.current = cam.yaw;
         } else {
+          // PC arrow / mobile swipe: heading 更新。
+          // mobile では camera = heading に lock (= 1 軸縮退、 mobile UX 優先)。
+          // PC では camera 不変 (= Shift 経路の前回値 / 0 default を温存、 free-look が活きる)。
           headingYawRef.current = cam.yaw;
-          cameraYawRef.current += touchYawForCamera;
+          if (isTouchDevice) {
+            cameraYawRef.current = cam.yaw;
+          }
         }
       } else {
         // modern
