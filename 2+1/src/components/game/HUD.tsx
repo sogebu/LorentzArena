@@ -53,7 +53,7 @@ export const HUD = ({
 
   const rawMyPlayer = myId ? players.get(myId) : undefined;
   // 死亡中は Speedometer / HUD は ghost (myDeathEvent.ghostPhaseSpace) を観測者として扱う。
-  // `players[myId].phaseSpace` は死亡時刻で凍結されているため、速度/固有時間が止まる。
+  // `players[myId].phaseSpace` は死亡時刻で凍結されているため、速度/世界時刻が止まる。
   const myPlayer =
     rawMyPlayer?.isDead && myDeathEvent
       ? { ...rawMyPlayer, phaseSpace: myDeathEvent.ghostPhaseSpace }

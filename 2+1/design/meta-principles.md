@@ -188,7 +188,7 @@ Vite HMR は module 更新を hot-reload するが、失敗時に前の module s
 
 **判定**: 「時間依存 (放置で悪化) か / 位置依存 (外へ行くと悪化) か」を先に切り分ける。時間依存なら overdraw / draw call 系ではない。
 
-**事例 (2026-04-17)**: 固有時間 ~170s で FPS 10 まで低下。surface / 光円錐 / WorldLine Tube を順次無効化しても改善せず、`MAX_WORLDLINE_HISTORY` を 5000 → 100 に下げた瞬間に時間経過劣化停止 → `SceneContent.tsx` の `worldLineIntersections` / `laserIntersections` / `futureLightConeIntersections` useMemo と game loop 内の `pastLightConeIntersectionWorldLine` が毎フレーム全 history を走査する O(N) コストが主因と確定。§worldLine.history サイズ 節参照。
+**事例 (2026-04-17)**: 世界時刻 ~170s で FPS 10 まで低下。surface / 光円錐 / WorldLine Tube を順次無効化しても改善せず、`MAX_WORLDLINE_HISTORY` を 5000 → 100 に下げた瞬間に時間経過劣化停止 → `SceneContent.tsx` の `worldLineIntersections` / `laserIntersections` / `futureLightConeIntersections` useMemo と game loop 内の `pastLightConeIntersectionWorldLine` が毎フレーム全 history を走査する O(N) コストが主因と確定。§worldLine.history サイズ 節参照。
 
 ### M17. Three.js + R3F で毎 tick 変化する geometry は in-place update
 

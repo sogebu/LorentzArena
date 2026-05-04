@@ -47,7 +47,7 @@ export const en: Record<TranslationKey, string> = {
   // HUD - stats
   "hud.speed": "Speed",
   "hud.gamma": "Gamma",
-  "hud.properTime": "Proper time",
+  "hud.coordTime": "Coord time",
   "hud.position": "Position",
   "hud.energy": "ENERGY",
   "hud.fuelEmpty": "OUT OF FUEL",

@@ -143,7 +143,7 @@ export const SNAPSHOT_BROADCAST_INTERVAL_MS = 5000;
 // 本来は 5000 だったが、長時間プレイで SceneContent.tsx の
 // `worldLineIntersections` / `laserIntersections` / `futureLightConeIntersections`
 // useMemo と game loop の交差計算が毎フレーム history を走査する O(N) コストで
-// FPS が 10 まで低下 (固有時間 ~170s 付近)。切り分けで worldLine.history 走査が
+// FPS が 10 まで低下 (世界時刻 ~170s 付近)。切り分けで worldLine.history 走査が
 // 主因と確定したため、短期対策として 1000 に削減 (視覚的には世界線がやや短く切れる)。
 // 中期対策: `pastLightConeIntersectionWorldLine` 等を二分探索で O(log N) 化
 // (history は時系列順 t 単調なので可)。実装後に history を 5000 に戻せる。

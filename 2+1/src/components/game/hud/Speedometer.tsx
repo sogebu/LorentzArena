@@ -99,7 +99,7 @@ export const Speedometer = ({
       )}
       <div>{t("hud.speed")}: {(speed * 100).toFixed(1)}% c</div>
       <div>{t("hud.gamma")}: {g.toFixed(3)}</div>
-      <div>{t("hud.properTime")}: {player.phaseSpace.pos.t.toFixed(2)}s</div>
+      <div>{t("hud.coordTime")}: {player.phaseSpace.pos.t.toFixed(2)}s</div>
       <div>
         {t("hud.position")}: ({player.phaseSpace.pos.x.toFixed(2)},{" "}
         {player.phaseSpace.pos.y.toFixed(2)})

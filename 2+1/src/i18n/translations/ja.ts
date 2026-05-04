@@ -45,7 +45,7 @@ export const ja = {
   // HUD - stats
   "hud.speed": "速さ",
   "hud.gamma": "ガンマ因子",
-  "hud.properTime": "固有時間",
+  "hud.coordTime": "世界時刻",
   "hud.position": "位置",
   "hud.energy": "エネルギー",
   "hud.fuelEmpty": "燃料枯渇",
