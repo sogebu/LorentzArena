@@ -259,6 +259,14 @@ export const CAMERA_DISTANCE_PERSPECTIVE = 10;
 // 微調整)。
 export const DEFAULT_CAMERA_PITCH = Math.PI / 3;
 
+// 表示 camera yaw が `cameraYawRef.current` (= 論理 yaw、 physics / Radar / CenterCompass の
+// source of truth) に追従する指数 lerp の時定数 (秒)。 大きいほど camera の swing が遅延する。
+// `displayed += (target - displayed) * (1 - exp(-dt / τ))` で τ 秒後に残差 1/e ≈ 36% に縮む。
+// 120 ms = racing game 系の chase camera で「機体が先に向きを変え、 camera が追いかける」 と
+// 感じる程度の lag。 0 にすると即時追従 (= 旧挙動)。 物理 / HUD は無遅延、 3D camera 位置のみ
+// この lag を被る (詳細: SceneContent.tsx の useFrame 内 displayedCameraYawRef)。
+export const CAMERA_YAW_FOLLOW_TAU = 0.12;
+
 // PLC スライス 3D mode (= PR #2、 過去光円錐 spatial slice の x-y 平面斜め俯瞰) で使う
 // camera 距離 + pitch。 観測者から `distance` 離れた点に camera を置き、 pitch ~22° で
 // x-y 平面を俯瞰。 spacetime 図とは別 view なので CAMERA_DISTANCE_PERSPECTIVE と独立。

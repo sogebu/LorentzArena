@@ -20,6 +20,7 @@ import {
   CAMERA_DISTANCE_ORTHOGRAPHIC,
   CAMERA_DISTANCE_PERSPECTIVE,
   CAMERA_DISTANCE_PLC_SLICE,
+  CAMERA_YAW_FOLLOW_TAU,
   PLC_SLICE_PITCH,
   FUTURE_CONE_LASER_TRIANGLE_OPACITY,
   FUTURE_CONE_WORLDLINE_RING_OPACITY,
@@ -159,6 +160,12 @@ export const SceneContent = ({
   const firingRef = useRef<boolean>(isFiring);
   firingRef.current = isFiring;
 
+  // 表示 camera yaw (= 3D camera 位置 / lookAt 計算でだけ使う、 lag 入り版)。
+  // 論理 yaw `cameraYawRef.current` (= physics / Radar / CenterCompass / heading sync の
+  // source of truth) に対し、 useFrame で指数 lerp で追従する。 null は未 seed (初回フレーム
+  // で論理 yaw に snap して swing 防止)。 詳細は CAMERA_YAW_FOLLOW_TAU の JSDoc。
+  const displayedCameraYawRef = useRef<number | null>(null);
+
   // --- Store selectors ---
   const players = useGameStore((s) => s.players);
   const lasers = useGameStore((s) => s.lasers);
@@ -244,7 +251,7 @@ export const SceneContent = ({
     torusHalfWidth !== undefined && observerPos
       ? Math.floor((observerPos.y + selfL) / (2 * selfL))
       : 0;
-  useFrame(({ camera }) => {
+  useFrame(({ camera }, delta) => {
     if (!myPlayer) return;
     const playerPos = transformEventForDisplay(
       myPlayer.phaseSpace.pos,
@@ -256,7 +263,18 @@ export const SceneContent = ({
     const targetY = playerPos.y;
     const targetT = playerPos.t;
 
-    const yaw = cameraYawRef.current;
+    // 論理 yaw に lag 込みで追従する表示 yaw を更新。 wrap は atan2(sin, cos) で吸収
+    // (-π/+π 境界跨ぎでも最短回り)。 初回は snap して起動時の swing を防ぐ。
+    const targetYaw = cameraYawRef.current;
+    if (displayedCameraYawRef.current === null) {
+      displayedCameraYawRef.current = targetYaw;
+    } else {
+      const d = targetYaw - displayedCameraYawRef.current;
+      const wrappedDelta = Math.atan2(Math.sin(d), Math.cos(d));
+      const alpha = 1 - Math.exp(-delta / CAMERA_YAW_FOLLOW_TAU);
+      displayedCameraYawRef.current += wrappedDelta * alpha;
+    }
+    const yaw = displayedCameraYawRef.current;
     if (plc3d) {
       // PLC スライス 3D mode: x-y 平面 (z=0) を斜め俯瞰、 camera up = +z (時間軸)。
       // 通常 spacetime 図と異なり pitch/distance は固定値、 cameraPitchRef は無視。
