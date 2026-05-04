@@ -85,12 +85,33 @@ describe("virtualPos — alive / stale / dead 統一 inertial 延長", () => {
   });
 
   it("負 tau (= clock skew で nowWall < lastSync): 数式どおり負方向に外挿される (caller 責任)", () => {
-    // 防御的な clamp は本関数の責務外。 数式通りの値を返すことだけ確認。
+    // 負方向の clamp は本関数の責務外 (= caller 責任)。 正方向は別途 MAX_VIRTUAL_TAU_SEC
+    // で cap する (= 2026-05-04 plan §3 Fix B、 別 it ブロックで verify)。 本 test では数式
+    // 通りの値を返すことだけ確認。
     const p = makePlayer("p", { t: 100, x: 0, y: 0 }, { x: 1, y: 0 });
     const out = virtualPos(p, 2_000, 1_000); // tau = -1
     const gExpected = Math.sqrt(1 + 1);
     expect(out.t).toBeCloseTo(100 - gExpected, 9);
     expect(out.x).toBeCloseTo(-1, 9);
+  });
+
+  it("正 tau の upper bound (MAX_VIRTUAL_TAU_SEC = 2 sec): tau=10s 入力でも tau=2s 相当の advance に cap", () => {
+    // Fix B (= 2026-05-04 plan §3): lastSyncWall が壊れて nowWall から 10 秒離れていても、
+    // virtualPos の inertial 延長は最大 2 秒に bounded → 線形発散による Rule B 暴走を防止。
+    const p = makePlayer("p", { t: 100, x: 0, y: 0 }, { x: 1, y: 0 });
+    const out = virtualPos(p, 0, 10_000); // realTau = 10、 cap 後 tau = 2
+    const gExpected = Math.sqrt(1 + 1); // u = (1, 0) の γ
+    // tau = 2 で cap されているので: pos.t = 100 + γ × 2 ≈ 102.828、 pos.x = 0 + 1 × 2 = 2
+    expect(out.t).toBeCloseTo(100 + gExpected * 2, 9);
+    expect(out.x).toBeCloseTo(2, 9);
+  });
+
+  it("正 tau の boundary (MAX_VIRTUAL_TAU_SEC = 2 sec): tau=2s 入力で cap 効かず数式通り", () => {
+    // 境界 tau = 2 sec は cap 適用外 (= Math.min(2, 2) = 2)、 数式通り進む。
+    const p = makePlayer("p", { t: 100, x: 0, y: 0 }, { x: 0, y: 0 });
+    const out = virtualPos(p, 0, 2_000); // realTau = 2、 cap 後 tau = 2 (同値)
+    expect(out.t).toBeCloseTo(102, 9); // γ=1 (u=0) なので pos.t += 2
+    expect(out.x).toBeCloseTo(0, 9);
   });
 });
 
