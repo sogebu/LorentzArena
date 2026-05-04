@@ -5,13 +5,14 @@ import {
   lorentzBoost,
   multiplyVector4Matrix4,
   observableImageCells,
-  pastLightConeIntersectionWorldLine,
   requiredImageCellRadius,
   type Vector3,
   type Vector4,
 } from "../../physics";
+import { useGameStore } from "../../stores/game-store";
 import { LIGHT_CONE_HEIGHT } from "./constants";
 import { useDisplayFrame } from "./DisplayFrameContext";
+import { pastConeIntersectionWithFrozenFallback } from "./pastConeFallback";
 import { SelfShipRenderer } from "./SelfShipRenderer";
 import type { RelativisticPlayer } from "./types";
 
@@ -38,6 +39,10 @@ export const OtherShipRenderer = ({
 }) => {
   const { observerPos, observerBoost } = useDisplayFrame();
   const torusHalfWidth = useTorusHalfWidth();
+  // Fix C 副作用 fix (2026-05-04): Rule B 大ジャンプ直後の 1 点 worldLine では flicker
+  // するため、 同 player の凍結旧軌跡 (= frozenWorldLines) で fallback intersection。
+  // 詳細: pastConeFallback.ts の docstring。
+  const frozenWorldLines = useGameStore((s) => s.frozenWorldLines);
 
   const thrustRef = useRef<Vector3>(createVector3(0, 0, 0));
 
@@ -66,7 +71,12 @@ export const OtherShipRenderer = ({
           ? { ...observerPos, x: observerPos.x - dx, y: observerPos.y - dy }
           : null;
         const intersection = imageObserver
-          ? pastLightConeIntersectionWorldLine(player.worldLine, imageObserver)
+          ? pastConeIntersectionWithFrozenFallback(
+              player.worldLine,
+              frozenWorldLines,
+              player.id,
+              imageObserver,
+            )
           : null;
         if (!intersection) return <Fragment key={cellKey} />;
 

@@ -4,8 +4,9 @@ import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
 import type { Vector4 } from "../../physics";
 import { observableImageCells, requiredImageCellRadius } from "../../physics";
 import { getVelocity4 } from "../../physics/vector";
-import { pastLightConeIntersectionWorldLine } from "../../physics/worldLine";
+import { useGameStore } from "../../stores/game-store";
 import { buildApparentShapeMatrix } from "./apparentShape";
+import { pastConeIntersectionWithFrozenFallback } from "./pastConeFallback";
 import {
   DEATH_TAU_MAX,
   LIGHT_CONE_HEIGHT,
@@ -62,6 +63,11 @@ export const LighthouseRenderer = ({
   player: RelativisticPlayer;
 }) => {
   const { displayMatrix, observerPos, observerBoost } = useDisplayFrame();
+  // Fix C 副作用 fix (2026-05-04): Rule B 大ジャンプ直後の 1 点 worldLine では
+  // pastLightConeIntersectionWorldLine が null を返し flicker するため、 同 LH の
+  // 凍結旧軌跡 (= frozenWorldLines) で fallback intersection を取って描画継続する。
+  // 詳細: pastConeFallback.ts の docstring。
+  const frozenWorldLines = useGameStore((s) => s.frozenWorldLines);
 
   const mainColor = useMemo(() => getThreeColor(LIGHTHOUSE_COLOR), []);
   const wallColor = useMemo(() => new THREE.Color("hsl(190, 22%, 86%)"), []);
@@ -118,7 +124,12 @@ export const LighthouseRenderer = ({
           ? { ...observerPos, x: observerPos.x - dx, y: observerPos.y - dy }
           : null;
         const imageAliveIntersection = imageObserver
-          ? pastLightConeIntersectionWorldLine(player.worldLine, imageObserver)
+          ? pastConeIntersectionWithFrozenFallback(
+              player.worldLine,
+              frozenWorldLines,
+              player.id,
+              imageObserver,
+            )
           : null;
         let imageTowerAnchor: Vector4 | null = null;
         let alpha = 1;
