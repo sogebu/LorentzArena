@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useOrientation } from "../hooks/useOrientation";
 import { type Lang, useI18n } from "../i18n";
 import { getTopScores, type HighScoreEntry } from "../services/highScores";
 import { fetchLeaderboard } from "../services/leaderboard";
@@ -47,6 +48,7 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
   const setViewMode = useGameStore((s) => s.setViewMode);
   const controlScheme = useGameStore((s) => s.controlScheme);
   const setControlScheme = useGameStore((s) => s.setControlScheme);
+  const orientation = useOrientation();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -67,6 +69,21 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (displayName.trim()) {
+      // 開始ボタンの user gesture 文脈で fullscreen 化を試みる (= browser security 制約上、
+      // user gesture 中でしか requestFullscreen は呼べない)。 失敗 (= iOS 16.4 未満 / 拒否) は
+      // silent 扱い、 通常 browser 表示で fall back。 orientation lock はしない (= portrait /
+      // landscape どちらでも遊べる、 user の好きな向きで rotate 自由)。
+      // PWA standalone (= Add to Home Screen) で起動済の iOS では fullscreenElement が既に
+      // 立っているケースがあるため、 既に fullscreen なら no-op で進む。
+      const root = document.documentElement;
+      if (
+        root.requestFullscreen &&
+        !document.fullscreenElement
+      ) {
+        root.requestFullscreen().catch(() => {
+          // silent: iOS 16.4 未満 / user denied / unsupported 等
+        });
+      }
       onStart();
     }
   };
@@ -121,7 +138,13 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
           justifyContent: "flex-start",
           width: "100%",
           height: "100%",
-          paddingTop: "40vh",
+          // 縦持ち: 40vh で ship preview を上半分にタップして title 〜 form を下半分に
+          // 並べる (= 既存の portrait 想定 layout)。
+          // 横持ち (landscape): viewport 高さが狭い (mobile 横で ~375px) ため 40vh では
+          // 開始ボタンが画面下にはみ出して押せない (= landscape Lobby 不可。 ship preview
+          // の重なりは許容して title〜form を上に詰める)。
+          paddingTop: orientation === "landscape" ? "5vh" : "40vh",
+          overflowY: "auto",
           boxSizing: "border-box",
         }}
       >

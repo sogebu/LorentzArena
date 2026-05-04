@@ -126,7 +126,7 @@
 - snapshot に `frozenWorldLines` / `debrisRecords` 同梱 — un-defer: リスポーン世界線連続観測時
 - host migration の LH 時刻 anchor 見直し
 - 色調をポップで明るく (方向性未定)
-- スマホ横画面 (fullscreen 表示) 対応
+- **スマホ横画面 (fullscreen 表示) 対応** — Phase 1 完了 (= 縦横両対応 + 開始ボタン fullscreen 試行 + Lobby paddingTop orientation-aware): `useOrientation` hook + Lobby `paddingTop` を landscape で 5vh / portrait で 40vh、 開始ボタン押下時に `requestFullscreen()` 試行 (silent failure、 orientation lock せず両向き許容)。 iOS 16.4+ / Android Chrome で fullscreen 動作、 古い iOS は通常 browser 表示で fall back。 残: in-game HUD の landscape layout 最適化 (Phase 2、 = Speedometer 縦長 / ControlPanel↓Radar overlap 等)
 - **ballistic 軌跡 frozenWorldLines 描画** — 死から復帰までの世界線連続性、 odakin defer 判断 2026-04-28
 - **spawn time が「ホストよりずっと未来」 になって既存 client が軒並み凍結する逆 bug 疑い** —
   Stage 5 (alive 自機 Rule B) で「過去側 peer が自分の past null cone に forward jump」 が
