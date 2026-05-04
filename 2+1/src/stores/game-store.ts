@@ -216,6 +216,13 @@ export interface GameState {
    */
   causallyFrozen: boolean;
   /**
+   * 自機の Rule B 因果律ジャンプが「大ジャンプ」 (= worldLine 凍結 + 新セグメント開始
+   * = `isLargeJump(lambda)` true) として fire した累計回数。 useGameLoop の alive 自機
+   * Rule B branch で increment、 UI overlay (= 「因果律跳躍 / Causality Jump」 brief flash) が
+   * counter 増分を検知して表示。 凍結 (continuous state) と対称な instantaneous event 通知。
+   */
+  causalityJumpCount: number;
+  /**
    * WebGL context が失われた状態が **連続して短時間で再発** したとき (= 自動 remount で
    * 復帰できない catastrophic 状態) に立つ flag。 通常の context loss は `canvasGeneration`
    * 増分で React に Canvas を unmount + remount させ、 R3F が新 WebGL context を作って scene
@@ -290,6 +297,8 @@ export interface GameState {
   setKillNotification: (v: KillNotification3D | null) => void;
   setMyDeathEvent: (v: DeathEvent | null) => void;
   setCausallyFrozen: (v: boolean) => void;
+  /** Rule B 大ジャンプ発火時に increment。 「因果律跳躍」 overlay の trigger。 */
+  incrementCausalityJump: () => void;
   setWebglContextLost: (v: boolean) => void;
   incrementCanvasGeneration: () => void;
 
@@ -378,6 +387,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   killNotification: null,
   myDeathEvent: null,
   causallyFrozen: false,
+  causalityJumpCount: 0,
   webglContextLost: false,
   canvasGeneration: 0,
   displayNames: new Map(),
@@ -422,6 +432,8 @@ export const useGameStore = create<GameState>()((set, get) => ({
   setKillNotification: (v) => set({ killNotification: v }),
   setMyDeathEvent: (v) => set({ myDeathEvent: v }),
   setCausallyFrozen: (v) => set({ causallyFrozen: v }),
+  incrementCausalityJump: () =>
+    set((s) => ({ causalityJumpCount: s.causalityJumpCount + 1 })),
   setWebglContextLost: (v) => set({ webglContextLost: v }),
   incrementCanvasGeneration: () =>
     set((s) => ({ canvasGeneration: s.canvasGeneration + 1 })),

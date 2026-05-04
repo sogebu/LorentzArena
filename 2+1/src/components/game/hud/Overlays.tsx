@@ -97,6 +97,81 @@ const CausalFreezeOverlay = () => {
   );
 };
 
+/**
+ * 因果律跳躍 overlay。 自機の Rule B 因果律ジャンプが「大ジャンプ」 (= worldLine 凍結 +
+ * 新セグメント = `isLargeJump(lambda)` true) として fire した瞬間に 1.2s だけ flash。
+ * counter 増分検知 pattern (= HitFlash と同じ) で stale-closure 回避。
+ *
+ * 凍結 (continuous state) と対称な instantaneous event 通知:
+ *   凍結 = 「他機の未来光円錐内」 で thrust が効かない理由を出し続ける
+ *   跳躍 = 「他機の過去光円錐外へ」 飛んだ瞬間を 1 度だけ通知
+ * 凍結を Rule B が解消するシナリオでは、 凍結 overlay が消えると同時に跳躍 overlay が
+ * 出る (= 自然な「因果律凍結 → ジャンプで脱出」 の演出)。
+ *
+ * z-index 221: 凍結 (220) の直上、 RespawnCountdown (250) より下、 KillNotification (300)
+ * より下。 palette は凍結と同じ dark blue で視覚一貫性、 keyframe は kill-notify を踏襲して
+ * scale punch + fade out。
+ */
+const CausalityJumpOverlay = () => {
+  const { t } = useI18n();
+  const jumpCount = useGameStore((s) => s.causalityJumpCount);
+  const [visible, setVisible] = useState(false);
+  const prevCountRef = useRef(jumpCount);
+
+  useEffect(() => {
+    if (jumpCount > prevCountRef.current) {
+      setVisible(true);
+      const timer = setTimeout(() => setVisible(false), 1200);
+      prevCountRef.current = jumpCount;
+      return () => clearTimeout(timer);
+    }
+    prevCountRef.current = jumpCount;
+  }, [jumpCount]);
+
+  if (!visible) return null;
+  return (
+    <div
+      key={`jump-${jumpCount}`}
+      style={{
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        zIndex: 221,
+        pointerEvents: "none",
+        textAlign: "center",
+        fontFamily: "monospace",
+        padding: "16px 28px",
+        backgroundColor: "rgba(20, 30, 60, 0.55)",
+        border: "1px solid rgba(150, 180, 255, 0.5)",
+        borderRadius: "6px",
+        whiteSpace: "nowrap",
+        animation: "causality-jump 1.2s ease-out forwards",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "28px",
+          fontWeight: "bold",
+          color: "#aac8ff",
+          textShadow: "0 0 12px rgba(120, 160, 255, 0.7)",
+        }}
+      >
+        {t("hud.causalityJump.title")}
+      </div>
+      <div
+        style={{
+          fontSize: "14px",
+          color: "rgba(200, 215, 245, 0.85)",
+          marginTop: "6px",
+        }}
+      >
+        {t("hud.causalityJump.sub")}
+      </div>
+    </div>
+  );
+};
+
 type OverlaysProps = {
   myId: string | null;
   isDead: boolean;
@@ -189,6 +264,9 @@ export const Overlays = ({
 
       {/* 因果律凍結 overlay (= 自機が他機の未来光円錐内に居て freeze 中の状態通知) */}
       <CausalFreezeOverlay />
+
+      {/* 因果律跳躍 overlay (= Rule B 大ジャンプ発火時の brief flash 通知) */}
+      <CausalityJumpOverlay />
 
       {/* 死亡フラッシュ */}
       {deathFlash && (
@@ -320,6 +398,13 @@ export const Overlays = ({
         @keyframes hit-flash-fade {
           0% { opacity: 1; }
           100% { opacity: 0; }
+        }
+        @keyframes causality-jump {
+          0% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
+          15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+          30% { transform: translate(-50%, -50%) scale(1); }
+          75% { opacity: 1; }
+          100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
         }
       `}</style>
     </>

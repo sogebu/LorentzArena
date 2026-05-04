@@ -577,6 +577,11 @@ export function useGameLoop({
                 createWorldLine(MAX_WORLDLINE_HISTORY),
                 adjustedPs,
               );
+              // UI: 「因果律跳躍」 brief flash overlay の trigger (= counter 増分を Overlay
+              // が subscribe して 1.2s flash)。 凍結 (continuous state) と対称な
+              // instantaneous event 通知。 小ジャンプ (= worldLine 連続) では出さない
+              // (= visible discontinuity がある時だけ user 通知)。
+              fresh.incrementCausalityJump();
             } else {
               // 微小 correction: freshMe.worldLine から再 append (= physics の updatedWorldLine
               // は pre-Rule-B 点を含むため捨てて、 adjusted な finalPs で正規化)。
