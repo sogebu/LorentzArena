@@ -138,12 +138,14 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
           justifyContent: "flex-start",
           width: "100%",
           height: "100%",
-          // 縦持ち: 40vh で ship preview を上半分にタップして title 〜 form を下半分に
-          // 並べる (= 既存の portrait 想定 layout)。
-          // 横持ち (landscape): viewport 高さが狭い (mobile 横で ~375px) ため 40vh では
-          // 開始ボタンが画面下にはみ出して押せない (= landscape Lobby 不可。 ship preview
-          // の重なりは許容して title〜form を上に詰める)。
-          paddingTop: orientation === "landscape" ? "5vh" : "40vh",
+          // 縦持ち: 18vh で ship preview と title が一部重なるが、 ship は z=0 背景 / title
+          // は z=1 白文字でコントラスト確保できる。 旧仕様 (40vh) では mobile portrait で
+          // ハイスコア section が画面下にはみ出して見えなくなっていた (= user feedback
+          // 2026-05-04)、 18vh + subtitle margin 圧縮で hi-scores 5 entries まで上半身に
+          // fit させる。 小型 iPhone (SE 667px) でも hi-scores 4-5 entries 可視。
+          // 横持ち (landscape): 5vh、 viewport 高さが狭い (mobile 横で ~375px) ため title
+          // と form を最上段に詰める。
+          paddingTop: orientation === "landscape" ? "5vh" : "18vh",
           overflowY: "auto",
           boxSizing: "border-box",
         }}
@@ -194,12 +196,35 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
           style={{
             fontSize: "clamp(12px, 2.5vw, 16px)",
             opacity: 0.6,
-            margin: "0 0 40px 0",
+            // 旧 40px では mobile portrait の縦余白を大きく食ってハイスコアが画面下に
+            // はみ出していた (= 2026-05-04 user feedback)、 16px に圧縮。
+            margin: "0 0 16px 0",
           }}
         >
           {t("lobby.subtitle")}
         </p>
 
+        {/* lower content: form + dropdowns + hi-scores + global leaderboard。
+            portrait: 単一縦列 (= 既存 layout)。
+            landscape: 2 列 (左 = form + dropdowns、 右 = hi-scores + global) で
+            横画面の幅を活用 + hi-scores が画面下に押し出されないようにする。 */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: orientation === "landscape" ? "row" : "column",
+            alignItems: orientation === "landscape" ? "flex-start" : "center",
+            gap: orientation === "landscape" ? "32px" : "0px",
+            width: "100%",
+            justifyContent: "center",
+          }}
+        >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+          }}
+        >
         {/* Name input */}
         <form
           onSubmit={handleSubmit}
@@ -325,6 +350,15 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
             <option value="modern">{t("hud.controlScheme.modern")}</option>
           </select>
         </div>
+        </div>
+        {/* right column (= landscape) / 続き (= portrait): hi-scores + global */}
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+          }}
+        >
 
         {/* High scores */}
         {highScores.length > 0 && (
@@ -409,6 +443,8 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
             ))}
           </div>
         )}
+        </div>
+        </div>
       </div>
     </div>
   );
