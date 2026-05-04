@@ -400,11 +400,15 @@ export const SHIP_HULL_RADIUS = 0.32;
 // 交差点 (= gnomon が描かれる位置) を中心に world 距離 R 未満の vertex を alpha=0 に。
 // HULL_RADIUS 連動 = 機体サイズに比例して自動追従。
 // Past cone (過去光円錐) の hide 半径。baseline。
-export const SHIP_INNER_HIDE_RADIUS_COEFFICIENT = 3.0;
+// 2026-05-04 odakin 指定で 0 (= cone 全体表示、 hide 無効) に設定。 旧 3.0 (= hull に
+// 食い込む光円錐先端を隠す) は revert 容易のため数値だけ 0 に置き換え、 shader chain は
+// 温存 (= radius=0 なら shader 内 `vInnerDist < 0` 不成立で nothing hidden)。
+export const SHIP_INNER_HIDE_RADIUS_COEFFICIENT = 0;
 export const SHIP_INNER_HIDE_RADIUS =
   SHIP_HULL_RADIUS * SHIP_INNER_HIDE_RADIUS_COEFFICIENT;
-// Future cone (未来光円錐) の hide 半径。hull より上に大きく広げて自機周辺を広範に隠す。
-export const SHIP_FUTURE_CONE_HIDE_RADIUS_COEFFICIENT = 5.0;
+// Future cone (未来光円錐) の hide 半径。 旧 5.0 (= hull 上方を広範に hide) を 0 に。
+// 旧値は revert 候補 (= 「いったん全部見せて」 試行後に部分 hide 復活する場合)。
+export const SHIP_FUTURE_CONE_HIDE_RADIUS_COEFFICIENT = 0;
 export const SHIP_FUTURE_CONE_HIDE_RADIUS =
   SHIP_HULL_RADIUS * SHIP_FUTURE_CONE_HIDE_RADIUS_COEFFICIENT;
 // 世界線の hide 半径。光円錐より小さく、gnomon マーカー周辺のみ隠す。
