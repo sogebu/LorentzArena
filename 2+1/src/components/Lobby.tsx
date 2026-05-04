@@ -138,14 +138,15 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
           justifyContent: "flex-start",
           width: "100%",
           height: "100%",
-          // 縦持ち: 18vh で ship preview と title が一部重なるが、 ship は z=0 背景 / title
-          // は z=1 白文字でコントラスト確保できる。 旧仕様 (40vh) では mobile portrait で
-          // ハイスコア section が画面下にはみ出して見えなくなっていた (= user feedback
-          // 2026-05-04)、 18vh + subtitle margin 圧縮で hi-scores 5 entries まで上半身に
-          // fit させる。 小型 iPhone (SE 667px) でも hi-scores 4-5 entries 可視。
-          // 横持ち (landscape): 5vh、 viewport 高さが狭い (mobile 横で ~375px) ため title
-          // と form を最上段に詰める。
-          paddingTop: orientation === "landscape" ? "5vh" : "18vh",
+          // 縦持ち: 40vh で ship preview を上半分に配置 + title〜form を下半分に展開する
+          // hero layout (= original)。 ハイスコアは画面下に出るが overflowY: auto で scroll
+          // 可能、 「title page」 視覚を温存する判断 (= 2026-05-04 user feedback で 18vh 案
+          // 撤回、 ship との重なりを避ける aesthetic 重視に戻した)。
+          // 横持ち (landscape): 12vh、 5vh では title が画面最上段に張り付いて窮屈に見える
+          // (= 2026-05-04 user feedback)。 12vh で title 上に breathing room を確保 + 2-col
+          // layout (= form 左 / hi-scores 右) で hi-scores 同時可視。 mobile landscape の
+          // ~375px 高さでも form column の最下段 (= 操作系 dropdown) が viewport に収まる。
+          paddingTop: orientation === "landscape" ? "12vh" : "40vh",
           overflowY: "auto",
           boxSizing: "border-box",
         }}
