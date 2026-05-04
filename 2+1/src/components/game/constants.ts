@@ -411,8 +411,11 @@ export const SHIP_INNER_HIDE_RADIUS =
 export const SHIP_FUTURE_CONE_HIDE_RADIUS_COEFFICIENT = 0;
 export const SHIP_FUTURE_CONE_HIDE_RADIUS =
   SHIP_HULL_RADIUS * SHIP_FUTURE_CONE_HIDE_RADIUS_COEFFICIENT;
-// 世界線の hide 半径。光円錐より小さく、gnomon マーカー周辺のみ隠す。
-export const SHIP_WORLDLINE_HIDE_RADIUS_COEFFICIENT = 1.5;
+// 世界線の hide 半径。 旧 1.5 (= gnomon 周辺隠す) を 0 に (= 2026-05-04 odakin 指定で
+// 「世界線も全部見せて、 機体が優先で描かれればそれでいい」)。 機体本体は
+// `renderOrder={10}` + `depthTest=false` で世界線より上に描かれる (SelfShipRenderer)、
+// LH も同様に `renderOrder=10` 化済 (= LighthouseRenderer)。 旧値は revert 候補。
+export const SHIP_WORLDLINE_HIDE_RADIUS_COEFFICIENT = 0;
 export const SHIP_WORLDLINE_HIDE_RADIUS =
   SHIP_HULL_RADIUS * SHIP_WORLDLINE_HIDE_RADIUS_COEFFICIENT;
 // 世界線 hide 領域の上方向 (+z、display 未来側) 非対称伸長。< 1 で上側が伸びる。
@@ -420,9 +423,9 @@ export const SHIP_WORLDLINE_HIDE_RADIUS =
 // 過去光円錐交点から ship 現在位置までの worldline tube が ship body に食い込むのを
 // 防ぐため、intersection からかなり上まで非表示にする。
 export const SHIP_WORLDLINE_HIDE_UPPER_SHRINK = 0.4;
-// LH は機体より小さく狭い範囲だけ隠す (LH 塔の半径は ~0.2 (LIGHTHOUSE_HIT_RADIUS) で
-// 機体より細い、過剰に隠さない)。HULL_RADIUS の数倍小さい係数。
-export const LH_INNER_HIDE_RADIUS_COEFFICIENT = 2.5;
+// LH 周辺の hide 半径。 旧 2.5 を 0 に (= 2026-05-04 odakin 指定で全部見せる)。 LH 機体は
+// `renderOrder={10}` (= LighthouseRenderer.tsx) で worldline/cone より上に描画される。
+export const LH_INNER_HIDE_RADIUS_COEFFICIENT = 0;
 export const LH_INNER_HIDE_RADIUS =
   SHIP_HULL_RADIUS * LH_INNER_HIDE_RADIUS_COEFFICIENT;
 // 機体モデル全体の表示スケール。物理値 (hit 判定・laser 発射点等) は触らず、

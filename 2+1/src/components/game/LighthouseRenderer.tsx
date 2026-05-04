@@ -181,7 +181,7 @@ export const LighthouseRenderer = ({
                 <group position={[0, 0, -LIGHTHOUSE_SINK * 0.5]} scale={0.5}>
                   {/* Body: tapered cylinder, base at event */}
                   <mesh
-                    renderOrder={-1}
+                    renderOrder={10}
                     position={[0, 0, 0.5]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.body}
@@ -200,7 +200,7 @@ export const LighthouseRenderer = ({
 
                   {/* Two horizontal bands */}
                   <mesh
-                    renderOrder={-1}
+                    renderOrder={10}
                     position={[0, 0, 0.2]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.bodyBand}
@@ -215,7 +215,7 @@ export const LighthouseRenderer = ({
                     />
                   </mesh>
                   <mesh
-                    renderOrder={-1}
+                    renderOrder={10}
                     position={[0, 0, 0.7]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.bodyBand}
@@ -232,7 +232,7 @@ export const LighthouseRenderer = ({
 
                   {/* Balcony torus (sits flat in xy plane, encircling lantern base) */}
                   <mesh
-                    renderOrder={-1}
+                    renderOrder={10}
                     position={[0, 0, 1.0]}
                     geometry={G.balcony}
                   >
@@ -250,7 +250,7 @@ export const LighthouseRenderer = ({
 
                   {/* Lantern room: open cylinder, semi-transparent so lamp is visible */}
                   <mesh
-                    renderOrder={-1}
+                    renderOrder={10}
                     position={[0, 0, 1.15]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.lantern}
@@ -269,7 +269,7 @@ export const LighthouseRenderer = ({
 
                   {/* Lamp: bright emissive sphere */}
                   <mesh
-                    renderOrder={-1}
+                    renderOrder={10}
                     position={[0, 0, 1.15]}
                     geometry={G.lamp}
                   >
@@ -283,7 +283,7 @@ export const LighthouseRenderer = ({
 
                   {/* Roof cone */}
                   <mesh
-                    renderOrder={-1}
+                    renderOrder={10}
                     position={[0, 0, 1.41]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.roof}
@@ -302,7 +302,7 @@ export const LighthouseRenderer = ({
 
                   {/* Spire */}
                   <mesh
-                    renderOrder={-1}
+                    renderOrder={10}
                     position={[0, 0, 1.57]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.spire}
@@ -330,7 +330,7 @@ export const LighthouseRenderer = ({
                 ]}
               >
                 <mesh
-                  renderOrder={-1}
+                  renderOrder={10}
                   scale={[sphereSize, sphereSize, sphereSize]}
                   geometry={sharedGeometries.playerSphere}
                 >
@@ -346,7 +346,7 @@ export const LighthouseRenderer = ({
                   />
                 </mesh>
                 <mesh
-                  renderOrder={-1}
+                  renderOrder={10}
                   scale={[sphereSize * 1.8, sphereSize * 1.8, sphereSize * 1.8]}
                   geometry={sharedGeometries.playerSphere}
                 >
@@ -370,7 +370,7 @@ export const LighthouseRenderer = ({
                 ]}
               >
                 <mesh
-                  renderOrder={-1}
+                  renderOrder={10}
                   scale={[sphereSize, sphereSize, sphereSize]}
                   geometry={sharedGeometries.playerSphere}
                 >
@@ -386,7 +386,7 @@ export const LighthouseRenderer = ({
                   />
                 </mesh>
                 <mesh
-                  renderOrder={-1}
+                  renderOrder={10}
                   scale={[sphereSize * 1.8, sphereSize * 1.8, sphereSize * 1.8]}
                   geometry={sharedGeometries.playerSphere}
                 >
