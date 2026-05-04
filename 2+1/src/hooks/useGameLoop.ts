@@ -831,7 +831,7 @@ export function useGameLoop({
             const afterStore = useGameStore.getState();
             if (!selectIsDead(afterStore, victimId)) continue;
 
-            stale.staleFrozenRef.current.delete(victimId);
+            stale.recoverStale(victimId);
             sendToNetwork({
               type: "kill" as const,
               victimId,

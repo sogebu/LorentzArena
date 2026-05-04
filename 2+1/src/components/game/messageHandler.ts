@@ -33,7 +33,12 @@ export type MessageHandlerDeps = {
   getPlayerColor: (peerId: string) => string;
   lastUpdateTimeRef: React.MutableRefObject<Map<string, number>>;
   lastCoordTimeRef: React.MutableRefObject<Map<string, { wallTime: number; posT: number }>>;
-  staleFrozenRef: React.MutableRefObject<Set<string>>;
+  /**
+   * 旧 `staleFrozenRef` 直接 mutate 経路を廃止し、 useStaleDetection の `recoverStale`
+   * helper 経由に統一 (2026-05-04 二重管理解消)。 stale 集合 + lastCoordTimeRef を
+   * 整合的に reset し、 store mirror も同時 sync する。
+   */
+  recoverStale: (playerId: string) => void;
 };
 
 const isFiniteNumber = (v: unknown): v is number =>
@@ -112,7 +117,7 @@ export const createMessageHandler =
       getPlayerColor,
       lastUpdateTimeRef,
       lastCoordTimeRef,
-      staleFrozenRef,
+      recoverStale,
     } = deps;
     const store = useGameStore.getState();
 
@@ -145,9 +150,8 @@ export const createMessageHandler =
       // (= 自己申告、 Authority 解体 architecture と整合、 odakin 設計 2026-04-28)。
       // 旧実装は host 側で ballistic 計算 + handleSpawn broadcast していたが、 二重計算 +
       // 本人 catchup 結果との divergence の原因になるため撤去。
-      if (staleFrozenRef.current.has(playerId)) {
-        staleFrozenRef.current.delete(playerId);
-      }
+      // recoverStale は冪等 (= 非 stale な peer に対しては no-op)、 .has() guard 不要。
+      recoverStale(playerId);
 
       // Gap 検出: 前回 phaseSpace 受信からの wall-time gap が閾値超なら、
       // 既存 worldLine を frozenWorldLines に凍結し、新 WL を 1 点から始める。
@@ -324,7 +328,7 @@ export const createMessageHandler =
       // append され spawn ring が PBC 9 image × 2 = 最大 18 個出る (= 「同セル内に次々と
       // リスポーンエフェクト」 bug)。 phaseSpace / hit handler と同じ self echo guard。
       if (msg.playerId === myId) return;
-      staleFrozenRef.current.delete(msg.playerId);
+      recoverStale(msg.playerId);
       lastUpdateTimeRef.current.set(msg.playerId, Date.now());
       const existingColor =
         store.players.get(msg.playerId)?.color ?? getPlayerColor(msg.playerId);
@@ -348,7 +352,7 @@ export const createMessageHandler =
         return;
       const { victimId, killerId, hitPos } = msg;
       // S-2: kill で stale クリア（二重 respawn 防止）
-      staleFrozenRef.current.delete(victimId);
+      recoverStale(victimId);
       store.handleKill(victimId, killerId, hitPos, myId);
       // Stage D: respawn schedule は owner local (= target 本人 or LH owner) が
       // useGameLoop 側で担当。ここでは何もしない。

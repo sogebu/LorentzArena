@@ -295,10 +295,16 @@ export interface GameState {
 
   /**
    * Stale 判定済 peer ID 集合 (= 5s 以上 phaseSpace が来てない) の **store mirror**。
-   * 正本は `useStaleDetection.staleFrozenRef` (hot path 用 ref)、 ここは
-   * `buildSnapshot` 等の zustand-only コードから読むための同期コピー。 ref と store
-   * の二重保持: ref は tick 毎読みを軽くする、 store は外側コンテキスト (PeerProvider
-   * 周期 broadcast) から見るため。
+   * 正本は `useStaleDetection.staleFrozenAtRef` (= `Map<peerId, frozenAt wallTime>`)、
+   * ここは `buildSnapshot` 等の zustand-only コードから読むための同期コピー。 mirror
+   * は `Set<string>` (= キー集合のみ) で、 buildSnapshot は membership check しか
+   * 使わないため値 (= frozenAt) は不要。
+   *
+   * **同期ポリシー** (2026-05-04 二重管理解消): 全 mutation 経路 (= checkStale add /
+   * recoverStale / cleanupPeer) で `syncStoreMirror()` を即呼び。 旧版の「mutation は
+   * ref のみ → 次 tick の drift detection で sync」 設計は M26 「症状検知 → 別 path
+   * で吸収」 の絆創膏 sign で、 ad-hoc delete の散在で drift 不可避だった。 mutation 即
+   * sync で原理的に drift 不可避化。
    *
    * **用途**: `buildSnapshot` で stale 判定済 peer を新 joiner 向け snapshot から
    * 除外する。 stale player は host が「もう居ない」 と判定済なので、 新 joiner に

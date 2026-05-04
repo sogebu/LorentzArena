@@ -119,7 +119,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     // 同期で完了させているため、ここでは何もしない (existingLh があれば skip)。
     const lighthouseId = `${LIGHTHOUSE_ID_PREFIX}0`;
     const existingLh = store.players.get(lighthouseId);
-    stale.staleFrozenRef.current.delete(lighthouseId);
+    stale.recoverStale(lighthouseId);
 
     if (!existingLh) {
       const t = Date.now() / 1000 - OFFSET;
@@ -271,7 +271,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         getPlayerColor,
         lastUpdateTimeRef: stale.lastUpdateTimeRef,
         lastCoordTimeRef: stale.lastCoordTimeRef,
-        staleFrozenRef: stale.staleFrozenRef,
+        recoverStale: stale.recoverStale,
       }),
     );
 
