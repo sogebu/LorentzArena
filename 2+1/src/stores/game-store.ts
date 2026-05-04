@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import {
   ENERGY_MAX,
-  EXPLOSION_DEBRIS_COLOR,
   HIT_DEBRIS_COLOR,
   INVINCIBILITY_DURATION,
   MAX_DEBRIS,
@@ -487,12 +486,18 @@ export const useGameStore = create<GameState>()((set, get) => ({
       color: victim.color,
     };
 
-    // Generate debris (2026-04-21 odakin: per-victim 色から universal EXPLOSION_DEBRIS_COLOR へ)
+    // Generate debris。 explosion は victim.color (= 「死んだ player の色の煙」、
+    // 2026-05-04 odakin 指定で 2026-04-21 の universal EXPLOSION_DEBRIS_COLOR を撤回)。
+    // 設計動機: 誰が死んだかが視覚的に即時判別できる (= HUD kill log まで視線移動不要)、
+    // 「最初の頃」 の per-victim 色 hero 視覚を復活。 hit debris (= laser 被弾時の軽煙) は
+    // 引き続き universal HIT_DEBRIS_COLOR (= warm silver) で別軸 (= lethal hit 時は hit
+    // silver + explosion victim 色の 2 層が降り、 同一 victim でも視覚 2 段で「laser 着弾
+    // → 爆発」 の時系列が読める)。 LH は LIGHTHOUSE_COLOR (cyan) で爆発。
     const explosionParticles = generateExplosionParticles(victim.phaseSpace.u);
     const newDebris: DebrisRecord = {
       deathPos: hitPos,
       particles: explosionParticles,
-      color: EXPLOSION_DEBRIS_COLOR,
+      color: victim.color,
       type: "explosion",
     };
 
@@ -641,10 +646,12 @@ export const useGameStore = create<GameState>()((set, get) => ({
     };
     const nextHitLog = [...state.hitLog, hitEntry].slice(-MAX_HIT_LOG);
 
-    // 被弾デブリは lethal / non-lethal 問わず生成。2026-04-21 odakin 指定で
-    // per-killer 色から universal `HIT_DEBRIS_COLOR` (warm silver) へ移行。
-    // lethal path では handleKill が追加で EXPLOSION_DEBRIS_COLOR の explosion を重ねる
-    // (hit = 明るい軽煙 / explosion = 暗い重煙で視覚区別)。
+    // 被弾デブリは lethal / non-lethal 問わず生成。 2026-04-21 odakin 指定で
+    // per-killer 色から universal `HIT_DEBRIS_COLOR` (warm silver) へ移行 (= hit は
+    // 「laser 着弾の軽煙」 として universal silver で維持)。 lethal path では handleKill
+    // が追加で `victim.color` の explosion を重ねる (= 2026-05-04 odakin 指定で
+    // explosion は per-victim 色に復活、 hit silver + explosion victim 色の 2 層で
+    // 「laser 着弾 → 爆発」 の時系列が読める)。
     const hitParticles = generateHitParticles(victim.phaseSpace.u, laserDir);
     const hitDebris: DebrisRecord = {
       deathPos: hitPos,

@@ -110,11 +110,11 @@ describe("handleDamage — lethal damage", () => {
   });
 });
 
-describe("handleDamage — デブリ配色 (2026-04-21: universal HIT/EXPLOSION 共通色に移行)", () => {
-  // 2026-04-21 odakin 指定: per-player 色 (旧: hit=killer 色 / explosion=victim 色) を
-  // 廃止し、hit / explosion で別々の universal constant (`HIT_DEBRIS_COLOR` /
-  // `EXPLOSION_DEBRIS_COLOR`) を使う。hit=軽い暖色 silver / explosion=暗めの ash で
-  // semantic 区別、player 識別は HUD / kill log に一本化。
+describe("handleDamage — デブリ配色 (2026-05-04: explosion = victim.color に復活、 hit = universal silver 維持)", () => {
+  // 2026-04-21: per-player 色を廃止、 hit / explosion 両方を universal constant に移行。
+  // 2026-05-04 odakin 指定で部分撤回: explosion は victim.color (= 「死んだ player の色の煙」)
+  // に復活、 hit は HIT_DEBRIS_COLOR (universal warm silver) で維持。 lethal 時は
+  // hit silver + explosion victim 色の 2 層が降る。
   const victimColor = "#ff0000";
   const killerColor = "#00ff00";
 
@@ -143,10 +143,8 @@ describe("handleDamage — デブリ配色 (2026-04-21: universal HIT/EXPLOSION 
     expect(s.debrisRecords[0].color).toBe(HIT_DEBRIS_COLOR);
   });
 
-  it("lethal: hit (HIT_DEBRIS_COLOR) + explosion (EXPLOSION_DEBRIS_COLOR) の 2 層が入る", async () => {
-    const { HIT_DEBRIS_COLOR, EXPLOSION_DEBRIS_COLOR } = await import(
-      "../components/game/constants"
-    );
+  it("lethal: hit (HIT_DEBRIS_COLOR) + explosion (victim.color) の 2 層が入る", async () => {
+    const { HIT_DEBRIS_COLOR } = await import("../components/game/constants");
     resetStore(
       new Map<string, RelativisticPlayer>([
         ["victim", victimWith(HIT_DAMAGE / 2)],
@@ -163,7 +161,7 @@ describe("handleDamage — デブリ配色 (2026-04-21: universal HIT/EXPLOSION 
     expect(s.debrisRecords[0].type).toBe("hit");
     expect(s.debrisRecords[0].color).toBe(HIT_DEBRIS_COLOR);
     expect(s.debrisRecords[1].type).toBe("explosion");
-    expect(s.debrisRecords[1].color).toBe(EXPLOSION_DEBRIS_COLOR);
+    expect(s.debrisRecords[1].color).toBe(victimColor);
   });
 
   it("killer が players 未登録でも hit debris は HIT_DEBRIS_COLOR (共通色なので fallback 不要)", async () => {
