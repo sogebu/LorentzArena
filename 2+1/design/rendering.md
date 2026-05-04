@@ -325,6 +325,22 @@ LH_INNER_HIDE_RADIUS         = SHIP_HULL_RADIUS × 2.5   // LH は砲身が無�
 
 **SceneContent routing**: 全 worldline (生存中: 自機 / 他機 / LH、凍結) に `innerHideRadius` prop を渡す。LH は `LH_INNER_HIDE_RADIUS`、それ以外は `SHIP_WORLDLINE_HIDE_RADIUS`。`LightConeRenderer` は future mesh / past mesh で別 shader (`onFutureShader` / `onPastShader`、hideCenter 共通 + radius のみ差) を適用。
 
+#### 2026-05-04 update: hide radius 全 0 化 + ALWAYS_ON_TOP trio に置換
+
+**経緯**: user 指示「光円錐 / 世界線 / LH も含めて全部つながって見せて、 機体・LH が前面で遮ってればよい」 で **hide shader 廃止 → render-order based pattern** に倒した。 inner-hide shader 機構自体は温存 (= radius=0 で `vInnerDist < 0` 不成立 → discard 不発、 全 cone / worldline 可視)、 4 定数 (`SHIP_FUTURE_CONE_HIDE_RADIUS_COEFFICIENT` / `SHIP_INNER_HIDE_RADIUS_COEFFICIENT` / `SHIP_WORLDLINE_HIDE_RADIUS_COEFFICIENT` / `LH_INNER_HIDE_RADIUS_COEFFICIENT`) は 5.0 / 3.0 / 1.5 / 2.5 → 全 0 に。 旧値は docstring に明記、 revert は 1 line edit で可能。
+
+代わりに「機体・LH を最前面」 の意図は **ALWAYS_ON_TOP trio** ([`alwaysOnTopRender.ts`](src/components/game/alwaysOnTopRender.ts)) で実現:
+
+- `renderOrder=10` (= worldline / cone の default 0 より late draw = 後勝ち)
+- `depthTest=false` (= depth buffer の値を見ない、 直前の depth-writing element に遮られない)
+- `depthWrite=false` (= 後続描画への depth 干渉なし)
+
+の 3 要素 trio を `ALWAYS_ON_TOP_MESH_PROPS` + `ALWAYS_ON_TOP_MATERIAL_PROPS` の prop spread で各 mesh / material に適用。 適用先は SelfShipRenderer (= 自機 hull / 砲塔) + RocketShipRenderer (= shooter 形状 hull / cannon) + LighthouseRenderer (= LH 塔 / past-cone marker / future marker)、 OtherShipRenderer は SelfShipRenderer 委譲で自動継承。 JellyfishShipRenderer (= 触手 + dome) は別 pattern で意図的に depth interaction を残すため非適用。
+
+**trio 化の rationale (= meta-principles M28 application)**: LH を `renderOrder=10` に bump した直後 flicker 報告 → trio の 1 要素 (`depthTest=false`) が抜けていた事故 ([`f15fce4`](https://github.com/sogebu/LorentzArena/commit/f15fce4) で fix、 詳細 [`design/meta-principles.md §M28`](meta-principles.md))。 共通 module 化で「3 要素のうち 1-2 つだけ適用」 の踏み外し risk を構造的に消した ([`9f711ca`](https://github.com/sogebu/LorentzArena/commit/9f711ca))。
+
+**未復帰時の re-enable 手順**: `src/components/game/constants.ts` の 4 hide coefficient を旧値 (5.0 / 3.0 / 1.5 / 2.5) に戻す → 1 line edit、 shader 機構は温存されているため即動作。 ALWAYS_ON_TOP trio との併用も可 (= 最前面 + 一部隠す、 視覚的 layering を細かく調整したい場合)。
+
 ### worldLine.history サイズ: 5000 → 1000 (FPS 対策、2026-04-17)
 
 **現象**: 世界時刻 ~170s の長時間プレイで FPS が 10 まで低下。位置 (円柱内外) にかかわらず、時間経過だけで単調悪化。

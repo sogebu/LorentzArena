@@ -206,6 +206,33 @@ Keyboard coexistence: ゲームループで keyboard と touch の入力を加�
 
 **pagehide 対応**: モバイル Safari では `beforeunload` がバックグラウンド化時に発火しない。`pagehide` リスナーを追加し、`savedRef` フラグで同一アンロードシーケンスの二重保存を防止。`pageshow` で `persisted === true` (bfcache 復帰) なら `savedRef` をリセット。
 
+#### Lobby orientation responsive design (2026-05-04 mobile landscape Phase 1)
+
+**動機**: スマホ portrait は縦長で「絵の上に form 重ね」 hero 視覚で問題ないが、 landscape (= 横置き、 ≈ 812×375) では viewport 縦が狭すぎて (a) ship preview と form / title が overlap、 (b) hi-scores が画面外で見えない、 (c) ship が中央 1 列で「なぜここに居るのか分からん」 (= user 評)。 portrait は触らず landscape だけ別 layout に倒した。
+
+**`useOrientation` hook** ([`src/hooks/useOrientation.ts`](src/hooks/useOrientation.ts)): `window.matchMedia("(orientation: landscape)")` を React state に bind、 回転時に re-render。 hook 1 つで Lobby + Game の両方が orientation 反応可能 (Game 側は将来 in-game HUD layout 切替で使う想定、 Phase 2)。
+
+**Lobby layout の orientation 別構造**:
+
+| 軸 | portrait | landscape |
+|---|---|---|
+| 主構造 | 中央 1 列 (form 上 / hi-scores 下、 vertical scroll 前提) | **3-col grid** (form \| ship \| hi-scores) |
+| paddingTop | 40vh (= ship hero を上半分に見せる) | 12vh (= ship を center column に閉じ込める) |
+| ship preview 配置 | viewport 全面背景 (`top: -22vh / height: 100vh / position: fixed`) | center column 専用領域 (`height: min(90vh, 360px)` + `aspectRatio: 1/1`) |
+| ship preview camera | default `[4, -4, 3]` | landscape 限定 `[3, -3, 2.25]` (= 0.75× distance、 angular size 1.33×) |
+| form / hi-scores 列幅 (`fieldMaxWidth`) | 280px (= 既存) | 200px (= ship column に space を譲る) |
+| 開始時 fullscreen | request | request (両 orientation で試行、 silent failure 許容) |
+
+**orientation lock せずに両向き許容**: lobby で `requestFullscreen()` を試行するが `screen.orientation.lock()` は呼ばない。 user が縦持ち / 横持ち自由に変えられる方が UX 自然 + iOS Safari は orientation lock 拒否がある。 Phase 1 は両 orientation で読める設計を最優先、 user 強制誘導はしない。
+
+**ship preview 拡大の 2 段階反復** (= user 評価駆動): user 「妙に絵がちっちゃすぎ」 → form/hi-scores 280→220 + ship min(70vh, 280px) + camera 0.75× 寄せ ([`97ac479`](https://github.com/sogebu/LorentzArena/commit/97ac479))。 不十分 → 「もっとでかくていい」 → ship min(90vh, 360px) + form/hi-scores 200 ([`e777e2e`](https://github.com/sogebu/LorentzArena/commit/e777e2e))。 mobile landscape 812×375 で ship 337×337 (= viewport 90%) に到達。 form 200 でも入力 + 開始 + dropdowns は無理なく収まることを実機 fit 計算で確認 (form 200 + ship 337 + hi-scores 200 + gap 48 ≈ 785、 fits 812)。
+
+**height: 100vh は両 orientation で維持**: canvas size を変えると R3F の camera FOV / OrbitControls default 距離が破綻する。 高さは `min(Nvh, Mpx)` で固定、 配置 (= top / margin) のみ orientation 別に切替が安全。
+
+**ハイスコア可視化 path**: 当初 portrait の paddingTop 40vh で hi-scores が viewport 外に押し出される問題があった ([`8a0b881`](https://github.com/sogebu/LorentzArena/commit/8a0b881))、 paddingTop を 40vh / 12vh で portrait / landscape 別に出し分け ([`6083144`](https://github.com/sogebu/LorentzArena/commit/6083144)) で portrait は scroll で全表示 / landscape は 3-col 内 hi-scores 列で常時可視 を両立。
+
+**Phase 2 残**: in-game HUD の landscape layout 最適化。 現状は portrait 前提 (= Speedometer 縦長 / ControlPanel + Radar overlap risk)、 useOrientation hook を Game 側でも consume して切替予定。 trigger は実機 landscape gameplay で UX 不具合確認後。
+
 ### 因果律スコア
 
 キルスコアの加算タイミングは「各プレイヤーの過去光円錐に hitPos が入ったとき」。`killLog` の entry が全 peer で独立に観測され、`firePendingKillEvents` が過去光円錐到達を判定してスコアを加算。全員が同じイベントセットを受け取るので最終的に一致 (加算は可換)。

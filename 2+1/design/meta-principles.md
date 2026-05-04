@@ -627,12 +627,84 @@ reach (= callsite 数) は影響範囲指標、 sign 数は **構造負債の深
 
 #### M24/M25/M26 との関係
 
-- M24 (鏡像 rule): 真因の **対称性視点** から疑う
-- M25 (state 単一化): 真因の **state 設計視点** から疑う
-- M26 (絆創膏 sign): 真因の **patch 構造視点** から疑う
-- M27 (多層 RCA): 真因の **layer chain 視点** から疑う
+- M24 (鏡像 rule): 真因の **対称性視点** から疑う (= rule の片側だけ実装を疑う)
+- M25 (state 単一化): 真因の **state 設計視点** から疑う (= 二重管理を疑う)
+- M26 (絆創膏 sign): 真因の **patch 構造視点** から疑う (= 効果 sign を数える)
+- M27 (多層 RCA): 真因の **layer chain 視点** から疑う (= 表層 fix の二次防衛化を考える)
 
-これら 4 つは独立した axis、 真因が見つからない時は各 axis から並行 audit すると効率的。
+これら 4 つは独立した axis、 真因が見つからない時は各 axis から並行 audit すると効率的。 M28 (= 暗黙 trio の踏み外し) は別系統 (= 既存 pattern の維持規律) で、 真因 audit ではなく**新規 entity 追加時の事前防衛**として運用する。
+
+---
+
+### M28. 暗黙 trio / triad の踏み外し: cohesive な複数 prop は spread / factory で揃える
+
+複数の prop / setting が「揃って初めて意図通り動く cohesive な pattern」 (= 暗黙 trio / triad) を成すとき、 個別 prop を直接 set すると新規 entity 追加時に **1-2 つだけ適用 → pattern 不完全 → 動作不定** の罠に陥る。 mitigation は cohesive な prop 集合を **共通 module の prop spread / factory** に閉じ込め、 callsite では「pattern の名前」 を参照する形に倒す。
+
+#### 構造
+
+cohesive trio の典型:
+
+- **always-on-top transparent overlay** (= LorentzArena LH/Ship): `renderOrder` (= late draw) + `depthTest=false` (= depth 無視で描画) + `depthWrite=false` (= 後続描画への depth 干渉なし) の 3 要素 trio。 1 つ抜けると flicker / 部分 frame 消失
+- **React performant subscription**: `useGameStore((s) => x)` + selector の reference identity 維持 + `shallow` 比較 (or scalar 戻り値) の 3 要素 (M25 サブ原則の type narrowing と同系)
+- **Three.js geometry rebuild throttle**: ref で latest 参照保持 + `useMemo` deps から object 自体撤去 + throttle 量子化変数を deps に置く (= LorentzArena `WorldLineRenderer` wlRef pattern、 1 つ抜けると毎 tick rebuild → main thread saturation)
+
+cohesive 度の判定: 「この prop を 1 つだけ set したらどうなるか?」 を考えて、 **意図した挙動が破綻するなら trio 候補**。 全部単独で意味があるなら trio ではない。
+
+#### 踏み外しの起こり方
+
+新規 entity を pattern に追加するとき、 callsite を既存 entity から copy するなら trio は揃う。 だが「既存 entity の状態を変える」 (= 例: LH の renderOrder を bump) ときに、 trio の他要素まで触る必要があると気付かずに **1 要素だけ変える** ことが起こる。 既存 callsite で 3 要素揃っているのは「pattern として意識して書いた」 のではなく「何となく揃っていた」 状態が多いため、 後から触ると trio 認識自体を欠く。
+
+#### 実例 1 (= 2026-05-04 LH flicker)
+
+**経緯**:
+1. LH は元々 `renderOrder=-1` + `depthTest=true (default)` + `depthWrite=false` で運用 (= worldline / cone より「先に描画」 で depth buffer が空のため depthTest=true でも問題なし、 偶然成立した別 pattern)
+2. user 指示「機体・LH を最前面に」 で `renderOrder=10` に bump → LH は「late draw 組」 (= self ship 等と同 layer) に転換
+3. **trio の他 2 要素 (= depthTest / depthWrite) が抜けた状態**で deploy → user「LH フリッカーするようになった」 報告
+4. RCA: SelfShipRenderer hull は元から `renderOrder=10 + depthTest=false + depthWrite=false` の 3 要素 trio で書かれていた (= always-on-top pattern)、 LH は trio の 1 要素 (depthTest) が default true のまま残った
+5. fix: LH 全 12 mesh material に `depthTest=false` 追加 (= trio の 3 要素を揃えた、 [`f15fce4`](https://github.com/sogebu/LorentzArena/commit/f15fce4))
+6. consolidation: trio を `alwaysOnTopRender.ts` に共通化、 callsite で `<mesh {...ALWAYS_ON_TOP_MESH_PROPS}><material {...ALWAYS_ON_TOP_MATERIAL_PROPS} /></mesh>` の prop spread だけで全 3 要素入る形に refactor ([`9f711ca`](https://github.com/sogebu/LorentzArena/commit/9f711ca))
+
+**user 指摘 (= prudence trigger)**: 「フリッカー直ったけど、 直し方 ad hoc ではない？」 で立ち止まり self-audit (= M26 application)。 結論「**既存 pattern の不完全適用を完成させただけ、 absurd patch ではない**」 だが**新規 always-on-top entity 追加時の踏み外し risk は残る** → trio module 化で「踏み外せない」 構造に倒した。
+
+#### 共通 module 化の利点
+
+| 利点 | 説明 |
+|---|---|
+| 踏み外し不可能化 | callsite で `{...ALWAYS_ON_TOP_MATERIAL_PROPS}` と書けば全要素自動付与、 1 要素抜きが構造的に不可 |
+| pattern 名の明示化 | `ALWAYS_ON_TOP` という名前が「これは何の pattern か」 を 1 行で伝える、 暗黙性の解消 |
+| docstring 集中 | 3 要素の rationale + 失敗事例 + 適用 / 非適用 entity 一覧を 1 ヶ所に集約 ([`alwaysOnTopRender.ts`](src/components/game/alwaysOnTopRender.ts) docstring 例) |
+| 調整の単一化 | 後から `renderOrder=10 → 20` 等の調整時、 共通 module を変えるだけで全 entity に反映、 callsite 側は不変 |
+
+#### 共通 module 化の判断 heuristic
+
+**化すべき**:
+- 同 pattern が **3+ entity** に適用される (= 単一適用は abstraction premature)
+- 1 要素抜けで動作不定になる cohesive trio
+- 適用 entity が将来増える可能性 (= 新規 always-on-top entity 追加 risk)
+
+**化さなくてよい**:
+- 単一 entity でしか使わない (= 共通化の overhead が premature)
+- prop が独立 (= 個別 set でも意図通り動く、 単なる「複数 prop を毎回書くのが冗長」 は YAGNI)
+
+#### How to apply
+
+1. **新規 entity を既存 pattern に追加するとき**: 既存 callsite の prop を全て copy、 1 つでも省くなら「省いて動くか?」 を明示確認 (= 省ける prop = trio 外、 省けない prop = trio 内)
+2. **既存 entity の prop 1 つを変えるとき**: 「この prop は trio の一部か?」 を問う、 trio の一部なら他要素も一緒に再考
+3. **3+ 適用箇所で trio が暗黙的に揃ってる pattern を発見したら**: 共通 module 化を検討、 docstring に rationale + 失敗事例を集約
+4. **user / collaborator から「ad-hoc?」 と問われたら**: M26 (絆創膏 sign) audit と並行して **「既存 pattern の不完全適用を完成させただけ vs 新規 patch 追加か」** を判定、 前者なら trio 化で構造的固定を提案
+
+#### 診断ヒント
+
+- 「callsite 4 ヶ所で同じ 3 行が並んでる」 → trio 候補
+- 「pattern A の entity に prop を 1 つだけ追加したら動作変わった」 → trio 内の prop だった可能性
+- 「ad-hoc に見えるが既存類似 callsite と prop が一致する」 → trio 完成 application、 共通 module 化の機会
+- 既存 callsite を `git blame` してみて 3 要素が**別々の commit で揃った**なら、 暗黙的に成立した「偶然の trio」 (= 当時の作者は trio 認識無し) → 共通 module 化で意図を明文化
+
+#### 他 meta-principle との関係
+
+- **M26 (絆創膏 sign)** との切り分け: 「既存 pattern の不完全適用を完成」 (= M28 application) は絆創膏ではない、 「症状を別 path で吸収」 (= 絆創膏 sign 5) は M26 違反。 user に「ad-hoc?」 と問われたら両方 audit、 別系統の判定
+- **M25 (state 単一化)** との独立性: M25 は「同じ概念を複数の場所に置くな」、 M28 は「cohesive な複数 prop は揃えろ」。 前者は単一化、 後者は集合維持で逆方向だが両立 (= 「概念は 1 つ、 実装 prop は trio で揃える」)
+- **M21 (描画 component は自己 gate)** との関係: M21 は responsibility 配置、 M28 は cohesive prop 集合の維持。 M21 適用後の component 内部で M28 trio が現れることが多い
 
 ---
 
