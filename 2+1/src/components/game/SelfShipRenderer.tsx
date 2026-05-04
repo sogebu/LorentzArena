@@ -9,6 +9,10 @@ import {
   type Vector3,
   type Vector4,
 } from "../../physics";
+import {
+  ALWAYS_ON_TOP_MATERIAL_PROPS,
+  ALWAYS_ON_TOP_MESH_PROPS,
+} from "./alwaysOnTopRender";
 import { AntennaBeaconRenderer } from "./AntennaBeaconRenderer";
 import {
   ARROW_BASE_LENGTH,
@@ -744,11 +748,10 @@ export const SelfShipRenderer = ({
           </group>
 
           {/* Exhaust (4 nozzle 各々、旧 ExhaustCone と同 spec、2 層 cone + additive blending)。
-          位置・向き・scale は useFrame で nozzle 個別に動的設定。
-          **`renderOrder={10}` + `depthTest: false`**: 世界線 tube 等の D pattern geometry
-          と重なっても煙が必ず上に描画される (transparent + additive なので後勝ち順が
-          意味を持つ)。depthTest off で他 object に occlude されず、renderOrder で常に
-          後段描画。 */}
+          位置・向き・scale は useFrame で nozzle 個別に動的設定。 ALWAYS_ON_TOP pattern
+          (= alwaysOnTopRender.ts、 mesh.renderOrder=10 + material.depthTest=false +
+          material.depthWrite=false) で世界線 tube 等の背景 D pattern geometry より
+          常に上に描画 (transparent + additive で後勝ち順 + depth buffer 完全無視)。 */}
           {nozzleAngles.map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: NOZZLE_COUNT 固定 + 順序不変
             <group key={`exhaust-${i}`}>
@@ -758,7 +761,7 @@ export const SelfShipRenderer = ({
                 }}
                 geometry={sharedGeometries.exhaustCone}
                 visible={false}
-                renderOrder={10}
+                {...ALWAYS_ON_TOP_MESH_PROPS}
               >
                 <meshBasicMaterial
                   ref={(el) => {
@@ -766,8 +769,7 @@ export const SelfShipRenderer = ({
                   }}
                   color={exhaustOuterColor}
                   transparent
-                  depthTest={false}
-                  depthWrite={false}
+                  {...ALWAYS_ON_TOP_MATERIAL_PROPS}
                   blending={THREE.AdditiveBlending}
                   toneMapped={false}
                 />
@@ -778,7 +780,7 @@ export const SelfShipRenderer = ({
                 }}
                 geometry={sharedGeometries.exhaustCone}
                 visible={false}
-                renderOrder={10}
+                {...ALWAYS_ON_TOP_MESH_PROPS}
               >
                 <meshBasicMaterial
                   ref={(el) => {
@@ -786,8 +788,7 @@ export const SelfShipRenderer = ({
                   }}
                   color={exhaustInnerColor}
                   transparent
-                  depthTest={false}
-                  depthWrite={false}
+                  {...ALWAYS_ON_TOP_MATERIAL_PROPS}
                   blending={THREE.AdditiveBlending}
                   toneMapped={false}
                 />

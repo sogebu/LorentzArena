@@ -5,6 +5,10 @@ import type { Vector4 } from "../../physics";
 import { observableImageCells, requiredImageCellRadius } from "../../physics";
 import { getVelocity4 } from "../../physics/vector";
 import { selectIsDead, useGameStore } from "../../stores/game-store";
+import {
+  ALWAYS_ON_TOP_MATERIAL_PROPS,
+  ALWAYS_ON_TOP_MESH_PROPS,
+} from "./alwaysOnTopRender";
 import { buildApparentShapeMatrix } from "./apparentShape";
 import { pastConeIntersectionWithFrozenFallback } from "./pastConeFallback";
 import {
@@ -181,7 +185,7 @@ export const LighthouseRenderer = ({
                 <group position={[0, 0, -LIGHTHOUSE_SINK * 0.5]} scale={0.5}>
                   {/* Body: tapered cylinder, base at event */}
                   <mesh
-                    renderOrder={10}
+                    {...ALWAYS_ON_TOP_MESH_PROPS}
                     position={[0, 0, 0.5]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.body}
@@ -193,15 +197,14 @@ export const LighthouseRenderer = ({
                       roughness={0.55}
                       metalness={0.05}
                       transparent
-                      depthTest={false}
-                      depthWrite={false}
+                      {...ALWAYS_ON_TOP_MATERIAL_PROPS}
                       opacity={0.95 * alpha}
                     />
                   </mesh>
 
                   {/* Two horizontal bands */}
                   <mesh
-                    renderOrder={10}
+                    {...ALWAYS_ON_TOP_MESH_PROPS}
                     position={[0, 0, 0.2]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.bodyBand}
@@ -211,13 +214,12 @@ export const LighthouseRenderer = ({
                       emissive={trimColor}
                       emissiveIntensity={0.4}
                       transparent
-                      depthTest={false}
-                      depthWrite={false}
+                      {...ALWAYS_ON_TOP_MATERIAL_PROPS}
                       opacity={0.95 * alpha}
                     />
                   </mesh>
                   <mesh
-                    renderOrder={10}
+                    {...ALWAYS_ON_TOP_MESH_PROPS}
                     position={[0, 0, 0.7]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.bodyBand}
@@ -227,15 +229,14 @@ export const LighthouseRenderer = ({
                       emissive={trimColor}
                       emissiveIntensity={0.4}
                       transparent
-                      depthTest={false}
-                      depthWrite={false}
+                      {...ALWAYS_ON_TOP_MATERIAL_PROPS}
                       opacity={0.95 * alpha}
                     />
                   </mesh>
 
                   {/* Balcony torus (sits flat in xy plane, encircling lantern base) */}
                   <mesh
-                    renderOrder={10}
+                    {...ALWAYS_ON_TOP_MESH_PROPS}
                     position={[0, 0, 1.0]}
                     geometry={G.balcony}
                   >
@@ -246,15 +247,14 @@ export const LighthouseRenderer = ({
                       roughness={0.4}
                       metalness={0.3}
                       transparent
-                      depthTest={false}
-                      depthWrite={false}
+                      {...ALWAYS_ON_TOP_MATERIAL_PROPS}
                       opacity={0.95 * alpha}
                     />
                   </mesh>
 
                   {/* Lantern room: open cylinder, semi-transparent so lamp is visible */}
                   <mesh
-                    renderOrder={10}
+                    {...ALWAYS_ON_TOP_MESH_PROPS}
                     position={[0, 0, 1.15]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.lantern}
@@ -265,8 +265,7 @@ export const LighthouseRenderer = ({
                       emissiveIntensity={0.7}
                       roughness={0.3}
                       transparent
-                      depthTest={false}
-                      depthWrite={false}
+                      {...ALWAYS_ON_TOP_MATERIAL_PROPS}
                       opacity={0.55 * alpha}
                       side={THREE.DoubleSide}
                     />
@@ -274,22 +273,21 @@ export const LighthouseRenderer = ({
 
                   {/* Lamp: bright emissive sphere */}
                   <mesh
-                    renderOrder={10}
+                    {...ALWAYS_ON_TOP_MESH_PROPS}
                     position={[0, 0, 1.15]}
                     geometry={G.lamp}
                   >
                     <meshBasicMaterial
                       color={lampColor}
                       transparent
-                      depthTest={false}
-                      depthWrite={false}
+                      {...ALWAYS_ON_TOP_MATERIAL_PROPS}
                       opacity={alpha}
                     />
                   </mesh>
 
                   {/* Roof cone */}
                   <mesh
-                    renderOrder={10}
+                    {...ALWAYS_ON_TOP_MESH_PROPS}
                     position={[0, 0, 1.41]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.roof}
@@ -301,15 +299,14 @@ export const LighthouseRenderer = ({
                       roughness={0.5}
                       metalness={0.2}
                       transparent
-                      depthTest={false}
-                      depthWrite={false}
+                      {...ALWAYS_ON_TOP_MATERIAL_PROPS}
                       opacity={0.95 * alpha}
                     />
                   </mesh>
 
                   {/* Spire */}
                   <mesh
-                    renderOrder={10}
+                    {...ALWAYS_ON_TOP_MESH_PROPS}
                     position={[0, 0, 1.57]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.spire}
@@ -319,8 +316,7 @@ export const LighthouseRenderer = ({
                       emissive={mainColor}
                       emissiveIntensity={0.6}
                       transparent
-                      depthTest={false}
-                      depthWrite={false}
+                      {...ALWAYS_ON_TOP_MATERIAL_PROPS}
                       opacity={alpha}
                     />
                   </mesh>
@@ -338,7 +334,7 @@ export const LighthouseRenderer = ({
                 ]}
               >
                 <mesh
-                  renderOrder={10}
+                  {...ALWAYS_ON_TOP_MESH_PROPS}
                   scale={[sphereSize, sphereSize, sphereSize]}
                   geometry={sharedGeometries.playerSphere}
                 >
@@ -349,21 +345,19 @@ export const LighthouseRenderer = ({
                     roughness={0.3}
                     metalness={0.1}
                     transparent
-                    depthTest={false}
-                    depthWrite={false}
+                    {...ALWAYS_ON_TOP_MATERIAL_PROPS}
                     opacity={PLAYER_MARKER_MAIN_OPACITY_OTHER}
                   />
                 </mesh>
                 <mesh
-                  renderOrder={10}
+                  {...ALWAYS_ON_TOP_MESH_PROPS}
                   scale={[sphereSize * 1.8, sphereSize * 1.8, sphereSize * 1.8]}
                   geometry={sharedGeometries.playerSphere}
                 >
                   <meshBasicMaterial
                     color={mainColor}
                     transparent
-                    depthTest={false}
-                    depthWrite={false}
+                    {...ALWAYS_ON_TOP_MATERIAL_PROPS}
                     opacity={PLAYER_MARKER_GLOW_OPACITY_OTHER}
                   />
                 </mesh>
@@ -380,7 +374,7 @@ export const LighthouseRenderer = ({
                 ]}
               >
                 <mesh
-                  renderOrder={10}
+                  {...ALWAYS_ON_TOP_MESH_PROPS}
                   scale={[sphereSize, sphereSize, sphereSize]}
                   geometry={sharedGeometries.playerSphere}
                 >
@@ -391,21 +385,19 @@ export const LighthouseRenderer = ({
                     roughness={0.3}
                     metalness={0.1}
                     transparent
-                    depthTest={false}
-                    depthWrite={false}
+                    {...ALWAYS_ON_TOP_MATERIAL_PROPS}
                     opacity={PLAYER_MARKER_MAIN_OPACITY_OTHER}
                   />
                 </mesh>
                 <mesh
-                  renderOrder={10}
+                  {...ALWAYS_ON_TOP_MESH_PROPS}
                   scale={[sphereSize * 1.8, sphereSize * 1.8, sphereSize * 1.8]}
                   geometry={sharedGeometries.playerSphere}
                 >
                   <meshBasicMaterial
                     color={mainColor}
                     transparent
-                    depthTest={false}
-                    depthWrite={false}
+                    {...ALWAYS_ON_TOP_MATERIAL_PROPS}
                     opacity={PLAYER_MARKER_GLOW_OPACITY_OTHER}
                   />
                 </mesh>
