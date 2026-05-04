@@ -84,27 +84,32 @@ DESIGN.md から分離。zustand store、event log authoritative、selectors、U
 
 ### Stale プレイヤー処理
 
-**構造**:
+**構造** (2026-05-04 二重管理解消後):
 ```
-stale 検知 (ゲームループ内、毎 tick)
-├── 壁時計 5 秒更新なし → staleFrozenRef.add(id)  [切断・タブ停止]
-└── 座標時間進行率 < 0.1 → staleFrozenRef.add(id) [タブ throttle]
+正本: staleFrozenAtRef: Map<peerId, frozenAt wallTime>  (= キー集合 = 「stale な peer」、 値 = 「いつ stale 化したか」)
+mirror: useGameStore.staleFrozenIds: ReadonlySet<string>  (= buildSnapshot 用、 mutation 即 sync)
 
-stale 回復 (messageHandler、phaseSpace 受信時)
-└── staleFrozenRef.has(playerId) かつ isHost → respawn + delete
+stale 検知 (ゲームループ内、毎 tick)
+├── 壁時計 5 秒更新なし → staleFrozenAtRef.set(id, currentTime)  [切断・タブ停止]
+└── 座標時間進行率 < 0.1 → staleFrozenAtRef.set(id, currentTime) [タブ throttle]
+
+stale 回復 (messageHandler / RelativisticGame / useGameLoop の各経路、 全部 helper 経由)
+└── stale.recoverStale(playerId) → staleFrozenAtRef.delete + lastCoordTimeRef.delete + syncStoreMirror
 
 stale 除外
-├── 因果律ガード: staleFrozenRef.has(id) → skip
+├── 因果律ガード: staleFrozenAtRef.has(id) → skip
 ├── 死亡中プレイヤー: isDead → stale 検知しない
 └── visibilitychange: document.hidden → ゲームループ停止 → 検知も止まる
 ```
 
 **S-1〜S-5 修正済み** (2026-04-13 一括解消):
 - S-1: Lighthouse を stale 検知から除外 (`isLighthouse(id) → continue`)
-- S-2: Kill + stale の二重 respawn を防ぐ (`staleFrozenRef.delete(victimId)`)
-- S-3: `lastCoordTimeRef` の cleanup 漏れ → `purgeDisconnected` ヘルパーで 3 ref 一括 cleanup
-- S-4: stale recovery 時の `lastCoordTimeRef` 未リセット
+- S-2: Kill + stale の二重 respawn を防ぐ (`recoverStale(victimId)`)
+- S-3: `lastCoordTimeRef` の cleanup 漏れ → `cleanupPeer` ヘルパーで 3 ref 一括 cleanup
+- S-4: stale recovery 時の `lastCoordTimeRef` 未リセット → `recoverStale` で整合 reset
 - S-5: 死亡中に stale 検知が止まる → `stale.checkStale` を isDead 分岐の外に
+
+**M25 application** (2026-05-04): 旧版は `staleFrozenRef: Set` + `staleFrozenAtRef: Map` の内部 dual + ref ↔ store mirror dual + ad-hoc delete 5 callsite 散在の三重二重管理。 mutation 即 sync + Map 単独化 + helper 経由統一で解消。 詳細 [`plans/2026-05-04-stalefrozen-decomposition.md`](../plans/2026-05-04-stalefrozen-decomposition.md)。
 
 ### myDeathEvent は ref で持つ
 
