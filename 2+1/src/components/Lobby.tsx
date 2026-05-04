@@ -52,8 +52,9 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
   // landscape では form / hi-scores 列の幅を絞って ship column に space を譲る
   // (= 2026-05-04 user feedback「機体がちっちゃすぎ」 → ship を center column の
   // 主役として大きく表示)。 portrait は既存の 280px を維持。
+  // 200px: 開始 button + 入力 + dropdown は無理なく収まる最小、 ship に最大限の幅を譲る。
   const fieldMaxWidth =
-    orientation === "landscape" ? "min(220px, 80vw)" : "min(280px, 80vw)";
+    orientation === "landscape" ? "min(200px, 80vw)" : "min(280px, 80vw)";
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -375,11 +376,12 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
               // (= ShipPreview の Canvas wrapper が positioned ancestor を遡って fixed
               // wrapper まで行くと 100vw x 100vh で expand される、 ここで止める)。
               position: "relative",
-              // 旧 200x200 では mobile landscape で ship visual が小さすぎた
-              // (= 2026-05-04 user feedback)。 height は viewport 70vh max 280px の
-              // square (= aspectRatio 1/1) で content area (= ~280px) いっぱいに使う。
-              // form/hi-scores 列を fieldMaxWidth 220px に絞って ship に space を譲る。
-              height: "min(70vh, 280px)",
+              // 旧 200x200 / 70vh では小さすぎた (= 2026-05-04 user feedback)、 90vh /
+              // max 360px に拡大。 mobile landscape 375px height で 337x337 (= viewport
+              // 90% を ship が占める)、 form/hi-scores 列幅を 200 に絞り ship に最大幅を
+              // 譲る。 mobile landscape 812x375: 200 + 337 + 200 + 48 gap ≈ 785 (fits 812)、
+              // 縦は ship が title + subtitle 含めて overflow するため Lobby scroll 必要。
+              height: "min(90vh, 360px)",
               aspectRatio: "1 / 1",
               flexShrink: 0,
             }}
