@@ -193,6 +193,7 @@ export const LighthouseRenderer = ({
                       roughness={0.55}
                       metalness={0.05}
                       transparent
+                      depthTest={false}
                       depthWrite={false}
                       opacity={0.95 * alpha}
                     />
@@ -210,6 +211,7 @@ export const LighthouseRenderer = ({
                       emissive={trimColor}
                       emissiveIntensity={0.4}
                       transparent
+                      depthTest={false}
                       depthWrite={false}
                       opacity={0.95 * alpha}
                     />
@@ -225,6 +227,7 @@ export const LighthouseRenderer = ({
                       emissive={trimColor}
                       emissiveIntensity={0.4}
                       transparent
+                      depthTest={false}
                       depthWrite={false}
                       opacity={0.95 * alpha}
                     />
@@ -243,6 +246,7 @@ export const LighthouseRenderer = ({
                       roughness={0.4}
                       metalness={0.3}
                       transparent
+                      depthTest={false}
                       depthWrite={false}
                       opacity={0.95 * alpha}
                     />
@@ -261,6 +265,7 @@ export const LighthouseRenderer = ({
                       emissiveIntensity={0.7}
                       roughness={0.3}
                       transparent
+                      depthTest={false}
                       depthWrite={false}
                       opacity={0.55 * alpha}
                       side={THREE.DoubleSide}
@@ -276,6 +281,7 @@ export const LighthouseRenderer = ({
                     <meshBasicMaterial
                       color={lampColor}
                       transparent
+                      depthTest={false}
                       depthWrite={false}
                       opacity={alpha}
                     />
@@ -295,6 +301,7 @@ export const LighthouseRenderer = ({
                       roughness={0.5}
                       metalness={0.2}
                       transparent
+                      depthTest={false}
                       depthWrite={false}
                       opacity={0.95 * alpha}
                     />
@@ -312,6 +319,7 @@ export const LighthouseRenderer = ({
                       emissive={mainColor}
                       emissiveIntensity={0.6}
                       transparent
+                      depthTest={false}
                       depthWrite={false}
                       opacity={alpha}
                     />
@@ -341,6 +349,7 @@ export const LighthouseRenderer = ({
                     roughness={0.3}
                     metalness={0.1}
                     transparent
+                    depthTest={false}
                     depthWrite={false}
                     opacity={PLAYER_MARKER_MAIN_OPACITY_OTHER}
                   />
@@ -353,6 +362,7 @@ export const LighthouseRenderer = ({
                   <meshBasicMaterial
                     color={mainColor}
                     transparent
+                    depthTest={false}
                     depthWrite={false}
                     opacity={PLAYER_MARKER_GLOW_OPACITY_OTHER}
                   />
@@ -381,7 +391,8 @@ export const LighthouseRenderer = ({
                     roughness={0.3}
                     metalness={0.1}
                     transparent
-                    depthWrite={true}
+                    depthTest={false}
+                    depthWrite={false}
                     opacity={PLAYER_MARKER_MAIN_OPACITY_OTHER}
                   />
                 </mesh>
@@ -393,6 +404,7 @@ export const LighthouseRenderer = ({
                   <meshBasicMaterial
                     color={mainColor}
                     transparent
+                    depthTest={false}
                     depthWrite={false}
                     opacity={PLAYER_MARKER_GLOW_OPACITY_OTHER}
                   />
