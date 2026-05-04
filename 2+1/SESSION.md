@@ -2,7 +2,19 @@
 
 ## 現在のステータス
 
-**本番最新 deploy**: `096f513` (build `2026/05/04 18:19:35 JST`、 https://sogebu.github.io/LorentzArena/)。 5/4 セッションで 跳躍 overlay + HUD「世界時刻」 表記修正 + Bug 10 真因 (= virtualPos lastSync) Fix A/B + LH Stage 4 implementation gap Fix C + LH/OtherShip flicker fallback + frozenWorldLines stable id + myDeathEvent 二重管理解消 までを本番反映。 main / origin sync 済。
+**本番最新 deploy**: 5/4 続編で複数 commit を deploy 済 (= main / origin sync 済、 詳細は `git log`)。 主要な続編 commit 群:
+- `99b927b` legacy_shooter を 2 軸独立 twin-stick + scheme label rename (機体追従 / ツインスティック / カメラ固定) + per-scheme HUD help
+- `5471f6b` legacy_shooter mobile を 1 軸縮退 fix (= touch swipe で aim + camera 一体回転)
+- `e635e83` スマホ横全画面 Phase 1 (= useOrientation hook + 開始時 requestFullscreen + Lobby landscape)
+- `8a0b881` / `6083144` mobile Lobby ハイスコア可視化調整 (paddingTop / 2-col landscape)
+- `f2887f5` Lobby landscape ship preview を下にずらし (= title 重なり回避)
+- `77cd209` 死亡時の煙を victim.color に戻す (= 2026-04-21 universal EXPLOSION_DEBRIS_COLOR 撤回)
+- `a6a2996` / `46f8755` 光円錐 + 世界線 + LH の inner-hide を全廃止 (= radius=0)、 LH を ALWAYS_ON_TOP pattern (renderOrder=10) で最前面化
+- `f15fce4` LH に depthTest=false 追加 (= flicker 修正、 always-on-top trio 完成)
+- `9f711ca` ALWAYS_ON_TOP render trio (renderOrder + depthTest + depthWrite) を共通 module 化 (= alwaysOnTopRender.ts)
+- (本 commit) Lobby landscape を 3-col layout (form | ship | hi-scores) に再構成 + ship preview を center column 内 contained 配置
+
+5/4 前半 (= ~ `096f513` build `18:19:35`) は 跳躍 overlay + HUD「世界時刻」 表記修正 + Bug 10 真因 (= virtualPos lastSync) Fix A/B + LH Stage 4 implementation gap Fix C + LH/OtherShip flicker fallback + frozenWorldLines stable id + myDeathEvent 二重管理解消 までを本番反映。
 
 **2026-05-04 セッション** (= 跳躍 overlay + 表記 fix + Bug 10 真因解明 + Fix A/B/C + flicker fallback + frozen stable id + myDeathEvent 二重管理解消、 計 ~15 commits):
 

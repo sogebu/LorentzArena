@@ -109,35 +109,29 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
       {/* container を `top: -25vh` で viewport 上にはみ出させると、canvas の幾何中央
           (= 船がレンダされる位置) が実 viewport の ~25vh (= title より上) に来る。
           camera / target は default のまま = ship はサイズ不変で orbit 挙動も自然。 */}
-      <div
-        style={{
-          position: "absolute",
-          // 縦持ち: top -22vh で container 上端を viewport 上にはみ出させ、 canvas の幾何
-          //         中央 (ship 描画位置) を viewport 上 ~28vh に配置 (= ship が画面上部
-          //         hero 表示)。
-          // 横持ち (landscape): viewport 高さが狭く ship が画面中央に配置されると title /
-          //         form と必ず重なる (= 2026-05-04 user feedback「絵と被らないように」)。
-          //         top +30vh で container を下にずらし、 canvas 幾何中央 (ship 描画位置)
-          //         を ~80vh (= 画面下端付近) に押し下げる。 title (= 12vh+title 高) と
-          //         ship が同じ垂直 band に重ならない。 form / hi-scores は z=1 で ship
-          //         が下に潜って見える形 (= ship は decoration、 干渉しない)。 height は
-          //         100vh のまま (= canvas size 維持で camera FOV / OrbitControls の
-          //         default 距離が壊れない、 ship visual 大きさ portrait と同等)。
-          top: orientation === "landscape" ? "30vh" : "-22vh",
-          left: 0,
-          right: 0,
-          height: "100vh",
-          zIndex: 0,
-        }}
-      >
-        <Suspense fallback={null}>
-          <ShipPreview
-            bgColor="transparent"
-            cannonStyle="laser"
-            hullStyle={viewModeToHullStyle(viewMode)}
-          />
-        </Suspense>
-      </div>
+      {/* 縦持ち: ship preview を viewport 全面背景として配置 (top -22vh で canvas 幾何
+          中央 = ~28vh に来て上部 hero 視覚)。 landscape では別経路で 3-col 中央列内に
+          contained 表示するため、 ここは portrait のみ render。 */}
+      {orientation === "portrait" && (
+        <div
+          style={{
+            position: "absolute",
+            top: "-22vh",
+            left: 0,
+            right: 0,
+            height: "100vh",
+            zIndex: 0,
+          }}
+        >
+          <Suspense fallback={null}>
+            <ShipPreview
+              bgColor="transparent"
+              cannonStyle="laser"
+              hullStyle={viewModeToHullStyle(viewMode)}
+            />
+          </Suspense>
+        </div>
+      )}
 
       <div
         style={{
@@ -216,16 +210,18 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
           {t("lobby.subtitle")}
         </p>
 
-        {/* lower content: form + dropdowns + hi-scores + global leaderboard。
-            portrait: 単一縦列 (= 既存 layout)。
-            landscape: 2 列 (左 = form + dropdowns、 右 = hi-scores + global) で
-            横画面の幅を活用 + hi-scores が画面下に押し出されないようにする。 */}
+        {/* lower content: form + (ship-only-landscape) + hi-scores。
+            portrait: 単一縦列 (= 既存 layout、 ship は viewport 全面背景で別経路)。
+            landscape: 3 列 (左 = form + dropdowns、 中 = ship preview contained、
+                       右 = hi-scores + global) で横画面の幅を活用、 ship が中央列
+                       専用領域として配置意図明確に (= 2026-05-04 user feedback
+                       「絵がちっちゃいしなんでここにあるのかも分からん」)。 */}
         <div
           style={{
             display: "flex",
             flexDirection: orientation === "landscape" ? "row" : "column",
             alignItems: orientation === "landscape" ? "flex-start" : "center",
-            gap: orientation === "landscape" ? "32px" : "0px",
+            gap: orientation === "landscape" ? "24px" : "0px",
             width: "100%",
             justifyContent: "center",
           }}
@@ -363,6 +359,31 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
           </select>
         </div>
         </div>
+        {/* center column (= landscape only): ship preview を form と hi-scores の間に
+            contained 表示。 viewport 全面背景 (portrait 経路) と排他、 ship が「lobby
+            の中央 hero」 として配置意図明確に。 width / height は mobile landscape の
+            高さ制約 (~280px content area) に収まる sqaure。 */}
+        {orientation === "landscape" && (
+          <div
+            style={{
+              // position: relative で ShipPreview 内部の absolute inset:0 を contain
+              // (= ShipPreview の Canvas wrapper が positioned ancestor を遡って fixed
+              // wrapper まで行くと 100vw x 100vh で expand される、 ここで止める)。
+              position: "relative",
+              width: "200px",
+              height: "200px",
+              flexShrink: 0,
+            }}
+          >
+            <Suspense fallback={null}>
+              <ShipPreview
+                bgColor="transparent"
+                cannonStyle="laser"
+                hullStyle={viewModeToHullStyle(viewMode)}
+              />
+            </Suspense>
+          </div>
+        )}
         {/* right column (= landscape) / 続き (= portrait): hi-scores + global */}
         <div
           style={{
