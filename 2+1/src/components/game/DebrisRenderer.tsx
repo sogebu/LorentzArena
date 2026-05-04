@@ -52,6 +52,20 @@ export const DebrisRenderer = ({
   const explosionMeshRef = useRef<THREE.InstancedMesh>(null);
   const hitMeshRef = useRef<THREE.InstancedMesh>(null);
 
+  // GPU buffer reuse refs (= component lifetime 中保持、 毎 render allocation 撤廃)。
+  // 旧設計では `writeInstanced` が毎 render `new Float32Array` + `new
+  // InstancedBufferAttribute` を生成 → maxInstances ≈ 5400 で 60 FPS だと ~3.9 MB/sec の
+  // GPU buffer upload 圧 → driver が context reclaim 判断 → Context Lost を独立に発生
+  // させる経路だった (= Bug 10 真因 chain と並列の root)。 ref で buffer + attr を 1 度
+  // 生成 + in-place update + `needsUpdate=true` で同 GPU buffer に再 upload する pattern
+  // に倒し、 GPU 圧の root を断つ。 詳細: `plans/2026-05-05-debrisrenderer-gc-fix.md`。
+  const explosionColorBufferRef = useRef<Float32Array | null>(null);
+  const explosionColorAttrRef = useRef<THREE.InstancedBufferAttribute | null>(
+    null,
+  );
+  const hitColorBufferRef = useRef<Float32Array | null>(null);
+  const hitColorAttrRef = useRef<THREE.InstancedBufferAttribute | null>(null);
+
   // **PBC universal cover**: 各 segment を `(2R+1)²` image cell に複製、 instance count を
   // 9 倍化。 各 instance matrix = compose(mid + 2L*offset, quat, scale) で各 image cell に
   // segment を配置。 mesh.matrix = displayMatrix で観測者 rest frame に投影。 timeFade は
@@ -154,15 +168,31 @@ export const DebrisRenderer = ({
   // 各 segment × 各 image cell = `segs.length * cells.length` instances。 vertex は cylinder
   // local、 instance matrix で「mid + 2L*offset、 quat、 scale」 で配置。 mesh.matrix =
   // displayMatrix で observer rest frame に投影。
+  //
+  // GPU buffer は `bufferRef` / `attrRef` で component lifetime 中 reuse:
+  //   - 初回 / cells.length 増加で足りない: realloc + 新 InstancedBufferAttribute
+  //   - mesh.instanceColor が attrRef と異なる (= 初回 / Canvas auto-remount 後): re-attach
+  //   - 通常 render: 既存 Float32Array に in-place 書き込み + `needsUpdate=true` で同 GPU
+  //     buffer 再 upload (= 別 buffer 生成しない、 driver の reclaim 判断を回避)
   const writeInstanced = (
     mesh: THREE.InstancedMesh | null,
     segs: DebrisSegment[],
+    bufferRef: React.RefObject<Float32Array | null>,
+    attrRef: React.RefObject<THREE.InstancedBufferAttribute | null>,
   ) => {
     if (!mesh) return;
     mesh.matrix.copy(displayMatrix);
     mesh.matrixAutoUpdate = false;
     const totalInstances = segs.length * cells.length;
-    const colorAttr = new Float32Array(totalInstances * 3);
+    const requiredSize = totalInstances * 3;
+    if (!bufferRef.current || bufferRef.current.length < requiredSize) {
+      bufferRef.current = new Float32Array(requiredSize);
+      attrRef.current = new THREE.InstancedBufferAttribute(bufferRef.current, 3);
+    }
+    if (mesh.instanceColor !== attrRef.current) {
+      mesh.instanceColor = attrRef.current;
+    }
+    const colorAttr = bufferRef.current;
     let idx = 0;
     for (let i = 0; i < segs.length; i++) {
       const seg = segs[i];
@@ -206,11 +236,20 @@ export const DebrisRenderer = ({
     }
     mesh.count = totalInstances;
     mesh.instanceMatrix.needsUpdate = true;
-    mesh.instanceColor = new THREE.InstancedBufferAttribute(colorAttr, 3);
-    mesh.instanceColor.needsUpdate = true;
+    if (attrRef.current) attrRef.current.needsUpdate = true;
   };
-  writeInstanced(explosionMeshRef.current, explosionSegments);
-  writeInstanced(hitMeshRef.current, hitSegments);
+  writeInstanced(
+    explosionMeshRef.current,
+    explosionSegments,
+    explosionColorBufferRef,
+    explosionColorAttrRef,
+  );
+  writeInstanced(
+    hitMeshRef.current,
+    hitSegments,
+    hitColorBufferRef,
+    hitColorAttrRef,
+  );
 
   // max possible instances: MAX_DEBRIS * EXPLOSION_PARTICLE_COUNT × cells.length
   // (= 9 image cells max for R=1)。 cap allocation で over-instance 防止。
