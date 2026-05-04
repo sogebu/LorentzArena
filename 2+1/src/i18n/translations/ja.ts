@@ -60,7 +60,7 @@ export const ja = {
   "hud.causalFreeze.title": "因果律凍結",
   "hud.causalFreeze.sub": "他機の未来光円錐内",
   "hud.causalityJump.title": "因果律跳躍",
-  "hud.causalityJump.sub": "他機の過去光円錐外へ",
+  "hud.causalityJump.sub": "他機の過去光円錐内",
   "hud.build": "ビルド",
   // Connect panel
   "connect.title": "接続設定",

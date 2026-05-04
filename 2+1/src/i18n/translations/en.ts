@@ -62,7 +62,7 @@ export const en: Record<TranslationKey, string> = {
   "hud.causalFreeze.title": "Causal Freeze",
   "hud.causalFreeze.sub": "In another ship's future light cone",
   "hud.causalityJump.title": "Causality Jump",
-  "hud.causalityJump.sub": "Out of another ship's past light cone",
+  "hud.causalityJump.sub": "In another ship's past light cone",
   "hud.build": "build",
   // Connect panel
   "connect.title": "Connection",

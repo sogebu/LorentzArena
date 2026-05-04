@@ -98,40 +98,25 @@ const CausalFreezeOverlay = () => {
 };
 
 /**
- * 因果律跳躍 overlay。 自機の Rule B 因果律ジャンプが「大ジャンプ」 (= worldLine 凍結 +
- * 新セグメント = `isLargeJump(lambda)` true) として fire した瞬間に 1.2s だけ flash。
- * counter 増分検知 pattern (= HitFlash と同じ) で stale-closure 回避。
+ * 因果律跳躍 overlay。 自機が Rule B fire 中 (= 自機が peer の過去光円錐内 → forward
+ * jump 中、 `causalityJumping = true`) ずっと表示する continuous state 通知。
  *
- * 凍結 (continuous state) と対称な instantaneous event 通知:
+ * 凍結 `CausalFreezeOverlay` と完全対称 (= 2026-05-04 user 指示):
  *   凍結 = 「他機の未来光円錐内」 で thrust が効かない理由を出し続ける
- *   跳躍 = 「他機の過去光円錐外へ」 飛んだ瞬間を 1 度だけ通知
- * 凍結を Rule B が解消するシナリオでは、 凍結 overlay が消えると同時に跳躍 overlay が
- * 出る (= 自然な「因果律凍結 → ジャンプで脱出」 の演出)。
+ *   跳躍 = 「他機の過去光円錐内 → 過去光円錐外へ」 forward jump 中ずっと出続ける
+ * 旧設計 (= counter + 1.2s flash + isLargeJump 閾値) は instantaneous event 通知だったが、
+ * 凍結 (continuous) と非対称で「凍結中に跳躍が起こらないように見える」 user 観察の
+ * 原因になった。 boolean state subscribe に変更して完全対称化。
  *
  * z-index 221: 凍結 (220) の直上、 RespawnCountdown (250) より下、 KillNotification (300)
- * より下。 palette は凍結と同じ dark blue で視覚一貫性、 keyframe は kill-notify を踏襲して
- * scale punch + fade out。
+ * より下。 palette は凍結と同じ dark blue で視覚一貫性。 animation 不要 (= continuous)。
  */
 const CausalityJumpOverlay = () => {
   const { t } = useI18n();
-  const jumpCount = useGameStore((s) => s.causalityJumpCount);
-  const [visible, setVisible] = useState(false);
-  const prevCountRef = useRef(jumpCount);
-
-  useEffect(() => {
-    if (jumpCount > prevCountRef.current) {
-      setVisible(true);
-      const timer = setTimeout(() => setVisible(false), 1200);
-      prevCountRef.current = jumpCount;
-      return () => clearTimeout(timer);
-    }
-    prevCountRef.current = jumpCount;
-  }, [jumpCount]);
-
-  if (!visible) return null;
+  const jumping = useGameStore((s) => s.causalityJumping);
+  if (!jumping) return null;
   return (
     <div
-      key={`jump-${jumpCount}`}
       style={{
         position: "absolute",
         top: "50%",
@@ -146,7 +131,6 @@ const CausalityJumpOverlay = () => {
         border: "1px solid rgba(150, 180, 255, 0.5)",
         borderRadius: "6px",
         whiteSpace: "nowrap",
-        animation: "causality-jump 1.2s ease-out forwards",
       }}
     >
       <div
@@ -398,13 +382,6 @@ export const Overlays = ({
         @keyframes hit-flash-fade {
           0% { opacity: 1; }
           100% { opacity: 0; }
-        }
-        @keyframes causality-jump {
-          0% { opacity: 0; transform: translate(-50%, -50%) scale(0.7); }
-          15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
-          30% { transform: translate(-50%, -50%) scale(1); }
-          75% { opacity: 1; }
-          100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
         }
       `}</style>
     </>

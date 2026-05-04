@@ -138,6 +138,9 @@ export function useGameLoop({
 
   // Internal refs (previously in RelativisticGame, now local to the game loop)
   const causalFrozenRef = useRef<boolean>(false);
+  // Rule B (= 因果律跳躍) の現在 fire 状態を hot path で持つ ref。 store update は
+  // 凍結 `causalFrozenRef` と同様、 状態変化 tick だけ `setCausalityJumping` を呼ぶ。
+  const causalityJumpingRef = useRef<boolean>(false);
   const lastLaserTimeRef = useRef<number>(0);
   const fpsRef = useRef({ frameCount: 0, lastTime: performance.now() });
   // Phase C1: energy は store.players[myId].energy に移行。handleDamage と
@@ -406,13 +409,17 @@ export function useGameLoop({
         const freshDead = freshMe?.isDead ?? true;
 
         if (freshDead) {
-          // 死亡中は causality freeze の概念が N/A (= ghost は物理実体ではない)。
-          // 生存中に立てた frozen 状態がそのまま残ると overlay が ghost 中も出続けるので
-          // ここで reset。 ref も合わせて reset し、 復活直後の checkCausalFreeze で
+          // 死亡中は causality freeze / jump の概念が N/A (= ghost は物理実体ではない)。
+          // 生存中に立てた frozen / jumping 状態がそのまま残ると overlay が ghost 中も
+          // 出続けるのでここで reset。 ref も合わせて reset し、 復活直後の評価で
           // hysteresis baseline が古い状態に依存しないようにする。
           if (causalFrozenRef.current) {
             causalFrozenRef.current = false;
             fresh.setCausallyFrozen(false);
+          }
+          if (causalityJumpingRef.current) {
+            causalityJumpingRef.current = false;
+            fresh.setCausalityJumping(false);
           }
           // ghost 中: 生存時物理 (processPlayerPhysics) を流用して ghost phaseSpace
           // を動的更新する。thrust/heading/friction/energy はすべて生存時と同一挙動。
@@ -572,6 +579,17 @@ export function useGameLoop({
             peerVirtualPositions,
           );
 
+          // UI: 「因果律跳躍」 continuous overlay の state 通知 (= 2026-05-04 user 指示で
+          // 凍結 `causallyFrozen` と完全対称化、 旧 counter+flash 設計を撤廃)。 lambda > 0
+          // は Rule B fire 条件と一致、 epsilon ガード不要 (= causalityJumpLambda は不発時
+          // 明示的に 0 return の純関数)。 凍結と同 pattern で ref hot path + 状態変化 tick
+          // のみ store update (= 凍結 `causalFrozenRef` と並列)。
+          const isJumping = lambda > 0;
+          if (causalityJumpingRef.current !== isJumping) {
+            fresh.setCausalityJumping(isJumping);
+          }
+          causalityJumpingRef.current = isJumping;
+
           if (lambda > 0) {
             const g = gamma(newPs.u);
             const adjustedPs = {
@@ -587,6 +605,8 @@ export function useGameLoop({
             if (isLargeJump(lambda)) {
               // 大ジャンプ: 旧 worldLine を frozenWorldLines に保存し、 新セグメントを 1 点
               // から開始 (= CatmullRomCurve3 が「滑らかな嘘」 で gap 補間しないようにする)。
+              // overlay 通知は continuous な `setCausalityJumping` 側で行うため、 ここでは
+              // worldLine 物理処理のみ。
               fresh.setFrozenWorldLines((prev) =>
                 pushFrozenWorldLine(prev, freshMe),
               );
@@ -594,11 +614,6 @@ export function useGameLoop({
                 createWorldLine(MAX_WORLDLINE_HISTORY),
                 adjustedPs,
               );
-              // UI: 「因果律跳躍」 brief flash overlay の trigger (= counter 増分を Overlay
-              // が subscribe して 1.2s flash)。 凍結 (continuous state) と対称な
-              // instantaneous event 通知。 小ジャンプ (= worldLine 連続) では出さない
-              // (= visible discontinuity がある時だけ user 通知)。
-              fresh.incrementCausalityJump();
             } else {
               // 微小 correction: freshMe.worldLine から再 append (= physics の updatedWorldLine
               // は pre-Rule-B 点を含むため捨てて、 adjusted な finalPs で正規化)。

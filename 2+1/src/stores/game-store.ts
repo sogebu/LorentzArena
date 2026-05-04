@@ -216,12 +216,18 @@ export interface GameState {
    */
   causallyFrozen: boolean;
   /**
-   * 自機の Rule B 因果律ジャンプが「大ジャンプ」 (= worldLine 凍結 + 新セグメント開始
-   * = `isLargeJump(lambda)` true) として fire した累計回数。 useGameLoop の alive 自機
-   * Rule B branch で increment、 UI overlay (= 「因果律跳躍 / Causality Jump」 brief flash) が
-   * counter 増分を検知して表示。 凍結 (continuous state) と対称な instantaneous event 通知。
+   * 自機の Rule B 因果律ジャンプが現在 fire 可能な状態か (= 自機が peer の過去光円錐内
+   * → forward jump 中)。 useGameLoop の alive 自機 Rule B branch で `lambda > 0` 時 true、
+   * `lambda = 0` で false に set される。 UI overlay (= 「因果律跳躍 / Causality Jump」)
+   * が subscribe して true 中ずっと表示する continuous state 通知。 凍結 `causallyFrozen`
+   * (= Rule A 状態通知) と完全対称 (= 2026-05-04 user 指示)。
+   *
+   * 旧設計 (= `causalityJumpCount` counter + 1.2s flash、 `isLargeJump` 閾値で trigger)
+   * は instantaneous event 通知だったが、 凍結 (continuous) と非対称で「凍結中に跳躍が
+   * 起こらないように見える」 user 観察の原因になった。 continuous boolean に変更して、
+   * 凍結 / 跳躍の状態通知を完全対称化。
    */
-  causalityJumpCount: number;
+  causalityJumping: boolean;
   /**
    * WebGL context が失われた状態が **連続して短時間で再発** したとき (= 自動 remount で
    * 復帰できない catastrophic 状態) に立つ flag。 通常の context loss は `canvasGeneration`
@@ -297,8 +303,8 @@ export interface GameState {
   setKillNotification: (v: KillNotification3D | null) => void;
   setMyDeathEvent: (v: DeathEvent | null) => void;
   setCausallyFrozen: (v: boolean) => void;
-  /** Rule B 大ジャンプ発火時に increment。 「因果律跳躍」 overlay の trigger。 */
-  incrementCausalityJump: () => void;
+  /** Rule B (= 因果律跳躍) の現在の fire 状態を set。 「因果律跳躍」 overlay が subscribe。 */
+  setCausalityJumping: (v: boolean) => void;
   setWebglContextLost: (v: boolean) => void;
   incrementCanvasGeneration: () => void;
 
@@ -387,7 +393,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   killNotification: null,
   myDeathEvent: null,
   causallyFrozen: false,
-  causalityJumpCount: 0,
+  causalityJumping: false,
   webglContextLost: false,
   canvasGeneration: 0,
   displayNames: new Map(),
@@ -432,8 +438,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   setKillNotification: (v) => set({ killNotification: v }),
   setMyDeathEvent: (v) => set({ myDeathEvent: v }),
   setCausallyFrozen: (v) => set({ causallyFrozen: v }),
-  incrementCausalityJump: () =>
-    set((s) => ({ causalityJumpCount: s.causalityJumpCount + 1 })),
+  setCausalityJumping: (v) => set({ causalityJumping: v }),
   setWebglContextLost: (v) => set({ webglContextLost: v }),
   incrementCanvasGeneration: () =>
     set((s) => ({ canvasGeneration: s.canvasGeneration + 1 })),
