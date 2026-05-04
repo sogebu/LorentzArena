@@ -34,7 +34,6 @@ function makePlayer(
       phaseSpace,
     ),
     color,
-    isDead: false,
     energy: ENERGY_MAX,
   };
 }

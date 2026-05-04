@@ -238,7 +238,7 @@ export function useGameLoop({
       //   legacy_shooter: 矢印 ←/→ → cameraYawRef のみ (camera が機体周りを回る)、heading は WASD 即時スナップ
       //   modern:        矢印 ←/→ → headingYawRef、camera は world basis 固定 (cameraYawRef = 0)
       const touch = touchInput.current;
-      const isDeadForCamera = store.players.get(myId)?.isDead ?? false;
+      const isDeadForCamera = myId ? selectIsDead(store, myId) : false;
       const controlScheme = store.controlScheme;
       const yawSourceBefore =
         controlScheme === "legacy_shooter"
@@ -349,7 +349,7 @@ export function useGameLoop({
       }
 
       // --- Laser firing + energy ---
-      const isDead = store.players.get(myId)?.isDead ?? false;
+      const isDead = myId ? selectIsDead(store, myId) : false;
       const wantsFire =
         !isDead && (keysPressed.current.has(" ") || touch.firing);
       const myPlayer = store.players.get(myId);
@@ -391,7 +391,12 @@ export function useGameLoop({
       // peer を永久存続させていた (Bug X resurrection)。freeze(5s) + GC(15s) =
       // 計 20s 無通信で removePlayer → 次 snapshot から対象が外れて全 peer が
       // eventual consistency に収束する。cleanupPeer で stale ref 一式 purge。
-      const gcIds = stale.checkStale(currentTime, store.players, myId);
+      const gcIds = stale.checkStale(
+        currentTime,
+        store.players,
+        myId,
+        selectDeadPlayerIds(store),
+      );
       if (gcIds.length > 0) {
         for (const id of gcIds) {
           store.removePlayer(id);
@@ -407,7 +412,7 @@ export function useGameLoop({
       {
         const fresh = useGameStore.getState();
         const freshMe = fresh.players.get(myId);
-        const freshDead = freshMe?.isDead ?? true;
+        const freshDead = myId ? selectIsDead(fresh, myId) : true;
 
         if (freshDead) {
           // 死亡中は causality freeze / jump の概念が N/A (= ghost は物理実体ではない)。
@@ -480,6 +485,7 @@ export function useGameLoop({
             myId,
             freshMe,
             fresh.killLog,
+            selectDeadPlayerIds(fresh),
             causalFrozenRef.current,
             fresh.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined,
             stale.lastUpdateTimeRef.current,
@@ -556,11 +562,12 @@ export function useGameLoop({
           // 評価 (= jump で frozen 状態から脱出するため)。
           //
           // alive / stale を統一処理 (= virtualPos の inertial 延長)、 dead は asymmetric
-          // hotfix で除外 (= 詳細は内部 if (p.isDead) continue 注記)。 Rule B 内部で
+          // hotfix で除外 (= 詳細は内部 if (deadIds.has(pId)) continue 注記)。 Rule B 内部で
           // dt ≤ 0 / spacelike を skip するため不要 peer (= future / spacelike) は自動除外。
           // PBC torus は peer の virtual pos を自機中心の最小画像 cell に shift。
           const torusHalfWidthForRuleB =
             fresh.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined;
+          const ruleBDeadIds = selectDeadPlayerIds(fresh);
           const peerVirtualPositions: { pos: Vector4 }[] = [];
           for (const [pId, p] of fresh.players) {
             if (pId === myId) continue;
@@ -569,7 +576,7 @@ export function useGameLoop({
             // 判明したため Rule A (checkCausalFreeze) と同様 Rule B でも dead を除外。 死後
             // inertial の数学概念は spawn time 計算 (= computeSpawnCoordTime) に局所化、 走行中の
             // causality 判定では除外する asymmetric 採用。
-            if (p.isDead) continue;
+            if (ruleBDeadIds.has(pId)) continue;
             const lastSync =
               stale.lastUpdateTimeRef.current.get(pId) ?? currentTime;
             const vPos = virtualPos(p, lastSync, currentTime);
@@ -661,8 +668,9 @@ export function useGameLoop({
       // --- Energy recovery ---
       // fire も thrust もしていないときのみ回復。死亡中は respawn 時に満タンに
       // リセットされるので、ここでの回復は不要 (加算する意味がない)。
-      const freshIsDead =
-        useGameStore.getState().players.get(myId)?.isDead ?? true;
+      const freshIsDead = myId
+        ? selectIsDead(useGameStore.getState(), myId)
+        : true;
       if (!wantsFire && !thrustRequestedThisTick && !freshIsDead) {
         energy = Math.min(ENERGY_MAX, energy + ENERGY_RECOVERY_RATE * dTau);
       }
@@ -694,10 +702,11 @@ export function useGameLoop({
         }> = [];
         const lhLasers: Laser[] = [];
 
+        const lhDeadIds = selectDeadPlayerIds(freshForLH);
         for (const [lhId, lh] of freshForLH.players) {
           if (lh.ownerId !== myId) continue;
           if (!isLighthouse(lhId)) continue; // metadata: この owner filter 下で AI を回すのは LH のみ
-          if (lh.isDead) continue;
+          if (lhDeadIds.has(lhId)) continue;
           // 死亡中 LH は純粋な placeholder (他人間 ghost と対称的に死亡時刻で固定)。
           // tick 不要、phaseSpace の pos.t は死亡時刻のまま。詳細: DESIGN.md §スポーン座標時刻。
 
@@ -711,6 +720,7 @@ export function useGameLoop({
             freshForLH.lighthouseSpawnTime,
             freshForLH.killLog,
             stale.lastUpdateTimeRef.current,
+            lhDeadIds,
             freshForLH.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined,
           );
 
@@ -856,6 +866,7 @@ export function useGameLoop({
                 currentStore.killLog,
                 stale.lastUpdateTimeRef.current,
                 Date.now(),
+                selectDeadPlayerIds(currentStore),
                 victimId,
               );
               sendToNetwork({
@@ -921,6 +932,7 @@ export function useGameLoop({
               pollState.killLog,
               stale.lastUpdateTimeRef.current,
               Date.now(),
+              selectDeadPlayerIds(pollState),
               victimId,
             );
             sendToNetwork({

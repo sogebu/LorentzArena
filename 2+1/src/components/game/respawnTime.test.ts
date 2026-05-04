@@ -29,7 +29,6 @@ function makePlayer(id: string, originT: number, nowT: number): RelativisticPlay
     phaseSpace: now,
     worldLine: wl,
     color: "#fff",
-    isDead: false,
     energy: ENERGY_MAX,
   };
 }

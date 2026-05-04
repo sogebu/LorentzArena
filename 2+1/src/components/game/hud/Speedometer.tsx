@@ -1,5 +1,6 @@
 import type { TranslationKey } from "../../../i18n/translations/ja";
 import { gamma, lengthVector3 } from "../../../physics";
+import { selectIsDead, useGameStore } from "../../../stores/game-store";
 import type { RelativisticPlayer } from "../types";
 
 type SpeedometerProps = {
@@ -18,6 +19,8 @@ export const Speedometer = ({
   const uMag = lengthVector3(player.phaseSpace.u);
   const g = gamma(player.phaseSpace.u);
   const speed = uMag / g; // 3-speed: v = |u| / γ = |u| / √(1 + |u|²)
+  // 2026-05-04 isDead 二重管理解消: derive subscribe。
+  const isDead = useGameStore((s) => selectIsDead(s, player.id));
 
   return (
     <div
@@ -36,7 +39,7 @@ export const Speedometer = ({
       {/* 枯渇時 (energy < ε): バー拡大 (width 120 → 220, height 8 → 18) + 赤枠 + 点滅 +
           「燃料枯渇」大文字ラベル。低エネルギー (< 0.2): バー赤化。
           Ghost (死亡中) は燃料制約なしで常時フル加速できるためバー非表示。 */}
-      {!player.isDead && (
+      {!isDead && (
         <div
           style={{
             position: "relative",

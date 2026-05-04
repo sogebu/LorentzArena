@@ -10,7 +10,11 @@ import {
   type Vector4,
   vector4Zero,
 } from "../../physics";
-import { useGameStore } from "../../stores/game-store";
+import {
+  selectDeadPlayerIds,
+  selectIsDead,
+  useGameStore,
+} from "../../stores/game-store";
 import { ENERGY_MAX, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
 import { isLighthouse } from "./lighthouse";
 import { computeSpawnCoordTime } from "./respawnTime";
@@ -65,6 +69,7 @@ export const buildSnapshot = (myId: string, isBeaconHolder: boolean) => {
     s.killLog,
     undefined,
     Date.now(),
+    selectDeadPlayerIds(s),
     undefined,
   );
 
@@ -122,7 +127,10 @@ export const buildSnapshot = (myId: string, isBeaconHolder: boolean) => {
       ownerId,
       color: p.color,
       displayName: p.displayName,
-      isDead: p.isDead,
+      // 2026-05-04 isDead 二重管理解消: internal field 撤廃で送信値は selectIsDead
+      // で derive。 wire format には旧 client 互換のため残す (= pass-through pattern、
+      // option (C))。 受信側 (= 新 client) は applySnapshot で読まずに log から再 derive。
+      isDead: selectIsDead(s, p.id),
       energy: p.energy,
       phaseSpace: toPhaseSpaceWire(p.phaseSpace),
       worldLineHistory: p.worldLine.history.map(toPhaseSpaceWire),
@@ -215,7 +223,9 @@ export const applySnapshot = (
       phaseSpace,
       worldLine: wl,
       color: sp.color,
-      isDead: sp.isDead,
+      // 2026-05-04 isDead 二重管理解消: 内部 RelativisticPlayer から field 撤廃。
+      // wire の `sp.isDead` は ignore (= 旧 client 互換 pass-through で送られてくるが、
+      // 受信側は merged killLog/respawnLog から `selectIsDead` で再 derive する)。
       displayName: sp.displayName,
       energy: typeof sp.energy === "number" ? sp.energy : ENERGY_MAX,
     });
@@ -295,39 +305,20 @@ export const applySnapshot = (
     //     (= X が players に入る前の snapshot) → Y は relay 経由で X を既に保持 →
     //     snapshot 適用で X が 5 秒消える → 次 snapshot で復帰 (= 新 joiner の blip)
     //   - host migration 過渡期の view 不一致でも同様
-    // local-only entry を nextPlayers に 1 本移植するだけで防げる。snapshot の isDead
-    // 再導出 (下) は merged log ベースなので、local-only entry にも正しく作用する。
+    // local-only entry を nextPlayers に 1 本移植するだけで防げる。
     for (const [id, localPlayer] of store.players) {
       if (!nextPlayers.has(id)) {
         nextPlayers.set(id, localPlayer);
       }
     }
 
-    // isDead を merged log から再導出し、nextPlayers の各 entry に反映する。
-    // これが周期 snapshot の中核: missed respawn で local が isDead=true 貼り付きに
-    // なっていても、snapshot 経由で respawnLog entry が流入すると latestRespawn >
-    // latestKill に遷移し isDead=false に復帰する (ghost stuck / B' 消失の自動救済)。
-    const lastKillByVictim = new Map<string, number>();
-    for (const e of mergedKillLog) {
-      const prev = lastKillByVictim.get(e.victimId);
-      if (prev === undefined || e.wallTime > prev)
-        lastKillByVictim.set(e.victimId, e.wallTime);
-    }
-    const lastRespawnByPlayer = new Map<string, number>();
-    for (const e of mergedRespawnLog) {
-      const prev = lastRespawnByPlayer.get(e.playerId);
-      if (prev === undefined || e.wallTime > prev)
-        lastRespawnByPlayer.set(e.playerId, e.wallTime);
-    }
-    for (const [id, p] of nextPlayers) {
-      const kTime = lastKillByVictim.get(id);
-      const derivedDead =
-        kTime !== undefined &&
-        kTime > (lastRespawnByPlayer.get(id) ?? -Infinity);
-      if (derivedDead !== p.isDead) {
-        nextPlayers.set(id, { ...p, isDead: derivedDead });
-      }
-    }
+    // 2026-05-04 isDead 二重管理解消: 旧版はここで「nextPlayers の各 entry の isDead を
+    // mergedKillLog/mergedRespawnLog から強制同期」 する patch (= drift 検知 → override)
+    // が貼ってあった (= 二重管理の絆創膏 sign、 meta-principles M26 例 1)。 internal
+    // RelativisticPlayer から isDead field 撤廃 + 全 read を selectIsDead derive に統一
+    // したため、 当該 patch は不要 (= drift する store がそもそも無い)。 missed respawn
+    // 等の救済は merged respawnLog の流入で自動達成 (= 全 read 経路が log を見るため、
+    // log が更新された瞬間に isDead 結果も更新)。
 
     useGameStore.setState({
       players: nextPlayers,

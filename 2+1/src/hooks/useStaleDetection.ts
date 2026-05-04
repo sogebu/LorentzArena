@@ -55,11 +55,16 @@ export function useStaleDetection() {
    * 各フレームで呼ぶ。freeze 候補を staleFrozenAtRef に追加し、Stage 3 で GC
    * 閾値を超えた frozen peer の ID を返す。呼び出し側 (useGameLoop) は返値の
    * 各 ID について `removePlayer` + `cleanupPeer` を実行する。
+   *
+   * `deadIds`: 現在死亡中の player ID 集合 (= `selectDeadPlayerIds(state)`)。
+   * 死亡中 player は stale 検知から除外する (= 2026-05-04 isDead 二重管理解消、
+   * 旧版は `player.isDead` field を直 read していたが field 撤廃で caller-pass に移行)。
    */
   const checkStale = (
     currentTime: number,
     players: Map<string, RelativisticPlayer>,
     myId: string,
+    deadIds: ReadonlySet<string>,
   ): string[] => {
     const gcIds: string[] = [];
     let mutated = false;
@@ -79,7 +84,7 @@ export function useStaleDetection() {
         continue;
       }
 
-      if (player.isDead) continue;
+      if (deadIds.has(id)) continue;
 
       // (1) Wall-clock based: no phaseSpace update for 5 seconds
       const lastUpdate = lastUpdateTimeRef.current.get(id);

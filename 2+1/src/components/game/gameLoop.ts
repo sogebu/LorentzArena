@@ -283,6 +283,11 @@ export function processLighthouseAI(
   // 接頭辞で TypeScript の noUnusedParameters 警告を抑制。
   _killLog: readonly KillEventRecord[],
   lastUpdateTimes: ReadonlyMap<string, number>,
+  /**
+   * 現在死亡中の player ID 集合 (= `selectDeadPlayerIds(state)`)。 caller が tick 開始時
+   * 1 回 derive して渡す (= 2026-05-04 isDead 二重管理解消、 derive 唯一化の caller-pass)。
+   */
+  deadIds: ReadonlySet<string>,
   torusHalfWidth?: number,
 ): LighthouseResult {
   // 死亡中 LH は呼び出し側 (useGameLoop) で既に continue されているため、ここには
@@ -313,7 +318,7 @@ export function processLighthouseAI(
     // 不当に freeze させる」 regression が判明したため Stage 7 後の hotfix で除外復活。
     // 死後 inertial 線の数学概念は spawn time 計算 (= computeSpawnCoordTime) に局所化し、
     // 走行中の causality 判定 (Rule A / B) では除外する asymmetric 採用。
-    if (p.isDead) continue;
+    if (deadIds.has(pId)) continue;
     const lastSync = lastUpdateTimes.get(pId) ?? currentTime;
     const vPos = virtualPos(p, lastSync, currentTime);
     // PBC torus: peer の virtual pos を LH 中心の最小画像 cell に shift (= 既存
@@ -370,7 +375,7 @@ export function processLighthouseAI(
 
   for (const [pId, player] of players) {
     if (isLighthouse(pId)) continue;
-    if (player.isDead) continue;
+    if (deadIds.has(pId)) continue;
 
     const observed = pastLightConeIntersectionWorldLine(
       player.worldLine,
@@ -570,6 +575,11 @@ export function checkCausalFreeze(
   // しているため lastSyncForDead を呼ばない)。 signature は caller との後方互換 + 将来
   // 「dead 包含 case を asymmetric に再導入」 する場合の再利用余地のため保持。
   _killLog: readonly KillEventRecord[],
+  /**
+   * 現在死亡中の player ID 集合 (= `selectDeadPlayerIds(state)`)。 caller が tick 開始時
+   * 1 回 derive して渡す (= 2026-05-04 isDead 二重管理解消、 derive 唯一化の caller-pass)。
+   */
+  deadIds: ReadonlySet<string>,
   wasFrozen: boolean,
   torusHalfWidth?: number,
   lastUpdateTime?: ReadonlyMap<string, number>,
@@ -589,7 +599,7 @@ export function checkCausalFreeze(
     // 数学概念は spawn time 計算 (= computeSpawnCoordTime) に局所化、 走行中の causality
     // 判定では除外する asymmetric 採用。 `killLog` 引数は spawn 経路と signature を揃える
     // ためだけに残し、 本関数では現在使用しない (= 将来 dead 包含案へ swap する場合の前提)。
-    if (player.isDead) continue;
+    if (deadIds.has(id)) continue;
 
     // alive / stale 統一: virtualPos で peer の予測 pos を取得
     const lastSync = lastUpdateTime?.get(id) ?? nowWall;

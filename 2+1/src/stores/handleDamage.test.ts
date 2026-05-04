@@ -23,7 +23,6 @@ const LASER_DIR = createVector3(1, 0, 0);
 function makePlayer(
   id: string,
   energy = ENERGY_MAX,
-  isDead = false,
 ): RelativisticPlayer {
   const phaseSpace = createPhaseSpace(
     createVector4(0, 0, 0, 0),
@@ -38,7 +37,6 @@ function makePlayer(
       phaseSpace,
     ),
     color: "#fff",
-    isDead,
     energy,
   };
 }

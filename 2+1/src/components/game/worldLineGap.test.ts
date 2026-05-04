@@ -17,7 +17,7 @@ import { isLargeJump, pushFrozenWorldLine } from "./worldLineGap";
 
 const makePlayer = (
   id: string,
-  options: { isDead?: boolean; emptyWL?: boolean } = {},
+  options: { emptyWL?: boolean } = {},
 ): RelativisticPlayer => {
   const ps = createPhaseSpace(
     createVector4(0, 0, 0, 0),
@@ -33,7 +33,6 @@ const makePlayer = (
     phaseSpace: ps,
     worldLine,
     color: "#abc",
-    isDead: options.isDead ?? false,
     energy: ENERGY_MAX,
   };
 };
@@ -64,12 +63,10 @@ describe("pushFrozenWorldLine — 旧 WL を frozenWorldLines に容量上限付
     expect(next[0].worldLine).toBe(p.worldLine);
   });
 
-  it("dead player: no-op (= prev そのまま)", () => {
-    const prev: FrozenWorldLine[] = [];
-    const p = makePlayer("dead", { isDead: true });
-    const next = pushFrozenWorldLine(prev, p);
-    expect(next).toBe(prev); // identity 保持
-  });
+  // 旧版は内部 `if (player.isDead) return prev` で defensive guard していたが、 2026-05-04
+  // isDead 二重管理解消で `RelativisticPlayer.isDead` field 撤廃 + caller 責任に統一
+  // (= caller (useGameLoop §自機/LH alive Rule B) は alive 分岐内で本関数を呼ぶ契約)。
+  // テストも contract 変更に追従、 dead-player no-op test は撤廃 (= caller-side で gate)。
 
   it("空 worldLine (= history 0 件): no-op", () => {
     const prev: FrozenWorldLine[] = [];

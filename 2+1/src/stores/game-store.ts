@@ -17,7 +17,6 @@ import {
   generateExplosionParticles,
   generateHitParticles,
 } from "../components/game/debris";
-import { applyKill } from "../components/game/killRespawn";
 import { nextFrozenId } from "../components/game/worldLineGap";
 import {
   isLighthouse,
@@ -510,9 +509,12 @@ export const useGameStore = create<GameState>()((set, get) => ({
       firedImageCells: [],
     };
 
-    // Batch update (arrays must go through set() to survive state transitions)
+    // Batch update (arrays must go through set() to survive state transitions)。
+    // 2026-05-04 isDead 二重管理解消: applyKill (= 旧 isDead=true 強制 set) は撤去。
+    // 死亡判定は killLog / respawnLog から derive (= selectIsDead) に統一。 victim の
+    // phaseSpace / worldLine は kill 時点の値が「players Map 内で凍結保持」 される
+    // (= ここで players map を update しないため、 既存 entry がそのまま残る)。
     set({
-      players: applyKill(state.players, victimId),
       frozenWorldLines: [...state.frozenWorldLines, frozen].slice(
         -MAX_FROZEN_WORLDLINES,
       ),
@@ -566,7 +568,6 @@ export const useGameStore = create<GameState>()((set, get) => ({
           ...existing,
           phaseSpace: ps,
           worldLine: newWorldLine,
-          isDead: false,
           energy: ENERGY_MAX,
         }
       : {
@@ -575,7 +576,6 @@ export const useGameStore = create<GameState>()((set, get) => ({
           phaseSpace: ps,
           worldLine: newWorldLine,
           color,
-          isDead: false,
           displayName: options?.displayName,
           energy: ENERGY_MAX,
         };
@@ -750,8 +750,16 @@ export const useGameStore = create<GameState>()((set, get) => ({
 
 type LogState = Pick<GameState, "killLog" | "respawnLog" | "hitLog">;
 
+/**
+ * `selectIsDead` / `selectDeadPlayerIds` 専用の narrow 型 (= killLog + respawnLog のみ
+ * に依存)。 React component で hitLog 非依存に subscribe + memoize するため (= hitLog
+ * subscribe で非致命 hit でも re-render する coupling を避ける、 2026-05-04 isDead
+ * 二重管理解消で SceneContent / HUD に導入した pattern)。 LogState は structural subtype。
+ */
+type DeathLogState = Pick<GameState, "killLog" | "respawnLog">;
+
 /** 各プレイヤーの latest kill wallTime。victimId ごとに最大値。 */
-const latestKillTime = (state: LogState): Map<string, number> => {
+const latestKillTime = (state: DeathLogState): Map<string, number> => {
   const m = new Map<string, number>();
   for (const e of state.killLog) {
     const prev = m.get(e.victimId);
@@ -761,7 +769,7 @@ const latestKillTime = (state: LogState): Map<string, number> => {
 };
 
 /** 各プレイヤーの latest respawn wallTime。playerId ごとに最大値。 */
-const latestRespawnTime = (state: LogState): Map<string, number> => {
+const latestRespawnTime = (state: DeathLogState): Map<string, number> => {
   const m = new Map<string, number>();
   for (const e of state.respawnLog) {
     const prev = m.get(e.playerId);
@@ -771,7 +779,10 @@ const latestRespawnTime = (state: LogState): Map<string, number> => {
 };
 
 /** プレイヤーが現在死んでいるか (latest kill > latest respawn)。 */
-export const selectIsDead = (state: LogState, playerId: string): boolean => {
+export const selectIsDead = (
+  state: DeathLogState,
+  playerId: string,
+): boolean => {
   const kills = latestKillTime(state).get(playerId);
   if (kills === undefined) return false;
   const resp = latestRespawnTime(state).get(playerId) ?? -Infinity;
@@ -779,7 +790,7 @@ export const selectIsDead = (state: LogState, playerId: string): boolean => {
 };
 
 /** 現在死んでいる全プレイヤー ID。hit detection の dead フィルタ用。 */
-export const selectDeadPlayerIds = (state: LogState): Set<string> => {
+export const selectDeadPlayerIds = (state: DeathLogState): Set<string> => {
   const lastKill = latestKillTime(state);
   const lastResp = latestRespawnTime(state);
   const dead = new Set<string>();

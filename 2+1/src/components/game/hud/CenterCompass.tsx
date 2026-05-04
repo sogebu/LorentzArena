@@ -1,5 +1,5 @@
 import { useI18n } from "../../../i18n";
-import { useGameStore } from "../../../stores/game-store";
+import { selectIsDead, useGameStore } from "../../../stores/game-store";
 import type { RelativisticPlayer } from "../types";
 
 /**
@@ -30,10 +30,12 @@ export const CenterCompass = ({
   const players = useGameStore((s) => s.players);
   const myGhostPhaseSpace = useGameStore((s) => s.myGhostPhaseSpace);
   const rawMyPlayer = myId ? players.get(myId) : undefined;
+  // 2026-05-04 isDead 二重管理解消: derive subscribe。
+  const myIsDead = useGameStore((s) => (myId ? selectIsDead(s, myId) : false));
   // 死亡中は ghost phaseSpace で観測者位置を取る (Radar / HUD / SceneContent と
   // 同じ swap pattern)。 ghost も中心方向を知りたい (= 復活 spawn は中心近くなので)。
   const myPlayer: RelativisticPlayer | undefined =
-    rawMyPlayer?.isDead && myGhostPhaseSpace
+    rawMyPlayer && myIsDead && myGhostPhaseSpace
       ? { ...rawMyPlayer, phaseSpace: myGhostPhaseSpace }
       : rawMyPlayer;
 

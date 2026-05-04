@@ -55,7 +55,6 @@ export const createLighthouse = (
     phaseSpace: ps,
     worldLine: wl,
     color: LIGHTHOUSE_COLOR,
-    isDead: false,
     energy: ENERGY_MAX,
   };
 };

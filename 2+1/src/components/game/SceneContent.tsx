@@ -12,7 +12,7 @@ import {
   type Vector3,
   type Vector4,
 } from "../../physics";
-import { useGameStore } from "../../stores/game-store";
+import { selectDeadPlayerIds, useGameStore } from "../../stores/game-store";
 import { ArenaRenderer } from "./ArenaRenderer";
 import {
   AIM_ARROW_BASE_OPACITY,
@@ -171,6 +171,16 @@ export const SceneContent = ({
   // を swap)。 旧 myDeathEvent (= 静的 meta + 動的 ghost の複合) を 2026-05-04 plan で分解、
   // 静的 meta は player.phaseSpace から derive、 動的 ghost のみ explicit。
   const myGhostPhaseSpace = useGameStore((s) => s.myGhostPhaseSpace);
+  // 2026-05-04 isDead 二重管理解消: `RelativisticPlayer.isDead` field 撤廃で derive
+  // subscribe に移行。 deadIds は killLog/respawnLog から useMemo で 1 derive、
+  // hot path / 複数 isDead check の loop で deadIds.has(id) を使い回す。
+  const killLog = useGameStore((s) => s.killLog);
+  const respawnLog = useGameStore((s) => s.respawnLog);
+  const deadIds = useMemo(
+    () => selectDeadPlayerIds({ killLog, respawnLog }),
+    [killLog, respawnLog],
+  );
+  const myIsDead = myId ? deadIds.has(myId) : false;
 
   const playerList = useMemo(() => Array.from(players.values()), [players]);
   // myPlayer: 観測者 frame を組み立てるための "effective" player。
@@ -184,10 +194,10 @@ export const SceneContent = ({
   );
   const myPlayer = useMemo(
     () =>
-      rawMyPlayer?.isDead && myGhostPhaseSpace
+      rawMyPlayer && myIsDead && myGhostPhaseSpace
         ? { ...rawMyPlayer, phaseSpace: myGhostPhaseSpace }
         : rawMyPlayer,
-    [rawMyPlayer, myGhostPhaseSpace],
+    [rawMyPlayer, myIsDead, myGhostPhaseSpace],
   );
   const observerPos = myPlayer?.phaseSpace.pos ?? null;
   const observerU = useMemo(
@@ -309,7 +319,7 @@ export const SceneContent = ({
       if (isLighthouse(player.id)) continue;
       // (B) future-most: omniscient view の世界線末端 marker。 死亡 player は world-now が
       // 存在しない (= 凍結) ため skip。 isDead は神視点の存在論的 gate (因果律無関係)。
-      if (!player.isDead) {
+      if (!deadIds.has(player.id)) {
         future.push({
           key: `future-pt-${player.id}`,
           playerId: player.id,
@@ -337,7 +347,7 @@ export const SceneContent = ({
       });
     }
     return { pastCone, future };
-  }, [playerList, myId, observerPos, torusHalfWidth]);
+  }, [playerList, myId, observerPos, torusHalfWidth, deadIds]);
   const worldLinePastConePoints = worldLineMarkerEntries.pastCone;
   const worldLineFuturePoints = worldLineMarkerEntries.future;
 
@@ -456,7 +466,7 @@ export const SceneContent = ({
         </group>
         {/* 自機: SelfShipRenderer が transformEventForDisplay で world 座標に自己配置。
             controlScheme は spacetime view と同期 (= legacy_classic で本体が heading 回転)。 */}
-        {myPlayer && !myPlayer.isDead && (
+        {myPlayer && !myIsDead && (
           <SelfShipRenderer
             player={myPlayer}
             thrustAccelRef={thrustAccelRef}
@@ -471,7 +481,7 @@ export const SceneContent = ({
         {/* 全プレイヤー現在位置 (dim): PLC 交差未確定でも常に表示 */}
         {playerList.map((player) => {
           if (player.id === myId) return null;
-          if (player.isDead) return null;
+          if (deadIds.has(player.id)) return null;
           const c = getThreeColor(player.color);
           const px = player.phaseSpace.pos.x;
           const py = player.phaseSpace.pos.y;
@@ -613,7 +623,7 @@ export const SceneContent = ({
         // 他機は OtherShipRenderer が自己 null (past-cone が worldLine 末端超過で null)
         // を返すので無条件配置 OK。自機は自身の position = observerPos なので past-cone
         // 概念が効かない → isDead で除外 + SelfShipRenderer 直描画。
-        if (isMe && !player.isDead) {
+        if (isMe && !deadIds.has(player.id)) {
           // **PBC universal cover (image observer past-cone pattern)**: 全 player (= self /
           // other / lighthouse) で **統一**の物理的に正しい echo 計算。 各 image cell ごとに
           //   imageObserver = obs - 2L*(obsCell + cell.offset)
@@ -713,7 +723,7 @@ export const SceneContent = ({
         // DeathMarker は (x_D, u_D) から内部で τ_0 = past-cone ∩ W_D(τ) を計算し、
         // 自分の表示窓 (ship: [0, τ_max]、marker: [0, τ_max_effect]) の外では自身で null 返す。
         // SceneContent 側での τ_0 routing は不要。
-        if (player.isDead) {
+        if (deadIds.has(player.id)) {
           const xD = player.phaseSpace.pos;
           const uD = getVelocity4(player.phaseSpace.u);
           const headingD = player.phaseSpace.heading;

@@ -138,7 +138,13 @@ export type RelativisticPlayer = {
   phaseSpace: PhaseSpace;
   worldLine: WorldLine; // 現在の命の世界線（1本のみ）
   color: string;
-  isDead: boolean;
+  // 2026-05-04 isDead 二重管理解消: 旧 explicit field を削除、 死亡判定は
+  // `selectIsDead(state, playerId)` (= killLog vs respawnLog の latest 比較) で derive
+  // 唯一化。 hot path 用 `selectDeadPlayerIds(state): Set<string>` を caller が tick
+  // 開始時 1 回 derive して loop 内で `deadIds.has(id)` を使う pattern も併設。
+  // wire format (snapshot.players[].isDead) は旧 client 互換のため `selectIsDead`
+  // 結果を sender 側で wire に書く + receiver 側で ignore する pass-through 設計。
+  // 詳細: plans/2026-05-04-isdead-decomposition.md
   displayName?: string;
   /**
    * Damage-based death model (Phase C1): fire/thrust/damage 共有プール。

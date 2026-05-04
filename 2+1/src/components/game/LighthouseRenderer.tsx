@@ -4,7 +4,7 @@ import { useTorusHalfWidth } from "../../hooks/useTorusHalfWidth";
 import type { Vector4 } from "../../physics";
 import { observableImageCells, requiredImageCellRadius } from "../../physics";
 import { getVelocity4 } from "../../physics/vector";
-import { useGameStore } from "../../stores/game-store";
+import { selectIsDead, useGameStore } from "../../stores/game-store";
 import { buildApparentShapeMatrix } from "./apparentShape";
 import { pastConeIntersectionWithFrozenFallback } from "./pastConeFallback";
 import {
@@ -68,6 +68,8 @@ export const LighthouseRenderer = ({
   // 凍結旧軌跡 (= frozenWorldLines) で fallback intersection を取って描画継続する。
   // 詳細: pastConeFallback.ts の docstring。
   const frozenWorldLines = useGameStore((s) => s.frozenWorldLines);
+  // 2026-05-04 isDead 二重管理解消: `isDead` field 撤廃で derive subscribe に移行。
+  const isDead = useGameStore((s) => selectIsDead(s, player.id));
 
   const mainColor = useMemo(() => getThreeColor(LIGHTHOUSE_COLOR), []);
   const wallColor = useMemo(() => new THREE.Color("hsl(190, 22%, 86%)"), []);
@@ -139,7 +141,7 @@ export const LighthouseRenderer = ({
             x: imageAliveIntersection.pos.x + dx,
             y: imageAliveIntersection.pos.y + dy,
           };
-        } else if (player.isDead && imageObserver) {
+        } else if (isDead && imageObserver) {
           const tau0 = pastLightConeIntersectionDeathWorldLine(
             wp,
             uD,
@@ -160,7 +162,7 @@ export const LighthouseRenderer = ({
             )
           : null;
         // futureMostSphere = world-now (= phaseSpace.pos)、 image cell ごとに raw + offset。
-        const futureMostSphereRaw = !player.isDead
+        const futureMostSphereRaw = !isDead
           ? transformEventForDisplay(wp, observerPos, observerBoost)
           : null;
         return (
@@ -402,7 +404,7 @@ export const LighthouseRenderer = ({
       })}
       {/* 死亡 marker (sphere + ring) — primary image のみ (= DeathMarker は内部で C pattern
         計算、 image 化は Phase D 後続 task)。 */}
-      {player.isDead && <DeathMarker xD={wp} uD={uD} color={mainColor} />}
+      {isDead && <DeathMarker xD={wp} uD={uD} color={mainColor} />}
     </>
   );
 };

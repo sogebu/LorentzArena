@@ -7,7 +7,7 @@ import {
   subVector4Torus,
 } from "../../../physics";
 import { useTorusHalfWidth } from "../../../hooks/useTorusHalfWidth";
-import { useGameStore } from "../../../stores/game-store";
+import { selectIsDead, useGameStore } from "../../../stores/game-store";
 import { ARENA_RADIUS } from "../constants";
 import { pastLightConeIntersectionLaser } from "../laserPhysics";
 import { isLighthouse } from "../lighthouse";
@@ -80,11 +80,12 @@ export const Radar = ({
       const lasers = state.lasers;
       const frozenWorldLines = state.frozenWorldLines;
       const rawMyPlayer = myId ? players.get(myId) : null;
+      const myIsDead = myId ? selectIsDead(state, myId) : false;
       // 死亡中は myGhostPhaseSpace で observer frame を構築 (= player.phaseSpace は
       // 死亡時刻で凍結されているため)。 SceneContent / HUD / CenterCompass と同じ
       // swap pattern。 詳細: 2026-05-04 plan: mydeathevent-decomposition。
       const myPlayer =
-        rawMyPlayer?.isDead && state.myGhostPhaseSpace
+        rawMyPlayer && myIsDead && state.myGhostPhaseSpace
           ? { ...rawMyPlayer, phaseSpace: state.myGhostPhaseSpace }
           : rawMyPlayer;
 
@@ -273,7 +274,7 @@ export const Radar = ({
         }
 
         // 自機 (中心、白縁取り)。heading-up なので上方向 = 自機前方。
-        if (!myPlayer.isDead) {
+        if (!myIsDead) {
           ctx.fillStyle = myPlayer.color;
           ctx.strokeStyle = "white";
           ctx.lineWidth = 1.5;

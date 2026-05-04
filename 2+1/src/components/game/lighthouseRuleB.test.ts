@@ -24,7 +24,6 @@ const makePlayer = (
   id: string,
   pos: { t: number; x: number; y: number },
   u: { x: number; y: number } = { x: 0, y: 0 },
-  isDead = false,
 ): RelativisticPlayer => {
   const ps = createPhaseSpace(
     createVector4(pos.t, pos.x, pos.y, 0),
@@ -36,7 +35,6 @@ const makePlayer = (
     phaseSpace: ps,
     worldLine: appendWorldLine(createWorldLine(MAX_WORLDLINE_HISTORY), ps),
     color: "#abc",
-    isDead,
     energy: ENERGY_MAX,
   };
 };
@@ -47,6 +45,7 @@ const callLH = (
     killLog?: readonly KillEventRecord[];
     lastUpdateTimes?: Map<string, number>;
     currentTime?: number;
+    deadIds?: ReadonlySet<string>;
   } = {},
 ) => {
   const lh = players.get(LH_ID);
@@ -61,6 +60,7 @@ const callLH = (
     /* spawnTimeMap */ new Map([[LH_ID, 0]]),
     options.killLog ?? [],
     options.lastUpdateTimes ?? new Map(),
+    options.deadIds ?? new Set<string>(),
     /* torusHalfWidth */ undefined,
   );
 };
@@ -146,7 +146,6 @@ describe("processLighthouseAI Rule B integration", () => {
       "victim",
       { t: 80, x: 0, y: 0 },
       { x: 1, y: 0 },
-      true,
     );
     const players = new Map([
       [LH_ID, lh],
@@ -164,7 +163,11 @@ describe("processLighthouseAI Rule B integration", () => {
         firedImageCells: [],
       },
     ];
-    const result = callLH(players, { killLog, currentTime: 2000 });
+    const result = callLH(players, {
+      killLog,
+      currentTime: 2000,
+      deadIds: new Set(["victim"]),
+    });
     // dead skip → peer 0 → λ=0 → LH は dτ=0 + λ=0 で 50 のまま
     expect(result.newPs.pos.t).toBeCloseTo(50, 9);
   });

@@ -13,11 +13,12 @@ import type { KillEventRecord, RelativisticPlayer } from "./types";
 const L = ARENA_HALF_WIDTH; // 20
 
 const NO_KILLS: readonly KillEventRecord[] = [];
+const NO_DEAD: ReadonlySet<string> = new Set();
 
 function makePlayer(
   id: string,
   pos: { t: number; x: number; y: number; z?: number },
-  options: { isDead?: boolean; u?: { x: number; y: number } } = {},
+  options: { u?: { x: number; y: number } } = {},
 ): RelativisticPlayer {
   const u = options.u ?? { x: 0, y: 0 };
   const ps = createPhaseSpace(
@@ -31,7 +32,6 @@ function makePlayer(
     phaseSpace: ps,
     worldLine: wl,
     color: "#fff",
-    isDead: options.isDead ?? false,
     energy: ENERGY_MAX,
   };
 }
@@ -46,7 +46,7 @@ describe("checkCausalFreeze — Stage 7 (virtualPos 統一)", () => {
       ["me", me],
       ["o1", other],
     ]);
-    expect(checkCausalFreeze(players, "me", me, NO_KILLS, false, L)).toBe(true);
+    expect(checkCausalFreeze(players, "me", me, NO_KILLS, NO_DEAD, false, L)).toBe(true);
   });
 
   it("regression: 観測者跨ぎで他機 universal cover image との距離急変があっても、 同 raw 配置なら freeze 状態が安定", () => {
@@ -62,6 +62,7 @@ describe("checkCausalFreeze — Stage 7 (virtualPos 統一)", () => {
       "me",
       meLeft,
       NO_KILLS,
+      NO_DEAD,
       false,
       L,
     );
@@ -76,6 +77,7 @@ describe("checkCausalFreeze — Stage 7 (virtualPos 統一)", () => {
       "me",
       meRight,
       NO_KILLS,
+      NO_DEAD,
       false,
       L,
     );
@@ -91,7 +93,7 @@ describe("checkCausalFreeze — Stage 7 (virtualPos 統一)", () => {
       ["me", me],
       ["o1", other],
     ]);
-    expect(checkCausalFreeze(players, "me", me, NO_KILLS, false, L)).toBe(true);
+    expect(checkCausalFreeze(players, "me", me, NO_KILLS, NO_DEAD, false, L)).toBe(true);
   });
 
   it("open_cylinder (torusHalfWidth undefined) は wrap せず raw 距離で判定", () => {
@@ -101,7 +103,7 @@ describe("checkCausalFreeze — Stage 7 (virtualPos 統一)", () => {
       ["me", me],
       ["o1", other],
     ]);
-    expect(checkCausalFreeze(players, "me", me, NO_KILLS, false)).toBe(true);
+    expect(checkCausalFreeze(players, "me", me, NO_KILLS, NO_DEAD, false)).toBe(true);
   });
 
   it("他機が未来にいる (player.t > me.t) なら判定対象外 (skip)", () => {
@@ -111,7 +113,7 @@ describe("checkCausalFreeze — Stage 7 (virtualPos 統一)", () => {
       ["me", me],
       ["o1", other],
     ]);
-    expect(checkCausalFreeze(players, "me", me, NO_KILLS, false, L)).toBe(false);
+    expect(checkCausalFreeze(players, "me", me, NO_KILLS, NO_DEAD, false, L)).toBe(false);
   });
 
   it("Lighthouse は判定対象外 (= `lighthouse-` prefix の ID で常時 skip)", () => {
@@ -124,7 +126,7 @@ describe("checkCausalFreeze — Stage 7 (virtualPos 統一)", () => {
       ["me", me],
       [lhId, lh],
     ]);
-    expect(checkCausalFreeze(players, "me", me, NO_KILLS, false, L)).toBe(false);
+    expect(checkCausalFreeze(players, "me", me, NO_KILLS, NO_DEAD, false, L)).toBe(false);
   });
 
   it("dead は判定対象外 (= 2026-05-02 hotfix で dead skip 復活)", () => {
@@ -135,7 +137,7 @@ describe("checkCausalFreeze — Stage 7 (virtualPos 統一)", () => {
     const me = makePlayer("me", { t: 101, x: 10, y: 0 });
     // dead at (100, 10, 0) は通常なら timelike near で freeze trigger となる位置だが、
     // dead skip により判定対象外で freeze なし。
-    const dead = makePlayer("o1", { t: 100, x: 10, y: 0 }, { isDead: true });
+    const dead = makePlayer("o1", { t: 100, x: 10, y: 0 });
     const killLog: KillEventRecord[] = [
       {
         victimId: "o1",
@@ -158,6 +160,7 @@ describe("checkCausalFreeze — Stage 7 (virtualPos 統一)", () => {
         "me",
         me,
         killLog,
+        new Set(["o1"]),
         false,
         L,
         new Map([["o1", 1_000]]),
@@ -181,6 +184,7 @@ describe("checkCausalFreeze — Stage 7 (virtualPos 統一)", () => {
         "me",
         me,
         NO_KILLS,
+        NO_DEAD,
         false,
         L,
         lastUpdate,
@@ -206,6 +210,7 @@ describe("checkCausalFreeze — Stage 7 (virtualPos 統一)", () => {
         "me",
         me,
         NO_KILLS,
+        NO_DEAD,
         false,
         L,
         lastUpdate,
@@ -221,7 +226,7 @@ describe("checkCausalFreeze — Stage 7 (virtualPos 統一)", () => {
       ["me", me],
       ["o1", other],
     ]);
-    expect(checkCausalFreeze(players, "me", me, NO_KILLS, false, L)).toBe(true);
+    expect(checkCausalFreeze(players, "me", me, NO_KILLS, NO_DEAD, false, L)).toBe(true);
   });
 
   it("Stage 7 新挙動: stale (= 5s+ broadcast 停止) も virtualPos で評価対象、 旧 staleFrozen 引数除外を撤廃", () => {
@@ -243,6 +248,7 @@ describe("checkCausalFreeze — Stage 7 (virtualPos 統一)", () => {
         "me",
         me,
         NO_KILLS,
+        NO_DEAD,
         false,
         L,
         lastUpdate,

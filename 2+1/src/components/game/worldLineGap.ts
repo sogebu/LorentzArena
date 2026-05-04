@@ -46,8 +46,10 @@ export const isLargeJump = (lambda: number): boolean =>
  *
  * 注意 (= edge case):
  * - `player.worldLine.history.length === 0`: 新規 player で history 未蓄積 → 凍結対象なし
- *   (= no-op、 prev そのまま)。 dead は本関数の対象外 (= caller が isDead 判定で除外)、
- *   ガード重複で防御。
+ *   (= no-op、 prev そのまま)。 dead は本関数の対象外 — caller が `selectIsDead` で除外する
+ *   契約 (= 2026-05-04 isDead 二重管理解消で `RelativisticPlayer.isDead` field を撤廃、
+ *   defensive 重複 guard も同時撤去)。 全 caller (useGameLoop §自機 alive Rule B / LH Rule B)
+ *   は alive 分岐内で本関数を呼ぶ。
  */
 export const pushFrozenWorldLine = (
   prev: FrozenWorldLine[],
@@ -55,7 +57,6 @@ export const pushFrozenWorldLine = (
 ): FrozenWorldLine[] => {
   // caller (= zustand store の `setFrozenWorldLines` updater) が mutable array を渡す
   // 想定。 no-op 時は prev 同一参照を返す (= test で identity 検査)、 push 時は新規 array。
-  if (player.isDead) return prev;
   if (player.worldLine.history.length === 0) return prev;
   const entry: FrozenWorldLine = {
     id: nextFrozenId(player.id),

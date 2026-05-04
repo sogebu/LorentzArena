@@ -14,7 +14,6 @@ const makePlayer = (
   id: string,
   pos: { t: number; x: number; y: number },
   u: { x: number; y: number } = { x: 0, y: 0 },
-  isDead = false,
 ): RelativisticPlayer => {
   const ps = createPhaseSpace(
     createVector4(pos.t, pos.x, pos.y, 0),
@@ -26,7 +25,6 @@ const makePlayer = (
     phaseSpace: ps,
     worldLine: appendWorldLine(createWorldLine(MAX_WORLDLINE_HISTORY), ps),
     color: "#fff",
-    isDead,
     energy: ENERGY_MAX,
   };
 };
@@ -62,7 +60,7 @@ describe("virtualPos — alive / stale / dead 統一 inertial 延長", () => {
   });
 
   it("dead 静止 (u=0、 死亡から 2s 経過): pos.t += 2、 spatial 不変", () => {
-    const p = makePlayer("dead", { t: 200, x: 10, y: 10 }, { x: 0, y: 0 }, true);
+    const p = makePlayer("dead", { t: 200, x: 10, y: 10 }, { x: 0, y: 0 });
     const killWall = 1_000;
     const now = 3_000; // tau = 2
     const out = virtualPos(p, killWall, now);
@@ -76,7 +74,6 @@ describe("virtualPos — alive / stale / dead 統一 inertial 延長", () => {
       "dead",
       { t: 100, x: 0, y: 0 },
       { x: 0.6, y: 0 },
-      true,
     );
     const out = virtualPos(p, 0, 1_000); // tau = 1
     expect(out.t).toBeCloseTo(100 + Math.sqrt(1.36), 9);

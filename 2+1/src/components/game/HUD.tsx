@@ -1,5 +1,5 @@
 import { useI18n } from "../../i18n";
-import { useGameStore } from "../../stores/game-store";
+import { selectIsDead, useGameStore } from "../../stores/game-store";
 import { CenterCompass } from "./hud/CenterCompass";
 import { ControlPanel } from "./hud/ControlPanel";
 import { Overlays } from "./hud/Overlays";
@@ -52,16 +52,18 @@ export const HUD = ({
   const myGhostPhaseSpace = useGameStore((s) => s.myGhostPhaseSpace);
 
   const rawMyPlayer = myId ? players.get(myId) : undefined;
+  // 2026-05-04 isDead 二重管理解消: derive subscribe で field 不在に対応。
+  const myIsDead = useGameStore((s) => (myId ? selectIsDead(s, myId) : false));
   // 死亡中は Speedometer / HUD は ghost (= myGhostPhaseSpace) を観測者として扱う。
   // `players[myId].phaseSpace` は死亡時刻で凍結されているため、速度/世界時刻が止まる。
   const myPlayer =
-    rawMyPlayer?.isDead && myGhostPhaseSpace
+    rawMyPlayer && myIsDead && myGhostPhaseSpace
       ? { ...rawMyPlayer, phaseSpace: myGhostPhaseSpace }
       : rawMyPlayer;
   // RespawnCountdown の React key 用 (= 死亡時刻 coord time、 死亡 player は applyKill で
   // phaseSpace 凍結保持されるため `rawMyPlayer.phaseSpace.pos.t` で derive)。
   const deathPosT =
-    rawMyPlayer?.isDead ? rawMyPlayer.phaseSpace.pos.t : null;
+    rawMyPlayer && myIsDead ? rawMyPlayer.phaseSpace.pos.t : null;
   const killGlow = killNotification !== null;
 
   return (
@@ -103,7 +105,7 @@ export const HUD = ({
 
       <Overlays
         myId={myId}
-        isDead={myPlayer?.isDead ?? false}
+        isDead={myIsDead}
         deathFlash={deathFlash}
         killGlow={killGlow}
         isFiring={isFiring}

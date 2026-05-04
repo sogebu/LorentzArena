@@ -7,7 +7,7 @@ import {
   createVector4,
   createWorldLine,
 } from "../../physics";
-import { useGameStore } from "../../stores/game-store";
+import { selectIsDead, useGameStore } from "../../stores/game-store";
 import {
   ENERGY_MAX,
   LIGHTHOUSE_ID_PREFIX,
@@ -38,7 +38,6 @@ function makePlayer(
       phaseSpace,
     ),
     color,
-    isDead: false,
     energy: ENERGY_MAX,
   };
 }
@@ -259,15 +258,13 @@ describe("applySnapshot", () => {
 
   it("Stage 1: migration path で missed respawn の自動救済 (isDead 張り付きが snapshot の respawn entry 流入で解消)", () => {
     const myId = "observer";
-    // local: victim は kill 済で isDead=true のまま貼り付き (respawn message を取り逃した)
-    const deadVictim: RelativisticPlayer = {
-      ...makePlayer("victim", 5.0),
-      isDead: true,
-    };
+    // 2026-05-04 isDead 二重管理解消: 旧版は `deadVictim.isDead=true` を explicit 設定して
+    // 「local が isDead=true 貼り付き」 を再現していたが、 isDead は killLog/respawnLog から
+    // derive 唯一化したため、 `killLog に entry あり + respawnLog 空` で同じ状態が達成される。
     useGameStore.setState({
       players: new Map([
         ["observer", makePlayer("observer", 5.0)],
-        ["victim", deadVictim],
+        ["victim", makePlayer("victim", 5.0)],
       ]),
       killLog: [
         {
@@ -316,11 +313,11 @@ describe("applySnapshot", () => {
 
     applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
 
-    const { players, respawnLog } = useGameStore.getState();
-    expect(respawnLog).toHaveLength(1);
-    expect(respawnLog[0].playerId).toBe("victim");
-    // isDead が merged log から再導出され false に復帰
-    expect(players.get("victim")?.isDead).toBe(false);
+    const state = useGameStore.getState();
+    expect(state.respawnLog).toHaveLength(1);
+    expect(state.respawnLog[0].playerId).toBe("victim");
+    // isDead が merged log から再導出され false に復帰 (= selectIsDead で確認)
+    expect(selectIsDead(state, "victim")).toBe(false);
   });
 
   it("Stage 1.5: client の snapshot を BH が受信 → BH の missed kill が client 側観測から union-merge 流入", () => {
@@ -376,7 +373,7 @@ describe("applySnapshot", () => {
     // receiver (BH) 側 past-cone 未到達なので firedForUi=false で追加
     expect(state.killLog[0].firedForUi).toBe(false);
     // victim の isDead は merged log から再導出され true になる (BH も victim を dead と認識)
-    expect(state.players.get("victim")?.isDead).toBe(true);
+    expect(selectIsDead(state, "victim")).toBe(true);
     // scores は BH の観測相対 (alice の観測の 1 で上書きされず、BH 初期値 0 のまま)。
     // 実際には次 game tick で firePendingKillEvents が BH の past-cone 到達で alice に +1 する。
     expect(state.scores.bh).toBe(0);

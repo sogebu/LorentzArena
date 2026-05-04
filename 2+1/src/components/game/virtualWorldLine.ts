@@ -34,8 +34,10 @@ export const MAX_VIRTUAL_TAU_SEC = 2;
  * - **alive self** : `lastSyncWall` = `nowWall` (= τ=0、 自機は live なので `phaseSpace.pos` そのまま)。
  * - **stale other**: 同 alive other (= broadcast 停止前の最後値から延長)。
  * - **dead any**   : `lastSyncWall` = `lastSyncForDead(id, killLog)` (= killLog の最新 wallTime)。
- *   `applyKill` が `phaseSpace.pos` / `phaseSpace.u` を死亡時値で残しているため (`killRespawn.ts`)、
- *   そこから inertial 延長すれば全 peer が決定論的に同じ値を計算できる (= broadcast 不要)。
+ *   handleKill (= store) で `players` map の victim entry は **触らず保持** する設計に移行
+ *   (= 2026-05-04 isDead 二重管理解消)、 `phaseSpace.pos` / `phaseSpace.u` は kill 直前の
+ *   broadcast 値が引き続き入っているため、 そこから inertial 延長すれば全 peer が決定論的
+ *   に同じ値を計算できる (= broadcast 不要)。
  *
  * 式は通常の 4-velocity 統合 `dx^μ/dτ = u^μ` を `τ ≡ wall_dt` に対して代数積分しただけ
  * (= no-acceleration の純 inertial)。 thrust 中断や ghost 物理の補正は本関数の責務外。

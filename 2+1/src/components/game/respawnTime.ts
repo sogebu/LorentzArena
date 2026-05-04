@@ -59,13 +59,20 @@ export const computeSpawnCoordTime = (
   killLog: readonly KillEventRecord[],
   lastUpdateTimes: ReadonlyMap<string, number> | undefined,
   nowWall: number,
+  /**
+   * 現在死亡中の player ID 集合 (= `selectDeadPlayerIds(state)`)。 caller (= snapshot
+   * buildSnapshot / useGameLoop respawn handlers) が tick 開始時 1 回 derive して渡す
+   * (= 2026-05-04 isDead 二重管理解消で `RelativisticPlayer.isDead` field 撤廃、
+   * derive 唯一化の caller-pass pattern)。
+   */
+  deadIds: ReadonlySet<string>,
   excludeId?: string | null,
 ): number => {
   let minT = Number.POSITIVE_INFINITY;
   let maxT = Number.NEGATIVE_INFINITY;
   for (const [id, p] of players) {
     if (excludeId != null && id === excludeId) continue;
-    const lastSync = p.isDead
+    const lastSync = deadIds.has(id)
       ? (lastSyncForDead(id, killLog) ?? nowWall)
       : (lastUpdateTimes?.get(id) ?? nowWall);
     const vp = virtualPos(p, lastSync, nowWall);
@@ -88,9 +95,10 @@ export const createRespawnPosition = (
   killLog: readonly KillEventRecord[],
   lastUpdateTimes: ReadonlyMap<string, number> | undefined,
   nowWall: number,
+  deadIds: ReadonlySet<string>,
   excludeId?: string | null,
 ): { t: number; x: number; y: number; z: number } => ({
-  t: computeSpawnCoordTime(players, killLog, lastUpdateTimes, nowWall, excludeId),
+  t: computeSpawnCoordTime(players, killLog, lastUpdateTimes, nowWall, deadIds, excludeId),
   x: (Math.random() - 0.5) * SPAWN_RANGE,
   y: (Math.random() - 0.5) * SPAWN_RANGE,
   z: 0,

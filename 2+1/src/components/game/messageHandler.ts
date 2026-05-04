@@ -9,7 +9,7 @@ import {
   type Vector4,
   vector4Zero,
 } from "../../physics";
-import { useGameStore } from "../../stores/game-store";
+import { selectIsDead, useGameStore } from "../../stores/game-store";
 import {
   ENERGY_MAX,
   LIGHTHOUSE_COLOR,
@@ -167,7 +167,7 @@ export const createMessageHandler =
         const existingPlayer = store.players.get(playerId);
         if (
           existingPlayer &&
-          !existingPlayer.isDead &&
+          !selectIsDead(store, playerId) &&
           existingPlayer.worldLine.history.length > 0
         ) {
           const frozen: FrozenWorldLine = {
@@ -199,8 +199,9 @@ export const createMessageHandler =
         );
 
         const existing = prev.get(playerId);
-        // 死亡中（世界線凍結中）なら phaseSpace を無視
-        if (existing?.isDead) return prev;
+        // 死亡中（世界線凍結中）なら phaseSpace を無視。 isDead は killLog/respawnLog
+        // から derive (= 2026-05-04 二重管理解消)、 store は handler entry で fresh。
+        if (selectIsDead(store, playerId)) return prev;
 
         const existingWorldLine = existing?.worldLine;
         const worldLine =
@@ -221,7 +222,6 @@ export const createMessageHandler =
           phaseSpace,
           worldLine,
           color,
-          isDead: false,
           displayName,
           energy: existing?.energy ?? ENERGY_MAX,
         });
