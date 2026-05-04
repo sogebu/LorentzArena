@@ -521,6 +521,23 @@ export function useGameLoop({
             didPhysics = true;
           }
 
+          // Fix (2026-05-04 plan: virtualpos-lastsync-rca §3 Fix A): host 自身が処理する
+          // LH の lastUpdateTimeRef を毎 tick currentTime に update。 LH state は
+          // processLighthouseAI で毎 tick 確定しているのに、 lastUpdateTimeRef は
+          // remote broadcast 起点でのみ set される semantic 矛盾で、 host migration 後 /
+          // 自機 host 中は LH の lastSync が古いまま virtualPos が線形発散して self の
+          // Rule B が暴走する root bug の修正。 LH 限定で十分: (1) processLighthouseAI 側
+          // の peer = 自機 評価では myId の lastUpdateTimeRef が未設定 → currentTime
+          // fallback で tau=0 健全、 (2) 通常 player は self-authoritative pattern で本人
+          // client が物理計算 + broadcast → host 集中処理 peer は LH のみ。
+          if (peerManager?.getIsBeaconHolder()) {
+            for (const [pId] of fresh.players) {
+              if (isLighthouse(pId)) {
+                stale.lastUpdateTimeRef.current.set(pId, currentTime);
+              }
+            }
+          }
+
           // Rule B (= 因果律対称ジャンプ): peer の virtualPos を計算し、 自機が peer の
           // 過去 cone 内にいれば u^μ 方向に λ だけ advance。 plan §7.4 に従い frozen でも
           // 評価 (= jump で frozen 状態から脱出するため)。
