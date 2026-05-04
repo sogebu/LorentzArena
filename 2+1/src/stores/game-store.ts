@@ -24,7 +24,6 @@ import {
   LIGHTHOUSE_DISPLAY_NAME,
 } from "../components/game/lighthouse";
 import type {
-  DeathEvent,
   DebrisRecord,
   FrozenWorldLine,
   HitEventRecord,
@@ -42,7 +41,7 @@ import {
   createVector3,
   createVector4,
   createWorldLine,
-  getVelocity4,
+  type PhaseSpace,
   type Vector3,
   vector3Zero,
 } from "../physics";
@@ -209,7 +208,23 @@ export interface GameState {
   frozenWorldLines: FrozenWorldLine[];
   debrisRecords: DebrisRecord[];
   killNotification: KillNotification3D | null;
-  myDeathEvent: DeathEvent | null;
+  /**
+   * 自機 ghost camera の動的 phaseSpace。 自機死亡中、 useGameLoop の dead branch で
+   * 生存時物理 (`processPlayerPhysics`) を流用して update される (= 自機入力の thrust /
+   * heading / friction / energy で動く、 ローカルのみ更新・ network 非送信)。
+   *
+   * **設計** (= 2026-05-04 plan: mydeathevent-decomposition): 旧 `myDeathEvent`
+   * (= 静的 death meta `{pos, u, heading}` + 動的 ghost を複合した型) を分解した結果、
+   * 動的 ghost のみが explicit state として残る (= 静的 meta は `players.get(myId).
+   * phaseSpace` から derive、 applyKill で死亡時刻凍結保持されるため自動同期)。
+   *
+   * **lazy init**: handleKill で自機 victim 時 `victim.phaseSpace` で初期化されるが、
+   * 別経路 (= snapshot 流入 + handleKill guard early return race 等) では未 init で
+   * isDead=true 遷移し得る。 useGameLoop dead branch が `myGhostPhaseSpace ??
+   * freshMe.phaseSpace` で fallback 初期化、 「set 漏れ」 が原理的に発生しない設計。
+   * 詳細: plan §2 「set 漏れが原理的に消える理由」。
+   */
+  myGhostPhaseSpace: PhaseSpace | null;
   /**
    * 自機が他機の未来光円錐内に居て因果律保持のため freeze 中かどうか。 useGameLoop の
    * `checkCausalFreeze` 結果が変化した tick で update される。 UI overlay (= 「因果律凍結 /
@@ -302,7 +317,7 @@ export interface GameState {
   ) => void;
   setDebrisRecords: (updater: (prev: DebrisRecord[]) => DebrisRecord[]) => void;
   setKillNotification: (v: KillNotification3D | null) => void;
-  setMyDeathEvent: (v: DeathEvent | null) => void;
+  setMyGhostPhaseSpace: (v: PhaseSpace | null) => void;
   setCausallyFrozen: (v: boolean) => void;
   /** Rule B (= 因果律跳躍) の現在の fire 状態を set。 「因果律跳躍」 overlay が subscribe。 */
   setCausalityJumping: (v: boolean) => void;
@@ -323,7 +338,7 @@ export interface GameState {
    *   2. respawnLog に entry 追加 (invincibility 起点)
    *   3. pendingSpawnEvents に entry 追加 (過去光円錐到達で spawn ring 発火)
    *   4. LH なら lighthouseSpawnTime を更新
-   *   5. 自機なら myDeathEvent を null にリセット
+   *   5. 自機なら myGhostPhaseSpace を null にリセット (= 次回死亡で lazy init される)
    * 「既存」「新規」の差は phaseSpace/worldLine の作り方ではなく、保存する識別情報
    * (color / displayName / ownerId) の出所のみ。spawn ring の出方は player 種別に
    * 関係なく統一 (旧 handleRespawn の self 即時 spawns / 他者 pendingSpawnEvents の
@@ -392,7 +407,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   frozenWorldLines: [],
   debrisRecords: [],
   killNotification: null,
-  myDeathEvent: null,
+  myGhostPhaseSpace: null,
   causallyFrozen: false,
   causalityJumping: false,
   webglContextLost: false,
@@ -437,7 +452,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
     set((state) => ({ debrisRecords: updater(state.debrisRecords) })),
 
   setKillNotification: (v) => set({ killNotification: v }),
-  setMyDeathEvent: (v) => set({ myDeathEvent: v }),
+  setMyGhostPhaseSpace: (v) => set({ myGhostPhaseSpace: v }),
   setCausallyFrozen: (v) => set({ causallyFrozen: v }),
   setCausalityJumping: (v) => set({ causalityJumping: v }),
   setWebglContextLost: (v) => set({ webglContextLost: v }),
@@ -497,17 +512,16 @@ export const useGameStore = create<GameState>()((set, get) => ({
       ),
       debrisRecords: [...state.debrisRecords, newDebris].slice(-MAX_DEBRIS),
       killLog: [...state.killLog, killLogEntry],
-      myDeathEvent:
-        victimId === myId
-          ? {
-              pos: victim.phaseSpace.pos,
-              u: getVelocity4(victim.phaseSpace.u),
-              heading: victim.phaseSpace.heading,
-              // ghost の動的 phaseSpace 初期値: 死亡時 phaseSpace を copy。
-              // 以後 useGameLoop の死亡分岐で生存時物理を流用して更新される。
-              ghostPhaseSpace: victim.phaseSpace,
-            }
-          : state.myDeathEvent,
+      // ghost の動的 phaseSpace 初期値: 死亡時 phaseSpace を copy。 以後 useGameLoop の
+      // 死亡分岐で生存時物理を流用して update される (= 自機 入力で thrust / heading /
+      // friction / energy)。 静的 death meta (= pos, u, heading) は本 set 不要、
+      // `players.get(myId).phaseSpace` (= applyKill で死亡時刻凍結保持) から derive。
+      // 万一 本 path を通らずに死亡 state 遷移 (= snapshot 経路 等) しても useGameLoop
+      // dead branch で `myGhostPhaseSpace ?? freshMe.phaseSpace` の lazy init で補正、
+      // 「set 漏れ」 が原理的に発生しない (= 2026-05-04 plan: mydeathevent-decomposition)。
+      ...(victimId === myId
+        ? { myGhostPhaseSpace: victim.phaseSpace }
+        : {}),
     });
   },
 
@@ -583,7 +597,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
         ...state.pendingSpawnEvents,
         pendingSpawnEvent,
       ].slice(-MAX_PENDING_SPAWN_EVENTS),
-      ...(playerId === myId ? { myDeathEvent: null } : {}),
+      ...(playerId === myId ? { myGhostPhaseSpace: null } : {}),
     });
   },
 
@@ -885,7 +899,7 @@ export const gcLogs = (
 
 // Diagnostic helper: dev console から store を覗けるようにする (2026-05-02 ghost
 // freeze bug の調査用)。 全 ship 後も残してある — `window.__game.getState()` で
-// 任意フィールド (myDeathEvent / players / ...) を取れる。 prod でも有効、 leak は
+// 任意フィールド (myGhostPhaseSpace / players / ...) を取れる。 prod でも有効、 leak は
 // なし (game state のみ、 secrets 無し)。
 if (typeof window !== "undefined") {
   (window as unknown as { __game: typeof useGameStore }).__game = useGameStore;

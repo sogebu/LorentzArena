@@ -167,13 +167,15 @@ export const SceneContent = ({
   const debrisRecords = useGameStore((s) => s.debrisRecords);
   // 3D kill marker (sphere + ring) は DeathMarker (統一アルゴリズム) が担当。store の
   // killNotification は HUD (Overlays) の text notification 用途のみ、この scene では参照しない。
-  // myDeathEvent は自機 ghost phaseSpace の保管用 (dead self で myPlayer.phaseSpace を swap)。
-  const myDeathEvent = useGameStore((s) => s.myDeathEvent);
+  // myGhostPhaseSpace = 自機 ghost camera の動的 phaseSpace (dead self で myPlayer.phaseSpace
+  // を swap)。 旧 myDeathEvent (= 静的 meta + 動的 ghost の複合) を 2026-05-04 plan で分解、
+  // 静的 meta は player.phaseSpace から derive、 動的 ghost のみ explicit。
+  const myGhostPhaseSpace = useGameStore((s) => s.myGhostPhaseSpace);
 
   const playerList = useMemo(() => Array.from(players.values()), [players]);
   // myPlayer: 観測者 frame を組み立てるための "effective" player。
   //   生存中: players.get(myId) そのまま。
-  //   死亡中: phaseSpace を `myDeathEvent.ghostPhaseSpace` に swap (ghost は自由飛行する観測者、
+  //   死亡中: phaseSpace を `myGhostPhaseSpace` に swap (ghost は自由飛行する観測者、
   //     `players[myId].phaseSpace` は死亡時刻で凍結 = 他者 snapshot と同じ値)。この swap で
   //     camera / past-cone / Radar 等すべての observer 計算が ghost を追う。
   const rawMyPlayer = useMemo(
@@ -182,10 +184,10 @@ export const SceneContent = ({
   );
   const myPlayer = useMemo(
     () =>
-      rawMyPlayer?.isDead && myDeathEvent
-        ? { ...rawMyPlayer, phaseSpace: myDeathEvent.ghostPhaseSpace }
+      rawMyPlayer?.isDead && myGhostPhaseSpace
+        ? { ...rawMyPlayer, phaseSpace: myGhostPhaseSpace }
         : rawMyPlayer,
-    [rawMyPlayer, myDeathEvent],
+    [rawMyPlayer, myGhostPhaseSpace],
   );
   const observerPos = myPlayer?.phaseSpace.pos ?? null;
   const observerU = useMemo(

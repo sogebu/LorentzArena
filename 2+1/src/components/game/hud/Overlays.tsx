@@ -3,7 +3,6 @@ import { useI18n } from "../../../i18n";
 import { useGameStore } from "../../../stores/game-store";
 import { LASER_PAST_CONE_MARKER_COLOR, RESPAWN_DELAY } from "../constants";
 import { isLighthouse } from "../lighthouse";
-import type { DeathEvent } from "../types";
 import { hslToComponents } from "./utils";
 
 // 「射撃中」text は past-cone marker と同じ silver で統一 (odakin 指定)。hslToComponents は
@@ -163,7 +162,12 @@ type OverlaysProps = {
   killGlow: boolean;
   isFiring: boolean;
   killNotification: { victimId: string; victimName: string; color: string } | null;
-  myDeathEvent?: DeathEvent | null;
+  /**
+   * 死亡時の coord time (= 死亡 player の凍結 phaseSpace.pos.t、 caller HUD で derive)。
+   * RespawnCountdown の React key に使う (= 連続死亡で前回 countdown を破棄して新規 mount
+   * する identity)。 alive 中は null。
+   */
+  deathPosT?: number | null;
 };
 
 /**
@@ -214,7 +218,7 @@ export const Overlays = ({
   killGlow,
   isFiring,
   killNotification,
-  myDeathEvent,
+  deathPosT,
 }: OverlaysProps) => {
   const { t } = useI18n();
   const displayVictimName = killNotification
@@ -227,7 +231,7 @@ export const Overlays = ({
     <>
       {/* 死亡カウントダウン */}
       {isDead && (
-        <RespawnCountdown key={`respawn-${myDeathEvent?.pos.t ?? 0}`} />
+        <RespawnCountdown key={`respawn-${deathPosT ?? 0}`} />
       )}
 
       {/* ゴーストオーバーレイ */}

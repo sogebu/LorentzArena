@@ -53,7 +53,7 @@ function resetStore(players: Map<string, RelativisticPlayer>) {
     killLog: [],
     respawnLog: [],
     hitLog: [],
-    myDeathEvent: null,
+    myGhostPhaseSpace: null,
     pendingSpawnEvents: [],
   });
 }

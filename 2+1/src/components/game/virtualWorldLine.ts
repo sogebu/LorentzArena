@@ -41,7 +41,7 @@ export const MAX_VIRTUAL_TAU_SEC = 2;
  * (= no-acceleration の純 inertial)。 thrust 中断や ghost 物理の補正は本関数の責務外。
  *
  * 設計背景: `plans/2026-05-02-causality-symmetric-jump.md` §4 「死者の二本世界線モデル」 の
- * (1) 仮想世界線。 (2) ghost worldline (= self camera 用) は `myDeathEvent.ghostPhaseSpace`
+ * (1) 仮想世界線。 (2) ghost worldline (= self camera 用) は store の `myGhostPhaseSpace`
  * 側で別管理、 本関数とは無関係。
  */
 export const virtualPos = (

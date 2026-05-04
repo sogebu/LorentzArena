@@ -21,7 +21,9 @@ import { SelfShipRenderer } from "./SelfShipRenderer";
  * (τ_0 routing 不要)。
  *
  * - position: x_D に固定 (死亡時空点)。past-cone sweep で浮き沈みしない。
- * - heading: 死亡時姿勢で凍結 (self: myDeathEvent.heading、other: player.phaseSpace.heading)。
+ * - heading: 死亡時姿勢で凍結 (self / other 共通で `player.phaseSpace.heading`、 self は
+ *   applyKill で死亡時刻凍結保持されるため別途 myDeathEvent.heading 不要、 2026-05-04
+ *   plan: mydeathevent-decomposition で複合型解体)。
  * - thrust: 0 (死者は thrust 発火しない)。exhaust は無視される。
  * - opacity: `(τ_max − τ_0) / τ_max` (0..1)。group 内の全 Mesh material を traverse して一括上書き
  *   (transparent=true, depthWrite=false)。

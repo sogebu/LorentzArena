@@ -147,8 +147,12 @@ export function useGameLoop({
   // 共有プールになるため、ローカル ref は持たない (between-tick でのみ store が
   // 変更されるので tick 開始時に読んで末尾に commit する方式)。
 
-  // Track myDeathEvent transitions (for camera/energy reset on respawn)
-  const prevMyDeathEventRef = useRef<unknown>(null);
+  // Track 自機 isDead transitions (= respawn 時 camera reset trigger 用)。
+  // 旧 `prevMyDeathEventRef` は myDeathEvent null 化 = respawn の判定だったが、
+  // myDeathEvent decomposition (= 2026-05-04 plan) 後は myGhostPhaseSpace の
+  // null/non-null transition は lazy init で 1 tick race するため不適切、 selectIsDead
+  // 直接 track が clean。
+  const prevIsDeadRef = useRef<boolean>(false);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: see stability analysis above — all other deps are refs or stable callbacks
   useEffect(() => {
@@ -183,21 +187,18 @@ export function useGameLoop({
 
       const store = useGameStore.getState();
 
-      // --- Detect myDeathEvent transitions for local ref resets ---
-      const currentMyDeathEvent = store.myDeathEvent;
-      if (
-        prevMyDeathEventRef.current !== null &&
-        currentMyDeathEvent === null
-      ) {
-        // non-null → null: self-respawn just happened → reset camera refs.
-        // energy は handleSpawn が ENERGY_MAX にリセット済 (store 側で一元管理)。
+      // --- Detect 自機 isDead transition for local camera ref resets ---
+      // dead → alive (= respawn) で camera refs を default 値にリセット。 energy は
+      // handleSpawn が ENERGY_MAX にリセット済 (store 側で一元管理)。 alive → dead
+      // (= 自機死亡) では特別リセット不要 (= ghost camera は前 tick の camera 状態を
+      // 引き継いで自由飛行)。
+      const currentIsDead = myId ? selectIsDead(store, myId) : false;
+      if (prevIsDeadRef.current && !currentIsDead) {
         headingYawRef.current = 0;
         cameraYawRef.current = 0;
         cameraPitchRef.current = DEFAULT_CAMERA_PITCH;
       }
-      // null → non-null: self-death。ghost phaseSpace は handleKill 内で
-      // 死亡時 phaseSpace から初期化されているため、ここでの特別リセットは不要。
-      prevMyDeathEventRef.current = currentMyDeathEvent;
+      prevIsDeadRef.current = currentIsDead;
 
       // Phase C1: tick 開始時に store から energy を読む (between-tick で
       // handleDamage / handleSpawn が変更した最新値)。tick 内では local
@@ -425,11 +426,16 @@ export function useGameLoop({
           // を動的更新する。thrust/heading/friction/energy はすべて生存時と同一挙動。
           // ローカルのみ更新・ネットワーク非送信、worldLine 更新もしない。
           // (DESIGN.md §スポーン座標時刻 原則 3 および §物理 ghost 物理統合)
-          const de = fresh.myDeathEvent;
-          if (de && freshMe) {
+          //
+          // **lazy init** (= 2026-05-04 plan: mydeathevent-decomposition §2): 別経路 (=
+          // snapshot 流入 + handleKill guard early return race 等) で myGhostPhaseSpace
+          // 未 init のまま isDead=true 遷移しても、 ここで `?? freshMe.phaseSpace` で
+          // 初期化、 「set 漏れ」 が原理的に発生しない設計。
+          const ghostStart = fresh.myGhostPhaseSpace ?? freshMe?.phaseSpace ?? null;
+          if (ghostStart && freshMe) {
             const ghostMe: RelativisticPlayer = {
               ...freshMe,
-              phaseSpace: de.ghostPhaseSpace,
+              phaseSpace: ghostStart,
             };
             const otherPositions: Vector4[] = [];
             for (const [id, p] of fresh.players) {
@@ -463,10 +469,10 @@ export function useGameLoop({
             };
             // 2026-04-22: dead player は自分の ghost 位置を世界に announce しない。
             // 従って `players[myId].phaseSpace` は死亡時刻で凍結されたまま (他者 snapshot
-            // と同じ値)、観測者 (ghost) frame の phaseSpace は myDeathEvent.ghostPhaseSpace
-            // のみが保持する。SceneContent / Radar / HUD 等は dead self の観測時に
-            // `myDeathEvent.ghostPhaseSpace` を読む (SceneContent の effective myPlayer swap 参照)。
-            fresh.setMyDeathEvent({ ...de, ghostPhaseSpace: ghostPs });
+            // と同じ値)、観測者 (ghost) frame の phaseSpace は myGhostPhaseSpace のみが
+            // 保持する。SceneContent / Radar / HUD 等は dead self の観測時に
+            // myGhostPhaseSpace を読む (= SceneContent の effective myPlayer swap 参照)。
+            fresh.setMyGhostPhaseSpace(ghostPs);
           }
         } else if (freshMe) {
           const frozen = checkCausalFreeze(

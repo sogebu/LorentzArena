@@ -80,11 +80,12 @@ export const Radar = ({
       const lasers = state.lasers;
       const frozenWorldLines = state.frozenWorldLines;
       const rawMyPlayer = myId ? players.get(myId) : null;
-      // 死亡中は myDeathEvent.ghostPhaseSpace で observer frame を構築 (player.phaseSpace
-      // は死亡時刻で凍結されているため)。SceneContent と同じ swap pattern。
+      // 死亡中は myGhostPhaseSpace で observer frame を構築 (= player.phaseSpace は
+      // 死亡時刻で凍結されているため)。 SceneContent / HUD / CenterCompass と同じ
+      // swap pattern。 詳細: 2026-05-04 plan: mydeathevent-decomposition。
       const myPlayer =
-        rawMyPlayer?.isDead && state.myDeathEvent
-          ? { ...rawMyPlayer, phaseSpace: state.myDeathEvent.ghostPhaseSpace }
+        rawMyPlayer?.isDead && state.myGhostPhaseSpace
+          ? { ...rawMyPlayer, phaseSpace: state.myGhostPhaseSpace }
           : rawMyPlayer;
 
       ctx.clearRect(0, 0, size, size);

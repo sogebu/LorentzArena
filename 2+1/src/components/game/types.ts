@@ -47,23 +47,13 @@ export type FrozenWorldLine = {
   readonly color: string;
 };
 
-// 死亡イベント（ゴーストカメラの起点）
-export type DeathEvent = {
-  readonly pos: Vector4; // 死亡位置（4元位置、fixed、UI key 等の参照用）
-  readonly u: Vector4; // 死亡時の4元速度（fixed、ローレンツブースト初期値）
-  /**
-   * 死亡時姿勢 quaternion (fixed)。dead ship を x_D anchor で描画する際に使う。
-   * ghostPhaseSpace.heading は ghost camera yaw で drift するので別途保存。
-   */
-  readonly heading: import("../../physics").Quaternion;
-  /**
-   * ghost の動的 phaseSpace。自機入力 (thrust/heading/friction/energy) で
-   * 生存時と同じ物理 (`processPlayerPhysics`) を流用して更新される。
-   * ローカルのみ更新・ネットワーク非送信。他 peer からは自機は死亡時刻で
-   * 固定に見える (DESIGN.md §スポーン座標時刻 原則 3)。
-   */
-  readonly ghostPhaseSpace: PhaseSpace;
-};
+// 死亡イベントの複合型 (= 旧 `DeathEvent`) は 2026-05-04 plan で分解された:
+//   - 静的 death meta (= 死亡時 pos / u / heading) → `players.get(myId).phaseSpace`
+//     から derive (= applyKill で死亡時刻凍結保持されるため自動同期、 set 漏れ不可能)
+//   - 動的 ghost phaseSpace (= 自機入力で processPlayerPhysics 流用 update) →
+//     store の `myGhostPhaseSpace: PhaseSpace | null` field で explicit 管理、
+//     useGameLoop dead branch で lazy init (= `?? freshMe.phaseSpace` で fallback)
+// 詳細: `plans/2026-05-04-mydeathevent-decomposition.md`
 
 // スポーンイベント（過去光円錐到達まで UI 遅延）
 //

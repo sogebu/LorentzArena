@@ -28,13 +28,13 @@ export const CenterCompass = ({
 }) => {
   const { t } = useI18n();
   const players = useGameStore((s) => s.players);
-  const myDeathEvent = useGameStore((s) => s.myDeathEvent);
+  const myGhostPhaseSpace = useGameStore((s) => s.myGhostPhaseSpace);
   const rawMyPlayer = myId ? players.get(myId) : undefined;
   // 死亡中は ghost phaseSpace で観測者位置を取る (Radar / HUD / SceneContent と
   // 同じ swap pattern)。 ghost も中心方向を知りたい (= 復活 spawn は中心近くなので)。
   const myPlayer: RelativisticPlayer | undefined =
-    rawMyPlayer?.isDead && myDeathEvent
-      ? { ...rawMyPlayer, phaseSpace: myDeathEvent.ghostPhaseSpace }
+    rawMyPlayer?.isDead && myGhostPhaseSpace
+      ? { ...rawMyPlayer, phaseSpace: myGhostPhaseSpace }
       : rawMyPlayer;
 
   if (!myPlayer) return null;

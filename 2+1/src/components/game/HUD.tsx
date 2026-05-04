@@ -49,15 +49,19 @@ export const HUD = ({
   const players = useGameStore((s) => s.players);
   const scores = useGameStore((s) => s.scores);
   const killNotification = useGameStore((s) => s.killNotification);
-  const myDeathEvent = useGameStore((s) => s.myDeathEvent);
+  const myGhostPhaseSpace = useGameStore((s) => s.myGhostPhaseSpace);
 
   const rawMyPlayer = myId ? players.get(myId) : undefined;
-  // 死亡中は Speedometer / HUD は ghost (myDeathEvent.ghostPhaseSpace) を観測者として扱う。
+  // 死亡中は Speedometer / HUD は ghost (= myGhostPhaseSpace) を観測者として扱う。
   // `players[myId].phaseSpace` は死亡時刻で凍結されているため、速度/世界時刻が止まる。
   const myPlayer =
-    rawMyPlayer?.isDead && myDeathEvent
-      ? { ...rawMyPlayer, phaseSpace: myDeathEvent.ghostPhaseSpace }
+    rawMyPlayer?.isDead && myGhostPhaseSpace
+      ? { ...rawMyPlayer, phaseSpace: myGhostPhaseSpace }
       : rawMyPlayer;
+  // RespawnCountdown の React key 用 (= 死亡時刻 coord time、 死亡 player は applyKill で
+  // phaseSpace 凍結保持されるため `rawMyPlayer.phaseSpace.pos.t` で derive)。
+  const deathPosT =
+    rawMyPlayer?.isDead ? rawMyPlayer.phaseSpace.pos.t : null;
   const killGlow = killNotification !== null;
 
   return (
@@ -104,7 +108,7 @@ export const HUD = ({
         killGlow={killGlow}
         isFiring={isFiring}
         killNotification={killNotification}
-        myDeathEvent={myDeathEvent}
+        deathPosT={deathPosT}
       />
     </>
   );
