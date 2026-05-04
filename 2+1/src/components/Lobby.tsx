@@ -49,6 +49,11 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
   const controlScheme = useGameStore((s) => s.controlScheme);
   const setControlScheme = useGameStore((s) => s.setControlScheme);
   const orientation = useOrientation();
+  // landscape では form / hi-scores 列の幅を絞って ship column に space を譲る
+  // (= 2026-05-04 user feedback「機体がちっちゃすぎ」 → ship を center column の
+  // 主役として大きく表示)。 portrait は既存の 280px を維持。
+  const fieldMaxWidth =
+    orientation === "landscape" ? "min(220px, 80vw)" : "min(280px, 80vw)";
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -236,7 +241,7 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
         {/* Name input */}
         <form
           onSubmit={handleSubmit}
-          style={{ textAlign: "center", width: "min(280px, 80vw)" }}
+          style={{ textAlign: "center", width: fieldMaxWidth }}
         >
           <label
             htmlFor="player-name"
@@ -308,7 +313,7 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
             alignItems: "center",
             fontSize: "13px",
             opacity: 0.85,
-            width: "min(280px, 80vw)",
+            width: fieldMaxWidth,
           }}
         >
           <label htmlFor="lobby-view-mode" style={{ textAlign: "right" }}>
@@ -370,8 +375,12 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
               // (= ShipPreview の Canvas wrapper が positioned ancestor を遡って fixed
               // wrapper まで行くと 100vw x 100vh で expand される、 ここで止める)。
               position: "relative",
-              width: "200px",
-              height: "200px",
+              // 旧 200x200 では mobile landscape で ship visual が小さすぎた
+              // (= 2026-05-04 user feedback)。 height は viewport 70vh max 280px の
+              // square (= aspectRatio 1/1) で content area (= ~280px) いっぱいに使う。
+              // form/hi-scores 列を fieldMaxWidth 220px に絞って ship に space を譲る。
+              height: "min(70vh, 280px)",
+              aspectRatio: "1 / 1",
               flexShrink: 0,
             }}
           >
@@ -380,6 +389,10 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
                 bgColor="transparent"
                 cannonStyle="laser"
                 hullStyle={viewModeToHullStyle(viewMode)}
+                // landscape では camera を近づけて ship を canvas いっぱい近くに表示
+                // (= 旧 default [4,-4,3] では canvas 内 ~40% しか占めず ship visual が
+                // 「ちっちゃすぎ」 と user 感想)。 [3,-3,2.25] は 75% 距離 = 角度径 1.33×。
+                cameraPosition={[3, -3, 2.25]}
               />
             </Suspense>
           </div>
@@ -398,7 +411,7 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
           <div
             style={{
               marginTop: "32px",
-              width: "min(280px, 80vw)",
+              width: fieldMaxWidth,
               fontSize: "13px",
               opacity: 0.6,
             }}
@@ -446,7 +459,7 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
           <div
             style={{
               marginTop: "24px",
-              width: "min(280px, 80vw)",
+              width: fieldMaxWidth,
               fontSize: "13px",
               opacity: 0.6,
             }}
