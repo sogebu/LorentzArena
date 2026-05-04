@@ -3,6 +3,7 @@ import {
   createPhaseSpace,
   createVector3,
   createVector4,
+  createWorldLine,
   displayPos,
   evolvePhaseSpace,
   inverseLorentzBoost,
@@ -31,6 +32,7 @@ import {
   LIGHTHOUSE_FIRE_INTERVAL,
   LIGHTHOUSE_HIT_RADIUS,
   LIGHTHOUSE_SPAWN_GRACE,
+  MAX_WORLDLINE_HISTORY,
   PLAYER_ACCELERATION,
   THRUST_ENERGY_RATE,
 } from "./constants";
@@ -40,6 +42,7 @@ import { findLaserHitPosition } from "./laserPhysics";
 import type { ControlScheme } from "../../stores/game-store";
 import type { KillEventRecord, Laser, RelativisticPlayer } from "./types";
 import { virtualPos } from "./virtualWorldLine";
+import { isLargeJump } from "./worldLineGap";
 
 // --- Camera ---
 
@@ -245,6 +248,25 @@ export interface LighthouseResult {
   newPs: ReturnType<typeof createPhaseSpace>;
   newWl: ReturnType<typeof appendWorldLine>;
   laser: Laser | null;
+  /**
+   * 大ジャンプ (= `isLargeJump(lambda)` true) で旧 worldLine を frozenWorldLines に
+   * 凍結すべきとき、 旧 LH の RelativisticPlayer snapshot を返す (= caller が
+   * `setFrozenWorldLines((prev) => pushFrozenWorldLine(prev, oldLh))` で push)。
+   * 通常 (= 小ジャンプ or λ=0) は undefined。
+   *
+   * 設計動機 (= 2026-05-04 plan: virtualpos-lastsync-rca §3 Fix C、 5/2 plan §5.5
+   * implementation gap): self の alive Rule B branch (`useGameLoop:585-` の
+   * `isLargeJump(lambda)` 分岐) と対称構造。 5/2 Stage 4 で LH の Rule B 置換を
+   * 実装した時に Stage 3 (= 大ジャンプ閾値判定 + frozenWorldLines push + 新セグメント
+   * 開始) との接続を忘れていたため、 LH の Rule B fire 時に大 gap でも単純
+   * `appendWorldLine` で履歴に積まれ、 worldLine 上に visible discontinuity が生まれ
+   * なかった bug の修正。 user 指摘 (= 2026-05-04): 「A が B の未来側にいて A に
+   * 因果律凍結がでるとき、 B は A の過去光円錐まで跳躍して B に因果律跳躍が起こらないと
+   * おかしくないか?」 = 物理的対称性の確認。 player 間は各 client で別々に評価される
+   * ため動作しているが、 LH (host 集中処理) は本 implementation gap で対称性が崩れて
+   * いた。
+   */
+  largeJumpFrozenLh?: RelativisticPlayer;
 }
 
 export function processLighthouseAI(
@@ -302,26 +324,44 @@ export function processLighthouseAI(
     peerVirtualPositions.push({ pos: peerEffective });
   }
   const lambda = causalityJumpLambda(lhNewPs.pos, lhNewPs.u, peerVirtualPositions);
+  let largeJumpFrozenLh: RelativisticPlayer | undefined;
+  let lhNewWl: ReturnType<typeof appendWorldLine>;
   if (lambda > 0) {
     // u=0 (γ=1) なので jump は時間軸沿いのみ
-    lhNewPs = createPhaseSpace(
+    const adjustedLhPs = createPhaseSpace(
       createVector4(lhNewPs.pos.t + lambda, lhNewPs.pos.x, lhNewPs.pos.y, 0),
       vector3Zero(),
     );
+    if (isLargeJump(lambda)) {
+      // 大ジャンプ: 旧 LH worldLine を frozenWorldLines に凍結し、 新セグメントを 1 点
+      // (= adjusted pos) から開始 (= self alive Rule B branch と対称構造、 5/2 plan §5.5
+      // 「Q6 決定: 既存 worldLine 凍結機構を Rule B 大ジャンプにも適用」 の意図、
+      // 2026-05-04 plan §3 Fix C で Stage 4 implementation gap fix)。 caller (=
+      // useGameLoop) で `setFrozenWorldLines((prev) => pushFrozenWorldLine(prev,
+      // largeJumpFrozenLh))` を呼んで凍結 history に push する。 LH の `incrementCausalityJump`
+      // overlay は LH に UI 持たないため呼ばない (= visible cue は LH 凍結 worldLine が
+      // 増えることで代替、 既存 SceneContent の WorldLineRenderer で描画される)。
+      largeJumpFrozenLh = lh;
+      lhNewWl = appendWorldLine(createWorldLine(MAX_WORLDLINE_HISTORY), adjustedLhPs);
+    } else {
+      // 小ジャンプ: 通常 append で連続 worldLine を維持 (= visible discontinuity なし)。
+      lhNewWl = appendWorldLine(lh.worldLine, adjustedLhPs);
+    }
+    lhNewPs = adjustedLhPs;
+  } else {
+    lhNewWl = appendWorldLine(lh.worldLine, lhNewPs);
   }
-
-  const lhNewWl = appendWorldLine(lh.worldLine, lhNewPs);
 
   // Grace period after spawn
   const spawnTime = spawnTimeMap.get(lhId) ?? 0;
   if (currentTime - spawnTime < LIGHTHOUSE_SPAWN_GRACE) {
-    return { newPs: lhNewPs, newWl: lhNewWl, laser: null };
+    return { newPs: lhNewPs, newWl: lhNewWl, laser: null, largeJumpFrozenLh };
   }
 
   // Fire interval check
   const lastFire = lastFireMap.get(lhId) ?? 0;
   if (currentTime - lastFire < LIGHTHOUSE_FIRE_INTERVAL) {
-    return { newPs: lhNewPs, newWl: lhNewWl, laser: null };
+    return { newPs: lhNewPs, newWl: lhNewWl, laser: null, largeJumpFrozenLh };
   }
 
   // Find best target
@@ -364,7 +404,7 @@ export function processLighthouseAI(
   }
 
   if (!bestDir) {
-    return { newPs: lhNewPs, newWl: lhNewWl, laser: null };
+    return { newPs: lhNewPs, newWl: lhNewWl, laser: null, largeJumpFrozenLh };
   }
 
   const aimDir = perturbDirection(bestDir, LIGHTHOUSE_AIM_JITTER_SIGMA);
@@ -383,7 +423,7 @@ export function processLighthouseAI(
     color: getLaserColor(lh.color),
   };
 
-  return { newPs: lhNewPs, newWl: lhNewWl, laser };
+  return { newPs: lhNewPs, newWl: lhNewWl, laser, largeJumpFrozenLh };
 }
 
 // --- Hit Detection ---

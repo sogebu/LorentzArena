@@ -703,6 +703,16 @@ export function useGameLoop({
             alpha: result.newPs.alpha,
           });
 
+          // Fix C (= 2026-05-04 plan §3): LH の Rule B 大ジャンプ時、 旧 LH worldLine を
+          // frozenWorldLines に凍結して visible discontinuity を生む (= self alive Rule B
+          // branch と対称、 5/2 plan §5.5 の意図、 Stage 4 で漏れていた implementation gap fix)。
+          // pushFrozenWorldLine は純関数で、 caller 側で setFrozenWorldLines に流す。
+          if (result.largeJumpFrozenLh) {
+            freshForLH.setFrozenWorldLines((prev) =>
+              pushFrozenWorldLine(prev, result.largeJumpFrozenLh!),
+            );
+          }
+
           if (result.laser) {
             freshForLH.lighthouseLastFireTime.set(lhId, currentTime);
             lhLasers.push(result.laser);

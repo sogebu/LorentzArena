@@ -143,6 +143,62 @@ if (isBeaconHolder) {
 
 **効果**: 自機 host 時 LH.lastSync = currentTime → tau = 0 → virtualPos(LH) = LH.actual pos → Rule B は LH の actual state で評価 → 公式通り fixed point 動作。
 
+### Fix C (= LH 大ジャンプ凍結機構 — 5/2 plan §5.5 implementation gap)
+
+**追加根拠** (2026-05-04 user 指摘): 「A が B の未来側にいて A に因果律凍結がでるとき、 B
+は A の過去光円錐まで跳躍して B に因果律跳躍が起こらないとおかしくないか?」
+
+物理的対称性: A.t > B.t + dist の状況で A's tab で Rule A fire (= 凍結) なら、 B's tab
+で Rule B fire (= 跳躍) が同時起きるべき。 player 間ではそれぞれの useGameLoop で別々に
+評価されるため設計上動いている (= 但し小 λ では overlay 閾値 `LARGE_JUMP_THRESHOLD_LS =
+0.5 ls` 未満で visible cue 不発、 これは別議論)。 一方 **LH (lighthouse) 側は 5/2 Stage 4
+で Rule B 実装したが、 Stage 3 (= 大ジャンプ閾値判定 + frozenWorldLines push + 新セグメント
+開始) と接続漏れ**。 結果、 LH の Rule B fire 時に大 gap でも単純 `appendWorldLine` で履歴
+に積まれ、 worldLine 上に visible discontinuity が生まれない → user 視点で「LH 跳躍が
+起こってない」 ように見える。
+
+これは plan §5.5「Q6 決定: 既存 worldLine 凍結機構を Rule B 大ジャンプにも適用」 の **意図
+の implementation gap**。 Stage 4 で「LH の Rule B 置換」 を実装した時に Stage 3 機構との
+接続を忘れていた。
+
+**位置**: `gameLoop.ts processLighthouseAI` の Rule B branch (line 305-311)
+
+**実装方針**: caller (= useGameLoop) で `setFrozenWorldLines` を呼ぶ side-effect-free
+設計。 `processLighthouseAI` の return に optional `largeJumpFrozen?: FrozenWorldLine`
+を追加 (= 大ジャンプの場合の旧 LH worldLine + 識別情報)、 caller が非 null なら push。
+
+```ts
+// processLighthouseAI 内、 Rule B branch 修正
+if (lambda > 0) {
+  const adjustedLhPs = createPhaseSpace(
+    createVector4(lhNewPs.pos.t + lambda, lhNewPs.pos.x, lhNewPs.pos.y, 0),
+    vector3Zero(),
+  );
+  if (isLargeJump(lambda)) {
+    // 大ジャンプ: caller で旧 worldLine を frozenWorldLines に push、 新セグメント
+    // 開始 (= self alive Rule B と対称、 plan §5.5 の意図)。
+    const frozenSnapshot = pushFrozenWorldLine([], lh)[0]; // build FrozenWorldLine
+    lhNewWl = appendWorldLine(createWorldLine(MAX_WORLDLINE_HISTORY), adjustedLhPs);
+    return { newPs: adjustedLhPs, newWl: lhNewWl, laser: null, largeJumpFrozen: frozenSnapshot };
+  }
+  lhNewPs = adjustedLhPs;
+}
+const lhNewWl = appendWorldLine(lh.worldLine, lhNewPs);
+return { newPs: lhNewPs, newWl: lhNewWl, laser: null };
+```
+
+**caller** (`useGameLoop.ts`):
+```ts
+const result = processLighthouseAI(...);
+if (result.largeJumpFrozen) {
+  fresh.setFrozenWorldLines((prev) => [...prev, result.largeJumpFrozen!]);
+}
+```
+
+**LH overlay は不要**: LH は AI で UI 持たないため `incrementCausalityJump()` は呼ばない。
+visible cue は LH の frozenWorldLines が増えることで代替 (= 既存 SceneContent renderer
+で描画される LH 凍結 worldLine = 「LH ここまでの軌跡が凍結」 が user に見える)。
+
 ### Fix B (= 一般 safety net、 virtualPos の tau upper bound)
 
 **位置**: `virtualWorldLine.ts` の `virtualPos` 関数内
