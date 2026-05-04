@@ -112,7 +112,18 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
       <div
         style={{
           position: "absolute",
-          top: "-22vh",
+          // 縦持ち: top -22vh で container 上端を viewport 上にはみ出させ、 canvas の幾何
+          //         中央 (ship 描画位置) を viewport 上 ~28vh に配置 (= ship が画面上部
+          //         hero 表示)。
+          // 横持ち (landscape): viewport 高さが狭く ship が画面中央に配置されると title /
+          //         form と必ず重なる (= 2026-05-04 user feedback「絵と被らないように」)。
+          //         top +30vh で container を下にずらし、 canvas 幾何中央 (ship 描画位置)
+          //         を ~80vh (= 画面下端付近) に押し下げる。 title (= 12vh+title 高) と
+          //         ship が同じ垂直 band に重ならない。 form / hi-scores は z=1 で ship
+          //         が下に潜って見える形 (= ship は decoration、 干渉しない)。 height は
+          //         100vh のまま (= canvas size 維持で camera FOV / OrbitControls の
+          //         default 距離が壊れない、 ship visual 大きさ portrait と同等)。
+          top: orientation === "landscape" ? "30vh" : "-22vh",
           left: 0,
           right: 0,
           height: "100vh",
