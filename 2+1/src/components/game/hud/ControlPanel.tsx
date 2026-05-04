@@ -164,8 +164,25 @@ export const ControlPanel = ({
         </>
       ) : (
         <>
-          <div>{t("hud.controls.forward")}</div>
-          <div>{t("hud.controls.cameraH")}</div>
+          {controlScheme === "legacy_classic" && (
+            <>
+              <div>{t("hud.controls.legacy_classic.move")}</div>
+              <div>{t("hud.controls.legacy_classic.heading")}</div>
+            </>
+          )}
+          {controlScheme === "legacy_shooter" && (
+            <>
+              <div>{t("hud.controls.legacy_shooter.move")}</div>
+              <div>{t("hud.controls.legacy_shooter.heading")}</div>
+              <div>{t("hud.controls.legacy_shooter.cameraRotate")}</div>
+            </>
+          )}
+          {controlScheme === "modern" && (
+            <>
+              <div>{t("hud.controls.modern.move")}</div>
+              <div>{t("hud.controls.modern.heading")}</div>
+            </>
+          )}
           <div>{t("hud.controls.cameraV")}</div>
           <div>{t("hud.controls.fire")}</div>
         </>

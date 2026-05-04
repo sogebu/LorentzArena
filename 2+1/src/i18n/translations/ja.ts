@@ -1,8 +1,15 @@
 export const ja = {
   // HUD - title & controls
   "hud.title": "相対論的アリーナ (2+1次元 時空図)",
-  "hud.controls.forward": "WASD: 前後左右 (機体相対)",
-  "hud.controls.cameraH": "←/→: 機体回転",
+  // ControlPanel.tsx で controlScheme 別に出し分け (= 移動 / 旋回 軸の意味が異なる)。
+  // ↑/↓ (camera pitch) と Space (fire) は scheme 共通。
+  "hud.controls.legacy_classic.move": "WASD: 前後左右 (機体相対)",
+  "hud.controls.legacy_classic.heading": "←/→: 機体回転",
+  "hud.controls.legacy_shooter.move": "WASD: 移動 (画面基底)",
+  "hud.controls.legacy_shooter.heading": "←/→: 砲身旋回",
+  "hud.controls.legacy_shooter.cameraRotate": "Shift+←/→: カメラ旋回",
+  "hud.controls.modern.move": "WASD: 移動 (世界基底)",
+  "hud.controls.modern.heading": "←/→: 砲塔旋回",
   "hud.controls.cameraV": "↑/↓: カメラ上下回転",
   "hud.controls.fire": "スペースキー: レーザー発射",
   "hud.controls.touch.heading": "スワイプ ←→: 方向転換",
@@ -35,10 +42,15 @@ export const ja = {
   "hud.distanceUnit": "光秒",
   "hud.center": "中心",
   // 操作系 (controlScheme = viewMode と直交軸、game-store.ts §ControlScheme)
+  // label は機能を反映 (= 内部 ID legacy_classic / legacy_shooter / modern と decoupled、
+  // 内部 ID は LS / URL hash の後方互換性のため変更しない):
+  // - 機体追従: camera が機体の heading に追従して 1 軸で回る (= legacy_classic)
+  // - ツインスティック: 移動 / aim / camera が独立 (= legacy_shooter、 Shift+矢印 で camera)
+  // - カメラ固定: camera は world basis 固定、 砲塔のみ aim 追従 (= modern)
   "hud.controlScheme.label": "操作系",
-  "hud.controlScheme.legacy_classic": "旧クラシック",
-  "hud.controlScheme.legacy_shooter": "旧シューター",
-  "hud.controlScheme.modern": "モダン",
+  "hud.controlScheme.legacy_classic": "機体追従",
+  "hud.controlScheme.legacy_shooter": "ツインスティック",
+  "hud.controlScheme.modern": "カメラ固定",
   // PLC スライスモード (PR #2): 時空図 ↔ PLC slice (= 過去光円錐 spatial slice の x-y 平面)
   "hud.spacetime": "時空図",
   "hud.plcSlice": "PLCスライス",

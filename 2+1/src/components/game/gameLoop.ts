@@ -92,14 +92,6 @@ export interface PhysicsResult {
    *  視覚 (exhaust) 用。energy 枯渇や非入力時はゼロベクトル。
    *  ゆくゆく phaseSpace に共変 α^μ を乗せる段階で boost(u_own) して 4-vector 化予定。 */
   thrustAcceleration: Vector3;
-  /**
-   * この tick で適用された effective heading yaw。
-   * - body-relative (現行): 引数 `yaw` をそのまま返す (yaw 不変)
-   * - screen-relative: WASD/touch の入力ベクトルから atan2 で導いた target yaw
-   *   (入力なしの場合は引数 `yaw` を維持)
-   * 呼び出し側は cameraYawRef.current にこの値を反映する (= heading 同期)。
-   */
-  newYaw: number;
 }
 
 export function processPlayerPhysics(
@@ -116,10 +108,14 @@ export function processPlayerPhysics(
   let forwardAccel = 0;
   let lateralAccel = 0;
   let effectiveYaw = yaw;
-  // newYaw は controlScheme 別に決まる:
-  //   legacy_classic / modern → 入力 yaw 不変 (heading は矢印キー = processCamera で別経路)
-  //   legacy_shooter        → WASD 入力ベクトルから atan2 + cameraYaw で即時スナップ
-  let newYaw = yaw;
+  // 本関数は heading (yaw) を更新しない。 全 controlScheme で heading は useGameLoop 側で
+  // 矢印キー / touch swipe 経由で管理:
+  //   legacy_classic / modern → 矢印キー (processCamera 経由)
+  //   legacy_shooter         → 矢印 ←/→ (Shift 無し) で headingYawRef を更新、 WASD は不変
+  // 旧仕様 (2026-05-04 まで): legacy_shooter で WASD → heading 即時スナップしていたが、
+  // 「射撃方向 = 移動方向」 が強制される UX が aim と move を独立させたい意図と合わず撤廃。
+  // 新仕様では heading は arrow ←/→ (PC) / touch swipe (mobile) で別軸として制御、
+  // Shift+矢印 (PC) / Shift 等価の touch 経路が camera 軸を別途回す twin-stick 構成。
 
   if (controlScheme === "legacy_classic") {
     // 機体相対 thrust。yaw を基底として forward (W/S) + lateral (A/D)。本体ごと
@@ -133,7 +129,9 @@ export function processPlayerPhysics(
     }
     // effectiveYaw = yaw のまま (入力 yaw 基底に投影)。
   } else if (controlScheme === "legacy_shooter") {
-    // Twin-stick: WASD = camera basis での進みたい方向 → heading 即時スナップ。
+    // Twin-stick (2 軸独立): WASD = camera basis での進みたい方向 thrust。
+    // heading は WASD では touch しない (= 矢印 ←/→ で別経路、 useGameLoop 側で更新)。
+    // 機体本体 hull は heading で回転 + 砲塔も heading に追従 (= aim = arrow keys)。
     let sx = 0; // camera basis +x (画面前方)
     let sy = 0; // camera basis +y (画面左)
     if (keys.has("w")) sx += 1;
@@ -147,7 +145,7 @@ export function processPlayerPhysics(
     if (mag > 1e-6) {
       const norm = Math.min(1, mag);
       effectiveYaw = Math.atan2(sy, sx) + cameraYaw;
-      newYaw = effectiveYaw;
+      // heading は不変 (= 別軸の矢印 ←/→ で管理)。
       forwardAccel = norm * PLAYER_ACCELERATION;
       lateralAccel = 0;
     }
@@ -231,7 +229,6 @@ export function processPlayerPhysics(
     thrustEnergyConsumed,
     thrustRequested,
     thrustAcceleration,
-    newYaw,
   };
 }
 

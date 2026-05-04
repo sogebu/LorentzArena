@@ -235,15 +235,31 @@ export function useGameLoop({
       // --- Camera / 矢印キーによる yaw 操作 ---
       // controlScheme で yaw 回転先が変わる:
       //   legacy_classic: 矢印 ←/→ → headingYawRef、camera は heading 追従 (cameraYawRef = headingYawRef)
-      //   legacy_shooter: 矢印 ←/→ → cameraYawRef のみ (camera が機体周りを回る)、heading は WASD 即時スナップ
+      //   legacy_shooter: 2 軸独立 twin-stick
+      //                   - 矢印 ←/→ (Shift 無し) → headingYawRef (= 砲身/aim、 機体本体の向き)
+      //                   - Shift+矢印 ←/→ → cameraYawRef (= camera が機体周りを回る、 free-look)
+      //                   - touch swipe (mobile) → cameraYawRef (= keyboard の Shift 経路と同じ役割)
+      //                   - WASD は heading に touch しない (= aim と move の独立、 旧仕様の即時 snap 撤廃 2026-05-04)
       //   modern:        矢印 ←/→ → headingYawRef、camera は world basis 固定 (cameraYawRef = 0)
       const touch = touchInput.current;
       const isDeadForCamera = myId ? selectIsDead(store, myId) : false;
       const controlScheme = store.controlScheme;
-      const yawSourceBefore =
-        controlScheme === "legacy_shooter"
-          ? cameraYawRef.current
-          : headingYawRef.current;
+      // legacy_shooter で Shift 押下中なら矢印 → camera (= 旧来の挙動)、 そうでなければ heading。
+      // Shift は normalizeKey で lowercase 化されるため "shift" で check (useKeyboardInput.ts)。
+      const shooterShiftHeld =
+        controlScheme === "legacy_shooter" && keysPressed.current.has("shift");
+      const yawSourceBefore = shooterShiftHeld
+        ? cameraYawRef.current
+        : headingYawRef.current;
+      // legacy_shooter で Shift 無しのとき、 touch.yawDelta は camera に流したい (= mobile
+      // twin-stick の 2 軸独立性を温存)。 processCamera は touch.yawDelta を yawSourceBefore
+      // に加算するため、 ここで先に touch を退避してから touch.yawDelta=0 で渡し、 後段で
+      // cameraYawRef に直接加算する。
+      let touchYawForCamera = 0;
+      if (controlScheme === "legacy_shooter" && !shooterShiftHeld) {
+        touchYawForCamera = touch.yawDelta;
+        touch.yawDelta = 0;
+      }
       const cam = processCamera(
         keysPressed.current,
         touch,
@@ -256,8 +272,12 @@ export function useGameLoop({
         headingYawRef.current = cam.yaw;
         cameraYawRef.current = cam.yaw; // camera = heading 同期
       } else if (controlScheme === "legacy_shooter") {
-        cameraYawRef.current = cam.yaw;
-        // heading は WASD で processPlayerPhysics 内で更新される
+        if (shooterShiftHeld) {
+          cameraYawRef.current = cam.yaw;
+        } else {
+          headingYawRef.current = cam.yaw;
+          cameraYawRef.current += touchYawForCamera;
+        }
       } else {
         // modern
         headingYawRef.current = cam.yaw;
@@ -461,9 +481,9 @@ export function useGameLoop({
             );
             thrustRequestedThisTick = physics.thrustRequested;
             thrustAccelerationThisTick = physics.thrustAcceleration;
-            // screen-relative では入力で yaw が即時更新される → headingYawRef に反映。
-            // body-relative では newYaw === yaw (引数) なので no-op。
-            headingYawRef.current = physics.newYaw;
+            // headingYawRef は本ループ前段 (useGameLoop の camera/yaw 操作) で全
+            // controlScheme について更新済 (= 矢印 ←/→ 経路)。 processPlayerPhysics は
+            // heading に touch しない仕様 (2026-05-04 〜)。
 
             // 自機 heading は現カメラ yaw を source of truth とする。
             // physics.newPhaseSpace.heading は前 tick の値が preserve されているので、
@@ -524,8 +544,7 @@ export function useGameLoop({
             energy = Math.max(0, energy - physics.thrustEnergyConsumed);
             thrustRequestedThisTick = physics.thrustRequested;
             thrustAccelerationThisTick = physics.thrustAcceleration;
-            // screen-relative で入力により yaw が更新されたら反映 (= heading 同期)。
-            headingYawRef.current = physics.newYaw;
+            // headingYawRef は本ループ前段で更新済 (= 矢印 ←/→ 経路、 全 controlScheme 共通)。
 
             // 自機 heading = 現カメラ yaw (source of truth)。physics.newPhaseSpace は
             // 前 tick の heading を preserve しているので上書き。

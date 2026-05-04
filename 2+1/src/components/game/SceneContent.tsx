@@ -219,7 +219,7 @@ export const SceneContent = ({
   );
   // カメラ yaw は cameraYawRef を直読。useGameLoop が controlScheme 別に正しい値を書く:
   //   legacy_classic → heading と同期 (camera が heading に追従、旧挙動)
-  //   legacy_shooter → 独立 (camera が機体周りを回る、矢印で操作)
+  //   legacy_shooter → 独立 (Shift+矢印 / mobile touch swipe で旋回、 default 0)
   //   modern        → 0 固定 (world basis、camera は回らない)
   const viewMode = useGameStore((s) => s.viewMode);
   const controlScheme = useGameStore((s) => s.controlScheme);

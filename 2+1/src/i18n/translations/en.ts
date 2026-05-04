@@ -3,8 +3,13 @@ import type { TranslationKey } from "./ja";
 export const en: Record<TranslationKey, string> = {
   // HUD - title & controls
   "hud.title": "Relativistic Arena (2+1D Spacetime)",
-  "hud.controls.forward": "WASD: Move (body-relative)",
-  "hud.controls.cameraH": "←/→: Turn (heading)",
+  "hud.controls.legacy_classic.move": "WASD: Move (body-relative)",
+  "hud.controls.legacy_classic.heading": "←/→: Turn ship",
+  "hud.controls.legacy_shooter.move": "WASD: Move (screen-relative)",
+  "hud.controls.legacy_shooter.heading": "←/→: Aim",
+  "hud.controls.legacy_shooter.cameraRotate": "Shift+←/→: Rotate camera",
+  "hud.controls.modern.move": "WASD: Move (world-relative)",
+  "hud.controls.modern.heading": "←/→: Aim turret",
   "hud.controls.cameraV": "↑/↓: Camera pitch",
   "hud.controls.fire": "Space: Fire laser",
   "hud.controls.touch.heading": "Swipe ←→: Turn",
@@ -38,9 +43,9 @@ export const en: Record<TranslationKey, string> = {
   "hud.center": "Center",
   // controlScheme (orthogonal axis to viewMode, see game-store.ts §ControlScheme)
   "hud.controlScheme.label": "Controls",
-  "hud.controlScheme.legacy_classic": "Legacy Classic",
-  "hud.controlScheme.legacy_shooter": "Legacy Shooter",
-  "hud.controlScheme.modern": "Modern",
+  "hud.controlScheme.legacy_classic": "Body-follow",
+  "hud.controlScheme.legacy_shooter": "Twin-stick",
+  "hud.controlScheme.modern": "Camera-fixed",
   // PLC slice mode (PR #2): spacetime ↔ PLC slice (= past light cone spatial slice on x-y plane)
   "hud.spacetime": "Spacetime",
   "hud.plcSlice": "PLC Slice",

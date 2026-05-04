@@ -101,10 +101,13 @@ location.reload();
 - 機体本体 group が heading で回転、 cannonYawGroup は 0 (本体に固定)、 噴射方向は world thrust を local frame に inverse rotate
 - aim 線 (HeadingMarkerRenderer) **非表示** (= 本体 hull が heading を示すため冗長)
 
-**`legacy_shooter` (旧 twin-stick、 71e5788^ 旧 shooter 復元)**:
-- WASD = camera basis での進みたい方向 → heading 即時スナップ + thrust
-- 矢印 ←/→ = `cameraYawRef` 旋回 (camera が機体周りを回る、 heading は WASD で別途決定)
-- 機体本体は heading で回転 (twin-stick 風)、 aim 線 表示 (opacity 0.22)
+**`legacy_shooter` (twin-stick、 2 軸独立)**:
+- WASD = camera basis での進みたい方向 thrust (heading 不変、 = aim と move を独立)
+- 矢印 ←/→ (Shift 無し) = `headingYawRef` 旋回 (= 砲身 / aim、 機体本体の向き)
+- **Shift+矢印 ←/→ = `cameraYawRef` 旋回** (camera が機体周りを回る、 free-look)
+- mobile touch swipe = `cameraYawRef` 旋回 (= 既存仕様、 Shift 等価)
+- 機体本体は heading で回転 (= aim 方向を向く)、 aim 線 表示 (opacity 0.22)
+- 旧仕様 (~ 2026-05-04 まで) は WASD で heading 即時スナップしていたが、 「射撃方向 = 移動方向」 が強制される UX が aim と move を独立させたい意図と合わず撤廃。 現仕様は 2 軸独立 twin-stick (WASD=move / 矢印=aim / Shift+矢印=camera) に倒した
 
 **`modern` (71e5788 で導入)**:
 - WASD = world basis (cameraYaw=0 前提) thrust、 heading 不変
