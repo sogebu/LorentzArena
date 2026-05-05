@@ -478,7 +478,7 @@ export const SceneContent = ({
           {[5, 10, 15, 20].map((r) => (
             <mesh key={r}>
               <ringGeometry args={[r - 0.06, r + 0.06, 64]} />
-              <meshBasicMaterial color="#1a3a1a" transparent opacity={0.6} side={THREE.DoubleSide} />
+              <meshBasicMaterial color="#1a3a1a" transparent opacity={0.6} depthWrite={false} side={THREE.DoubleSide} />
             </mesh>
           ))}
         </group>

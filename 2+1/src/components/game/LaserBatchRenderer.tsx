@@ -137,6 +137,7 @@ export const LaserBatchRenderer = ({
             vertexColors
             transparent
             opacity={LASER_WORLDLINE_OPACITY}
+            depthWrite={false}
             onBeforeCompile={applyTimeFadeShader}
           />
         </lineSegments>

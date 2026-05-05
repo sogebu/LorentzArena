@@ -80,6 +80,7 @@ export const getDebrisMaterial = (
       color,
       transparent: true,
       opacity: DEBRIS_MARKER_OPACITY,
+      depthWrite: false,
     });
     debrisMaterialCache.set(key, mat);
   }
@@ -98,6 +99,7 @@ export const getHitDebrisMaterial = (
       color,
       transparent: true,
       opacity: HIT_DEBRIS_MARKER_OPACITY,
+      depthWrite: false,
     });
     hitDebrisMaterialCache.set(key, mat);
   }

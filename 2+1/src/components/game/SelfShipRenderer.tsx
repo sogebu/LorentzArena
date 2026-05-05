@@ -9,10 +9,6 @@ import {
   type Vector3,
   type Vector4,
 } from "../../physics";
-import {
-  ALWAYS_ON_TOP_FG_MESH_PROPS,
-  ALWAYS_ON_TOP_MATERIAL_PROPS,
-} from "./alwaysOnTopRender";
 import { AntennaBeaconRenderer } from "./AntennaBeaconRenderer";
 import {
   ARROW_BASE_LENGTH,
@@ -748,13 +744,13 @@ export const SelfShipRenderer = ({
           </group>
 
           {/* Exhaust (4 nozzle 各々、旧 ExhaustCone と同 spec、2 層 cone + additive blending)。
-          位置・向き・scale は useFrame で nozzle 個別に動的設定。 ALWAYS_ON_TOP **FG** layer
-          (= alwaysOnTopRender.ts、 mesh.renderOrder=11 + material.depthTest=false +
-          material.depthWrite=false) で世界線 tube 等の背景 D pattern geometry より常に上に
-          描画 (transparent + additive で後勝ち順 + depth buffer 完全無視)。 BG layer (= LH、
-          renderOrder=10) より上の FG layer に置くことで、 自機が LH 近接 + 推進中の場面でも
-          exhaust nozzle と LH meshes の sort flicker (= 旧 1 layer 設計の bug) を構造的に
-          回避。 */}
+          位置・向き・scale は useFrame で nozzle 個別に動的設定。 transparent + depthWrite=false
+          で「自分は depth 書かないが他の depth は respect」 (= 抽象可視化 1 原則、 2026-05-05
+          plan: depth-aware-cleanup.md)。 worldline / cone / laser 等の背景は同 pattern で
+          depth 書かないため exhaust を遮らず、 self ship hull (opaque) 等の物理 entity は
+          depth 書くため exhaust 自身は適切に hull の後ろに隠れる (= 自然な depth 順序)。 旧
+          ALWAYS_ON_TOP trio (= depthTest=false 強制) は撤去、 1 段目 trio が解消するため
+          BG/FG layer 分離も不要。 */}
           {nozzleAngles.map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: NOZZLE_COUNT 固定 + 順序不変
             <group key={`exhaust-${i}`}>
@@ -764,7 +760,6 @@ export const SelfShipRenderer = ({
                 }}
                 geometry={sharedGeometries.exhaustCone}
                 visible={false}
-                {...ALWAYS_ON_TOP_FG_MESH_PROPS}
               >
                 <meshBasicMaterial
                   ref={(el) => {
@@ -772,7 +767,7 @@ export const SelfShipRenderer = ({
                   }}
                   color={exhaustOuterColor}
                   transparent
-                  {...ALWAYS_ON_TOP_MATERIAL_PROPS}
+                  depthWrite={false}
                   blending={THREE.AdditiveBlending}
                   toneMapped={false}
                 />
@@ -783,7 +778,6 @@ export const SelfShipRenderer = ({
                 }}
                 geometry={sharedGeometries.exhaustCone}
                 visible={false}
-                {...ALWAYS_ON_TOP_FG_MESH_PROPS}
               >
                 <meshBasicMaterial
                   ref={(el) => {
@@ -791,7 +785,7 @@ export const SelfShipRenderer = ({
                   }}
                   color={exhaustInnerColor}
                   transparent
-                  {...ALWAYS_ON_TOP_MATERIAL_PROPS}
+                  depthWrite={false}
                   blending={THREE.AdditiveBlending}
                   toneMapped={false}
                 />
