@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useI18n } from "../i18n";
 import { usePeer } from "../hooks/usePeer";
+import { useGameStore } from "../stores/game-store";
 import { isTouchDevice } from "./game/hud/utils";
 
 const AUTO_MINIMIZE_MS = 5000;
@@ -20,6 +21,10 @@ const Connect = () => {
   } = usePeer();
   const showTransportSelector = availableTransports.length > 1;
   const { t } = useI18n();
+  // Bug 11 plan §3 (c): staleFrozenIds (= app 層で「応答なし」 認定された peer の集合)
+  // を subscribe して下記 peer entry の表示切替に使用。 staleFrozenIds は zustand
+  // canonical state、 useStaleDetection の syncStoreMirror 経由で常時 mirror。
+  const stale = useGameStore((s) => s.staleFrozenIds);
   const [isMinimized, setIsMinimized] = useState(false);
   // マウント後 AUTO_MINIMIZE_MS で自動最小化。mobile 限定: PC はパネル常時展開。
   // ユーザーが 1 回でも手動操作したら以降発動しない。
@@ -132,14 +137,32 @@ const Connect = () => {
             <div className="connections-list">
               <h3>{t("connect.peers")}</h3>
               <ul>
-                {connections.map((conn) => (
-                  <li
-                    key={conn.id}
-                    className={conn.open ? "connected" : "disconnected"}
-                  >
-                    {conn.id} ({conn.open ? t("connect.peerOpen") : t("connect.peerClosed")})
-                  </li>
-                ))}
+                {connections.map((conn) => {
+                  // Bug 11 plan §3 (c) HUD 整合化: 3 状態 (= connected / stale /
+                  // disconnected) で表示を切替。 物理層 (conn.open) と app 層
+                  // (staleFrozenIds) は独立 state で:
+                  // - open=true && !stale → "connected" 緑「接続中」 (= 健康)
+                  // - open=true && stale  → "stale" 黄「応答なし」 (= silent failure、
+                  //   sleep-wake / migration race で markStale 経路が触った peer)
+                  // - open=false           → "disconnected" 赤「接続準備中/失敗」
+                  // 思想 doc: design/network-recovery.md 軸 2 (per-peer view 軸)。
+                  const isStale = conn.open && stale.has(conn.id);
+                  const className = !conn.open
+                    ? "disconnected"
+                    : isStale
+                      ? "stale"
+                      : "connected";
+                  const label = !conn.open
+                    ? t("connect.peerClosed")
+                    : isStale
+                      ? t("connect.peerStale")
+                      : t("connect.peerOpen");
+                  return (
+                    <li key={conn.id} className={className}>
+                      {conn.id} ({label})
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}

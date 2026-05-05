@@ -101,6 +101,7 @@ export const ja = {
     "学校/社内ネットワークだと WebRTC が塞がれて接続できないことがあります。",
   "connect.peers": "接続中の相手",
   "connect.peerOpen": "接続中",
+  "connect.peerStale": "応答なし",
   "connect.peerClosed": "接続準備中/失敗",
   "connect.networkSettings": "ネットワーク設定(env)",
   // Lobby

@@ -96,6 +96,7 @@ export const en: Record<TranslationKey, string> = {
     "WebRTC may be blocked on school/corporate networks, preventing connection.",
   "connect.peers": "Connected peers",
   "connect.peerOpen": "open",
+  "connect.peerStale": "no response",
   "connect.peerClosed": "connecting/failed",
   "connect.networkSettings": "Network settings (env)",
   // Lobby

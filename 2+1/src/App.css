@@ -190,6 +190,17 @@ button:hover {
   color: #155724;
 }
 
+/*
+ * Stale: WebRTC/PeerJS 上は接続している (= conn.open === true) が、
+ * staleFrozenIds に入っている (= app 層で「応答なし」 認定)。
+ * 緑「接続中」 と赤「接続準備中/失敗」 の中間として黄色 (warning) で表示、
+ * user に「物理層 OK だが silent failure」 を可視化する。 Bug 11 plan §3 (c)。
+ */
+.connections-list li.stale {
+  background-color: #fff3cd;
+  color: #856404;
+}
+
 .connections-list li.disconnected {
   background-color: #f8d7da;
   color: #721c24;
