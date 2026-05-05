@@ -503,6 +503,8 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
   //   reconnect() を実装する transport 抽象 contract)
   // - reconnect は instance 内 logic、 caller 側は state を変えない
   // - peerStatus が "open" に復帰したら (e) 経路 (10 sec timeout) もリセットされる
+  // - reconnectTriggeredRef を set して Stage 8-C mesh-ish recovery の trigger に使う
+  const reconnectTriggeredRef = useRef(false);
   useEffect(() => {
     if (!peerManager) return;
     if (peerStatus.status !== "disconnected") return;
@@ -512,8 +514,49 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         "[PeerProvider] Signaling disconnected 5 sec — attempting reconnect()",
       );
       peerManager.reconnect();
+      reconnectTriggeredRef.current = true;
     }, 5000);
     return () => clearTimeout(timeoutId);
+  }, [peerManager, peerStatus]);
+
+  // Stage 8-C mesh-ish recovery (= 思想 doc design/network-recovery.md 軸 4「N² でも
+  // 良し」 の実装具現化、 既存 mesh-ready stepping stone (network.md L142、
+  // messageHandler は「どの peer からの snapshot も受け付ける」 semantics) を migration
+  // recovery で初活用):
+  //
+  // reconnect 試行後の最初の peerStatus = "open" 復帰時に、 過去観察した peer ID list
+  // (= peerOrderRef、 ping piggyback で client が adopt + host で connections 変化時に
+  // update) の最近 8 個に対して `peerManager.connect(id)` を試行。 post-split で
+  // beacon 経由 connection 失敗時の救済経路 (= migration race の特殊 case で beacon
+  // dead だが別 peer alive のケースを mesh-ish 試行で発見)。
+  //
+  // 設計選択:
+  // - reconnectTriggeredRef で gate: normal play / 通常 migration では trigger されない、
+  //   reconnect 経由の post-split 復帰時のみ実行
+  // - 最近 8 個に制限: peerOrderRef は migration 経由で累積するため全試行は爆発、
+  //   最近 entry が現在の room participant に該当する確率高
+  // - 既存 conns に居ない ID のみ connect: 重複試行を PeerJS 側 race ではなく caller
+  //   側で防止
+  // - 失敗 (= dead peer ID) は peer-unavailable → onPeerUnavailable callback (Stage 8-A
+  //   layer 3) で markStaleId → 既存 cleanup 経路に流れる、 結果 entry 自然 GC
+  useEffect(() => {
+    if (!peerManager) return;
+    if (peerStatus.status !== "open") return;
+    if (!reconnectTriggeredRef.current) return;
+    reconnectTriggeredRef.current = false;
+    const recent = peerOrderRef.current.slice(-8);
+    const connectedIds = new Set(peerManager.getConnectedPeerIds());
+    const myIdValue = peerManager.id();
+    for (const id of recent) {
+      if (id === myIdValue) continue;
+      if (connectedIds.has(id)) continue;
+      // eslint-disable-next-line no-console
+      console.log(
+        "[PeerProvider] mesh-ish recovery — trying connect to known peer:",
+        id,
+      );
+      peerManager.connect(id);
+    }
   }, [peerManager, peerStatus]);
 
   // Escape hatch 軸 (Bug 11 plan 候補 (e)): peerStatus が disconnected/error
