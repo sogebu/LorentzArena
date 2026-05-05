@@ -3,8 +3,9 @@
 **起草**: 2026-05-05 (= 当初 plan-only)
 **Update**: 2026-05-05 PM、 odakin 観察 sleep-wake → 両 tab がホスト化 + 互いが見えない で **reliable repro 確立**、 仮説 H3 追加。
 **v2 refresh**: 2026-05-05 evening、 implementation phase 着手前の audit で発見した懸念 (B1-B4) を反映、 思想は別 doc [`design/network-recovery.md`](../design/network-recovery.md) で 6 軸整理して anchor 化。 推奨順 (e) → (a) → (d) で連続実装 (= 3 軸が直交、 互いに干渉ゼロ)。
-**Closed**: 2026-05-05 evening。 §8 完了基準 全 ✅、 production sleep-wake verify confirmed (build `19:15:56`、 (a)+(d)+(e)+(c) 全部入りで plan fully close)。
-**Status**: ✅ **implementation 完了 + production verify confirmed**。 残課題は §8 末尾の「別 task defer」 listing 参照。
+**Closed**: 2026-05-05 evening。 §8 完了基準 全 ✅、 production sleep-wake verify confirmed (build `19:15:56`、 (a)+(d)+(e)+(c) 全部入り)。
+**Stage 8 (= 根本治療 sweep)**: 2026-05-05 evening、 残課題 3 つ (= transport 対称性 / direction 対称性 / mesh-ish recovery) を独立 commit で全部実装 (`997c7a3` 8-A + `2a54a29` 8-B + `9b3f2ff` 8-C)、 思想 doc 全軸が実装で具現化。 「絆創膏の上に絆創膏」 を避けて根本から綺麗に整備。
+**Status**: ✅ **implementation 完了 + production verify confirmed + Stage 8 根本治療完成**。 思想と実装の gap 解消、 layer / direction / transport / phase 全対称性が architecture 的に確立。
 
 ---
 
@@ -355,13 +356,19 @@ Repro 2 は user の手で 1 分内で試せる、 implementation phase の veri
 - [x] (d) PeerJS instance reset 実装 ✅ **commit `26dc8d7`** (PeerManager.reconnect() 新設、 PeerProvider 5sec watch)
 - [x] (e) reload prompt UX 実装 ✅ **commit `712f2e2`** (SignalingLostOverlay + 10sec timeout、 unavailable-id 等 false trigger 除外)
 - [x] (c) HUD 「接続中の相手」 表示の stale/disconnect 整合 ✅ **commit `48f17d2`** (3 状態 connected/stale/disconnected、 黄色「応答なし」)
-- [x] preview / 本番 deploy ✅ **build `2026/05/05 19:15:56`** ((c) HUD UI 追加後の最終 deploy、 (a)+(d)+(e)+(c) 全部入り)
+- [x] preview / 本番 deploy ✅ **build `2026/05/05 19:35:04`** (Stage 8 根本治療完成: transport 対称性 + direction 対称性 + mesh-ish recovery 全部入り)
 - [x] reliable repro で「両側 因果律跳躍 同時 fire しない」 + 「LH worldline 縞 出ない」 + 「peer 不可視 transient < 1 sec」 + 「sleep-wake stuck から自動復帰 or reload prompt 表示」 を verify ✅ **production sleep-wake で confirmed** (`[PeerManager] Attempting peer.reconnect()` log 観察、 ゲーム継続)
 
-→ **plan fully closed (5/5 evening)**。 残課題は別 task defer:
-- localhost (Vite HMR) full reload は dev mode 限定挙動 (= 私の fix 範囲外)
+→ **plan fully closed (5/5 evening) + Stage 8 根本治療完成**:
+
+**Stage 8 (= 残課題 3 つの根本治療、 5/5 evening 連続実装)**:
+- [x] **transport 対称性** (commit `997c7a3` Stage 8-A): WsRelayManager に `reconnect()` 追加、 NetworkManager union type 全 member 対応、 PeerProvider の `instanceof` check 廃止で transport 抽象的に reconnect 経路が呼べる architecture 確立
+- [x] **direction 対称性** (commit `2a54a29` Stage 8-B): `useStaleDetection.checkStale` に `STALE_EARLY_THRESHOLD = 1500ms` 追加、 既存 `lastUpdateTimeRef` 経由で BH 側にも layer 4 (phaseSpace timeout) 確立、 BH 側 sleep-wake で markStale timing が dc.close 待ち (数秒〜数十秒) → 1.5 sec early に圧縮
+- [x] **mesh-ish recovery** (commit `9b3f2ff` Stage 8-C): 既存 mesh-ready stepping stone (network.md L142) を migration recovery で初活用、 reconnect 後の peerOrderRef 最近 8 個に mesh-ish connect 試行で post-split race 救済、 思想 doc 軸 4 を実装で具現化
+
+**残課題 (= 別 task defer)**:
+- localhost (Vite HMR) full reload は dev mode 限定挙動 (= 我々の fix 範囲外)
 - host tab の `la-{room} (接続準備中/失敗)` 残骸 entry の UI cleanup (= migration race 残骸、 cosmetic)
-- mesh-ish recovery (= 既存 stepping stone を migration recovery で初活用) は (d) で sleep-wake 解消したので un-defer trigger 未達、 別 plan 維持
 
 ---
 

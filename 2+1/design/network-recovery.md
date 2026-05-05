@@ -26,22 +26,51 @@ normal play / migration はどちらも star を前提に回るが、 post-split
 
 3 軸は完全に直交、 互いの implementation に干渉ゼロ、 補完関係。 1 軸の修正が他軸の問題を解消することはない (= H1 を fix しても H3 は残る、 逆も同様)。
 
-### per-peer view 軸の layer 対称性 (= 5/5 evening 4 軸 sweep deeper analysis で確立)
+### per-peer view 軸の layer 対称性 (= 5/5 evening 4 軸 sweep deeper analysis で確立、 Stage 8 で direction 対称まで完成)
 
-per-peer view 軸 (= staleFrozenIds 拡張) の中でも、 peer disconnect 検出は **3 つの独立 layer から signal を受ける** べきという layer 対称性が要請される。 各 layer の独立性:
+per-peer view 軸 (= staleFrozenIds 拡張) の中でも、 peer disconnect 検出は **4 つの独立 layer から signal を受ける** べきという layer 対称性が要請される。 各 layer の独立性:
 
-| layer | signal | 他 layer から見えるか |
-|---|---|---|
-| **WebRTC DataChannel** | `dc.on('close')` 経由の TCP/SCTP / ICE close event | 他 layer からは見えない (= TCP-level) |
-| **アプリ層 keepalive** | heartbeat ping 不到来の app-level 検知 | アプリ層独自、 silent failure を補う |
-| **PeerJS signaling** | `peer-unavailable` error (= signaling server 経由の peer 不在通知) | signaling-only signal、 P2P 確立前/失敗で発火 |
+| layer | signal | direction (client/BH) | 他 layer から見えるか |
+|---|---|---|---|
+| **WebRTC DataChannel** | `dc.on('close')` 経由の TCP/SCTP / ICE close event | 両方向対称 ✓ | 他 layer からは見えない (= TCP-level) |
+| **アプリ層 keepalive (heartbeat)** | host → client への ping 不到来検知 | client 側のみ (= host が ping 送信) | アプリ層独自、 silent failure を補う |
+| **PeerJS signaling** | `peer-unavailable` error (= signaling server 経由の peer 不在通知) | client 側のみ (= 新 host 接続試行で発火) | signaling-only signal、 P2P 確立前/失敗で発火 |
+| **アプリ層 phaseSpace timeout** ✨ | 1.5 sec 不到来で early markStale (= 125Hz 送信で 187 frame 連続 loss を異常認定) | **両方向対称 ✓** (= Stage 8-B、 BH 側 direction 対称性の根本治療) | アプリ層独自、 既存 lastUpdateTimeRef 経由 |
+
+**direction 対称性** (= Stage 8-B、 commit `2a54a29`): heartbeat / signaling layer は client 側 specific で BH 側に対応する signal がない (= BH は ping を送る側、 client から ping は受けない)。 **BH 側 sleep-wake シナリオ** (= solo host / 2 tab demo / migration 後の host 切替で発生する typical scenario) で BH 側の disconnect 検知が WebRTC layer のみに依存して timing が遅れる問題を、 **phaseSpace 1.5 sec early threshold** で解消。 phaseSpace は 125Hz で双方向送信されるため、 不到来検知は両方向対称な早期 signal として機能する。
 
 **timing 帰結**:
 - normal disconnect: WebRTC layer が 1 frame 内 (~16ms) で markStale triggered
-- sleep-wake silent failure: signaling layer (即時) > heartbeat timeout (2.5sec via disconnectPeer chain) > WebRTC layer (driver dependent、 数秒〜数十秒)
+- sleep-wake silent failure (client 側): signaling (即時) > heartbeat (2.5sec) > phaseSpace timeout (1.5sec) > WebRTC layer (driver dependent)
+- sleep-wake silent failure (BH 側): **phaseSpace timeout (1.5sec)** > WebRTC layer (driver dependent) — Stage 8-B で BH 側に layer 4 が確立、 0-1 sec 圧縮実現
 - migration race: signaling layer (= 新 host 接続失敗での peer-unavailable) で最早期捕捉
 
-→ 全 layer から signal を取って markStale 経路に集約することで H1 (= 3 秒 unprotected window) を実用上不発化、 layer 対称な fail-fast 検出が Bug 11 plan §3 (a) の真の要件 (= [Bug 11 plan §3 (a) Step 2 5/5 evening scope](../plans/2026-05-05-network-split-rule-b-runaway.md))。
+→ 全 layer から signal を取って markStale 経路に集約することで H1 (= 3 秒 unprotected window) を実用上不発化、 direction 対称な fail-fast 検出が Stage 8-B 完成で達成。
+
+### system topology 軸の transport 対称性 (= Stage 8-A で確立)
+
+system topology 軸 (= signaling layer self-recovery) の中でも、 PeerJS / WS Relay 両 transport で同じ recovery 経路を持つべきという transport 対称性が要請される。
+
+| transport | reconnect API | 内部 logic |
+|---|---|---|
+| **PeerJS** | `PeerManager.reconnect()` (commit `26dc8d7`) | `peer.reconnect()` 試行 → 失敗で `peer.destroy()` + 新 Peer 作成 |
+| **WS Relay** | `WsRelayManager.reconnect()` ✨ (commit `997c7a3`、 Stage 8-A) | WebSocket が CLOSED/null なら旧 ws close 後 `openSocket()` 再呼出 |
+
+**NetworkManager union type** (= `PeerManager<Message> | WsRelayManager<Message>`) の全 member が `reconnect()` を実装する transport 抽象 contract により、 `PeerProvider` 側で `instanceof` check 不要で transport 抽象的に呼べる。 `peerStatus.status === "disconnected"` を 5 sec watch する useEffect は両 transport で同 path で動作。
+
+→ transport 対称性 architecture 的に完璧、 PeerJS / WS Relay いずれの transport で運用していても sleep-wake 自動復帰が機能する。
+
+### post-split phase の mesh-ish recovery (= Stage 8-C で確立、 軸 4 の実装具現化)
+
+軸 4 で「N² でも良し」 思想を明文化したが、 implementation は別 plan defer されていた。 Stage 8-C で **既存 mesh-ready stepping stone** ([`network.md`](network.md) L142、 messageHandler は「どの peer からの snapshot も受け付ける」 semantics) を migration recovery で **初活用**、 post-split phase の最後の盲点を埋めた。
+
+**実装** (commit `9b3f2ff`、 Stage 8-C):
+- (d) reconnect 試行時に `reconnectTriggeredRef.current = true` set
+- 復帰後の最初の `peerStatus = "open"` 遷移で `peerOrderRef.current.slice(-8)` (= 過去観察 peer ID list の最近 8 個) に対して `peerManager.connect(id)` 試行
+- 既存 conns に居ない ID のみ試行 (= 重複防止)
+- 失敗 (= dead peer ID) は peer-unavailable → signaling layer 経路で markStaleId → 自然 GC
+
+**post-split race の救済**: beacon 経由 connection 失敗 (= 旧 BH dead) でも別 peer alive なら mesh-ish 試行で発見、 既存 star topology の盲点を埋める。 normal play の star efficiency は不変、 mesh burst は migration の transient phase 数秒のみ。
 
 ## 軸 3: Bug 11 真因 3 層 chain (H1+H2+H3 統合)
 
@@ -86,7 +115,7 @@ normal play の star は **既に system total O(N²)** を BH 集中で運用�
 
 mesh full N² の defer 理由は **ROI** (= 接続管理 +100 LOC + NAT 越えコスト)、 帯域そのものではない。 messageHandler は既に **mesh-ready stepping stone** ([`network.md`](network.md) L142、 「どの peer からの snapshot も受け付ける」 semantics) として設計されている。
 
-→ migration / post-split の transient burst で **mesh-ish 通信を許容**、 normal play の star efficiency は不変。 「N² でも良し」 想起 (5/5 odakin) は既存 architecture の自然な拡張、 帯域思想の変更ではない。 implementation は別 plan に defer (= まず PeerJS signaling self-recovery 経路 (= (d)) で sleep-wake stuck が解消するか実機 verify、 不十分なら mesh-ish recovery (= room beacon ID + 既知 peer ID 試行) を追加実装)。
+→ migration / post-split の transient burst で **mesh-ish 通信を許容**、 normal play の star efficiency は不変。 「N² でも良し」 想起 (5/5 odakin) は既存 architecture の自然な拡張、 帯域思想の変更ではない。 ✅ **5/5 evening Stage 8-C で実装具現化** (commit `9b3f2ff`、 詳細は本 doc 軸 2 末尾「post-split phase の mesh-ish recovery」 subsection)。 既存 stepping stone を migration recovery で初活用、 思想と実装の gap を解消した根本治療。
 
 ## 軸 5: 治療優先順 (= 思想からの含意)
 

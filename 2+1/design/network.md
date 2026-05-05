@@ -139,7 +139,7 @@ Authority 解体後、`kill` / `respawn` / `intro` などのイベントは owne
 
 full mesh の追加 robustness (BH 停止中の reconciliation 継続) は現スケール (2-4 peer、BH tab-hidden は `HOST_HIDDEN_GRACE` で既に対応済) では ROI 低く defer。
 
-**将来の full mesh 移行**: Stage 1.5 の messageHandler は既に "どの peer からの snapshot も受け付ける" semantics。mesh 接続を追加すれば自動的に mesh snapshot 化する (stepping stone として設計)。
+**将来の full mesh 移行**: Stage 1.5 の messageHandler は既に "どの peer からの snapshot も受け付ける" semantics。mesh 接続を追加すれば自動的に mesh snapshot 化する (stepping stone として設計)。 ✅ **2026-05-05 Stage 8-C で migration recovery 経路として初活用** (= post-split で `peerOrderRef` の最近 8 個に mesh-ish connect 試行、 詳細: [`network-recovery.md`](network-recovery.md) 軸 2 末尾 + 軸 4)。
 
 **Recovery 軸の補論 (2026-05-05)**: sleep-wake / network split / post-split phase の compound 症状 (= [Bug 11 ledger](../SESSION.md)) は本 doc の topology 軸では capture しきれない別軸 (= per-peer view + signaling self-recovery + escape hatch) を要する。 詳細思想は [`network-recovery.md`](network-recovery.md)。 migration / post-split の transient burst では mesh-ish 通信 (= 既存 stepping stone を活用) を許容する design 拡張 — normal play の star efficiency は不変。
 
