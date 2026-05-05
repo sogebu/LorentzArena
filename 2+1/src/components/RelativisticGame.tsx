@@ -70,6 +70,27 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const keysPressed = useKeyboardInput();
   const touchInput = useTouchInput();
   const stale = useStaleDetection();
+
+  // Bug 11 候補 (a) signaling layer 経路: PeerProvider が peer-unavailable error
+  // を受信した時に呼べるよう、 useStaleDetection の markStale / recoverStale closure
+  // を zustand store の markStaleId / recoverStaleId actions に register する。
+  // 思想 doc: design/network-recovery.md 軸 2 (3 layer 独立 fault detector)。
+  // PeerProvider は React tree 上で本 component より上層なので props 経由で渡せず、
+  // zustand action 経由が pragmatic な choice (game-store.ts markStaleId docstring 参照)。
+  useEffect(() => {
+    useGameStore.setState({
+      markStaleId: stale.markStale,
+      recoverStaleId: stale.recoverStale,
+    });
+    return () => {
+      // unmount で no-op に戻す (= dev HMR / Strict Mode で stale closure 残留防止)
+      useGameStore.setState({
+        markStaleId: () => {},
+        recoverStaleId: () => {},
+      });
+    };
+  }, [stale]);
+
   useHighScoreSaver(myId, displayName, peerManager);
 
   // Timers for LH / non-self respawn (sub-tick precision). Kept here (not

@@ -20,6 +20,27 @@ export type PeerServerStatus =
   | { status: "disconnected" }
   | { status: "error"; type?: string; message: string };
 
+/**
+ * PeerJS の `peer-unavailable` error message から peerId を抽出する pure helper。
+ *
+ * PeerJS v1.x の error.message format は `"Could not connect to peer ${peerId}"`
+ * (LorentzArena は v1.5.5 を使用、 package.json 参照)。 LorentzArena の peerId は
+ * `Math.random().toString(36).substring(2, 11)` 由来で alphanumeric (= 0-9, a-z) +
+ * 一部 helper ID で `-` を含む可能性があるため `[a-z0-9_-]+` で抽出。
+ *
+ * **caller**: `PeerManager` の error handler で peer-unavailable 検知時に peerId を
+ * 抽出し、 `onPeerUnavailable(cb)` callback で expose。 思想 doc:
+ * `design/network-recovery.md` 軸 2 (signaling layer 独立 fault detector)。
+ *
+ * **format 変動 risk**: PeerJS のバージョン更新で error message format が変わると
+ * 抽出 fail (= null 返却で silent skip)。 test で format 固定化、 PeerJS major
+ * version 更新時は test failure で気付ける。
+ */
+export function extractPeerIdFromError(message: string): string | null {
+  const m = /Could not connect to peer ([a-z0-9_-]+)/i.exec(message);
+  return m ? m[1] : null;
+}
+
 export class PeerManager<T> {
   private readonly localId: string;
   private readonly peerOptions?: PeerOptions;
@@ -32,6 +53,13 @@ export class PeerManager<T> {
 
   private peerStatus: PeerServerStatus = { status: "connecting" };
   private peerStatusCallback?: (status: PeerServerStatus) => void;
+
+  // Bug 11 候補 (a) signaling layer signal: PeerJS の peer-unavailable error から
+  // 抽出した peerId を caller に通知する callback。 sleep-wake / migration race で
+  // WebRTC layer の dc.close より早い signal になるため、 markStale を即時 trigger
+  // する経路として採用。 思想 doc: design/network-recovery.md 軸 2 (3 layer 独立
+  // fault detector)。
+  private peerUnavailableCallback?: (peerId: string) => void;
 
   // Beacon holder / peer role flags (Stage F naming).
   // "beacon holder" = 旧 "host"。PeerJS ビーコン ID (la-{roomName}) の
@@ -85,6 +113,18 @@ export class PeerManager<T> {
         // eslint-disable-next-line no-console
         console.error("[PeerManager] Peer error", err);
       }
+
+      // Bug 11 候補 (a) signaling layer signal: peer-unavailable は「特定 peer に
+      // 接続不能」 の signal で、 sleep-wake / migration race では WebRTC layer の
+      // dc.close より早く発火する。 error.message から peerId を抽出して caller
+      // (PeerProvider) に通知、 caller 側で connectionPhase + players map check で
+      // false positive (= room discovery transient) を除外して markStale 呼出。
+      if (e.type === "peer-unavailable" && e.message) {
+        const peerId = extractPeerIdFromError(e.message);
+        if (peerId) {
+          this.peerUnavailableCallback?.(peerId);
+        }
+      }
     });
 
     peer.on("connection", (dc) => this.register(dc));
@@ -104,6 +144,18 @@ export class PeerManager<T> {
 
   getPeerStatus(): PeerServerStatus {
     return this.peerStatus;
+  }
+
+  /**
+   * Subscribe to PeerJS `peer-unavailable` events with peerId extraction.
+   *
+   * Bug 11 候補 (a) signaling layer 経路で使用。 caller (= PeerProvider) は
+   * connectionPhase / players map condition を check した上で markStale を呼ぶ。
+   * 起動時 room discovery transient は caller 側で除外、 PeerManager は raw signal
+   * のみ expose する設計。
+   */
+  onPeerUnavailable(cb: (peerId: string) => void) {
+    this.peerUnavailableCallback = cb;
   }
 
   /**

@@ -462,6 +462,34 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     setActiveTransportState("wsrelay");
   }, [preferredTransportMode, wsRelayUrl, activeTransport, peerStatus]);
 
+  // Per-peer 軸 signaling layer 経路 (Bug 11 plan 候補 (a) layer 3): PeerJS の
+  // peer-unavailable error は sleep-wake / migration race で WebRTC layer の
+  // dc.close より早く発火する signal。 PeerManager から peerId を抽出した raw signal
+  // を受け、 PeerProvider 側で false positive 除外 condition を check して markStaleId
+  // を呼ぶ。 思想 doc: design/network-recovery.md 軸 2 (3 layer 独立 fault detector)。
+  //
+  // condition (= false positive 除外):
+  // - `connectionPhase === "connected"` で起動時 room discovery transient を除外
+  //   (= trying-host / trying-fallback 中の peer-unavailable は roomPeerId に対する
+  //   ものが多く markStale 対象として無意味)
+  // - `players.has(peerId)` で markStale 対象が players map に存在することを確認
+  //   (= roomPeerId / unknown ID への試行 fail は markStale 不要)
+  useEffect(() => {
+    if (!peerManager) return;
+    if (!(peerManager instanceof PeerManager)) return;
+    peerManager.onPeerUnavailable((peerId) => {
+      if (connectionPhase !== "connected") return;
+      const players = useGameStore.getState().players;
+      if (!players.has(peerId)) return;
+      // eslint-disable-next-line no-console
+      console.log(
+        "[PeerProvider] peer-unavailable for known peer — markStale:",
+        peerId,
+      );
+      useGameStore.getState().markStaleId(peerId);
+    });
+  }, [peerManager, connectionPhase]);
+
   // System topology 軸 (Bug 11 plan 候補 (d)): peerStatus が disconnected を
   // 5 sec 持続したら PeerManager.reconnect() で signaling self-recovery を試行。
   // PeerJS WebSocket 切断後の同 instance 再接続が困難な既知挙動 (H3) を、

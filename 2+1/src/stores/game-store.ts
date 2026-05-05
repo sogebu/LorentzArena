@@ -347,6 +347,24 @@ export interface GameState {
   setCausalityJumping: (v: boolean) => void;
   setWebglContextLost: (v: boolean) => void;
   setSignalingDead: (v: boolean) => void;
+  /**
+   * Bug 11 candidate (a) signaling layer 経路: PeerProvider が peer-unavailable
+   * 等の signaling layer signal を受けた時に呼ぶ。 useStaleDetection が mount 時に
+   * `markStale` closure を register する (= 初期値は no-op)。 zustand action 経由に
+   * したのは、 PeerProvider が React tree 上で useStaleDetection (=
+   * RelativisticGame で hook) より上層にいて props/context で渡せないため。
+   *
+   * 思想 doc: design/network-recovery.md 軸 2 (3 layer 独立 fault detector)。
+   *
+   * **race**: register は RelativisticGame mount で発火、 PeerProvider mount は先 →
+   * 起動 1-2 frame は no-op。 但し PeerProvider 側が `connectionPhase === "connected"`
+   * + `players.has(peerId)` を condition にするため、 register 前の起動 transient で
+   * 呼ばれた markStaleId は **対象が players map に未登録 → caller 側で skip**、 結果
+   * race の漏れは無い (= no-op で呼ばれても何も起きない)。
+   */
+  markStaleId: (id: string, wallTime?: number) => void;
+  /** markStaleId と対称、 useStaleDetection の recoverStale を register。 現状 caller 不在だが対称性のため expose。 */
+  recoverStaleId: (id: string) => void;
   incrementCanvasGeneration: () => void;
 
   // --- Actions: game logic ---
@@ -483,6 +501,10 @@ export const useGameStore = create<GameState>()((set, get) => ({
   setCausalityJumping: (v) => set({ causalityJumping: v }),
   setWebglContextLost: (v) => set({ webglContextLost: v }),
   setSignalingDead: (v) => set({ signalingDead: v }),
+  // 初期値 no-op、 useStaleDetection mount で実 closure (= staleFrozenAtRef を変更
+  // して syncStoreMirror) を register。 mount 前に呼ばれても safe (= no-op)。
+  markStaleId: () => {},
+  recoverStaleId: () => {},
   incrementCanvasGeneration: () =>
     set((s) => ({ canvasGeneration: s.canvasGeneration + 1 })),
 
