@@ -372,6 +372,8 @@ Repro 2 は user の手で 1 分内で試せる、 implementation phase の veri
 
 **全残課題 closed** ✅ — Bug 11 plan は 2026-05-05 evening に **fully decommission state** に到達。 思想と実装の gap ゼロ、 4 軸対称性 architecture 完璧、 全 cosmetic 残骸 root cause 治療、 dev mode 限定挙動も pattern 文書化済。
 
+**Stage 11 (= Bug 11 完了後の M25 sweep audit)** ✅ commit `ffd81b3`、 build `20:01:05`: 「他に source of truth 多重ない?」 user 問いで thorough audit、 `causalFrozenRef` / `causalityJumpingRef` の boolean dual 違反を発見し根本治療 (= ref 撤廃で store 単一 canonical 化)。 Bug 11 plan の scope 外だが同 sweep の延長として記録、 詳細は [`design/meta-principles.md §M25 実例 4`](../design/meta-principles.md)。
+
 ---
 
 ## §9 implementation 推奨順 + verify 手順 (= 5/5 PM 追加、 v2 で連続実装方針反映)

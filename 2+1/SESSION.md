@@ -2,7 +2,10 @@
 
 ## 現在のステータス
 
-**本番最新 deploy**: 2026-05-05 build `19:43:10` ([`e4c0bd2`](https://github.com/sogebu/LorentzArena/commit/e4c0bd2))。
+**本番最新 deploy**: 2026-05-05 build `20:01:05` ([`ffd81b3`](https://github.com/sogebu/LorentzArena/commit/ffd81b3))。
+
+**5/5 evening Stage 11 M25 sweep audit + root cause 治療** (= Bug 11 完了後の thorough audit で発見した最後の二重管理を撤廃):
+- 🟢 **causalFrozenRef / causalityJumpingRef 撤廃** (`ffd81b3`、 build `20:01:05`): user 問い「source of truth が複数あるところ、 他にもう絶対にない?」 で thorough M25 audit、 useGameLoop の `causalFrozenRef` (boolean) ↔ `useGameStore.causallyFrozen` (boolean) と対称な `causalityJumping` の **boolean dual** を発見。 初回 audit は「許容 mirror」 暫定判定だったが、 user challenge「絆創膏の上に絆創膏じゃなくて根本治療、 という思想でも A (docstring 補強) がいい?」 で再考、 ref を介した re-render 抑制は zustand selector 同値判定で同等達成される + read も getState() で cheap + 構造同値の boolean dual は staleFrozenAtRef (Map vs Set 構造違い) のような必須 mirror ではないと判明。 ref 撤廃で全 read site (= dead skip × 2 + hysteresis baseline 引数 + if-changed gate × 2) を `fresh.causallyFrozen` 等で代替、 単一 canonical 化。 メタ原則 M25 §実例 4 として永続化、 教訓「許容 mirror 認定は anchor bias で誤りやすい、 そもそも duplication が必要か?を skip するな」 を記録
 
 **5/5 evening Stage 9 cosmetic 残骸 root cause 治療** (= 「絆創膏の上に絆創膏」 を避けた最後の根本治療):
 - 🟢 **Stage 9 assumeHostRole に roomPeerId cleanup 集約** (`e4c0bd2`): host tab の HUD「接続中の相手」 panel に `la-{room} (接続準備中/失敗)` 赤背景 entry が残る cosmetic UI 問題を root cause で根本治療。 既存 cleanup logic は局所配置 (= followRedirect / attemptBeaconFallback) で heartbeat timeout / becomeSoloHost 経由 host 化で漏れていた。 plan 2026-04-19 「assumeHostRole = host 化の single source of truth」 design 思想と整合させる形で `disconnectPeer(roomPeerId)` を assumeHostRole 内に集約、 全経路で漏れ無し + 既存局所 cleanup と一貫。 disconnectPeer 冪等 (= 該当 conn 不在なら no-op) で副作用なし、 PeerJS/WS Relay 両 transport 抽象的に動く
