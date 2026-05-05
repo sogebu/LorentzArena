@@ -366,9 +366,11 @@ Repro 2 は user の手で 1 分内で試せる、 implementation phase の veri
 - [x] **direction 対称性** (commit `2a54a29` Stage 8-B): `useStaleDetection.checkStale` に `STALE_EARLY_THRESHOLD = 1500ms` 追加、 既存 `lastUpdateTimeRef` 経由で BH 側にも layer 4 (phaseSpace timeout) 確立、 BH 側 sleep-wake で markStale timing が dc.close 待ち (数秒〜数十秒) → 1.5 sec early に圧縮
 - [x] **mesh-ish recovery** (commit `9b3f2ff` Stage 8-C): 既存 mesh-ready stepping stone (network.md L142) を migration recovery で初活用、 reconnect 後の peerOrderRef 最近 8 個に mesh-ish connect 試行で post-split race 救済、 思想 doc 軸 4 を実装で具現化
 
-**残課題 (= 別 task defer)**:
-- localhost (Vite HMR) full reload は dev mode 限定挙動 (= 我々の fix 範囲外)
+**残課題 (= 別 task defer 解消、 全 closed)**:
+- ~~localhost (Vite HMR) full reload は dev mode 限定挙動~~ ✅ **claude-config conventions/preview.md に pattern 記録済** (commit `a5854a1`): 「Vite dev server の sleep-wake full page reload」 section で症状 / 原因 / 帰結 / 対処方針 / 確認方法 / 誤判定回避を文書化。 dev mode 限定、 production 影響なし、 修正不要、 sleep-wake test は production URL で行う運用で吸収。 他 Vite ベースリポでも同 pattern で切り分け可
 - ~~host tab の `la-{room} (接続準備中/失敗)` 残骸 entry の UI cleanup~~ ✅ **Stage 9 で根本治療** (commit `e4c0bd2`、 build `19:43:10`): root cause = `assumeHostRole` で `roomPeerId` cleanup 漏れ (= followRedirect / attemptBeaconFallback では cleanup 済だが、 heartbeat timeout / becomeSoloHost 経路で漏れていた)。 plan 2026-04-19 「assumeHostRole = host 化の single source of truth」 design 思想と整合させる形で `peerManager.disconnectPeer(roomPeerId)` を assumeHostRole 内に集約。 既存局所 cleanup と一貫、 disconnectPeer 冪等で副作用なし
+
+**全残課題 closed** ✅ — Bug 11 plan は 2026-05-05 evening に **fully decommission state** に到達。 思想と実装の gap ゼロ、 4 軸対称性 architecture 完璧、 全 cosmetic 残骸 root cause 治療、 dev mode 限定挙動も pattern 文書化済。
 
 ---
 
