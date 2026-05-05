@@ -132,12 +132,17 @@ const vPos = virtualPos(p, lastSync, currentTime);
    ```
    API exports (L142-151) に `markStale` を追加。
 
-2. `PeerProvider.tsx` の disconnect 経路で `markStale` 呼出:
+2. `PeerProvider.tsx` の disconnect 経路で `markStale` 呼出 (= 当初 plan、 起草時想定):
    - **heartbeat timeout** (L682-690): `Date.now() - lastPingRef.current > HEARTBEAT_TIMEOUT` のところで、 migration ロジックに入る前に `markStale(deadHostId)`
    - **`peer-unavailable` error callback**: peerManager の error handler で `error.type === 'peer-unavailable'` を検知したら該当 peer を `markStale`
    - **conn.on('close')**: peer connection が閉じた時 (= peer-unavailable と異なる経路) も同様に `markStale`
 
    **B2 発見 (v2 で追記)**: 現 [`PeerManager.ts`](../src/services/PeerManager.ts) は `dc.on('close')` を内部処理のみ (L124)、 個別 peer disconnect の通知 API (= `onPeerDisconnected(cb)`) を露出していない。 `onConnectionChange(cb)` で全 connections の状態 array を expose しているので、 caller 側で **diff (= 削除された peerId 抽出)** で対応可能。 PeerManager API 拡張は不要、 PeerProvider 側で `prevConnectionIds` state を持って差分検出する pattern (= 既に [`RelativisticGame.tsx`](../src/components/RelativisticGame.tsx) `prevConnectionIdsRef` で類似 pattern が使われている、 再利用可)。
+
+   **5/5 実装 scope (commit `0a6ea2f`)**: 上記 3 経路のうち **`conn.close` (= `onConnectionChange` diff) のみ採用**、 残 2 経路は scope 外:
+   - **heartbeat timeout は採用見送り**: heartbeat timeout (= client が host 喪失検知) は WebRTC conn.close と並行発火する (= ping が来ない時点で WebRTC connection も実質切れている)。 `RelativisticGame.tsx` の connection drop loop (L215-230) で `onConnectionChange` diff から markStale が triggered される経路と重複、 redundant。 仮に WebRTC conn.close 検知が遅延 (= 数秒) して heartbeat timeout が先行発火するシナリオがあっても、 heartbeat 経路は migration trigger の core で markStale は副次効果、 既存 logic を refactor せずに 1 経路で十分と判断
+   - **peer-unavailable error は採用見送り**: room discovery auto-connect flow で expected な transient error ([`PeerManager.ts:74`](../src/services/PeerManager.ts:74) comment 参照)。 起動時 room 試行で markStale → 後で接続復活で recoverStale、 不要 churn が発生。 採用するなら error.message から peerId 抽出 + 「room discovery 期間外」 判定 logic 追加要、 ROI 見合わず。 必要なら future iteration で再評価
+   - 採用 1 経路のみで H1 (= 3 秒 unprotected window) は実用上十分圧縮される (= peer disconnect の主経路は WebRTC conn close で、 その瞬間 markStale が triggered される)
 
 3. `useGameLoop.ts` の Rule B / freeze 計算は変更不要 (= 既に `staleFrozenIds.has(id)` で除外、 拡張された markStale 経由で自動的に除外対象になる)。
 
