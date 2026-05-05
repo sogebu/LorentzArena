@@ -17,6 +17,7 @@ import { HUD } from "./game/HUD";
 import { TutorialOverlay } from "./game/TutorialOverlay";
 import { SignalingLostOverlay } from "./game/SignalingLostOverlay";
 import { WebGLLostOverlay } from "./game/WebGLLostOverlay";
+import { CameraController } from "./game/CameraController";
 import { isLighthouse } from "./game/lighthouse";
 import { createMessageHandler } from "./game/messageHandler";
 import { SceneContent } from "./game/SceneContent";
@@ -423,51 +424,38 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         getPlayerColor={getPlayerColor}
       />
 
-      {showPLCSlice && plcMode === "3d" ? (
-        <Canvas
-          key={`plc3d-gen${canvasGeneration}`}
-          camera={{ position: [0, -12, 20], fov: 60 }}
-        >
-          <SceneContent
-            myId={myId}
-            showInRestFrame={false}
-            useOrthographic={false}
-            plc3d={true}
-            headingYawRef={headingYawRef}
-            cameraYawRef={cameraYawRef}
-            cameraPitchRef={cameraPitchRef}
-            thrustAccelRef={thrustAccelRef}
-            isFiring={isFiring}
-          />
-        </Canvas>
-      ) : (
-        // ⚠️ Bug 13 isolation 試行 #4 (5/6 朝): persp と ortho の Canvas branch を merge、
-        // 同一 Canvas key で toggle 時に Canvas remount を抑止。 試行 #1〜#3 で camera
-        // config / GameLights / ship 種別 / `orthographic` prop 全て無効 confirmed →
-        // 残るは「**Canvas remount 自体が user GPU で WebGL context 生成失敗を trigger**」
-        // 仮説 (= console の `sinceLast=1.77e12ms` = listener attach 前 loss = mount 直後
-        // GPU 即 crash というパターンと整合)。 単一 Canvas にすれば toggle で remount され
-        // ず、 `useOrthographic` flag は SceneContent に pass されて useFrame で camera
-        // distance だけが切替わる (= 50 vs 10、 視覚は perspective で「遠目」 ↔ 「近接」)。
-        // 効果あれば真因 confirmed、 正規 ortho 視覚は別 method (= `<orthographicCamera>`
-        // を Canvas 内動的切替 / drei) で再実装。 無ければ更に deeper investigation。
-        <Canvas
-          key={`game-gen${canvasGeneration}`}
-          camera={{ position: [0, 0, 0], fov: 75 }}
-        >
-          <SceneContent
-            myId={myId}
-            showInRestFrame={showInRestFrame}
-            useOrthographic={useOrthographic}
-            plc3d={false}
-            headingYawRef={headingYawRef}
-            cameraYawRef={cameraYawRef}
-            cameraPitchRef={cameraPitchRef}
-            thrustAccelRef={thrustAccelRef}
-            isFiring={isFiring}
-          />
-        </Canvas>
-      )}
+      {/* Bug 13 根本治療 (5/6 朝、 isolation #4 で Canvas remount が真因確定後の正規 fix):
+          単一 Canvas + 内部 `<CameraController>` で camera type を動的切替。 旧 3 系統
+          conditional Canvas (= `plc3d-gen` / `ortho-gen` / `persp-gen`) は toggle 毎に
+          unmount → fresh WebGL context 生成 → user GPU/driver で 即 crash → chronic loop
+          を引き起こしていた (= `4142d17` の isolation で確認、 build `08:21:35` で chronic
+          loss 完全消失 confirmed)。 単一 Canvas にすれば toggle は React props 変化のみで
+          remount せず、 CameraController の useEffect で camera instance だけ差し替え、
+          WebGL context は再利用される。 視覚は: spacetime persp / spacetime ortho / PLC
+          3D の 3 view が CameraController の分岐で正しく出る (= `useOrthographic` /
+          `plc3d` flag を組合せ)。 詳細: `CameraController.tsx` docstring。 */}
+      <Canvas
+        key={`game-gen${canvasGeneration}`}
+        camera={{ position: [0, 0, 0], fov: 75 }}
+      >
+        <CameraController
+          useOrthographic={useOrthographic && !(showPLCSlice && plcMode === "3d")}
+          plc3d={showPLCSlice && plcMode === "3d"}
+        />
+        <SceneContent
+          myId={myId}
+          showInRestFrame={
+            showPLCSlice && plcMode === "3d" ? false : showInRestFrame
+          }
+          useOrthographic={useOrthographic}
+          plc3d={showPLCSlice && plcMode === "3d"}
+          headingYawRef={headingYawRef}
+          cameraYawRef={cameraYawRef}
+          cameraPitchRef={cameraPitchRef}
+          thrustAccelRef={thrustAccelRef}
+          isFiring={isFiring}
+        />
+      </Canvas>
 
       {/* WebGL context lost recovery: 全世界凍結 (= GPU resource 回収) 時に再読込 UI を出す。
           詳細: WebGLLostOverlay の docstring。 */}
