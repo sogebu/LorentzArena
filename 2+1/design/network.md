@@ -141,6 +141,8 @@ full mesh の追加 robustness (BH 停止中の reconciliation 継続) は現ス
 
 **将来の full mesh 移行**: Stage 1.5 の messageHandler は既に "どの peer からの snapshot も受け付ける" semantics。mesh 接続を追加すれば自動的に mesh snapshot 化する (stepping stone として設計)。
 
+**Recovery 軸の補論 (2026-05-05)**: sleep-wake / network split / post-split phase の compound 症状 (= [Bug 11 ledger](../SESSION.md)) は本 doc の topology 軸では capture しきれない別軸 (= per-peer view + signaling self-recovery + escape hatch) を要する。 詳細思想は [`network-recovery.md`](network-recovery.md)。 migration / post-split の transient burst では mesh-ish 通信 (= 既存 stepping stone を活用) を許容する design 拡張 — normal play の star efficiency は不変。
+
 ### 意図的な設計反転: sender authority check を入れない
 
 Stage 1 時点では「任意の peer が snapshot を送れる」は risk 扱い (Bug B) だった。Stage 1.5 では **peer 貢献を歓迎する方向**に反転。`senderId === beaconHolderId` の check は意図的に行わない。

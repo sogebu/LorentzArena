@@ -2,7 +2,8 @@
 
 **起草**: 2026-05-05 (= 当初 plan-only)
 **Update**: 2026-05-05 PM、 odakin 観察 sleep-wake → 両 tab がホスト化 + 互いが見えない で **reliable repro 確立**、 仮説 H3 追加。
-**Status**: 🟡 **plan + reliable repro 確立、 implementation phase 着手判断待ち** — un-defer trigger 達成、 odakin 入力で着手 / 別 session 振り分け / 軽量 patch 先行のいずれか。
+**v2 refresh**: 2026-05-05 evening、 implementation phase 着手前の audit で発見した懸念 (B1-B4) を反映、 思想は別 doc [`design/network-recovery.md`](../design/network-recovery.md) で 6 軸整理して anchor 化。 推奨順 (e) → (a) → (d) で連続実装 (= 3 軸が直交、 互いに干渉ゼロ)。
+**Status**: 🟢 **implementation phase 着手 (= 5/5 evening、 (e)/(a)/(d) 連続実装方針)**。
 
 ---
 
@@ -80,6 +81,21 @@ const vPos = virtualPos(p, lastSync, currentTime);
 
 ## §3 候補修正
 
+### §3.5 **3 秒 unprotected window の数学** (= H1 真因 quantification、 v2 で追加)
+
+[`useGameLoop.ts`](../src/hooks/useGameLoop.ts) の `MAX_VIRTUAL_TAU_SEC = 2` (= Fix B cap) と [`useStaleDetection.ts`](../src/hooks/useStaleDetection.ts) の `STALE_WALL_THRESHOLD = 5000ms` (= 5 秒) の間に **3 秒間の unprotected window** が存在する:
+
+| 時刻 | virtualPos | staleFrozenIds | Rule B 評価 |
+|---|---|---|---|
+| T=0 | last sync 直後、 wall_clock に追従 | 空 | 正常 (peer 過去光円錐内) |
+| T=2 | Fix B cap 発動、 wall_clock に対して frozen 開始 | 空 | **fire 開始** (peer が遅れて見える) |
+| T=2..5 | frozen 持続、 currentTime は進む | 空 | **永続発火** (両側 Rule B 暴走) |
+| T=5 | frozen 継続 | `staleFrozenAtRef.set()` | **除外開始** (Rule B 不発化) |
+
+→ T=2..5 の 3 秒間が **Rule B 暴走窓**。 (a) markStale 拡張で disconnect 検出時 (= heartbeat timeout 2.5 sec / peer-unavailable error / connection close) に即時 stale 化すれば、 この窓を 0-100ms に圧縮可能。
+
+これは Bug 10 真因 chain (= 5/4 5 layer fix) と類似する「**Layer 間 timing gap が rule 暴走窓を生む**」 構造。 Fix B (5/4) は cap 値 (= 2 sec) を導入することで暴走の上限を画したが、 stale threshold (5 sec) と組合せた窓は残った。 (a) は窓そのものを除去する真因対処 (M27 application)。
+
 ### (a) **disconnect 検出時に peer を staleFrozenIds に追加** (= 既存機構 reuse、 推奨)
 
 既存の `staleFrozenIds` 機構 (= 一定時間 broadcast 受信なしで stale 認定、 Rule B / freeze 計算から除外) を拡張:
@@ -120,6 +136,8 @@ const vPos = virtualPos(p, lastSync, currentTime);
    - **heartbeat timeout** (L682-690): `Date.now() - lastPingRef.current > HEARTBEAT_TIMEOUT` のところで、 migration ロジックに入る前に `markStale(deadHostId)`
    - **`peer-unavailable` error callback**: peerManager の error handler で `error.type === 'peer-unavailable'` を検知したら該当 peer を `markStale`
    - **conn.on('close')**: peer connection が閉じた時 (= peer-unavailable と異なる経路) も同様に `markStale`
+
+   **B2 発見 (v2 で追記)**: 現 [`PeerManager.ts`](../src/services/PeerManager.ts) は `dc.on('close')` を内部処理のみ (L124)、 個別 peer disconnect の通知 API (= `onPeerDisconnected(cb)`) を露出していない。 `onConnectionChange(cb)` で全 connections の状態 array を expose しているので、 caller 側で **diff (= 削除された peerId 抽出)** で対応可能。 PeerManager API 拡張は不要、 PeerProvider 側で `prevConnectionIds` state を持って差分検出する pattern (= 既に [`RelativisticGame.tsx`](../src/components/RelativisticGame.tsx) `prevConnectionIdsRef` で類似 pattern が使われている、 再利用可)。
 
 3. `useGameLoop.ts` の Rule B / freeze 計算は変更不要 (= 既に `staleFrozenIds.has(id)` で除外、 拡張された markStale 経由で自動的に除外対象になる)。
 
@@ -200,6 +218,12 @@ const vPos = virtualPos(p, lastSync, currentTime);
    - `peer.reconnect()` を直接呼べるか (= PeerManager 越し or peer instance を露出)
    - 既存の effect 中で `peer.destroy()` が安全に呼ばれて再 mount (= cleanup chain)
 
+5. **B4 発見 (v2 で追記)**: 現 [`PeerManager.ts`](../src/services/PeerManager.ts) には `destroy()` のみ (L196-198)、 `reconnect()` method **無し**。 また `peer.on('disconnected')` listener は内部で attach 済 (L57-60、 status を `disconnected` に更新するだけ) で、 reconnect ロジックはゼロ。 (d) 実装には **PeerManager 拡張が必須**:
+   - `reconnect()` method 追加 (= 内部で `this.peer.reconnect()` 試行 → 失敗で `this.peer.destroy()` + 新 `Peer` 作成、 同 localId / 同 options 維持)
+   - `onPeerDisconnected` 等の signaling-disconnected callback expose (= 既存 `onPeerStatusChange` で `disconnected` status 通知済なので、 PeerProvider 側で status watch すれば追加 API 不要)
+   - new instance 生成時の event listener 再 attach (= `peer.on('open' | 'disconnected' | 'error' | 'connection')` 4 個、 既存 constructor 内 logic を private method に extract して再利用)
+   - 既存 conns Map は新 instance で空、 個別 peer への再 connect は呼出元 (= PeerProvider) が triggered する
+
 ### (e) **「再接続失敗」 reload prompt UX** (= escape hatch、 軽量先行案)
 
 **動機**: H3 治療 (d) は構造的だが PeerProvider 周辺の coding を要する。 短期 patch として、 signaling 死亡が一定期間続いたら user に「再接続失敗、 reload してください」 prompt を出す escape hatch を新設、 reload で完全 fresh state 復帰。
@@ -221,8 +245,13 @@ const vPos = virtualPos(p, lastSync, currentTime);
 2. `PeerProvider.tsx` で `peerStatus === 'disconnected'` or `'error'` が **N 秒以上持続** したら `setSignalingDead(true)` 呼出:
    ```ts
    useEffect(() => {
-     if (peerStatus === 'open' || peerStatus === 'connecting') {
+     if (peerStatus.status === 'open' || peerStatus.status === 'connecting') {
        setSignalingDead(false);
+       return;
+     }
+     // B3 発見 (v2): peer-unavailable は room discovery auto-connect flow で expected error
+     // (PeerManager.ts L74 comment 参照)。 起動時 room 試行で transient に発生するので false trigger 除外。
+     if (peerStatus.status === 'error' && peerStatus.type === 'unavailable-id') {
        return;
      }
      // disconnected / error 継続中
@@ -312,14 +341,16 @@ Repro 2 は user の手で 1 分内で試せる、 implementation phase の veri
 
 ---
 
-## §9 implementation 推奨順 + verify 手順 (= 5/5 PM 追加、 fresh session 引き継ぎ用)
+## §9 implementation 推奨順 + verify 手順 (= 5/5 PM 追加、 v2 で連続実装方針反映)
 
-### 推奨順序: (e) → (a) → (d)
+### 推奨順序: (e) → (a) → (d) (= 同 session 連続実装)
+
+**思想 doc**: [`design/network-recovery.md`](../design/network-recovery.md) §軸 5 で「3 軸は完全に直交、 互いに干渉ゼロ」 と整理。 各 fix は独立 commit + 連続 deploy 可能。
 
 **理由**:
 - **(e) reload prompt** が一番安全な escape hatch (= 既存 `WebGLLostOverlay` pattern reuse、 risk 最小)。 これだけ deploy しても sleep-wake stuck で「reload してください」 modal が出るので user UX 改善
-- **(a) staleFrozenIds 拡張** は既存機構の use case 拡張で risk 中、 H1 (Rule B 暴走) 経路を構造的に遮断
-- **(d) PeerJS instance reset** が一番 risk 高 (= 不慣れな PeerJS 内部 lifecycle、 race 含む)。 (a)+(e) で大半の症状が緩和されてから着手するのが prudent
+- **(a) staleFrozenIds 拡張** は既存機構の use case 拡張で risk 中、 H1 (Rule B 暴走) 経路を構造的に遮断 (= §3.5 の 3 秒 unprotected window を ms 化)
+- **(d) PeerJS instance reset** が一番 risk 高 (= PeerJS 内部 lifecycle、 race、 effect cleanup chain 衝突)。 PeerManager に `reconnect()` method 追加 + 新 instance 生成時の listener 再 attach が必要 (B4)。 (a)+(e) で大半の症状が緩和されてから着手するのが prudent
 
 ### 各 fix の verify 手順
 
