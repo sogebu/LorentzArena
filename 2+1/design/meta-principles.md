@@ -1,6 +1,6 @@
 # design/meta-principles.md — LorentzArena 2+1 メタ原則
 
-DESIGN.md から分離。横断的 cross-cutting lessons (M1-M19)。個別 decision から  で参照される reference 集。
+DESIGN.md から分離。横断的 cross-cutting lessons (M1-M29)。個別 decision から で参照される reference 集。
 
 ## § メタ原則・教訓
 
@@ -705,6 +705,76 @@ cohesive 度の判定: 「この prop を 1 つだけ set したらどうなる�
 - **M26 (絆創膏 sign)** との切り分け: 「既存 pattern の不完全適用を完成」 (= M28 application) は絆創膏ではない、 「症状を別 path で吸収」 (= 絆創膏 sign 5) は M26 違反。 user に「ad-hoc?」 と問われたら両方 audit、 別系統の判定
 - **M25 (state 単一化)** との独立性: M25 は「同じ概念を複数の場所に置くな」、 M28 は「cohesive な複数 prop は揃えろ」。 前者は単一化、 後者は集合維持で逆方向だが両立 (= 「概念は 1 つ、 実装 prop は trio で揃える」)
 - **M21 (描画 component は自己 gate)** との関係: M21 は responsibility 配置、 M28 は cohesive prop 集合の維持。 M21 適用後の component 内部で M28 trio が現れることが多い
+
+---
+
+### M29. 絆創膏剥がし時の症状再露出: 真因 fix の前に「絆創膏が抑えていた症状」 を pre-audit する
+
+絆創膏 (= 真因を放置して症状を別 path で抑える patch、 M26 違反 sign の集約) を真因 fix で剥がす時、 **絆創膏が「副作用的に」 抑えていた他の症状が同時に再露出する** ことがある。 真因 fix のタイミングで「抑えられていた症状達」 を pre-audit して、 それぞれ真因 fix 後にどう対処するかを決めておく。
+
+#### 構造
+
+絆創膏は本来「症状 X」 への対処として導入される。 だが副作用として「症状 Y」 「症状 Z」 も同時に隠す効果を持つことがある。 このとき:
+
+- 症状 X 真因が見つかって絆創膏を撤去 → X は真因 fix で解消
+- 同時に絆創膏が抑えていた Y, Z が再露出 → user/play 体感に新症状として浮上
+- Y, Z は X とは別 layer の bug (= 元から存在していたが「絆創膏のおかげで気付かれていなかった」)
+
+これは「fix が新 bug を作った」 ように見えるが、 実は **既存 bug が再露出しただけ**。 user 視点では区別困難で、 fix の信頼を損なう。
+
+#### M27 (多層 RCA) との独立性
+
+M27 は「症状の出る layer ≠ 真因の layer」 で、 真因を遠くまで遡る指針。 M29 は「真因 fix で他の隠れた症状が surface する」 で、 **絆創膏の副作用範囲を pre-audit する** 指針。 別 axis:
+
+- M27: 真因を**遠くに**探す
+- M29: 真因 fix の影響範囲を**広く**見る
+
+両方並行 audit が prudence。
+
+#### M26 との関係
+
+M26 は絆創膏 sign 5 axis (= 強制同期 patch / effect-based 同期 / defensive set 多発 / 流入経路 logic duplicate / 症状検知 → 別 path 吸収)。 M29 は「絆創膏自体を剥がす procedure」 で M26 の continuation。 絆創膏を見つけた → M29 で剥がし方を計画 → 真因 fix と並行で抑えられていた症状の対処も決める。
+
+#### 実例 (= 2026-05-05 ALWAYS_ON_TOP pattern 4 段絆創膏スタック撤去)
+
+**経緯**:
+1. LH が他 transparent (= laser worldline 等) に遮られる症状 X → ALWAYS_ON_TOP pattern (= renderOrder=10 + depthTest=false + depthWrite=false trio) で 4 段絆創膏スタック構築 (`46f8755` → `f15fce4` → `9f711ca` → `e2608d1`)
+2. user 「絆創膏の上に絆創膏」 指摘 → 真因 audit で 4 transparent material が `depthWrite` default true で書いていた offender を発見
+3. 真因 fix (`2e19da2`): offender 側を `depthWrite={false}` に統一 → ALWAYS_ON_TOP pattern 全撤去 (= module ごと削除、 -151 行)
+4. **副作用 surface**: 自機と LH が geometric に同 spatial 範囲を占める場面で **z-fight が新規露出** (= ALWAYS_ON_TOP の depthTest=false が「副作用的に」 抑えていた症状)
+5. user 「画面で自分と灯台が重なった状態になると LH フリッカー」 報告
+6. **追加 fix (`109ddf0`)**: LH 全 mesh に polygonOffset で z-fight 数値解 (= 別 layer の root cause fix)
+
+**学習**: 絆創膏 (= ALWAYS_ON_TOP の depthTest=false) が抑えていた症状は 1 つではなかった (= 「LH が遮られる」 だけでなく「自機との z-fight」 も)。 真因 fix の前に「この絆創膏が副作用的に何を抑えているか」 を audit していれば、 同 commit で polygonOffset も併せて入れられた (= deploy 1 回で完結)。
+
+#### Pre-audit checklist
+
+絆創膏を剥がす計画段階で:
+
+1. **絆創膏が「直接 fix する症状」 を文書化** (= 元の commit message / PR description / docstring)
+2. **絆創膏の mechanism を構造的に分析**: どの prop / setting / pattern を変えているか
+3. **mechanism から逆算して「副作用範囲」 を列挙**: 直接 fix 対象以外で同じ mechanism が抑制している症状を考える
+4. **副作用範囲の各症状について真因 fix 後の状態を予測**: 真因 fix で消えるか、 別経路で対処要か
+5. **対処要なものは真因 fix と同 commit / 同 plan に含める** (= 1 段階で完結、 user 視点で「fix が新 bug を作った」 体験を回避)
+
+#### 実例の pre-audit 例
+
+ALWAYS_ON_TOP 撤去計画時:
+- 直接 fix 対象 (= 元症状 X): 「LH が他 transparent に遮られる」
+- mechanism: depthTest=false で depth 比較 skip + depthWrite=false で他 transparent の depth に書かない + renderOrder=10 で late draw
+- **副作用範囲列挙**:
+  - depthTest=false の副作用: LH が **geometric 重なり時の z-fight** を bypass している (= 本実例で再露出した症状 Y)
+  - depthWrite=false の副作用: LH 内部 mesh 同士の depth 干渉 bypass (= 真因 fix で `depthWrite={false}` 維持なら継続成立)
+  - renderOrder=10 の副作用: 「LH を最前面」 (= 旧 design intent、 真因 fix で破棄なら user の game 体感変化要確認)
+
+→ 症状 Y (z-fight) は polygonOffset で同 commit / 別 plan で対処、 renderOrder=10 撤去の体感影響は user verify で確認、 等の事前計画が立てられる。
+
+#### How to apply
+
+- **絆創膏を見つけたら剥がす前に M29 pre-audit checklist を実行**
+- **真因 fix の plan に「副作用範囲」 セクションを含める** (= 撤去判断材料の 1 つ)
+- **user に対して「真因 fix で X 解消、 ただし副作用 Y も surface する可能性、 同時に対処予定」 と pre-communicate**
+- **fix 後 user 「fix が新 bug を作った」 と感じたら**: M29 の pre-audit が抜けていた可能性を反省、 副作用 layer の追加 RCA に切替
 
 ---
 

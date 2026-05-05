@@ -18,6 +18,53 @@ Tradeoff: 世界線の先端が最大 8 フレーム分遅れて描画される�
 
 `WorldLine.origin` は常に null (「初回スポーン = リスポーン統一」参照)。半直線延長コードと `FrozenWorldLine.showHalfLine` は削除済み。
 
+### Depth handling 規律 (= 「transparent は depth 書かない」、 2026-05-05 確立)
+
+three.js / WebGL では transparent material はデフォルトで `depthWrite=true` (= 自分の depth を depth buffer に書く)。 これが意図しない occlusion を引き起こす root cause になる:
+
+- worldline / 光円錐 / laser / debris marker / 参照リング 等の **抽象的時空可視化** material が `transparent` なのに `depthWrite=true` のままだと、 他 transparent (= LH 塔 / 自機 exhaust) の depth-test を fail させて遮る
+- 過去はこれを `depthTest=false` (= LH 側で depth 比較自体を skip) で workaround していた (= ALWAYS_ON_TOP pattern、 2026-04 〜 2026-05-04)
+- しかしこれは「物理的に間違った depth 関係を強制」 する絆創膏で、 副作用として LH ↔ self ship の自然な depth 順序が壊れる + 同 layer entity の sort tiebreaker flicker を生む
+
+**規律 (= 1 文)**: **transparent material は ほぼ常に `depthWrite={false}` を明示的に書く**。 例外は「自分が depth を impose したい (= 後続 transparent を遮りたい)」 という意図的な場合のみ (例: Jellyfish dome の半透過なので奥のものが透けて見えるが完全には見せたくない、 等の design intent。 docstring で明示)。
+
+#### 適用例
+
+- ✅ `WorldLineRenderer` / `LightConeRenderer` / `DebrisRenderer` / `SpawnRenderer` / `DeathMarker` / `StardustRenderer` / `SquareArenaRenderer` / `ArenaRenderer`: 既に `depthWrite={false}`
+- ✅ `LaserBatchRenderer` / `SceneContent` 参照リング / `threeCache.ts` debris marker × 2: 2026-05-05 commit `2e19da2` で統一 (= ALWAYS_ON_TOP 撤去と同 commit)
+- ✅ `LighthouseRenderer` / `SelfShipRenderer` (= exhaust nozzle) / `RocketShipRenderer` (= rear exhaust): `depthWrite={false}` 単独に統一 (= 旧 ALWAYS_ON_TOP trio から `renderOrder=10` + `depthTest=false` を撤去)
+- 🟡 `JellyfishShipRenderer` の dome / tentacles: 意図的に `depthWrite=true` (default) のまま (= 「触手は観測者越しに depth 干渉残す」 design intent)、 docstring 明記。 followup: 2026-05-05 audit で per-frame TubeGeometry rebuild が別問題として発見されたが本規律とは独立
+
+#### z-fight 対処は polygonOffset
+
+geometric 重なり (= 2 entity が同 spatial 範囲を占める) で transparent ↔ opaque の depth が float 精度内で同等になると z-fight (= frame 間 flip)。 これは depth-write 規律では消せない (= 規律守っても geometric 重なりは別問題)。 解は **material level の `polygonOffset`** (= 標準 3D rendering 技法):
+
+```tsx
+<meshStandardMaterial
+  transparent
+  depthWrite={false}
+  polygonOffset
+  polygonOffsetFactor={1}
+  polygonOffsetUnits={1}
+  ...
+/>
+```
+
+正の factor / units で depth を「ほんの少しだけ camera から遠い」 と扱う → 相手 entity が常に勝つ → deterministic 化。
+
+実例: 2026-05-05 commit `109ddf0` で LH 全 12 mesh に追加、 自機 hull (= z=[0.55, 0.71]) と LH body (= z=[-0.08, 0.92]) の geometric 重なり領域での z-fight 解消。
+
+#### 過去経緯 (= 絆創膏 4 段スタック撤去の歴史)
+
+1. `46f8755` LH renderOrder=10 bump (= 描画順 hack)
+2. `f15fce4` LH に depthTest=false 追加 (= depth 全 bypass)
+3. `9f711ca` trio (renderOrder + depthTest=false + depthWrite=false) を `alwaysOnTopRender.ts` module 化 (= 踏み外し防止だが M28 application、 真因見逃し)
+4. `e2608d1` BG/FG 2 layer 分離 (= 同 layer entity 同士の sort flicker への絆創膏)
+5. **`2e19da2` 全撤去 + 真因 fix** (= laser 等が depthWrite default で書いてた offender を統一)
+6. **`109ddf0` z-fight 対処** (= 真因 fix で抑えられていた症状再露出に polygonOffset)
+
+教訓: 絆創膏を剥がす時、 そこに何があったかを understand してから剥がす。 真因 fix で「抑えられていた他の症状」 が露出する可能性を pre-audit する (= [`design/meta-principles.md`](meta-principles.md) §M29)。
+
 ### R3F 宣言的マテリアル
 
 `getMaterial` + モジュールレベル `materialCache` を廃止し、R3F の宣言的マテリアル (`<meshStandardMaterial color={...} />`) に置き換え。色の変更を自動反映し、ライフサイクルは React が管理。プレイヤー数分 (2-4 個) のマテリアルにキャッシュのパフォーマンス効果はほぼゼロ。

@@ -111,13 +111,23 @@
 2. 中心方向 thrust 燃料優遇 or soft pull (= EXPLORING.md §2)
 3. 枠半幅 `ARENA_RADIUS = 40` の縮小 (40 → 15-20) は UX 改善後に効果評価して判断
 
-### 実機検証待ち (2026-04-28 セッション全 fix)
+### 実機検証待ち (= odakin verify、 復帰時 priority)
 
-3+ tab multi-player で:
+**5/5 deploy 群 (= build 09:35:38 まで反映)**:
+- (a) **camera yaw 追従 lag** (`d3ecadf`): legacy_classic で「機体先行 → camera が swing で追いかける」 chase camera 感が出るか、 操作感に違和感ないか (= τ=0.12s 体感調整 余地)
+- (b) **Bug 10 主症状** (`7a7df95` で並列 root の DebrisRenderer GC fix 後): 5+ 分 plays + LH 撃破連打で Context Lost 0-1 件 / setInterval Violation 0-3 件 / LH flicker after hit 消失 / 世界時刻 advance ≈ wall_clock / 死亡中 stardust 流れる
+- (c) **Bug 12 LH↔自機 表示順序** (`109ddf0` polygonOffset 後): 自機が LH に近接 + LH 内部に侵入する場面で LH の flicker が消失、 通常 play で visual 不変 (= LH 見え方が変わってない)
+- (d) **副次**: `2e19da2` で laser worldline depthWrite=false にしたことで laser が LH を遮らない (= 元 5/4 fix の本来の狙いが真に達成)、 laser worldline の見た目が変わってないか
+
+**4/28 fix の 3+ tab multi-player verify** (= 古い項目、 引き続き):
 - 後 join client 永遠凍結 が `3ba639a` の spawn 時刻 (min+max)/2 中間化で治癒したか
 - 逆 bug 疑い: 高 γ host から見て新 joiner が close-spatial に着地して **host が freeze** する race (SESSION 「defer 中」 参照)
 - spawn ring / 撃破 / 燃料消費 / Causal Freeze overlay / debris 等の通常 multiplay flow
 - **`bbce03f` 後の spawn 位置 / 枠位置**: 原点中心 spawn `[-5, +5)²`、 正方形枠 `[-40, +40]²` で挙動確認
+
+**Bug 11 (cascade chaos) reliable repro 試行候補**:
+- Chrome DevTools「Network: Offline」 で 5+ 秒切断 → 再接続 (= [`plans/2026-05-05-network-split-rule-b-runaway.md`](plans/2026-05-05-network-split-rule-b-runaway.md) §4 候補手順)
+- 再現できれば un-defer trigger 達成 → implementation phase に進める
 
 ### Phase 2 議論 (PBC torus 復活時に再着手)
 
