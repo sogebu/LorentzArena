@@ -368,7 +368,7 @@ Repro 2 は user の手で 1 分内で試せる、 implementation phase の veri
 
 **残課題 (= 別 task defer)**:
 - localhost (Vite HMR) full reload は dev mode 限定挙動 (= 我々の fix 範囲外)
-- ~~host tab の `la-{room} (接続準備中/失敗)` 残骸 entry の UI cleanup~~ ✅ **Stage 9 で根本治療** (commit 後追記、 build 値も後追記): root cause = `assumeHostRole` で `roomPeerId` cleanup 漏れ (= followRedirect / attemptBeaconFallback では cleanup 済だが、 heartbeat timeout / becomeSoloHost 経路で漏れていた)。 plan 2026-04-19 「assumeHostRole = host 化の single source of truth」 design 思想と整合させる形で `peerManager.disconnectPeer(roomPeerId)` を assumeHostRole 内に集約。 既存局所 cleanup と一貫、 disconnectPeer 冪等で副作用なし
+- ~~host tab の `la-{room} (接続準備中/失敗)` 残骸 entry の UI cleanup~~ ✅ **Stage 9 で根本治療** (commit `e4c0bd2`、 build `19:43:10`): root cause = `assumeHostRole` で `roomPeerId` cleanup 漏れ (= followRedirect / attemptBeaconFallback では cleanup 済だが、 heartbeat timeout / becomeSoloHost 経路で漏れていた)。 plan 2026-04-19 「assumeHostRole = host 化の single source of truth」 design 思想と整合させる形で `peerManager.disconnectPeer(roomPeerId)` を assumeHostRole 内に集約。 既存局所 cleanup と一貫、 disconnectPeer 冪等で副作用なし
 
 ---
 
