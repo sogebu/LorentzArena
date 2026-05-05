@@ -444,18 +444,14 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         <Canvas
           key={`ortho-gen${canvasGeneration}`}
           orthographic
-          camera={{
-            zoom: 30,
-            position: [0, 0, 50],
-            // ⚠️ Bug 13 active: 正射影 toggle で chronic context loss (= ortho Canvas
-            // mount 直後に GPU crash → auto-remount → repeat の chronic loop) が一部
-            // Mac/Brave で発生。 5/6 朝 commit `5901db5` で near/far を ±10000 → ±500
-            // に縮小したが効果なし (= depth range は trigger ではなかった、 ±10000 に
-            // revert) → 真因は別 layer (= shader compile / GameLights 互換性 / specific
-            // material × ortho camera の TDR timeout 等)。 詳細: SESSION.md Bug 13。
-            near: -10000,
-            far: 10000,
-          }}
+          // ⚠️ Bug 13 isolation 試行 (5/6 朝): camera prop を `zoom` のみに最小化、
+          // position / near / far を削除して R3F default に任せる (= position は useFrame
+          // で上書きされるので Canvas prop 経由不要、 near/far の不要な明示で R3F の
+          // ortho camera 初期化と衝突する仮説の検証)。 R3F default は zoom=1, near=0.1,
+          // far=2000, position=[0,0,5]。 zoom 30 で視覚スケール維持、 useFrame.position.set
+          // で正しい位置に上書き。 効果あれば config 衝突 confirmed、 無ければ別層 (=
+          // GameLights / shader / scene 内 entity) を疑う。
+          camera={{ zoom: 30 }}
         >
           <SceneContent
             myId={myId}
