@@ -2,203 +2,103 @@
 
 ## 現在のステータス
 
-**本番最新 deploy**: 2026-05-05 build `20:01:05` ([`ffd81b3`](https://github.com/sogebu/LorentzArena/commit/ffd81b3))。
+**本番最新 deploy**: 2026-05-05 build `21:50:57` ([`ad52130`](https://github.com/sogebu/LorentzArena/commit/ad52130)) Rule B exit margin LH flicker 治療。 odakin localhost verify 「よさそう」 → production deploy 済。 後続の docs-only commits は次回コード変更 deploy 時に同梱される。
 
-**5/5 night Rule B exit margin (= LH flicker boundary chatter 治療、 deploy pending odakin verify)**:
-- 🟢 **`causalityJumpLambdaSingle` に `CAUSALITY_JUMP_EXIT_MARGIN_LS = 0.001 ls` 加算**: Rule B
-  の λ_exit が peer の過去 null cone surface ぴったり (= `l = (peer-me)·(peer-me) ≈ 0` 境界)
-  に着地する設計を、 surface より ε だけ spacelike 側 (= peer から光速がまだ追いついていない
-  領域) に押し込む terminal patch。 次 tick Rule A 判定 `l < -threshold` が boundary で flip
-  する race (= 仮説 (i) bouncy max + 数値誤差 + network jitter の複合) を構造的に消滅。
-  odakin 仮説「過去光円錐ぴったりじゃなくてちょっとだけ未来まで飛ばしたら治りそう」 を物理
-  解釈に落とし込んだ実装。 caller (`gameLoop.ts:328` LH Rule B / `useGameLoop.ts:614` 自機
-  Rule B) 不変、 ε は λ 公式の terminal patch として `causalityJumpLambdaSingle` 内で localized
-- **設計対称性**: Rule A の `CAUSAL_FREEZE_HYSTERESIS = 2.0` (l 単位、 wasFrozen=true 時のみ
-  閾値厚 = gameplay smoothing) と Rule B の `EXIT_MARGIN_LS = 0.001` (λ 単位、 jump 発火時の
-  み加算 = numerical stability) を complementary に配置、 「surface ぴったりの境界 state を
-  回避」 する同一思想。 Stage 11 (`ffd81b3`) で `causalFrozenRef` boolean dual を撤廃した
-  zustand selector if-changed gate と相乗で、 flag chattering 抑制が完成
-- **検証**: 253 test 全 pass (= causalityRules.test 7 件 + lighthouseRuleB.test 6 件で expected
-  を `+ EPS` 相対化、 surface invariant test を厳密展開 `-2·B'·EPS + EPS²` に書き換え)、
-  typecheck clean、 lint 新規 warning 無し
-- **詳細**: [DESIGN.md §Rule B exit margin](DESIGN.md) + [`constants.ts:CAUSALITY_JUMP_EXIT_MARGIN_LS`](src/components/game/constants.ts) docstring + [`causalityRules.ts:causalityJumpLambdaSingle`](src/components/game/causalityRules.ts) docstring
+### 最近の作業要約 (詳細 = git log + 各 plan)
 
-**5/5 evening Stage 11 M25 sweep audit + root cause 治療** (= Bug 11 完了後の thorough audit で発見した最後の二重管理を撤廃):
-- 🟢 **causalFrozenRef / causalityJumpingRef 撤廃** (`ffd81b3`、 build `20:01:05`): user 問い「source of truth が複数あるところ、 他にもう絶対にない?」 で thorough M25 audit、 useGameLoop の `causalFrozenRef` (boolean) ↔ `useGameStore.causallyFrozen` (boolean) と対称な `causalityJumping` の **boolean dual** を発見。 初回 audit は「許容 mirror」 暫定判定だったが、 user challenge「絆創膏の上に絆創膏じゃなくて根本治療、 という思想でも A (docstring 補強) がいい?」 で再考、 ref を介した re-render 抑制は zustand selector 同値判定で同等達成される + read も getState() で cheap + 構造同値の boolean dual は staleFrozenAtRef (Map vs Set 構造違い) のような必須 mirror ではないと判明。 ref 撤廃で全 read site (= dead skip × 2 + hysteresis baseline 引数 + if-changed gate × 2) を `fresh.causallyFrozen` 等で代替、 単一 canonical 化。 メタ原則 M25 §実例 4 として永続化、 教訓「許容 mirror 認定は anchor bias で誤りやすい、 そもそも duplication が必要か?を skip するな」 を記録
-
-**5/5 evening Stage 9 cosmetic 残骸 root cause 治療** (= 「絆創膏の上に絆創膏」 を避けた最後の根本治療):
-- 🟢 **Stage 9 assumeHostRole に roomPeerId cleanup 集約** (`e4c0bd2`): host tab の HUD「接続中の相手」 panel に `la-{room} (接続準備中/失敗)` 赤背景 entry が残る cosmetic UI 問題を root cause で根本治療。 既存 cleanup logic は局所配置 (= followRedirect / attemptBeaconFallback) で heartbeat timeout / becomeSoloHost 経由 host 化で漏れていた。 plan 2026-04-19 「assumeHostRole = host 化の single source of truth」 design 思想と整合させる形で `disconnectPeer(roomPeerId)` を assumeHostRole 内に集約、 全経路で漏れ無し + 既存局所 cleanup と一貫。 disconnectPeer 冪等 (= 該当 conn 不在なら no-op) で副作用なし、 PeerJS/WS Relay 両 transport 抽象的に動く
-
-**5/5 evening Stage 8 根本治療 sweep deploy** (= 残課題 3 つを「絆創膏の上に絆創膏」 を避けて根本から綺麗に整備):
-- 🟢 **Stage 8-A transport 対称性** (`997c7a3`): WsRelayManager に `reconnect()` 追加、 NetworkManager union type 全 member が reconnect contract を実装、 PeerProvider の instanceof check 廃止で transport 抽象的に reconnect 経路が呼べる architecture 確立。 PeerJS / WS Relay 両 transport で signaling self-recovery が同 path で動作
-- 🟢 **Stage 8-B direction 対称性** (`2a54a29`): useStaleDetection.checkStale に STALE_EARLY_THRESHOLD = 1500ms 追加、 既存 lastUpdateTimeRef 経由で BH 側にも layer 4 (phaseSpace timeout) 確立。 BH 側 sleep-wake (= solo host / 2 tab demo / migration 後の host 切替で 50% 発生する typical scenario) で markStale timing が dc.close 待ち (数秒〜数十秒) → 1.5 sec early に圧縮、 phaseSpace 125Hz 送信で false positive リスク低 (= 1.5 sec 不到来は 187 frame 連続 loss = 明確な異常)
-- 🟢 **Stage 8-C mesh-ish recovery** (`9b3f2ff`): 既存 mesh-ready stepping stone (network.md L142) を migration recovery で初活用、 reconnect 後の peerOrderRef 最近 8 個に mesh-ish connect 試行で post-split race 救済 (= 旧 BH dead でも別 peer alive なら発見)。 思想 doc 軸 4「N² 許容」 を実装で具現化、 思想と実装の gap 解消
-- 帰結: 思想 doc 全軸が実装で具現化、 layer (= 4 layer 独立 fault detector) / direction (= client/BH 対称) / transport (= PeerJS/WS Relay 対称) / phase (= normal/migration/post-split 対称) の 4 軸対称性が architecture 的に完璧。 plan §8 完了基準 全 ✅ + Stage 8 根本治療完成
-
-**5/5 evening Bug 11 連続実装 deploy** (= 思想 anchor 化 + 3 軸直交 fix 全部入り + (a) layer 対称性 完成 + (c) HUD UI で plan fully close):
-- 🟢 **(c) HUD「接続中の相手」 stale 表示** (`48f17d2`、 build `19:15:56`): plan §3 (c) optional 項目を最終 close。 物理層 (= conn.open) と app 層 (= staleFrozenIds) の独立 state を視覚分離、 3 状態 (= connected 緑 / **stale 黄「応答なし」 (新)** / disconnected 赤) で peer 状況を可視化。 silent failure / sleep-wake / migration race で markStale 経路が触った peer が「接続中」 緑表示のままにならず、 user が「物理 OK だが応答なし」 を即時認識できる。 plan §8 完了基準 全 ✅ + plan を closed status に格上げ
-
-- 🆕 **(a) layer 3 signaling 経路追加** (`12ef1da`): 4 軸 sweep deeper analysis で発見した layer 視点の対称性問題に対応。 plan §3 (a) Step 2 の 3 経路は redundant ではなく **3 layer 独立 fault detector** (= WebRTC / アプリ層 keepalive / signaling)、 私の前 commit `0a6ea2f` は WebRTC + heartbeat (= disconnectPeer chain 間接吸収) の 2 layer のみで、 signaling layer (= peer-unavailable error) が sleep-wake シナリオで漏れていた。 sleep-wake で peer-unavailable は zombie WebRTC connection の close より早い signal (= peer.connect() 試行で即時 fail)。 PeerManager に `extractPeerIdFromError` pure helper (= 6 件 vitest で format 固定化) + `onPeerUnavailable(cb)` callback API、 zustand store に `markStaleId` action、 RelativisticGame の useStaleDetection mount で register、 PeerProvider が subscribe + condition (= `connectionPhase === "connected"` && `players.has(peerId)`) で false positive 除外。 layer 対称性により normal/sleep-wake/migration race の各シナリオで最早期 layer が markStale を triggered、 H1 (= 3 秒 unprotected window) を 0-1 sec に圧縮
-
-- 📐 **思想 doc anchor 化** ([`design/network-recovery.md`](design/network-recovery.md) 新設、 `7896291`): 5/5 セッションで形になった hard-won insights を 6 軸で整理。 軸 1 Phase 別の対称性 / 軸 2 Recovery 3 直交軸 / 軸 3 H1+H2+H3 真因 chain / 軸 4 「N² でも良し」 の正規化 (star も system total O(N²)、 mesh defer は ROI 理由のみ、 既存 stepping stone を migration recovery で初活用) / 軸 5 治療優先順 / 軸 6 既存メタ原則 M25/M26/M27 対応。 plan v2 refresh で B1-B4 発見 4 点を本文に inline 反映
-- 🟢 **(e) reload prompt overlay** (`712f2e2`): peerStatus が disconnected/error 10 sec 持続で `SignalingLostOverlay` modal「再読込」 表示 (= unavailable-id / ws_error / relay_error / config_error は false trigger 除外)。 sleep-wake stuck の即時 user 救済 + (a)/(d) deploy までの安全網。 architecture neutral、 既存 logic 0 行書換、 risk 0
-- 🟢 **(a) markStale 拡張** (`0a6ea2f`): `useStaleDetection` に `markStale(playerId, currentTime?)` API 追加、 `RelativisticGame` の connection drop loop で grace timeout 前に即時 markStale。 H1 真因対処 = Fix B cap (2sec) と stale wall threshold (5sec) の **3 秒 unprotected window** で Rule B 永続発火 → frozenWorldLines mount storm という連鎖を、 markStale 即時化で 0-100ms に圧縮。 caller scope は conn.close 経路 (onConnectionChange diff) のみ、 heartbeat timeout は WebRTC conn.close と並行発火で redundant、 peer-unavailable は room discovery transient で false positive リスクで scope 外
-- 🟢 **(d) PeerJS reset** (`26dc8d7`): `PeerManager` に `reconnect()` method 追加 (= peer.destroyed なら新 Peer 直接作成 / peer.disconnected なら peer.reconnect() 試行 → 失敗で destroy + 新規作成)、 listener attach を private `createPeer()` に extract、 PeerProvider で peerStatus.disconnected を 5 sec watch して呼出。 H3 治療 = WebSocket 切断後の同 instance 再接続が困難な PeerJS 既知挙動を吸収、 既存 design の post-split 盲点 (= signaling 死亡時に migration の star 再生成すら trigger できない) を埋める system topology 軸の根本治療
-- 検証: 247 test 全 pass、 typecheck clean、 preview 起動確認 (build `18:30:52`)、 deploy build `18:31:59`
-- mesh-ish recovery (= room beacon ID + 既知 peer ID 試行) は別 plan defer (= まず本 fix で sleep-wake stuck が解消するか実機 verify、 不十分なら追加実装)
-
-**5/5 PM verify session 観察** (= odakin 半日不在 → 復帰):
-- ✅ **Bug 12 (LH↔自機 表示順序)**: 「よさそうだね」 確認、 ledger ✅ 格上げ
-- 🟢 **Bug 10 (全世界凍結)**: Tab 2 = 世界時刻 805s (= 13.4 分 play) で score odakin=42/灯台=23 まで進んで Context Lost × 1 のみ (= invisibly recovered)、 主症状 fire せず → 強い positive signal、 5+ 分 plays 達成済の事実上 ✅
-- 🆕 **Bug 11 (network state loss) reliable repro 確立**: sleep computer → wake で 2 tab 共にホスト化 + 互いが見えない state 発生。 Tab 1 は signaling server の WebSocket 切断後 `Cannot connect to new Peer` で stuck、 Tab 2 は solo host で動作継続。 5/5 evening に上記 (e)+(a)+(d) を連続 deploy で 3 軸直交治療 (実機 verify 待ち)
-- 副次: laser worldline が LH を遮らない (= `2e19da2` の真因 fix 効果) は通常 play で観察可、 camera yaw τ=0.12s 体感は無コメント (= 違和感無いと推測)
-
-**5/5 work**:
-- `109ddf0` **LH 全 mesh に polygonOffset 追加** — odakin 観察「画面で自分と灯台が重なった状態になると LH フリッカー」 (= 直前 `2e19da2` ALWAYS_ON_TOP 撤去後の表面化症状)。 数値解析で確認: 自機 hull z ∈ [0.55, 0.71] / LH body z ∈ [-0.08, 0.92]、 重なり領域で transparent (LH) と opaque (hull) の異種 pass + 同 depth で depthTest が float 精度内で flip → ON/OFF flicker。 旧 ALWAYS_ON_TOP の depthTest=false が副作用的に z-fight も回避していた (= 「絆創膏が抑えていた症状の第 5 の隠れ顔」)。 LH 全 12 material に polygonOffsetFactor=1 / units=1 を追加 → LH depth fragment に固定 bias 加算で deterministic 化、 通常 play (= self が LH の手前) では visual 不変、 重なり時のみ self hull が常に勝って LH 側面が hull の silhouette で消える (= gameplay 上自然な「自分が常に見える」 挙動)。 plan: [`plans/2026-05-05-lh-self-overlap-z-fight.md`](plans/2026-05-05-lh-self-overlap-z-fight.md) (= 「絆創膏を剥がす時にそこに何があったかを understand してから剥がす」 規律事例)。 typecheck + 247 test 全 pass。
-- `2e19da2` **ALWAYS_ON_TOP pattern 撤去** (= 根本治療) — odakin 「絆創膏の上に絆創膏」 指摘への対応。 4 段の絆創膏スタック (`46f8755` LH renderOrder bump → `f15fce4` depthTest=false 拡張 → `9f711ca` trio module 化 → `e2608d1` BG/FG split) を真因 audit で剥がす。 真因: transparent な抽象可視化 material が `depthWrite` を default (= true) で放置していた 4 箇所 (= laser worldline / 参照リング / debris marker × 2)。 各 offender 側を `depthWrite={false}` に統一 → LH を depth bypass する必要が消失 → trio + BG/FG + module ごと撤去。 新原則は「opaque 物理 entity は depth 書く、 transparent 抽象可視化 / 半物理 entity は depth 書かないが respect」 の 1 文に集約 (詳細: [`plans/2026-05-05-depth-aware-cleanup.md`](plans/2026-05-05-depth-aware-cleanup.md))。 結果: LH ↔ Self ship hull が depth で前後決まる (= odakin 直感に整合)、 sort flicker は原理的に不発、 alwaysOnTopRender.ts module 削除で file 数 119 → 118。 影響 file: LaserBatchRenderer / SceneContent / threeCache + LighthouseRenderer / SelfShipRenderer / RocketShipRenderer + alwaysOnTopRender.ts 削除。 typecheck + 247 test 全 pass。
-- `e2608d1` **ALWAYS_ON_TOP trio を BG/FG 2 layer に分離** — odakin 観察「灯台と自分の表示順序を取り合ってる」 への対応 (= Bug ledger #12)。 旧 1 layer (renderOrder=10) で LH 全 12 mesh と self / rocket exhaust が同 transparent group に混在 → sort tiebreaker が frame 間揺らぐ flicker。 BG (renderOrder=10、 LH = 世界 structure) / FG (renderOrder=11、 self/rocket exhaust = avatar feedback) に分離、 FG > BG で avatar 視認性優先。 Self hull / 砲塔 は trio を持たない (= 通常 opaque depth) は historic 不変、 LH に隠れる挙動も不変 (= 安定的に LH always-on-top)。 docstring drift (= 「適用先: 自機 hull / 砲塔」 と書いていたが実装は exhaust nozzle のみ) も同 commit で実態に sweep。 影響 file: alwaysOnTopRender.ts + LighthouseRenderer + SelfShipRenderer + RocketShipRenderer。 JellyfishShipRenderer は trio 不使用で影響無し。
-- `7a7df95` **DebrisRenderer 毎 render allocation を ref reuse pattern に** — Bug 10 並列 root 撲滅。 5/5 verify session Phase 1 (= 単一 tab solo play 70 秒、 peer 不在 Rule B 不発) で Context Lost × 2 観察 → Bug 10 真因 chain (5/4 fix 済) と独立した別 root cause が存在することを確認 → SESSION 「defer 中」 既登録仮説 (= DebrisRenderer 毎 render `new Float32Array(maxInstances*3)` + `new InstancedBufferAttribute` で GPU buffer upload ~3.9 MB/sec) を un-defer。 `useRef` で Float32Array + InstancedBufferAttribute を component lifetime 中保持、 in-place update + `needsUpdate=true` で同 GPU buffer 再 upload。 plan: [`plans/2026-05-05-debrisrenderer-gc-fix.md`](plans/2026-05-05-debrisrenderer-gc-fix.md) (= M26/M27 application 学習記録含む、 「complex hypothesis 組む前に既登録 simpler defer の re-check」 教訓)。 typecheck + 247 test 全 pass、 wire format 影響無し。 user 実機 verify 待ち (= Context Lost 頻度 / setInterval Violation / LH flicker after hit が target 内に収まるか)。
-- `d3ecadf` **camera yaw 追従 lag 追加** (chase camera 風) — `cameraYawRef.current` (= 論理 yaw、 物理 / Radar / CenterCompass / heading sync の source of truth) は無遅延、 3D camera 位置 / lookAt だけが [`displayedCameraYawRef`](src/components/game/SceneContent.tsx) (SceneContent.tsx の `useFrame` 内、 指数 lerp 時定数 `CAMERA_YAW_FOLLOW_TAU=0.12s`) で遅延追従。 角度 wrap は `Math.atan2(sin, cos)` で吸収、 初回 snap で起動時 swing 防止。 legacy_classic で「機体先行 + camera swing」 chase camera 感が出る、 modern (cameraYaw=0 固定) では no-op。
-
-**直近 deploy 済 (5/4)** — 詳細は git log + 各 plan:
-- `9f711ca` ALWAYS_ON_TOP render trio (renderOrder=10 + depthTest=false + depthWrite=false) を [`alwaysOnTopRender.ts`](src/components/game/alwaysOnTopRender.ts) module 化 (= M28 application、 後続 entity 追加時の踏み外し防止)
-- `f15fce4` LH meshes に depthTest=false 追加 (= flicker 修正、 trio 完成)
-- `46f8755` 光円錐 / 世界線 / LH の inner-hide 廃止 + LH renderOrder bump
-- `99b927b` / `5471f6b` legacy_shooter を 2 軸独立 twin-stick refactor + mobile 1 軸縮退、 scheme label rename (機体追従 / ツインスティック / カメラ固定)
-- `e635e83` / `8a0b881` / `6083144` / `f2887f5` スマホ横全画面 Phase 1 (useOrientation hook + 開始時 fullscreen + Lobby landscape paddingTop)
-- `2cd8528` / `97ac479` / `e777e2e` Lobby landscape を 3-col layout (form | ship | hi-scores) + ship preview 拡大 (90vh/360 max + camera 0.75× 寄せ)
-- `77cd209` 死亡時の煙を victim.color に戻す
-- 5/4 前半 build `2026/05/04 18:19:35`: 跳躍 overlay continuous 化 (`151bd84` + `d277d0f` + `41374d7`) / HUD 「固有時間」 → 「世界時刻」 表記修正 (`4061adb`) / **Bug 10 真因 chain 全 fix** (Fix A `dcd7469` + Fix B `c8ef4b3` + Fix C `b002d50`、 plan: [`plans/2026-05-04-virtualpos-lastsync-rca.md`](plans/2026-05-04-virtualpos-lastsync-rca.md)) / LH/OtherShip flicker fallback (`68e4f67`、 [`pastConeFallback.ts`](src/components/game/pastConeFallback.ts)) / frozenWorldLines mount storm root fix (`18adb8b`、 stable id) / myDeathEvent 二重管理解消 (`096f513`、 [`plans/2026-05-04-mydeathevent-decomposition.md`](plans/2026-05-04-mydeathevent-decomposition.md)) / player.isDead 二重管理解消 (`fe070fa`、 [`plans/2026-05-04-isdead-decomposition.md`](plans/2026-05-04-isdead-decomposition.md)) / staleFrozenIds 三重二重管理解消 (`da705b7`)。 抽出原則は [`design/meta-principles.md`](design/meta-principles.md) §M25-28。
-
-**5/2 セッション** ✅ deploy 済 — 因果律対称化 ([`plans/2026-05-02-causality-symmetric-jump.md`](plans/2026-05-02-causality-symmetric-jump.md)、 Stage 1-8 + dead-skip hotfix、 旧 LH `minPlayerT` jump → Rule B、 alive 自機にも Rule B 毎 tick、 ballistic catchup 撤廃) + 「全世界凍結」 root cause v1 (`453fca6`、 WorldLineRenderer の useMemo deps から `wl` 撤去で rebuild 60Hz → 7.5Hz、 Canvas auto-remount + watchdog) + onboarding fix (CenterCompass `08944d3` + radar 中心 marker `7a12ddf`) + Bug 7 因果律違反修復 (`c7f7960`)。 既存 198 → 237 test (+39) 全 pass。
-
-**4/28 セッション** ✅ deploy 済 (`bbce03f` build `2026/04/28 21:50:37`) — 共変表現徹底 + 後 join client 永遠凍結 fix (`3ba639a` で spawn 時刻 (min+max)/2 中間化) + PBC torus 隠しオプション化 + open_cylinder default + ARENA_RADIUS 20 → 40 + PLC スライスモード merge (PR #2) + spawn / arena 中心を原点に統一。 詳細は git log。
+- **5/5 night** Rule B exit margin (`ad52130` + docstring `61ddb08`): `causalityJumpLambdaSingle` に `CAUSALITY_JUMP_EXIT_MARGIN_LS = 0.001 ls` 加算で λ_exit を peer の過去 null cone surface ぴったりではなく ε spacelike 側に着地、 boundary chatter 構造的消滅。 Rule A `CAUSAL_FREEZE_HYSTERESIS = 2.0` と complementary 対称構造。 詳細: [DESIGN.md §Rule B exit margin](DESIGN.md) + [`constants.ts:CAUSALITY_JUMP_EXIT_MARGIN_LS`](src/components/game/constants.ts) docstring。 253 test pass。
+- **5/5 evening** Bug 11 plan fully decommissioned (build `19:43:10`): Stage 8 4 軸対称性根本治療 (transport / direction / phase) + Stage 9 cosmetic root cause + Stage 11 `causalFrozenRef` boolean dual 撤廃 (`ffd81b3`)。 sleep-wake production verify ✅ confirmed。 思想 anchor: [`design/network-recovery.md`](design/network-recovery.md)
+- **5/5 day** Bug 12 LH↔自機 z-fight 治療 (`109ddf0` polygonOffset + `2e19da2` ALWAYS_ON_TOP pattern 撤去) + Bug 10 並列 root (`7a7df95` DebrisRenderer GC fix) + camera yaw 追従 lag (`d3ecadf`) + 操作系 refactor (`99b927b` legacy_shooter twin-stick + scheme rename)
+- **5/4** Bug 10 5 layer chain 真因 fix: `dcd7469` + `c8ef4b3` + `b002d50` (virtualPos lastSync) + `18adb8b` (mount storm stable id) + `68e4f67` (pastConeFallback) + `096f513` (myDeathEvent decomposition) + `fe070fa` (isDead decomposition) + `da705b7` (staleFrozenIds 解消)。 抽出 meta-principles M25-28: [`design/meta-principles.md`](design/meta-principles.md)
+- **5/2** 因果律対称化 Stage 1-8 + dead-skip hotfix: 旧 `minPlayerT` LH jump → Rule B、 alive 自機にも Rule B 毎 tick、 ballistic catchup 撤廃。 plan: [`causality-symmetric-jump`](plans/2026-05-02-causality-symmetric-jump.md)
+- **4/28** 共変表現徹底 + 後 join 永遠凍結 fix (`3ba639a` spawn `(min+max)/2`) + PBC torus 隠し化 + ARENA_RADIUS 20→40 + spawn 原点中心統一 (`bbce03f`)
 
 ### 設計思想 (永続化)
 
-- **共変表現の徹底**: 内部表現は共変量 (`phaseSpace.u: Vector3` = γv が正本)、 ut=γ は必要時のみ `sqrt(1+|u|²)` で給与。 詳細 [`DESIGN.md §「共変表現の徹底」`](DESIGN.md)
-- **`pos.t` は per-player coord time**: `dτ = wall_dt` は意図的設計、 `pos.t = γ * wall_clock` で player 間 lag が累積するのは仕様。 「全 player wall_clock 同期」 は誤り (詳細 [`design/physics.md`](design/physics.md) §pos.t の物理的意味)
+- **共変表現の徹底**: 内部表現は共変量 (`phaseSpace.u: Vector3` = γv が正本)、 ut=γ は必要時のみ `sqrt(1+|u|²)` で給与。 詳細 [DESIGN.md](DESIGN.md)
+- **`pos.t` は per-player coord time**: `dτ = wall_dt` は意図的設計、 `pos.t = γ * wall_clock` で player 間 lag が累積するのは仕様 (詳細 [`design/physics.md`](design/physics.md))
 - **「実体は (0,0) cell に閉じる」**: PBC torus universe で全ての物理量は (0,0) cell 内、 universal cover の他 image cells は描画コピー
-- **self-authoritative pattern**: state 計算 (= ballistic 復帰位置) は本人 client が行い broadcast、 host 側で再計算しない (= Authority 解体 architecture と整合)
+- **self-authoritative pattern**: state 計算 (= ballistic 復帰位置) は本人 client が行い broadcast、 host 側で再計算しない
+- **Rule A / Rule B 対称設計**: Rule A (= 凍結) と Rule B (= 因果律ジャンプ) は mirror image。 各々 boundary 振動防止の hysteresis (= A) / exit margin (= B) を持ち、 因果律 state machine が boundary に張り付かない (詳細 [DESIGN.md §因果律対称化](DESIGN.md))
 
 ## 既知の課題
 
-### Bug ledger (2026-05-02 demo 中に発見、 順番は user 報告順)
+### Bug ledger (5/2 demo 中発見、 user 報告順)
 
 | # | bug | 状態 | メモ |
 |---|---|---|---|
-| 1 | 死後 ghost が時間発展しない (= 「死後硬直」、 WASD 効かないが arrow keys は効く、 他機は普通に未来へ動く、 自機は時空間で固まる) | **大半は Bug 10 と統合解消の見込み** | 当初 SESSION では「自機のみ固まる」 と分類していたが、 5/2 末で odakin が「世界全体 + 星屑も止まる」 と詳細観察 → Bug 10 として再分類。 ghost camera の WASD non-routing 部分は依然 DevTools console focus 由来 false alarm 仮説 (canvas を 1 度 click で要再検証)。 大半の症状は Bug 10 root cause 撃滅 + auto-remount で解消する見込み |
-| 2 | 相手機が見えたり見えなくなったり (flicker) | **あとで** | 4/28 sweep 以降に regression。 OtherShipRenderer / past-cone intersection / universal cover refactor 周辺の疑い。 Bug 10 と共通根因 (= rAF starve で frame drop) の可能性、 root cause 撃滅後に再評価 |
-| 5 | 灯台の時刻ジャンプ — user 仮説 「クライアント含めたいちばん未来側 ではなく ホストだけの時刻に飛んでる」 | ✅ **構造的解消 (`7ae1917` Stage 4)** | 旧 `minPlayerT` jump (= 一番過去にいる alive peer に anchor) を Rule B 因果律対称ジャンプ (= `causalityJumpLambda`) に置換。 LH (u=0) は `max_P (P.t − \|P.xy − LH.xy\|)` まで forward exit、 lead client (= 最も未来側 peer) の past null cone surface に追従 → user 観察「host 時刻 anchor」 を解消。 dead / stale も統一処理、 PBC torus は `displayPos` で min-image 折り畳み。 lighthouseRuleB.test 8 件で挙動 verify (= 旧 host=100 + client=200 シナリオで新 LH=190 を assert) |
-| 6 | PLC スライス 3D で こちらに飛んでくる弾がゆっくり見える (2D は正しい) | **あとで** | 3D 視点での visual artifact、 2D radar mode は正常。 因果律対称化 (Stage 1-8) の scope 外 |
-| 7 | 相手が死んだ瞬間 (kill event が past cone に到達する前) に描画消える | ✅ **fix 済 (`c7f7960`)** | `SceneContent.tsx` `worldLineMarkerEntries` の `isDead` filter が past-cone marker (causal) と future marker (god view) を区別してなかった。 past-cone marker は OtherShipRenderer 本体描画と同じ causal gate のみ、 future marker のみ isDead で skip に refactor |
-| 8 | 長時間 tab hidden 復帰後、 灯台が遥か未来に行ってて見えない (= 自機の現在 pos.t より大幅に LH.pos.t が進んでる) | ✅ **構造的解消 (`dc38dba` Stage 6 + `7ae1917` Stage 4)** | (1) Stage 6 で `lastTimeRef` を hidden 中も毎 throttle tick で current 更新するよう修正 → 復帰時 dτ は最後の throttle tick 以降の小値に抑制 (= 旧仕様の「巨大 dτ → ballistic catchup」 経路を完全撤廃)。 (2) Stage 4 LH Rule B が hidden 中 host 側で進行した場合の LH.t 巨大 jump も `max_P (P.t − dist)` で bounded catchup に抑える (= 旧 minPlayerT 経路の「自機より先まで飛ぶ」 を防止)。 実機検証は次 deploy 後 |
-| 9 | 新規 tab で join した瞬間に「因果律凍結」 即発生 | **構造的 mitigation (Stage 5/7、 完全解消は実機検証待ち)** | (1) Stage 7 で `checkCausalFreeze` を virtualPos 化 + dead/stale 除外撤廃 → spawn 直後の prediction が安定 (= dead-skip hotfix `99f86b9` で dead は除外復活、 alive/stale のみ virtualPos)。 (2) Stage 5 alive 自機 Rule B が「自分が peer の past cone にいれば forward jump」 で convoy 合流 → freeze 永続を回避 (= 過去側 peer が自発的に飛んでくる対称設計)。 spawn 仕様は Stage 8 で (γ) `(min + max) / 2` に確定。 残る race は spawn 直後の random spatial 配置で初回 tick が依然 freeze 起動するケース、 実機検証で頻度 / 持続を確認 |
-| 11 | **Network state loss / cascade chaos / sleep-wake** (= 5/5 verify session Phase 2-3 で多 tab cascade で観察 + 5/5 PM の sleep-wake で**reliable repro 確立**: 「両 client が因果律跳躍 同時 fire」 / 「LH worldline 縞 stack」 / `GL_INVALID_OPERATION` / 「一人の client から peer 不可視」 / 「両 tab がホスト化 + 信号サーバ復帰失敗で stuck」) | ✅ **plan fully decommissioned (5/5 evening、 build `19:43:10`)** — Stage 8 根本治療 + Stage 9 cosmetic root cause + Vite HMR pattern 文書化で全課題 closed、 4 軸対称性 architecture 完璧 + 思想/実装 gap ゼロ | 思想 anchor: [`design/network-recovery.md`](design/network-recovery.md) 6 軸 + 軸 2 layer/direction/transport 対称性 + 軸 4 mesh-ish 実装具現化。 真因 3 層 chain (H1+H2+H3) を 3 軸直交 fix + UI 整合化 + Stage 8 根本治療で完全治療: **(e) reload prompt** (`712f2e2`) + **(a) markStale 4 layer** (`0a6ea2f` WebRTC + `12ef1da` signaling + `2a54a29` phaseSpace timeout 1.5sec early、 direction 対称完成) + **(d) reconnect 両 transport** (`26dc8d7` PeerJS + `997c7a3` WS Relay、 transport 対称完成) + **(c) HUD 3 状態 UI** (`48f17d2`) + **mesh-ish recovery** (`9b3f2ff`、 既存 stepping stone を migration recovery で初活用)。 production verify confirmed (sleep-wake 自動復帰 + console log 確認)。 247 → 253 test pass。 残課題: localhost Vite HMR full reload (dev only) / host tab の「la-{room} 接続準備中/失敗」 残骸 entry の cosmetic cleanup |
-| 12 | **灯台と自機の表示順序を取り合っている疑い** (= odakin 5/5 観察) | ✅ **完全治療 deploy 済 + odakin 5/5 PM verify 「よさそうだね」 確認** | 治療の 3 段階: (1) `e2608d1` BG/FG layer 分離で sort tiebreaker flicker を消した (= 絆創膏)、 (2) odakin 「絆創膏の上に絆創膏」 指摘 → `2e19da2` で 4 段絆創膏スタック (ALWAYS_ON_TOP pattern) を真因 audit で全撤去、 真因は transparent 抽象可視化 material が `depthWrite` default で書いていた 4 offender (= laser / 参照リング / debris marker × 2)、 offender 側を `depthWrite={false}` に統一して `alwaysOnTopRender.ts` module ごと削除、 (3) `109ddf0` で「絆創膏が抑えていた症状の第 5 の隠れ顔」 = 自機 hull z ∈ [0.55, 0.71] と LH body z ∈ [-0.08, 0.92] の geometric 重なり領域での float 精度 z-fight を、 LH 全 mesh に polygonOffset で固定 depth bias 加算して deterministic 化。 結果: 通常 play で visual 不変、 重なり時に self hull が常に勝って LH 側面が hull silhouette で消える (= 自分が常に見える gameplay 自然挙動)、 sort flicker / z-fight 両方原理的に不発、 build 09:35:38。 詳細 plan: [`depth-aware-cleanup.md`](plans/2026-05-05-depth-aware-cleanup.md) + [`lh-self-overlap-z-fight.md`](plans/2026-05-05-lh-self-overlap-z-fight.md) (= M26/M29 application 学習記録 2 連) |
-| 10 | **全世界が固まる + 背景の星屑も止まる** (= rAF / WebGL レンダリングそのもの停止、 5+ 分プレイで顕在化、 odakin「元からあるバグ」 と確認) | 🟢 **主症状 ✅ confirmed + 並列 root fix deploy 済**、 5/5 PM verify Tab 2 = 13.4 分 (世界時刻 805s) play で score odakin=42/灯台=23 まで進んで Context Lost × 1 (= invisibly recovered) のみ、 主症状 fire せず → 強い positive signal。 残: 5+ 分 plays + 死亡中 stardust の確認 verify 待ち | 真因は **5 layer chain (5/4 撃滅) + 並列 root (5/5 撃滅)** の複合。 (1)-(5) chain (5/4): **virtualPos lastSync semantic 矛盾** (Fix A `dcd7469` + B `c8ef4b3`) / **LH Stage 4 implementation gap** (Fix C `b002d50`) / **frozenWorldLines mount storm** (`18adb8b` stable id) / **1 点 worldLine flicker** (`68e4f67`) / **myDeathEvent 二重管理** (`096f513`)。 (6) 並列 root (5/5、 `7a7df95`): **DebrisRenderer 毎 render allocation の GPU buffer upload 圧** が単独で Context Lost を生む経路 (Phase 1 単一 tab solo play 70 秒で Context Lost × 2 観察、 peer 不在 Rule B 不発で chain と独立)。 5/5 verify で主症状 (= 世界時刻 暴走 / 全世界凍結 / 死亡中 stardust 凍結) は user 「取れてるっぽい」 確認、 5/5 PM の Tab 2 13.4 分 play で再 confirm。 5/2 fix (= renderer wlRef + Canvas auto-remount + watchdog) は二次防衛として温存。 |
+| 1 | 死後 ghost 時間発展せず | Bug 10 と統合解消見込み | ghost camera WASD non-routing 部分は DevTools console focus 由来 false alarm 仮説、 canvas click で要再検証 |
+| 2 | OtherShip flicker | あとで | Bug 10 共通根因 (rAF starve) 疑、 root 撃滅後再評価 |
+| 5 | LH 時刻ジャンプ (host anchor) | ✅ 構造的解消 (`7ae1917` Stage 4) | Rule B 因果律対称ジャンプで lead client 追従、 旧 `minPlayerT` 撤廃 |
+| 6 | PLC スライス 3D 弾速 | あとで | 3D 視点 visual artifact、 2D radar は正常、 因果律対称化 scope 外 |
+| 7 | 相手死亡瞬間描画消失 | ✅ fix 済 (`c7f7960`) | past-cone marker と future marker の isDead filter 分離 |
+| 8 | hidden 復帰 LH 未来跳躍 | ✅ Stage 6 + Stage 4 で解消 (`dc38dba` + `7ae1917`) | bounded catchup で「自機より先まで飛ぶ」 防止 |
+| 9 | 新規 join 即凍結 | 構造的 mitigation (実機検証待ち) | Rule B convergence で freeze 永続回避、 残 race は spawn 直後 spatial 配置依存 |
+| 10 | 全世界凍結 + 星屑停止 | 🟢 主症状 ✅ confirmed | 5 layer chain (5/4) + DebrisRenderer GC (5/5) で撃滅、 Tab 2 13.4 分 play で再 confirm。 残: 5+ 分 plays + 死亡中 stardust の最終確認 |
+| 11 | Network state loss / sleep-wake | ✅ plan fully decommissioned (5/5 evening) | sleep-wake production verify ✅ confirmed、 4 軸対称性 architecture 完璧。 5/5 night Rule B exit margin で post-recovery 残響も消滅見込み |
+| 12 | LH↔自機 表示順序 | ✅ 完全治療 + odakin verify | (1) BG/FG 分離 (2) ALWAYS_ON_TOP 撤去 + depthWrite 整合 (3) polygonOffset で z-fight deterministic 化 |
 
-### 中期 plan (= 完了済、 実機検証待ち)
+### 中期 plan / 設計記録 (= deploy 済、 詳細は git log + plans/ 参照)
 
-**[`plans/2026-05-02-causality-symmetric-jump.md`](plans/2026-05-02-causality-symmetric-jump.md)** ✅ **Stage 1-8 全完了 + dead-skip hotfix (2026-05-02)** — Bug 5 / 8 / 9 を共通根因 (per-player coord time gap 蓄積) で同時解消する大型 refactor。 思想は「Rule A 凍結 (= 既存) + Rule B 因果律ジャンプ (= 新設) の対称化」 + 「alive / stale を統一 virtualPos モデルで扱う、 dead は spawn time 計算のみで含める asymmetric」 (= dead-skip hotfix で実機検証撤回、 plan §6 Stage 7 / §7.10 から逸脱)。 10 commits (`abfbceb..99f86b9`)、 既存 198 → 237 test (+39) 全 pass。 deploy 候補。 plan v2 で signature 表記 + §3.6 intuition table + §3.3 disc ≥ 0 を修正済 (`10c802a`)。
+主要 plan は全 deploy 済。 完了 plan 一覧:
 
-**WebGL context loss 根本対策** 🟡 **真因再特定 (2026-05-04) — Bug 10 ledger に統合**: 5/2 (`63bf3f0` / `c14e1d5` / `453fca6`) の WorldLineRenderer wlRef pattern + Canvas auto-remount + watchdog escape hatch は **真因の修正ではなく二次症状の patch + 防衛策** だったと 5/4 RCA で確定。 真因は virtualPos lastSync 管理 bug で Rule B 暴走 → frozenWorldLines cycling → mount storm という連鎖 (= Bug 10 真因 chain layer 1-3、 詳細 M27 の 5 layer 表)。 修正は Bug 10 ledger 行を参照 (Fix A `dcd7469` + Fix B `c8ef4b3`、 plan: [`plans/2026-05-04-virtualpos-lastsync-rca.md`](plans/2026-05-04-virtualpos-lastsync-rca.md))。 5/2 の対症療法 (= renderer wlRef + auto-remount + watchdog) は revert せず温存、 別 path で同種 storm が起きる場合の二次防衛として価値あり。 設計思想「loss を起こさない」 → 「起きても気付かない」 は維持。
+- [`2026-05-02-causality-symmetric-jump`](plans/2026-05-02-causality-symmetric-jump.md): Bug 5/8/9 共通根因の対称ルール導入
+- [`2026-05-04-virtualpos-lastsync-rca`](plans/2026-05-04-virtualpos-lastsync-rca.md): Bug 10 真因 chain (Fix A+B+C)
+- [`2026-05-04-mydeathevent-decomposition`](plans/2026-05-04-mydeathevent-decomposition.md) + [`2026-05-04-isdead-decomposition`](plans/2026-05-04-isdead-decomposition.md): 二重管理解消 2 連
+- [`2026-05-05-debrisrenderer-gc-fix`](plans/2026-05-05-debrisrenderer-gc-fix.md): Context Lost 並列 root
+- [`2026-05-05-depth-aware-cleanup`](plans/2026-05-05-depth-aware-cleanup.md) + [`2026-05-05-lh-self-overlap-z-fight`](plans/2026-05-05-lh-self-overlap-z-fight.md): Bug 12 治療 2 連
 
-**listener fire 信頼性問題 + polling fix の revert 経緯 (2026-05-04)**: 5/4 デバッグ中、 console に `THREE.WebGLRenderer Context Lost` log は出るが私の listener log (`[WebGL] context lost`) が出ない事象を観察。 candidate 仮説: (A) `addEventListener` attach 隙間 (= polling 200ms 内に context lost) / (B) Brave / browser-specific event 不発火 / (C) HMR remount race 等 (= 環境依存で verify 困難)。 一度 `gl.isContextLost()` 直 polling check を「正規 resilience」 として実装 → user「絆創膏」 指摘で立ち止まり → revert (= mount storm fix で真因解消すれば listener fire failure も実害なくなるとの判断)。 結果: stable id fix + myDeathEvent decomposition で真因 chain 完結、 listener fire failure は **真因解消で観察消失** (= polling 不要)。 **教訓** (= M26 application): listener fire failure を「外部要因への正規 resilience」 と framing したが、 実は真因 (= mount storm) の二次症状を別 path で吸収しようとした絆創膏だった。 真因解消で消える症状は「真因の二次症状」 で、 polling fix は不要。 但し将来 真の OS/driver context reclaim が起きた場合の resilience として、 5/2 fix (= listener + auto-remount + watchdog) は二次防衛として温存。 polling 直 check は本当に listener が fire しない environment で context loss が頻発するなら別 task で再検討。
+**WebGL context loss**: 5/2 fix (renderer wlRef + Canvas auto-remount + watchdog) は二次防衛として温存、 真因は Bug 10 5 layer chain (5/4) + 並列 GPU root (5/5) で撃滅。 設計思想「loss を起こさない」 → 「起きても気付かない」 維持。
 
-**[`plans/2026-05-04-virtualpos-lastsync-rca.md`](plans/2026-05-04-virtualpos-lastsync-rca.md)** ✅ **Fix A + B + C 実装完了 + deploy 済 (2026-05-04)** — Bug 10 真因 = virtualPos lastSync semantic 矛盾 + LH Stage 4 implementation gap。 4 commits、 build `2026/05/04 18:19:35 JST` で deploy 済。
+### defer 中
 
-**[`plans/2026-05-04-mydeathevent-decomposition.md`](plans/2026-05-04-mydeathevent-decomposition.md)** ✅ **完了 + deploy 済 (2026-05-04)** — 自機死亡 state の二重管理 (= isDead derive と myDeathEvent explicit の混在、 snapshot 経路で set 漏れ) を構造的に分解。 静的 meta (= pos/u/heading) は player.phaseSpace から derive、 動的 ghost のみ explicit field + useGameLoop dead branch lazy init で「set 漏れ」 が原理的に発生不可。 plan + atomic refactor 2 commits、 11 file 影響、 248 test 全 pass。 抽出された一般原則は meta-principles M25 として永続化。
-
-**[`plans/2026-05-04-isdead-decomposition.md`](plans/2026-05-04-isdead-decomposition.md)** ✅ **v2 完了 + atomic refactor 完了 (2026-05-04)** — myDeathEvent decomposition の audit で発見した同 class issue を、 staleFrozenIds 解消の momentum を活用して同 session 内で完了。 plan v1 (= 「reach 大で別 task」) を v2 (= staleFrozenIds methodology link + 性能 (a) / wire (C) 確定 + Stage atomic refactor) に refresh、 1 セッションで全 32 read site + 7 write site + field 削除 + 強制同期 patch 撤去 + applyKill 撤去 + killRespawn.ts 撤去を完了。 247 test 全 pass、 typecheck clean、 wire format 後方互換 (= snapshot.players[].isDead は selectIsDead derive 経由で送信維持)。
-
-### defer 中 (= 既存)
-- ~~**旧シューター操作系で WASD 入力時に射撃の向きを変えない**~~ — ✅ 2026-05-04 完了 (= 未 deploy)。 legacy_shooter を 2 軸独立 twin-stick に refactor: WASD = camera basis thrust (heading 不変)、 矢印 ←/→ = `headingYawRef` 旋回 (= 砲身/aim、 機体本体)、 **Shift+矢印 ←/→** = `cameraYawRef` 旋回 (= camera 機体周り旋回 free-look)、 mobile touch swipe = cameraYaw (= Shift 等価)。 旧仕様の WASD `newYaw = effectiveYaw` snap 撤廃 + `PhysicsResult.newYaw` field 撤去 (= dead code、 全 controlScheme で input yaw と同値だった)。 副次: HUD 操作説明を controlScheme 別に出し分け (= `hud.controls.{legacy_classic,legacy_shooter,modern}.{move,heading}` + `legacy_shooter.cameraRotate` 新設)、 dropdown label を機能反映に rename (= 旧クラシック → 機体追従 / 旧シューター → ツインスティック / モダン → カメラ固定、 内部 ID は LS / URL hash 後方互換のため不変)。 影響 file: `gameLoop.ts` / `useGameLoop.ts` / `ControlPanel.tsx` / `SceneContent.tsx` / `game-store.ts` + i18n ja/en + CLAUDE.md。 247 test 全 pass、 typecheck clean。 `legacy_shooter` の wire / ID は不変なので旧 client 互換
-- ~~**`player.isDead` の二重管理解消**~~ — ✅ 2026-05-04 同 session で完了 (= 上記 5/4 セッション log + plan v2 参照)、 defer から削除
-- ~~**DebrisRenderer 毎 render allocation の GC pressure 仮説**~~ — ✅ 2026-05-05 完了 + deploy (`7a7df95`、 [`plans/2026-05-05-debrisrenderer-gc-fix.md`](plans/2026-05-05-debrisrenderer-gc-fix.md))。 ref reuse pattern で同 GPU buffer 再 upload、 Context Lost 並列 root として撃滅。
-- **JellyfishShipRenderer の per-frame TubeGeometry rebuild** — 5/5 audit で発見、 未着手。 `useFrame` 毎に 5 触手分の `new THREE.CatmullRomCurve3` + `new THREE.TubeGeometry` を生成 + 旧 geometry dispose。 触手 1 つあたり tubularSegs=28-32 / radialSegs=6-8 で GPU mesh churn。 default ship は classic で Jellyfish opt-in (`#ship=jellyfish`) のため classic player には影響なし。 un-defer trigger: Jellyfish 利用者で GPU 圧 / Context Lost / setInterval Violation 累積。 修正方針: TubeGeometry attribute (= position / normal / uv) を pre-allocate Float32Array で展開 → in-place 更新 + `needsUpdate=true` で dispose 不要化 (= three.js TubeGeometry に in-place API 無いので手動 attribute 更新)。 工数中 (= 1-2h)。
-- **全 renderer の useMemo deps + 毎 render allocation audit** — 5/5 audit (Explore agent) **完了**。 critical: Jellyfish (上記)、 LOW: SelfShipRenderer ringPositions useMemo (固定 deps、 amortized) / OtherShipRenderer image cell loop の Vector4 spread (~600 bytes/sec) / SpawnRenderer Array.from object creation (1.5KB/spawn lifetime)。 LOW 群は実害ないので touch せず、 trigger は「long plays で main thread saturation 系 symptom 再発」 で集中 audit。 副 candidate: DebrisRenderer の `explosionSegments` / `hitSegments` 配列毎 render 再生成 (~80 KB/render の CPU GC、 `7a7df95` GPU fix の scope 外で残存、 同様の pre-allocate ref pattern で fix 可能だが優先度低)。
-- DESIGN.md 残存する設計臭 #2 (PeerProvider Phase 1 effect コールバックネスト)
-- snapshot に `frozenWorldLines` / `debrisRecords` 同梱 — un-defer: リスポーン世界線連続観測時
-- host migration の LH 時刻 anchor 見直し
-- 色調をポップで明るく (方向性未定)
-- **スマホ横画面 (fullscreen 表示) 対応** — Phase 1 完了 (= 縦横両対応 + 開始ボタン fullscreen 試行 + Lobby paddingTop orientation-aware): `useOrientation` hook + Lobby `paddingTop` を landscape で 5vh / portrait で 40vh、 開始ボタン押下時に `requestFullscreen()` 試行 (silent failure、 orientation lock せず両向き許容)。 iOS 16.4+ / Android Chrome で fullscreen 動作、 古い iOS は通常 browser 表示で fall back。 残: in-game HUD の landscape layout 最適化 (Phase 2、 = Speedometer 縦長 / ControlPanel↓Radar overlap 等)
-- **ballistic 軌跡 frozenWorldLines 描画** — 死から復帰までの世界線連続性、 odakin defer 判断 2026-04-28
-- **spawn time が「ホストよりずっと未来」 になって既存 client が軒並み凍結する逆 bug 疑い** —
-  Stage 5 (alive 自機 Rule B) で「過去側 peer が自分の past null cone に forward jump」 が
-  実装されたため、 host 側でも自発的 catchup → freeze 永続を回避できるはず。 実機検証で
-  確認後、 顕在化しなければ本項目を削除予定
-- **Stage 8 spawn 時刻 (α) 案への switch 検討** — 現在 (γ) `(min+max)/2` を確定仕様、 plan
-  推奨の (α) `now wall_clock 自分基準` への switch は実機検証 + odakin 同意後に別 commit。
-  Bug 9 解消が Rule B convergence で十分なら (γ) 維持で問題なし
+- **JellyfishShipRenderer per-frame TubeGeometry rebuild**: 未着手、 trigger = Jellyfish 利用者で GPU 圧 / Context Lost 累積。 修正方針 = TubeGeometry attribute pre-allocate + in-place 更新 (1-2h)
+- **DebrisRenderer の `explosionSegments` / `hitSegments` CPU 配列毎 render 再生成**: `7a7df95` GPU fix の scope 外で残存、 同 pre-allocate ref pattern で fix 可能、 優先度低
+- **DESIGN.md 残存設計臭 #2**: PeerProvider Phase 1 effect コールバックネスト
+- **snapshot に `frozenWorldLines` / `debrisRecords` 同梱**: un-defer trigger = リスポーン世界線連続観測時
+- **host migration の LH 時刻 anchor 見直し**
+- **色調をポップで明るく** (方向性未定)
+- **スマホ横画面 Phase 2**: in-game HUD landscape 最適化 (Speedometer 縦長 / ControlPanel↓Radar overlap 等)。 Phase 1 (orientation 両対応 + fullscreen 試行) は 5/4 deploy 済
+- **ballistic 軌跡 frozenWorldLines 描画**: 死から復帰までの世界線連続性、 odakin defer 判断 4/28
+- **逆 bug 疑い**: 高 γ host から見て新 joiner が close-spatial に着地して **host が freeze** する race。 Stage 5 alive 自機 Rule B で自発 catchup する設計のため顕在化しなければ削除予定
+- **Stage 8 spawn 時刻 (α) 案への switch 検討**: 現在 (γ) `(min+max)/2` 確定、 (α) `now wall_clock 自分基準` への switch は実機検証 + odakin 同意後
 
 ### マルチプレイ state バグ 5 点 (全修正済 → 再発監視のみ)
+
 詳細 [`plans/2026-04-20-multiplayer-state-bugs.md`](plans/2026-04-20-multiplayer-state-bugs.md)
 
 ### パフォーマンス
+
 - `appendWorldLine` O(n) → ring buffer
 - useMemo 毎フレーム再計算 → カリング
 - `MAX_WORLDLINE_HISTORY` 1000 → 5000 復帰
 
 ## 次にやること
 
-### 「遠くに行って戻れない」 問題 (2026-04-28、 onboarding 課題)
+### 「遠くに行って戻れない」 問題 (4/28〜、 onboarding 課題)
 
-実機テストプレイヤーが事故的に遠出 → 戻れず迷子化、 を頻出観察 (odakin 報告)。 競技的な「逃げ」 ではなく onboarding 問題。
+実機テストプレイヤーが事故的に遠出 → 戻れず迷子化を頻出観察。 詳細 subproblem / 選択肢 / un-defer trigger は [`EXPLORING.md §「遠くに行って戻れない」 問題`](EXPLORING.md)。
 
-詳細な subproblem 分解 / 選択肢空間 / un-defer トリガーは [`EXPLORING.md §「遠くに行って戻れない」 問題`](EXPLORING.md) を参照。
+**着手済**: spawn / arena 中心原点統一 (`bbce03f`) + (1a) HUD CenterCompass 中心方向矢印 + 距離 (`08944d3`) + (1b) Radar 中心 past-cone marker (`7a12ddf`)
 
-**着手済**: spawn / arena 中心を原点に統一 (`bbce03f`、 後続 UX の target 座標を `(0,0)` 固定で扱える前準備)。
-
-**着手済**:
-- spawn / arena 中心を原点に統一 (`bbce03f`、 後続 UX の target 座標を `(0,0)` 固定で扱える前準備)
-- (1a) HUD 中心方向矢印 + 距離 (`08944d3`、 CenterCompass.tsx 新設)
-- (1b) Radar 中心 past-cone marker (`7a12ddf`、 origin event を radar に projectEvent 投影 + cross "+")
-
-**未着手 (推奨順、 効果 / 工数の見積りも EXPLORING.md)**:
-1. (1a) + (1b) の実機評価。 帰れない事例が残れば次へ
-2. 中心方向 thrust 燃料優遇 or soft pull (= EXPLORING.md §2)
-3. 枠半幅 `ARENA_RADIUS = 40` の縮小 (40 → 15-20) は UX 改善後に効果評価して判断
+**未着手**: 1. (1a)+(1b) の実機評価 → 帰れない事例残存なら次へ / 2. 中心方向 thrust 燃料優遇 or soft pull (EXPLORING.md §2) / 3. ARENA_RADIUS 縮小 (40→15-20) は UX 改善後評価
 
 ### 実機検証待ち (= odakin verify、 復帰時 priority)
 
-**5/5 night deploy 群 (= 未 deploy、 commit pending)**:
-- (e) **Rule B exit margin** (= LH flicker boundary chatter 治療): 5/5 evening の後にも LH
-  flicker 残存報告 → odakin 仮説「surface ぴったりじゃなくて ε 未来側に飛ばしたら治りそう」
-  を物理解釈 + 実装。 LH 撃破連打 / 多 tab 多 peer / 高 γ player 混在シナリオで LH flicker
-  消失するか、 通常 play で visual 不変 (= LH 動きが変わってないか)、 因果律跳躍 overlay の
-  発火頻度に体感差ないか確認
+**5/5 night** (build `21:50:57`):
+- (e) **Rule B exit margin** (`ad52130`): localhost 「よさそう」 確認済 + production deploy 済。 multi-tab / 高 γ 混在 / sleep-wake 後 で flicker 完全消失か、 通常 play で visual / 因果律跳躍 overlay 発火頻度に体感差ないか確認
 
-**5/5 deploy 群 (= build 09:35:38 まで反映)**:
-- (a) **camera yaw 追従 lag** (`d3ecadf`): legacy_classic で「機体先行 → camera が swing で追いかける」 chase camera 感が出るか、 操作感に違和感ないか (= τ=0.12s 体感調整 余地)
-- (b) **Bug 10 主症状** (`7a7df95` で並列 root の DebrisRenderer GC fix 後): 5+ 分 plays + LH 撃破連打で Context Lost 0-1 件 / setInterval Violation 0-3 件 / LH flicker after hit 消失 / 世界時刻 advance ≈ wall_clock / 死亡中 stardust 流れる
-- (c) **Bug 12 LH↔自機 表示順序** (`109ddf0` polygonOffset 後): 自機が LH に近接 + LH 内部に侵入する場面で LH の flicker が消失、 通常 play で visual 不変 (= LH 見え方が変わってない)
-- (d) **副次**: `2e19da2` で laser worldline depthWrite=false にしたことで laser が LH を遮らない (= 元 5/4 fix の本来の狙いが真に達成)、 laser worldline の見た目が変わってないか
+**5/5 day** (build 09:35:38 まで):
+- (a) camera yaw 追従 lag (`d3ecadf`): chase camera 操作感 / τ=0.12s 体感
+- (b) Bug 10 主症状 (`7a7df95`): 5+ 分 play で Context Lost 0-1 件 / setInterval Violation 0-3 件 / LH flicker after hit 消失 / 死亡中 stardust 流れる
+- (c) Bug 12 LH↔自機 (`109ddf0`): 重なり時 flicker 消失 / 通常 play で visual 不変
+- (d) laser worldline depthWrite=false 副次 (`2e19da2`): laser が LH を遮らない見え方
 
-**4/28 fix の 3+ tab multi-player verify** (= 古い項目、 引き続き):
-- 後 join client 永遠凍結 が `3ba639a` の spawn 時刻 (min+max)/2 中間化で治癒したか
-- 逆 bug 疑い: 高 γ host から見て新 joiner が close-spatial に着地して **host が freeze** する race (SESSION 「defer 中」 参照)
-- spawn ring / 撃破 / 燃料消費 / Causal Freeze overlay / debris 等の通常 multiplay flow
-- **`bbce03f` 後の spawn 位置 / 枠位置**: 原点中心 spawn `[-5, +5)²`、 正方形枠 `[-40, +40]²` で挙動確認
+**4/28 fix の 3+ tab multi-player verify** (古い項目、 引き続き):
+- 後 join client 永遠凍結が `3ba639a` で治癒したか
+- 逆 bug (host freeze race) 顕在化チェック
+- spawn ring / 撃破 / 燃料 / 因果律 overlay / debris 等の通常 multiplay flow
 
-**Bug 11 (3 軸直交 fix + (a) layer 対称性 + (c) HUD UI + Stage 8 根本治療 + Stage 9 cosmetic root cause 治療 全 deploy 済 build `19:43:10`) — production sleep-wake verify ✅ confirmed (前 build まで)**:
-
-- 5/5 evening odakin production 実機 verify (`https://sogebu.github.io/LorentzArena/#room=test-bug11b`、 2 tab + PC sleep → wake): **(d) PeerManager.reconnect が triggered + 自動復帰でゲーム継続**を確認。 console に決定的 log 観察:
-  - `[PeerProvider] Signaling disconnected 5 sec — attempting PeerManager.reconnect()` (= 5sec watch useEffect 発火)
-  - `[PeerManager] Attempting peer.reconnect()` (= (d) reconnect logic 実行)
-  - 直後にシグナリング: 接続OK 復帰、 互いに認識、 世界時刻進行継続
-- modal が出たケースも観察 (= sleep が長すぎて 5sec reconnect で間に合わず 10sec で (e) trigger)、 これも設計通りの 2 段階 escape (= 自動復帰失敗で user reload promote)
-- localhost (preview server) で sleep-wake すると Lobby に戻る現象は **Vite HMR full reload** の dev mode 限定挙動、 私の fix とは無関係 (= production には Vite dev server 無し)
-- 残課題 (cosmetic、 実害無し): host tab の「接続中の相手」 に `la-{roomName} (接続準備中/失敗)` 赤 entry が migration 残骸として表示されるが、 実 P2P 接続は別 peerId で正常。 別 task で UI cleanup 可能
-
-- **reliable repro**: PC sleep → wake (= 5/5 PM 確立済) または Chrome DevTools「Network: Offline」 5+ sec
-- **(e) reload prompt** (`712f2e2`): peerStatus 10 sec disconnected/error 持続で「ネットワーク接続が失われました」 modal 表示、 reload button で復帰
-- **(a) markStale 3 layer 全網羅** (`0a6ea2f` + `12ef1da`): peer disconnect 検出で staleFrozenIds 即時追加 → Rule B 暴走経路遮断。 layer 対称性 — WebRTC layer (= conn.close、 normal disconnect で 1 frame 内) + アプリ層 keepalive (= heartbeat timeout 経由 disconnectPeer chain) + signaling layer (= peer-unavailable、 sleep-wake で zombie WebRTC connection より早い signal)。 因果律跳躍 同時 fire / LH worldline 縞 / setInterval Violation の 3 連症状が消えるか
-- **(d) PeerManager.reconnect** (`26dc8d7`): 5 sec disconnected で `peer.reconnect()` → 失敗で destroy + 新規作成、 sleep-wake stuck から自動復帰 (= 「シグナリング: 接続OK」 復帰、 peer 再発見) するか
-- 期待挙動: sleep-wake で stuck せず自動復帰、 復帰失敗時は 10 sec で modal、 通常 play 時は visual 不変、 console に `[PeerProvider] peer-unavailable for known peer — markStale: <peerId>` log が出れば signaling layer 経路が機能している証拠
-- mesh-ish recovery は (d) で sleep-wake が解消しなければ別 plan で着手判断 (= Stage 8-C で実装済、 完了)
-- localhost (Vite HMR) full reload で sleep-wake で Lobby に戻る現象は **dev mode 限定**、 production 影響なし (= [`claude-config/conventions/preview.md`](../../claude-config/conventions/preview.md) §「Vite dev server の sleep-wake full page reload」 で pattern 文書化済)
-
-### Phase 2 議論 (PBC torus 復活時に再着手)
+### Phase 2 議論 (PBC torus 復活時)
 
 PBC torus は隠しオプション化中。 復活時は universal cover refactor の他 phase (ship / worldLine / debris / laser renderer) も observer-centered minimum image folding pattern で統一するか議論。 詳細 [`plans/2026-04-27-pbc-torus.md`](plans/2026-04-27-pbc-torus.md)。

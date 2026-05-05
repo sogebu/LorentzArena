@@ -131,8 +131,8 @@ export const LARGE_JUMP_THRESHOLD_LS = 0.5;
 // **Rule A 側 hysteresis との対称構造** (= DESIGN.md §因果律対称化 5/5 拡張):
 // - `CAUSAL_FREEZE_HYSTERESIS = 2.0` (l 単位、 wasFrozen=true で閾値厚): 「freeze 状態を抜ける
 //   には surface から明確に外側まで」 = 凍結 flag の chattering 防止 (= gameplay smoothing scale)
-// - `CAUSALITY_JUMP_EXIT_MARGIN_LS` (λ 単位、 常時加算): 「jump 着地は surface より明確に内側
-//   まで」 = jump 後の Rule A 境界 chatter 防止 (= numerical stability scale)
+// - `CAUSALITY_JUMP_EXIT_MARGIN_LS` (λ 単位、 jump 発火時 = `λ_surface > 0` のみ加算): 「jump
+//   着地は surface より明確に内側まで」 = jump 後の Rule A 境界 chatter 防止 (= numerical stability scale)
 //
 // 両者は scale も unit も異なるが「surface ぴったりの境界 state を回避する」 という同一思想。
 // Rule A が「凍結に入る/抜ける」 軸の hysteresis を担い、 Rule B が「jump 後 surface 上に
