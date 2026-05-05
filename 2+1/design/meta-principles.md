@@ -796,3 +796,56 @@ ALWAYS_ON_TOP 撤去計画時:
 
 ---
 
+### M30. complex bug 完全治療の 5 phase workflow
+
+**ルール**: 多層原因 / 多 stage refactor を要する complex bug は **5 phase の workflow pattern** で完全治療に到達する。 各 phase は trigger / output / 規律が異なり、 phase 跳ばしすると drift / 絆創膏 / 半端な治療を生む。
+
+#### 5 phase
+
+1. **思想 anchor 化**: 着手前に design doc 新設で「軸」 整理。 Bug 11 では `design/network-recovery.md` 6 軸 (Phase 別の対称性 / Recovery 3 直交軸 / 真因 chain / 通信トポロジー / 治療優先順 / 既存メタ原則対応) を anchor 化してから実装着手。 思想 anchor 無しで実装に入ると判断軸が ad-hoc 化、 後から「これは何のための fix?」 が分からなくなる
+2. **連続実装**: 直交軸の fix を Stage X-A/B/C 等で独立 commit + 全部入り 1 deploy。 user の「どんどん行こう」 stance + 私の risk 管理 (= 各 stage typecheck + test pass 確認) の組合せ。 各 stage 独立 commit で revert 可能性確保、 deploy 1 回で user verify cost 削減
+3. **4 軸 sweep drift 修正**: 連続 commit 後の最終 push 前に整合性 / 無矛盾性 / 効率性 / 安全性を sweep、 drift があれば即修正 commit (= [`work-discipline.md §Multi-commit refactor では 4 軸 sweep で docstring drift を必ず捕まえる`](../../odakin-prefs/work-discipline.md))。 sweep を skip すると docstring と実装の caller scope drift 等が遅延発覚、 future contributor を mislead する
+4. **根本治療 sweep (= user challenge driven)**: user の「絆創膏の上に絆創膏じゃなくて根本治療」 reminder で残課題を re-audit、 cosmetic / scope 外と暫定判定したものを root cause で再治療。 Bug 11 では Stage 8 (transport / direction / mesh-ish 対称性) + Stage 9 (assumeHostRole cleanup) + Stage 10 (Vite HMR pattern 文書化) として連続実施。 「fully closed」 認定後の user challenge は判定 reset trigger ([`work-discipline.md §audit verdict 「正当化済」 は user 質問で再評価する`](../../odakin-prefs/work-discipline.md))
+5. **meta-audit (= source of truth 単一化 sweep)**: 完了後の最終 audit で M25 違反候補を thorough sweep、 「許容 mirror」 暫定判定にも構造違いの有無で再判定。 Bug 11 では Stage 11 で causal* boolean dual を発見・撤廃、 教訓を M25 §実例 4 として永続化。 「Bug 11 完了 → 関連状態の M25 sweep」 が完了条件
+
+#### Why
+
+複雑 bug の完全治療は **「真因 fix」 だけでは不十分**:
+- 思想 anchor 無しで実装すると軸が ad-hoc 化、 後で再認識コスト高
+- 4 軸 sweep skip で drift が遅延発覚 (= 過去 2026-05-01 13 commits drift 事件)
+- user challenge を待たずに「fully closed」 認定すると絆創膏温存 (= cosmetic 残骸 / dev-only 挙動の文書化漏れ)
+- meta-audit skip で「Bug X 完了したが周辺で M25 違反残留」 (= 過去 staleFrozenIds 三重二重管理発見が同 pattern)
+
+5 phase 全通しで **思想 / 実装 / 整合 / 根本治療 / meta-audit が clean state に到達**。
+
+#### How to apply
+
+- 着手判断時に「これは 5 phase 適用する complex bug?」 を問う
+  - 単純 bug (= 1 commit fix) は phase 1 + 2 のみで十分
+  - 多層 / 多 stage / cosmetic 残骸を伴う場合は 5 phase 全通し推奨
+- 各 phase の trigger を意識する:
+  - phase 1: 着手前に design/network-recovery.md 等の anchor doc を作る習慣
+  - phase 2: 各 stage 独立 commit + 1 deploy (= user verify cost 削減)
+  - phase 3: 連続 commit 後の push 前に 4 軸 sweep
+  - phase 4: 「fully closed」 認定後の user challenge を判定 reset として受け入れる
+  - phase 5: 完了後に M25 sweep audit (= [`work-discipline.md §Same-session で M25 違反を見つけたら兄弟 audit を直ちに実施`](../../odakin-prefs/work-discipline.md) と整合)
+
+#### 過去事例
+
+- 2026-05-05 evening Bug 11 (= 本 entry の trigger): plan + 4 phase 経由 + Stage 11 M25 sweep + claude-config への Vite HMR pattern 文書化 (= 5 phase 全通し)。 9 commits + 1 docs commit (claude-config) で fully decommission state に到達
+- 5/4 Bug 10 真因 chain fix (= 5 layer chain で部分的に同 pattern): 思想 anchor (= [`virtualpos-lastsync-rca.md`](../plans/2026-05-04-virtualpos-lastsync-rca.md)) + 多 commit refactor、 但し meta-audit phase は同 session 内で行ったが当時は workflow 化されていなかった。 M30 化で再認識可能な pattern として永続化
+
+#### 関連メタ原則
+
+- M2 (対症療法 vs 根治): phase 4 の根本治療 sweep の根拠
+- M25 (state 単一化): phase 5 の meta-audit の標的
+- M26 (絆創膏 vs 治療 sign): phase 4 の判定基準
+- M27 (多層 RCA): phase 1 の思想 anchor で多層整理
+- M29 (絆創膏剥がし時の症状再露出): phase 4 で副作用 layer の pre-audit を促す
+
+#### claude-config promote 判定 (work-discipline.md L177「汎用原則がプロジェクト固有文書に埋もれている」 対応)
+
+本 entry は LorentzArena 1 事例から抽出。 同 pattern が他リポ (= twcu-seminar / einstein-cartan / 等) で 2 件目発生したら **claude-config に promote** して全 Claude Code ユーザー向け規約に格上げする。 現時点では LorentzArena meta-principles に留めて、 future case で再認識する anchor として機能。
+
+---
+
