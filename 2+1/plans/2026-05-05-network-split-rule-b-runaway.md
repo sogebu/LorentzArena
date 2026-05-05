@@ -3,7 +3,7 @@
 **起草**: 2026-05-05 (= 当初 plan-only)
 **Update**: 2026-05-05 PM、 odakin 観察 sleep-wake → 両 tab がホスト化 + 互いが見えない で **reliable repro 確立**、 仮説 H3 追加。
 **v2 refresh**: 2026-05-05 evening、 implementation phase 着手前の audit で発見した懸念 (B1-B4) を反映、 思想は別 doc [`design/network-recovery.md`](../design/network-recovery.md) で 6 軸整理して anchor 化。 推奨順 (e) → (a) → (d) で連続実装 (= 3 軸が直交、 互いに干渉ゼロ)。
-**Closed**: 2026-05-05 evening。 §8 完了基準 全 ✅、 production sleep-wake verify confirmed (build `19:15:56`、 (a)+(d)+(e)+(c) 全部入り)。
+**Closed**: 2026-05-05 evening。 §8 完了基準 全 ✅、 production sleep-wake verify confirmed (= Stage 1-7 完成時 build `19:15:56`、 (a)+(d)+(e)+(c) 全部入り)。 その後同 plan の延長として Stage 8 (transport/direction/mesh-ish 対称性) + Stage 9 (assumeHostRole cleanup) + Stage 10 (Vite HMR pattern 文書化) + Stage 11 (M25 sweep) を連続実装、 **最終 build `20:01:05`** で 4 軸対称性 architecture 完璧 + 思想/実装 gap ゼロ + 全 source of truth 単一 canonical 化。
 **Stage 8 (= 根本治療 sweep)**: 2026-05-05 evening、 残課題 3 つ (= transport 対称性 / direction 対称性 / mesh-ish recovery) を独立 commit で全部実装 (`997c7a3` 8-A + `2a54a29` 8-B + `9b3f2ff` 8-C)、 思想 doc 全軸が実装で具現化。 「絆創膏の上に絆創膏」 を避けて根本から綺麗に整備。
 **Status**: ✅ **implementation 完了 + production verify confirmed + Stage 8 根本治療完成**。 思想と実装の gap 解消、 layer / direction / transport / phase 全対称性が architecture 的に確立。
 
