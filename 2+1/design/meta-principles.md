@@ -918,3 +918,80 @@ ALWAYS_ON_TOP 撤去計画時:
 
 ---
 
+
+### M33. Listener fire timing で「mount-time vs runtime」 を即特定する
+
+**ルール**: WebGL context loss / event-based listener の fire タイミング (= `sinceLast = Date.now() - lastSeenRef.current`) は、 issue の trigger phase を決定的に語る。 lastSeenRef が **0 (= 未初期化) のまま fire** = `sinceLast ≈ Date.now() ≈ 1.7e12ms` = **listener attach 前に既に loss / event 発生** = **mount-time / init 失敗** のサイン。 「scene 内 component を 1 つずつ disable で isolate」 のような component-level patch を試す前に、 **mount mechanism (= `<Canvas key>` の React conditional / new instance creation) 自体を疑え**。
+
+**Why**: listener 前 event は「listener が見えなかった事象」 = listener が attach された時には既に発生していた = listener の関与する内部 component / scene の問題ではない、 component を作る器 (= mount lifecycle) の問題。 これを読み違えると component-level patch を deploy する isolation iteration を無駄に何度も繰り返す。
+
+**Sentinel value**:
+- `sinceLast` が **`Date.now()` レンジ (= 数兆 ms)**: lastSeenRef=0 = 初回 fire = mount-time failure
+- `sinceLast` が **数 ms 〜 数秒**: 正常な runtime event 列、 normal listener cycle
+- `sinceLast` が **数百 ms 反復 + chronic 検出**: auto-remount loop (= mount で fail → remount → 再 fail)、 これも mount-time の連鎖
+
+**How to apply**:
+- 新規 issue の console を読んで `sinceLast` の値範囲をまず確認
+- mount-time signature なら investigation を「**何が mount される時に何が起きるか**」 axis に絞る:
+  - React conditional (= `<Canvas key="A">` ↔ `<Canvas key="B">`) で remount 発生してないか
+  - `useEffect` 内の同期処理で初期化失敗してないか
+  - 初回 render で生成される resource (= Three.js camera / WebGL context / shader) が GPU に拒否されてないか
+- runtime signature なら scene 内 / 累積 state / 特定 trigger event を疑う
+
+**過去事例 (= 本 entry の trigger)**:
+- 2026-05-06 朝 Bug 13 (= 正射影 / PLC 3D toggle で chronic context loss): user の最初の console screenshot で `[WebGL] context lost (sinceLast=1778020396880ms)` (= ~1.78e12ms = Date.now()) を観察、 ところが私は signature を読まずに「camera config → GameLights → ship 種別 → orthographic prop」 と component-level patch を 4 回 deploy で順次試した (= isolation 試行 #1〜#3 全て無効)。 #4 (= Canvas branch を merge して同一 key で remount 抑止) で初めて chronic loss が完全消失、 真因が「Canvas remount 自体が user GPU で WebGL context 生成失敗を trigger」 と確定 (`fb1288b`)。 console signature を最初から読めば #1〜#3 の 3 deploy + 3 verify cycle は不要だった (= user time を浪費した反省)。
+
+#### 関連メタ原則
+
+- M2 (対症療法 vs 根治): mount-time signature を見落として component-level patch を試したのが「絆創膏スタック」 構造、 真因 = mount mechanism という layer 1 段上に逃げた
+- M27 (多層 RCA): 症状 (= chronic context loss) の出る layer ≠ 真因 (= Canvas remount lifecycle) の layer、 console signature がそれを最初から指していた
+
+#### claude-config promote 判定
+
+本 entry は LorentzArena 1 事例から抽出。 同 pattern (= listener-based observability で fire タイミング = trigger phase の手がかり) が他リポ (= bayes-kai / network 系 / 等) で 2 件目発生したら、 [`claude-config/docs/usage-tips.ja.md`](../../claude-config/docs/usage-tips.ja.md) に「listener event timestamp で trigger phase を読む」 として promote 検討。 現時点では LorentzArena meta-principles に留める ([`work-discipline.md L177`](../../odakin-prefs/work-discipline.md))。
+
+---
+
+### M34. 光伝達時間効果と frame 変換効果は別軸
+
+**ルール**: 相対論的 visual rendering で「approaching object が速く / 瞬時に visible」 のような効果を説明 / 実装する時、 **光伝達時間効果** (= past null cone ∩ worldline、 観測者に届いた photon の発射事象) と **frame 変換効果** (= Lorentz boost / aberration / length contraction) は**別軸**として明確に分離する。 両者を混同 (= 「rest frame の aberration で速く見える」) すると、 boost を適用しないと効果が消えると誤認したり、 lab-frame で済む問題に boost を入れる過剰実装になったりする。
+
+**両者の違い**:
+
+| 軸 | 光伝達時間効果 | frame 変換効果 |
+|---|---|---|
+| 計算 | `t_emit + |r_emit - r_obs| = t_obs` を解く (= 過去光円錐 ∩ worldline) | Lorentz boost matrix application |
+| frame | 任意の frame で同一 (= lab でも rest でも同じ事象が見える) | frame 依存 (= boost 適用前後で違う coords) |
+| 物理 効果 | 「approaching laser の burst」「Doppler 周波数 shift」「光行差の時刻整合」 | 「光行差の角度 shift」「length contraction」「time dilation」 |
+| 必要 input | 観測者位置 + worldline | 観測者位置 + 観測者速度 |
+
+**両者は独立で重畳可能**: 例えば PLC 3D laser 描画では (1) 光伝達時間で past-cone 交点を計算 → (2) 必要なら boost で rest frame xy に統一、 という 2-stage。 (1) だけで「approaching が速い」 効果は出る、 (2) は entity 間の座標 frame 統一目的。
+
+**Why**: 概念混同で誤った fix 方向に行く危険。 例:
+- ❌「ortho mode で boost 抜けてるから approaching laser が遅く見える」 → boost 入れる修正 → 効果なし (= 真因は別)
+- ✅「lab-frame の laser 物理現在位置を出してた = 光伝達時間無視」 → past-cone 交点に変える → 効果 OK
+
+**How to apply**:
+- 「速く見える / 瞬時に当たる / Doppler 効果が出ない」 等の visual bug:
+  - **第一に光伝達時間計算 (= past-cone 交点) が正しいか**確認
+  - lab-frame で光伝達時間を入れるだけで効果が出る場合が大半
+  - boost / aberration が効果の本質 ではない 可能性高
+- 「観測者進行方向への向き / 角度 / scale が物理的におかしい」 visual bug:
+  - frame 変換効果 (= boost / aberration) を疑う
+  - こちらは observer.u に依存
+- code レベルでは 2 段階に分離: stage 1 = past-cone 計算 (lab frame)、 stage 2 = frame 変換 (= 必要なら)
+- docstring / comment では効果の起源を明示: 「この計算は **light travel time** 効果を出すため」 vs 「この boost は **frame unification** 目的」
+
+**過去事例 (= 本 entry の trigger)**:
+- 2026-05-06 朝 Bug 6 (= PLC 3D で approaching laser がゆっくり見える): 私は最初「rest frame の aberration による compression 効果で速く見える」 と framing した、 user 訂正「lab-frame だろうが近づいてくる laser はいくらでも速くなる、 当たる laser は瞬時に当たる」 で誤りに気づく。 旧 code (`lambda·direction + emission`) は **lab-frame の laser 物理現在位置** = 光伝達時間を無視した錯誤、 修正は `pastLightConeIntersectionLaser` (= lab-frame past-cone 交点) で本質。 transformEventForDisplay の boost は他 PLC entity との座標 frame 統一目的で、 「速く見える」 効果自体には不要だった。 commit `ca7698c` の docstring 修正 + comment 訂正で framing を正しく記録。
+
+#### 関連メタ原則
+
+- M2 (対症療法 vs 根治): 「boost 入れる」 patch は対症療法、 真因は「光伝達時間入れる」 で別 layer
+- M24 (対称物理量を扱う rule の片側だけ実装): aberration ↔ Doppler ↔ past-cone は相対論 effect の対称 family、 片側 (= boost) だけで全部説明しようとする誤り
+
+#### claude-config promote 判定
+
+本 entry は LorentzArena 1 事例から抽出。 相対論 simulation / visualization リポ (= twcu-phys-* の物理研究 / 教科書 project / forward-scattering) で 2 件目発生したら、 [`claude-config/conventions/scientific-computing.md`](../../claude-config/conventions/scientific-computing.md) に「相対論 visual effect の cause 分離」 として promote 検討。 現時点では LorentzArena meta-principles に留める ([`work-discipline.md L177`](../../odakin-prefs/work-discipline.md))。
+
+---
