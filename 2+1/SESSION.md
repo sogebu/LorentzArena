@@ -30,7 +30,8 @@
 | 1 | 死後 ghost 時間発展せず | Bug 10 と統合解消見込み | ghost camera WASD non-routing 部分は DevTools console focus 由来 false alarm 仮説、 canvas click で要再検証 |
 | 2 | OtherShip flicker | あとで | Bug 10 共通根因 (rAF starve) 疑、 root 撃滅後再評価 |
 | 5 | LH 時刻ジャンプ (host anchor) | ✅ 構造的解消 (`7ae1917` Stage 4) | Rule B 因果律対称ジャンプで lead client 追従、 旧 `minPlayerT` 撤廃 |
-| 6 | PLC スライス 3D 弾速 | あとで | 3D 視点 visual artifact、 2D radar は正常、 因果律対称化 scope 外 |
+| 6 | PLC スライス 3D 弾速 (= approaching laser が遅く見える) | 🟡 **Phase 0 attempt → revert + Bug 13 で blocked** | 5/5 night 真因特定済: PLC 3D laser rendering が `lambda·direction + emission` (= world-frame の lab 「現在位置」) で aberration を欠く。 真の挙動 = past-cone 交点 + 観測者 rest frame に boost (= 2D Radar の `pastLightConeIntersectionLaser` + `transformEventForDisplay` パターンと同設計)。 Phase 0 fix を `SceneContent.tsx:549` で実装試行 → user verify 中に **Bug 13 chronic context loss が production も含めて再現** 判明、 切り分けで Phase 0 は innocent confirmed (= 旧 code でも chronic loss 発火)、 working tree から revert 済 + 未 commit。 **Bug 13 解決後に Phase 0 を再 apply + 検証する**。 Phase 1 (= 時空図 renderer 群を PLC 3D で再利用してリッチ化) は user 構想「真上から正射影は PLC 2D、 3D はそれを斜めから見た絵」 + 「laser worldline と PLC 交点は基本点 (apex case のみ線分)」 を anchor 化、 Bug 13 後に実装議論 |
+| 13 | **PLC 3D mode で WebGL chronic context loss** (= 数〜十数秒で reload overlay 発火、 production 再現確認済) | 🆕 **active investigation、 真因未特定** | 5/5 night user 報告: PLC 3D toggle 後 ~15s で `[WebGL] chronic context loss detected (2 losses within 1.5s)`、 sinceLast=505-560ms で auto-remount → 再 loss → repeat の chronic loop。 production [`https://sogebu.github.io/LorentzArena/`](https://sogebu.github.io/LorentzArena/) build `21:50:57` でも再現 = HMR / dev artifact ではなく real bug、 私の Phase 0 attempt と独立 (= revert + 旧 code でも発火)。 切り分け済の事実: γ=1.000 静止 / world time 15-22s / PLC 3D に入った直後 1-2 frame は rendering 成功 (= 背景に薄く ship hull / arena ring visible)、 その後 chronic loop。 user diagnostic test 結果: (#1 操作系: カメラ固定 / #2 砲 / #3 クラゲ / #4 世界系⇄静止系) 全て chronic loss 継続、 (#5) 正射影 toggle で「同じエラー」 = 別 mode でも再現の可能性あり (= 解釈未確定、 sticky overlay flag の可能性)。 復帰時 next-step: §「実機検証待ち §Bug 13 復帰手順」 参照 |
 | 7 | 相手死亡瞬間描画消失 | ✅ fix 済 (`c7f7960`) | past-cone marker と future marker の isDead filter 分離 |
 | 8 | hidden 復帰 LH 未来跳躍 | ✅ Stage 6 + Stage 4 で解消 (`dc38dba` + `7ae1917`) | bounded catchup で「自機より先まで飛ぶ」 防止 |
 | 9 | 新規 join 即凍結 | 構造的 mitigation (実機検証待ち) | Rule B convergence で freeze 永続回避、 残 race は spawn 直後 spatial 配置依存 |
@@ -84,6 +85,22 @@
 **未着手**: 1. (1a)+(1b) の実機評価 → 帰れない事例残存なら次へ / 2. 中心方向 thrust 燃料優遇 or soft pull (EXPLORING.md §2) / 3. ARENA_RADIUS 縮小 (40→15-20) は UX 改善後評価
 
 ### 実機検証待ち (= odakin verify、 復帰時 priority)
+
+**🆕 Bug 13 (PLC 3D chronic context loss) 復帰手順** — 次セッションは**ここから着手**:
+
+`https://sogebu.github.io/LorentzArena/` で reload してから 3 シナリオを個別に試して chronic loss が出るか観察 (= 各 30 秒待つ):
+
+1. **時空図 + 透視投影 のまま 60 秒以上 play (PLC slice / 正射影 触らない)**: chronic loss 出るか? 出るなら long-play 蓄積系の bug、 frozen worldLines / stardust が真因。 出ないなら baseline OK
+2. **時空図 + 正射影 (= ortho toggle のみ on) で 30 秒 play**: chronic loss 出るか? 出るなら **正射影 mode 特有 bug**、 [`RelativisticGame.tsx:444-452`](src/components/RelativisticGame.tsx) の `<Canvas orthographic camera={{ near: -10000, far: 10000 }}>` の極端 depth range が GPU depth precision を圧迫している仮説 → near を妥当な値 (例: -100, far: 100) に修正で fix 可能性
+3. **PLC 3D 即 on で 30 秒 play (他 toggle 触らない)**: chronic loss 出るか? 出るなら PLC 3D rendering 内の何かが trigger、 component を 1 つずつ disable で isolate (= GameLights / SelfShipRenderer / PLC 交差 circles / ref rings 順に切る)
+
+切り分け logic table:
+- (1) 出る → long-play 蓄積、 別の Bug 10 系統 latent path
+- (1) 出ず + (2) 出る → 正射影 camera near/far 真因 (修正 cheap、 同一 commit で deploy 可能)
+- (1)(2) 出ず + (3) 出る → PLC 3D 限定、 component 単位 isolation
+- 全部出る → 共通 layer (= shared renderer or zustand store の蓄積) 真因、 deeper investigation
+
+**Bug 6 (PLC 3D laser slow approaching)**: Bug 13 解決後に Phase 0 fix を再 apply。 working tree は現在 clean (= Phase 0 revert 済)、 [`SceneContent.tsx:549`](src/components/game/SceneContent.tsx) に diff を再書き込みするだけ。 内容は `lasers.map` → `laserIntersections.map` + `transformEventForDisplay(pos, observerPos, observerBoost)` で rest-frame xy に変換、 既存 helper のみで完結 (= 新規 helper 不要)。 詳細物理解釈: approaching laser は rest frame で aberration により観測者方向に photon が圧縮されて「迫ってくる、 速い」 見え方になる、 lab frame の `lambda·direction` は observer motion を反映せず一定速度で見せる旧仕様。
 
 **5/5 night** (build `21:50:57`):
 - (e) **Rule B exit margin** (`ad52130`): localhost 「よさそう」 確認済 + production deploy 済。 multi-tab / 高 γ 混在 / sleep-wake 後 で flicker 完全消失か、 通常 play で visual / 因果律跳躍 overlay 発火頻度に体感差ないか確認
