@@ -572,7 +572,19 @@ export const SceneContent = ({
       displayMatrix={displayMatrix}
       torusHalfWidth={torusHalfWidth}
     >
-      <GameLights positions={lightPositions} />
+      {/* ⚠️ Bug 13 isolation 試行 #2 (5/6 朝): ortho mode で GameLights (= LH past-cone
+          交点を point light として使う) を無効化、 ambient light のみで scene 照明。 仮説:
+          point light × OrthographicCamera × Mac Apple Silicon Metal backend で shader
+          compile が TDR timeout / 内部 validation 失敗 → context loss。 isolation #1
+          (= Canvas camera prop 最小化、 commit `755e924`) で改善せず、 真因が scene 側に
+          ある可能性大。 効果あれば GameLights × ortho 互換性問題 confirmed、 fix 方向は
+          ortho mode で point light → directional light or ambient のみへの design 移行。
+          無ければ別 renderer (= jellyfish hull / debris / 等) に進む。 */}
+      {useOrthographic ? (
+        <ambientLight intensity={2} />
+      ) : (
+        <GameLights positions={lightPositions} />
+      )}
 
       {/* 時空星屑 (4D event cloud、world-frame 静止、periodic boundary で無限供給) */}
       <StardustRenderer />
