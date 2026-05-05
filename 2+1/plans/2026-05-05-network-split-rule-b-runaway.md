@@ -1,7 +1,8 @@
 # Plan: Network split + Fix B cap で両側 Rule B 一時暴走 (cascade chaos) RCA
 
-**起草**: 2026-05-05 (= reliable repro 待ち、 plan-only stage)
-**Status**: 🟡 **observed-but-deferred** — 5/5 verify session で観察された transient symptom 群を一次仮説で説明、 reliable repro 確立次第 implementation phase に進む。
+**起草**: 2026-05-05 (= 当初 plan-only)
+**Update**: 2026-05-05 PM、 odakin 観察 sleep-wake → 両 tab がホスト化 + 互いが見えない で **reliable repro 確立**、 仮説 H3 追加。
+**Status**: 🟡 **plan + reliable repro 確立、 implementation phase 着手判断待ち** — un-defer trigger 達成、 odakin 入力で着手 / 別 session 振り分け / 軽量 patch 先行のいずれか。
 
 ---
 
@@ -57,6 +58,24 @@ const vPos = virtualPos(p, lastSync, currentTime);
 
 これは Bug 11 の「一人 client から peer 不可視」 の直接因の可能性。 H1 と独立に存在しうる別 layer。
 
+### 仮説 H3 (= 5/5 PM 新観察): PeerProvider 再接続 robustness 不足
+
+**5/5 PM の sleep-wake 観察** ([SESSION 5/5 PM verify session 観察 参照](../SESSION.md)):
+- odakin: PC を sleep → wake → 2 tab を確認すると両方「ホスト」 表示で互いが見えない
+- Tab 1 (36mpplykf) console: `[PeerManager] Peer error qz: Cannot connect to new Peer after disconnecting from server`、 「split detected — real BH: 1lnqafvxo — demoting self」 → split を検知して降格、 但し復帰先 (= 真の host) への接続も失敗、 HUD「シグナリング: エラー(disconnected)」 = 信号サーバ接続が完全に死亡
+- Tab 2 (1lnqafvxo) console: `Lost connection to server` → 再接続成功、 solo host 化、 HUD「シグナリング: 接続OK」 で 800s 以上 play 継続
+
+→ **PeerJS WebSocket 切断後の同 instance 再接続が構造的に失敗** する PeerJS 既知挙動。 sleep-wake で 2 tab の WebSocket が切れる → 両方が再接続を試みる → Tab 2 が成功して solo host、 Tab 1 は `Cannot connect to new Peer after disconnecting from server` で stuck。 Tab 1 が Tab 2 を見つけて split detected で降格はするが、 復帰先への新 peer connection も signaling 死亡で失敗 → mutual invisibility が persistent state 化。
+
+これは H1 (Rule B 暴走) や H2 (host election race) と独立した **signaling layer の robustness 問題**、 但し同じ trigger (= 信号 WebSocket 切断) を共有するため Bug 11 plan に統合扱い。
+
+#### sleep-wake が H1/H2 を増幅する経路
+- sleep 中: 全 peer の lastSync が currentTime から大きく乖離 (= sleep の wall_dt 分)
+- wake 直後: 全 peer の virtualPos が Fix B cap で frozen → H1 (両側 Rule B 一時 fire) が確実に発火
+- 同時刻に各 tab が「peer 不在」 と判断して solo host 化 → H2 (host election race) も発火
+- WebSocket が再接続できない tab は H3 (= signaling 復帰失敗) に陥る
+- → H1 + H2 + H3 の compound symptom が観察される
+
 ---
 
 ## §3 候補修正
@@ -94,29 +113,59 @@ const vPos = virtualPos(p, lastSync, currentTime);
 
 これは UX 上の問題 (= user が disconnect に気付けない) で、 上記 H1 の真因とは独立。 但し (a) を実装すると同経路で UI も整合化できる (= staleFrozenIds に入れた時に接続表示を「stale / disconnect」 マークに変更)。
 
+### (d) **PeerJS instance を destroy + 新規作成 で signaling 復帰経路新設** (= H3 への治療、 5/5 PM 追加)
+
+**動機**: H3 (= PeerProvider 再接続 robustness 不足) で、 WebSocket 切断後の同 instance での再接続が PeerJS 既知挙動で困難。 sleep-wake / network split 等で signaling 死亡時に Tab 1 が stuck する症状を解消。
+
+**実装方向**:
+- PeerProvider で `peer.disconnected` event listener を追加、 disconnect 検知で `peer.destroy()` → 新 PeerJS instance 作成 → 同 ID で再接続試行
+- もしくは disconnect 後一定期間 (= 5 sec 等) reconnect を試行、 失敗したら `destroy + 新規作成` flow に escape
+- 既存 ID を保持できれば player state continuity (= score / position) を維持、 ID 取得失敗なら新 ID で再 join (= host 側で旧 ID の cleanup を receive)
+
+**依存**:
+- `src/services/peerProvider.ts` (= 推定 path、 要確認) の peer instance lifecycle を understand
+- PeerJS の `disconnected` / `error` event の正確な semantics (= 自動再接続有り無し)
+
+### (e) **「再接続失敗」 reload prompt UX** (= escape hatch、 軽量先行案)
+
+**動機**: H3 治療 (d) は構造的だが PeerProvider 周辺の coding を要する。 短期 patch として、 signaling 死亡が一定期間続いたら user に「再接続失敗、 reload してください」 prompt を出す escape hatch を新設、 reload で完全 fresh state 復帰。
+
+**実装方向**:
+- `useEffect` で `peer.disconnected === true` を監視、 一定期間 (= 10 sec 等) 続けば reload prompt を modal で表示
+- 既存の `WebGLLostOverlay` と同 pattern (= context lost watchdog) で reuse 可、 文言だけ変える
+
+**評価**: (e) だけでは構造治療にならない (= 毎回 reload は UX 後退) だが、 (d) 実装中の interim escape として価値あり。 (a) + (b) + (d) + (e) の併用が最も robust。
+
 ---
 
-## §4 reliable repro 候補手順 (= 未実施)
+## §4 reliable repro 手順 (= 5/5 PM **確立**)
 
-5/5 verify では accidental に Phase 2-3 cascade を踏んだが、 deliberate な repro 手順は未確立。 以下の試行が候補:
+**確立済 (= odakin 5/5 PM 観察)**:
 
-1. **Tab × 4 を素早く順次開く + 古い tab を順次閉じる**: beacon migration cascade を強制誘発
-2. **特定 tab を Chrome DevTools の「Network: Offline」 で 5+ 秒切断 → 再接続**: artificial network split を作る (= H1 の根因を直接 trigger)
-3. **PeerProvider の `peer.disconnect()` を artificial に呼ぶ test mode を追加** (= dev-only)、 `window.__peer.disconnect()` で repro 化
+**Repro 1: PC sleep → wake** (= 最も簡単 + reliable)
+- 2 tab 開いて play → PC を sleep → 5 分以上経過 → wake
+- 観察: 両 tab がホスト化 + 互いが見えない + Tab 1 のみ「シグナリング: エラー(disconnected)」 で stuck
+- compound symptom 全部発火 (H1 + H2 + H3)
+- repro 確実度 高
 
-option (2) は user の手で試せるので、 半日後 user 復帰時の verify 候補に含める。
+**Repro 候補 (= 未試行)**:
+
+- **Repro 2: Chrome DevTools「Network: Offline」 で 5+ 秒切断 → 再接続**: sleep-wake と同等の WebSocket 切断 trigger、 sleep 不要で deliberate に試せる
+- **Repro 3: PeerProvider `peer.disconnect()` を window.__peer.disconnect() で artificial 呼出**: dev-only test mode、 PeerProvider に diagnostic helper を 1 行追加要
+
+Repro 2 は user の手で 1 分内で試せる、 implementation phase の verify loop で活用。
 
 ---
 
 ## §5 un-defer trigger
 
 以下 1 つでも該当すれば本 plan を implementation phase に進める:
-- (a) reliable repro 手順が確立された (= deliberate に Bug 11 を出せる)
+- (a) reliable repro 手順が確立された (= deliberate に Bug 11 を出せる) ✅ **5/5 PM 達成 (sleep-wake)**
 - (b) stable 2-peer state でも再発した (= H1 が transient ではなく persistent)
 - (c) cascade chaos が user game-play UX を著しく損なう頻度で出る (= multi-tab demo が frequent な運用)
 - (d) GL_INVALID_OPERATION 系 WebGL error が単独で問題化する (= 別仮説で再 RCA)
 
-**現状: trigger 全 unmet → defer 継続**。 Bug ledger #11 で観察記録 + 仮説 link 維持。
+**5/5 PM 状況: trigger (a) 達成 → implementation phase 着手判断待ち**。 odakin 入力で「(a)+(b) staleFrozenIds 拡張 + Fix B cap 改修」 / 「(d) PeerJS instance reset」 / 「(e) reload prompt 軽量先行」 の組合せを決定。
 
 ---
 
