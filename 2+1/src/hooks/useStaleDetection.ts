@@ -3,7 +3,25 @@ import { isLighthouse } from "../components/game/lighthouse";
 import type { RelativisticPlayer } from "../components/game/types";
 import { useGameStore } from "../stores/game-store";
 
-const STALE_WALL_THRESHOLD = 5000; // 5 seconds with no phaseSpace update → stale
+// Bug 11 Stage 8-B (= 2026-05-05 evening direction 対称性 完成版): phaseSpace
+// 不到来の early signal 検知。 phaseSpace は 125Hz (= 8ms 間隔) で送信されるため
+// 1.5 sec 不到来は 187 frame 連続 loss = 明確な異常。 layer 別最早 signal が
+// BH 側に存在しない (= heartbeat / signaling layer は client 側 specific) という
+// direction 非対称を埋める根本治療。
+//
+// false positive 評価:
+// - 自分 tab hidden 中: rAF 停止 → useGameLoop の `checkStale` 自体呼ばれない、
+//   wake で復帰時に lastUpdate 古い → markStale (= 正しい挙動、 sleep 中の peer
+//   連絡途絶を検知)、 phaseSpace 受信で recoverStale、 churn 1 回
+// - 通常 packet loss: 1-3 frame (~8-25ms) で 1.5 sec を超えない、 false positive 不発
+// - bandwidth congestion: 通常 phaseSpace は priority high で送られるが、 仮に
+//   1.5 sec 詰まっても markStale → 復活で recoverStale、 二段防衛 (5 sec wall threshold)
+//   は不変
+//
+// 既存 5 sec wall threshold は eventual safety net として残す (= 完全停止の確認 +
+// GC 候補化、 Stage 3 の logic と整合)。
+const STALE_EARLY_THRESHOLD = 1500; // 1.5 seconds (= 187 frames @125Hz) → early markStale
+const STALE_WALL_THRESHOLD = 5000; // 5 seconds with no phaseSpace update → eventual stale
 const STALE_RATE_WINDOW = 3000; // 3 second window for rate calculation
 const STALE_MIN_RATE = 0.1; // coordinate time must advance at least 10% of wall time
 // Stage 3 (2026-04-21): freeze 後さらに GC_THRESHOLD ms 更新が無ければ players から
@@ -86,8 +104,21 @@ export function useStaleDetection() {
 
       if (deadIds.has(id)) continue;
 
-      // (1) Wall-clock based: no phaseSpace update for 5 seconds
+      // (1a) Bug 11 Stage 8-B early signal: phaseSpace 1.5 sec 不到来で即時 markStale
+      // (= direction 対称性、 BH 側で client A の disconnect を WebRTC layer 待たずに
+      // app 層 timeout で即時検知)。 通常 125Hz 送信で 187 frame 連続 loss は異常、
+      // false positive 評価は STALE_EARLY_THRESHOLD docstring 参照。
       const lastUpdate = lastUpdateTimeRef.current.get(id);
+      if (lastUpdate && currentTime - lastUpdate > STALE_EARLY_THRESHOLD) {
+        staleFrozenAtRef.current.set(id, currentTime);
+        mutated = true;
+        continue;
+      }
+
+      // (1b) Wall-clock eventual safety net: 5 sec 経っても更新無し → 完全停止確認、
+      // GC 候補化。 通常は (1a) early threshold で先に markStale されているため
+      // この path は 1.5-5 sec の間に lastUpdate が更新されたが再び止まったケース等
+      // edge case で発火、 二段防衛として残す。 GC threshold (15 sec) は frozenAt から計測。
       if (lastUpdate && currentTime - lastUpdate > STALE_WALL_THRESHOLD) {
         staleFrozenAtRef.current.set(id, currentTime);
         mutated = true;
