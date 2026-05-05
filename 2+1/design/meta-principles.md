@@ -849,3 +849,72 @@ ALWAYS_ON_TOP 撤去計画時:
 
 ---
 
+### M31. 対称物理 rule の **境界処理** も対称化する
+
+**ルール**: M24 (= 「rule の片側だけ実装されているなら反対側の鏡像を疑う」) は **fire 条件** の対称性。 これに加えて、 rule の **boundary state 安定性 mechanism** (= hysteresis / margin / dead zone 等) も両側で対応必要。 片側だけ boundary 防御を持つと、 もう片側が「boundary 上に着地したまま」 になり、 fire/no-fire flag が数値 jitter で chatter する。
+
+**Why**: 対称物理 rule (= LorentzArena Rule A 凍結 ↔ Rule B ジャンプ) は **fire 条件**だけ mirror image にしても、 boundary 振動の origin が片側に偏る。 例: Rule A が `wasFrozen` 条件付き hysteresis (= `CAUSAL_FREEZE_HYSTERESIS = 2.0`) で凍結 flag chattering を防ぐ一方、 Rule B が surface ぴったり着地 (= 旧仕様) なら、 jump 後 me の next-tick state は `l ≈ 0` 境界上 → Rule A 判定が flag flip → 視覚 flicker。 hysteresis は「凍結保持」 軸の boundary 安定、 margin は「jump 着地」 軸の boundary 安定で、 異なる scale (= gameplay smoothing vs numerical stability) でも **同思想 = 「boundary state ぴったりを避ける」** に収まる。
+
+**How to apply**:
+
+- 対称 rule pair (A / B) を実装したら、 各々に **boundary 防御 mechanism がペアで存在するか** を audit
+- 片側のみ防御がある場合:
+  1. 反対側に同思想の防御を追加できるか検討 (= 異 scale でも OK、 unit / mechanism は別で良い)
+  2. 物理意味 / 設計対称性が両防御で保たれるか文書化 (= DESIGN.md に対称表)
+- 防御の **scale 比較表** を作る (= 何 unit、 何 trigger、 どの軸の chatter を防ぐか)
+- 既存 docstring が「surface ぴったり着地」 「閾値ぴったり判定」 を invariant として書いている場合、 boundary 防御追加は invariant 文書 update が必要 (= M24 と同じく drift 防止)
+
+**過去事例**:
+
+- 2026-05-05 night Rule B exit margin (= 本 entry の trigger): Rule A `CAUSAL_FREEZE_HYSTERESIS = 2.0` (l 単位、 wasFrozen=true 時のみ閾値厚 = gameplay smoothing) と complementary な Rule B `CAUSALITY_JUMP_EXIT_MARGIN_LS = 0.001` (λ 単位、 jump 発火時のみ加算 = numerical stability) を導入。 異 scale / 異 unit / 異 trigger だが「surface ぴったりの境界 state を回避」 の同思想。 詳細: [DESIGN.md §因果律対称化 + 5/5 exit margin 拡張](../DESIGN.md)
+
+#### 関連メタ原則
+
+- M24 (対称性物理量を扱う rule の片側だけ実装されているなら反対側の鏡像を疑う): 本 M31 は M24 の境界処理 axis での拡張
+- M32 (boundary state ぴったり landing は chatter の温床): M31 が「対称 rule pair」 の view、 M32 が「単独 rule」 の view、 両方を併せて boundary chatter に対する設計指針
+
+---
+
+### M32. boundary state ぴったり landing は chatter の温床
+
+**ルール**: 物理 rule / state machine 判定の公式が **境界 state (= null surface / 閾値線 / 等高線) ぴったりに着地する設計** は、 次 tick の境界判定が数値誤差 / extrapolation jitter / network delay で flip する race を生む。 着地点を境界より **ε だけ内側 (= 安全領域)** に押し込む terminal patch が cleanest fix。
+
+**Why**: 物理 / state machine の判定は通常「`l < 0` で fire」 「`distance > threshold` で trigger」 等の閾値比較。 公式の出力がちょうど閾値線上に着地すると、 次 tick で:
+- 数値誤差 (= ULP scale) で l が ±0 を跨ぐ
+- virtualPos / extrapolation で peer 位置が微小揺れる → l が±揺れる
+- network jitter で broadcast 受信タイミング ms 単位で揺れる → 境界判定 flip
+
+→ flag が ON/OFF を毎 tick 切り替え → re-render storm / 視覚 flicker / state thrashing。
+
+**Fix**: 公式の **terminal で ε margin** を加算し、 着地点を境界より内側に押し込む。 caller / 公式構造は不変、 ε は値に embed されて伝播。 ε size:
+- 数値誤差 (= eps_machine ≈ 1e-15) を 数桁上回る (= 1e-3 〜 1e-2 scale)
+- frame rate (60Hz = 16.67ms = 0.017 単位) より小 (= 視覚 / gameplay 影響ゼロ)
+- 物理 invariant の有意 scale より十分小 (= 0.1% order)
+
+**How to apply**:
+
+- 公式が boundary に着地する設計を見たら audit:
+  1. その後段で boundary state 判定があるか?
+  2. 判定が flag ON/OFF を生むか? 生むなら chatter リスクあり
+- ε margin を terminal patch として加算:
+  - 公式の最終 return 直前で `+ MARGIN` 加算 (= `Math.max(0, ...)` ガード等の不発 case は維持)
+  - ε は `constants.ts` の named export で導入 (= 値選定根拠 + 単位を docstring 化)
+  - Test: surface invariant (= 旧「着地で l=0」) を「surface + ε spacelike 側」 に書き換え、 線形展開で expected 値を厳密化
+- M31 と併せて: 対称 rule pair なら **両側に同思想の防御** を入れる (= scale / unit は別で OK)
+
+**過去事例**:
+
+- 2026-05-05 night Rule B exit margin (= 本 entry の trigger): `causalityJumpLambdaSingle` で `λ_surface = B - √disc > 0` 時のみ `+ EPS_MARGIN` 加算。 surface ぴったり着地 (= `l = 0`) → ε spacelike 側着地 (= `l ≈ -2·B'·EPS + EPS²` で正)、 次 tick Rule A 判定が確実に no-freeze。 odakin 仮説「過去光円錐ぴったりじゃなくてちょっとだけ未来まで飛ばしたら治りそう」 を物理解釈で実装した形 (= user 直感 → meta-principle 化の好例)。 詳細: [DESIGN.md §Rule B exit margin](../DESIGN.md) + [`causalityRules.ts:causalityJumpLambdaSingle`](../src/components/game/causalityRules.ts) docstring §Exit margin
+
+#### 関連メタ原則
+
+- M2 (対症療法 vs 根治): ε margin は terminal patch だが boundary 振動の **真因 (= 公式の境界着地設計)** に直接対処、 単なる絆創膏ではない (= 対称 rule pair に hysteresis / margin の役割分担を作る根本治療)
+- M24 / M31: 対称 rule での boundary 防御の対称性
+- M27 (多層 RCA): boundary chatter が「視覚 flicker」 layer で観察され、 真因が「公式の境界着地」 layer にある多層性
+
+#### claude-config promote 判定
+
+本 entry は LorentzArena 1 事例から抽出。 同 pattern (= numerical optimization landing on optima、 state machine threshold flicker、 物理 simulation null cone surface 等) が **他の科学計算 / 数値解析リポ (= bayes-kai / forward-scattering / einstein-cartan / 等)** で 2 件目発生したら、 [`claude-config/conventions/scientific-computing.md`](../../claude-config/conventions/scientific-computing.md) に「公式が境界に着地する設計の chatter リスク」 として promote 検討。 現時点では LorentzArena meta-principles に留める ([`work-discipline.md L177`](../../odakin-prefs/work-discipline.md))。
+
+---
+
