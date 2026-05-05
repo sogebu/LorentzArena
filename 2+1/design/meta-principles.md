@@ -451,6 +451,24 @@ myDeathEvent decomposition の audit pass で発見、 当初 「ref ↔ store m
 
 構造的解消: `staleFrozenAtRef: Map<id, frozenAt>` 単独化 (= キー集合 = 「stale か」、 値 = 「いつ stale 化したか」)、 全 mutation 経路 (`recoverStale` / `cleanupPeer` / `checkStale`) で `syncStoreMirror()` 即呼びで drift 不可避化、 5 ad-hoc delete を全部 `recoverStale(id)` helper 経由に統一して MessageHandlerDeps の API も `recoverStale: (id) => void` に置換。
 
+#### 実例 4 (= 2026-05-05 evening Stage 11): causalFrozen / causalityJumping の ref ↔ store dual
+
+Bug 11 全体作業の最後に「他に M25 違反候補は無いか?」 audit で発見。 `useGameLoop.causalFrozenRef` (= boolean) ↔ `useGameStore.causallyFrozen` (= boolean) と、 同 pattern の `causalityJumpingRef` ↔ `causalityJumping`。 各々:
+
+- ref は毎 tick update (= hot path read 最適化の意図)
+- store は **if-changed gate** (`if (ref !== frozen) setCausallyFrozen(frozen)`) で update — 一見「mutation 集約」 で (a)(b)(c) pass に見える
+- 両者は構造的に同値 (= 共に boolean)、 staleFrozenAtRef (Map) ↔ staleFrozenIds (Set) のような structure 違いは無い
+
+**初回 audit (= Explore agent + 私) は「許容 mirror」 と暫定判定**したが、 user の challenge「絆創膏の上に絆創膏じゃなくて根本治療、 という思想でも A (= docstring 補強) がいい?」 で再考。 深掘りで:
+
+1. ref を介した re-render 抑制動機は **zustand 自体の selector 同値判定で同等に達成される** (= subscriber 側で `useGameStore((s) => s.causallyFrozen)` は同値なら React 再レンダ skip)
+2. read 動機 (= hot path で getState() 重い説) も誤り、 zustand getState() は object property access 同等で cheap
+3. 構造同値の boolean dual は staleFrozenAtRef のような構造的 mirror とは性質が違う、 ref 撤廃で本当に single canonical 化できる
+
+→ **構造的解消**: `causalFrozenRef` / `causalityJumpingRef` を撤廃、 全 read site (= dead skip × 2 + checkCausalFreeze hysteresis baseline 引数 + if-changed gate × 2) を `fresh.causallyFrozen` / `fresh.causalityJumping` で代替。 if-changed gate 自体は memory allocation 抑制のため維持 (= zustand `set(partial)` の object spread を毎 tick 走らせない)。 `fresh = useGameStore.getState()` は tick 冒頭 snapshot で、 hysteresis baseline (= 前 tick の値) として ref 経由と完全同等。 typecheck + 247→253 test pass。
+
+**教訓**: 「許容 mirror」 認定は staleFrozenAtRef pattern を anchor として安易に流用すると誤る。 staleFrozenAtRef は **構造違い (Map vs Set) で本質的に複製必須**、 boolean dual は **性能動機の余分 layer** で構造的 mirror ではない。 サブ原則 (a)(b)(c) を pass しても **「そもそも duplication が必要か?」** という前段の問いを skip するな。
+
 #### サブ原則: explicit duplication の正当性チェックリスト (= 派生不能な複製の場合)
 
 state を「2 箇所に literal copy」 する設計 (= ref ↔ store mirror、 cache table、 worker thread 状態 mirror 等) は **derive で唯一化できない場合に限り正当**。 但し正当化されるには **mutation 経路集約** が前提。 以下を全て pass しない限り「M14 pattern として正当化済」 と書いてはいけない:

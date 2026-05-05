@@ -138,10 +138,17 @@ export function useGameLoop({
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Internal refs (previously in RelativisticGame, now local to the game loop)
-  const causalFrozenRef = useRef<boolean>(false);
-  // Rule B (= 因果律跳躍) の現在 fire 状態を hot path で持つ ref。 store update は
-  // 凍結 `causalFrozenRef` と同様、 状態変化 tick だけ `setCausalityJumping` を呼ぶ。
-  const causalityJumpingRef = useRef<boolean>(false);
+  // ※ Stage 11 (2026-05-05 evening) で `causalFrozenRef` / `causalityJumpingRef` を
+  // 撤廃、 `fresh.causallyFrozen` / `fresh.causalityJumping` (= zustand store)
+  // で単一 canonical 化。 旧 design の「ref hot path read + store reactive 通知」
+  // という 2 source pattern は、 zustand の selector 同値判定で re-render が
+  // 自動 skip される (= 旧 ref の存在意義無し) + read も `getState().causallyFrozen`
+  // で同等 cheap、 構造的に 2 source が不要だったため M25 違反として撤廃。
+  // hysteresis baseline は `fresh.causallyFrozen` (= tick 冒頭 snapshot、 同 tick の
+  // 後続 update 前の値) で取得、 ref 経由と完全同等の挙動。 既存の if-changed gate
+  // (= `if (fresh.causallyFrozen !== frozen) setCausallyFrozen(frozen)`) は memory
+  // allocation 抑制のため維持 (= zustand `set(partial)` の object spread を毎 tick
+  // 走らせない)。
   const lastLaserTimeRef = useRef<number>(0);
   const fpsRef = useRef({ frameCount: 0, lastTime: performance.now() });
   // Phase C1: energy は store.players[myId].energy に移行。handleDamage と
@@ -439,12 +446,11 @@ export function useGameLoop({
           // 生存中に立てた frozen / jumping 状態がそのまま残ると overlay が ghost 中も
           // 出続けるのでここで reset。 ref も合わせて reset し、 復活直後の評価で
           // hysteresis baseline が古い状態に依存しないようにする。
-          if (causalFrozenRef.current) {
-            causalFrozenRef.current = false;
+          // Stage 11 単一 canonical: store 値を if-changed gate で reset、 ref 経由不要
+          if (fresh.causallyFrozen) {
             fresh.setCausallyFrozen(false);
           }
-          if (causalityJumpingRef.current) {
-            causalityJumpingRef.current = false;
+          if (fresh.causalityJumping) {
             fresh.setCausalityJumping(false);
           }
           // ghost 中: 生存時物理 (processPlayerPhysics) を流用して ghost phaseSpace
@@ -506,18 +512,18 @@ export function useGameLoop({
             freshMe,
             fresh.killLog,
             selectDeadPlayerIds(fresh),
-            causalFrozenRef.current,
+            fresh.causallyFrozen,
             fresh.boundaryMode === "torus" ? ARENA_HALF_WIDTH : undefined,
             stale.lastUpdateTimeRef.current,
             currentTime,
           );
-          // 状態変化時のみ store update (= UI overlay subscriber が re-render)。
-          // ref と store の二重保持: ref はホットパス毎 tick 読み出しを軽くするため、
-          // store は overlay 用の reactive 通知のため。
-          if (causalFrozenRef.current !== frozen) {
+          // Stage 11 単一 canonical (= store のみ): hysteresis baseline は
+          // `fresh.causallyFrozen` (= tick 冒頭 snapshot)、 if-changed gate で update。
+          // 旧 ref + store の二重保持を撤廃、 zustand selector 同値判定で
+          // subscriber re-render は自動 skip される (= ref 撤廃で同等の re-render 抑制)。
+          if (fresh.causallyFrozen !== frozen) {
             fresh.setCausallyFrozen(frozen);
           }
-          causalFrozenRef.current = frozen;
 
           // Rule A は physics を skip させるが、 Rule B は frozen 状態からの脱出経路として
           // 常に評価する (plan §7.4)。 frozen + λ=0 のときだけ完全 skip + 既存挙動維持。
@@ -614,13 +620,12 @@ export function useGameLoop({
           // UI: 「因果律跳躍」 continuous overlay の state 通知 (= 2026-05-04 user 指示で
           // 凍結 `causallyFrozen` と完全対称化、 旧 counter+flash 設計を撤廃)。 lambda > 0
           // は Rule B fire 条件と一致、 epsilon ガード不要 (= causalityJumpLambda は不発時
-          // 明示的に 0 return の純関数)。 凍結と同 pattern で ref hot path + 状態変化 tick
-          // のみ store update (= 凍結 `causalFrozenRef` と並列)。
+          // 明示的に 0 return の純関数)。 Stage 11 で凍結と並列に単一 canonical 化、
+          // store の if-changed gate のみ (= 旧 ref 撤廃)。
           const isJumping = lambda > 0;
-          if (causalityJumpingRef.current !== isJumping) {
+          if (fresh.causalityJumping !== isJumping) {
             fresh.setCausalityJumping(isJumping);
           }
-          causalityJumpingRef.current = isJumping;
 
           if (lambda > 0) {
             const g = gamma(newPs.u);
