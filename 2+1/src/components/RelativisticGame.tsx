@@ -443,15 +443,18 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       ) : useOrthographic ? (
         <Canvas
           key={`ortho-gen${canvasGeneration}`}
-          orthographic
-          // ⚠️ Bug 13 isolation 試行 (5/6 朝): camera prop を `zoom` のみに最小化、
-          // position / near / far を削除して R3F default に任せる (= position は useFrame
-          // で上書きされるので Canvas prop 経由不要、 near/far の不要な明示で R3F の
-          // ortho camera 初期化と衝突する仮説の検証)。 R3F default は zoom=1, near=0.1,
-          // far=2000, position=[0,0,5]。 zoom 30 で視覚スケール維持、 useFrame.position.set
-          // で正しい位置に上書き。 効果あれば config 衝突 confirmed、 無ければ別層 (=
-          // GameLights / shader / scene 内 entity) を疑う。
-          camera={{ zoom: 30 }}
+          // ⚠️ Bug 13 isolation 試行 #3 (5/6 朝): `orthographic` prop を削除して
+          // perspective Canvas として描画 (= R3F が PerspectiveCamera を作る)。 直前の
+          // 試行 #1 (camera prop 最小化、 `755e924`) + #2 (GameLights を ortho mode で
+          // ambient 置換、 `03753b2`) いずれも無効、 user は ship 種別 (クラゲ vs 従来)
+          // でも crash 確認 → camera config / GameLights / ship hull は trigger ではない
+          // 確定。 残るのは `orthographic` prop 自体が R3F 内部で OrthographicCamera 生成
+          // → user GPU/driver で WebGL 互換問題を trigger する仮説。 視覚は perspective
+          // (= 平行投影でない通常 3D) になる、 useFrame は `useOrthographic=true` を引き
+          // 続き受け取って camera distance 50 を使う。 effects あれば `orthographic` prop
+          // 真因 confirmed、 fix 方向は ortho 廃止 or 別実装 (= 細い FOV perspective で
+          // 視覚的 ortho 近似 / Three.js OrthographicCamera を `<primitive>` で直接生成)。
+          camera={{ position: [0, 0, 0], fov: 75 }}
         >
           <SceneContent
             myId={myId}
