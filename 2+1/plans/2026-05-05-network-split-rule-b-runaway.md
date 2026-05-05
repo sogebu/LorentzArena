@@ -92,9 +92,38 @@ const vPos = virtualPos(p, lastSync, currentTime);
 - M25 (state 単一化) 違反なし、 staleFrozenIds は既に「peer が stale か」 の唯一 source
 - Fix B cap (= safety net) は temporary disconnect (< 2 sec) には依然有効、 long disconnect は staleFrozenIds で吸収
 
-実装:
-- `PeerProvider` の disconnect 経路 (= heartbeat timeout / peer-unavailable callback / close handler) に `recoverStale` の対称呼び出し `markStale(peerId)` 追加
-- `useStaleDetection` に `markStale` 関数を追加、 `staleFrozenAtRef.set(id, currentTime)` + `syncStoreMirror()`
+**code paths (= 5/5 audit で確認)**:
+
+| Item | File:Line | Detail |
+|---|---|---|
+| `useStaleDetection` 本体 | [`src/hooks/useStaleDetection.ts`](../src/hooks/useStaleDetection.ts) | hook 全体 |
+| `staleFrozenAtRef: Map` (= single source) | L31 | mutation 唯一の場所 |
+| `syncStoreMirror()` (= zustand sync) | L48-52 | `setStaleFrozenIds(new Set(staleFrozenAtRef.keys()))` |
+| `recoverStale(playerId)` 既存 (= 鏡像) | L124-128 | delete + syncStoreMirror |
+| `cleanupPeer(playerId)` 既存 (= 全 ref purge) | L133-138 | より hard なお掃除 |
+| API exports | L142-151 | hook return object |
+
+**実装手順**:
+
+1. `useStaleDetection.ts` に `markStale(playerId, currentTime)` 関数を追加 (= `recoverStale` と対称):
+   ```ts
+   const markStale = useCallback((playerId: string) => {
+     if (!staleFrozenAtRef.current.has(playerId)) {
+       staleFrozenAtRef.current.set(playerId, Date.now());
+       syncStoreMirror();
+     }
+   }, []);
+   ```
+   API exports (L142-151) に `markStale` を追加。
+
+2. `PeerProvider.tsx` の disconnect 経路で `markStale` 呼出:
+   - **heartbeat timeout** (L682-690): `Date.now() - lastPingRef.current > HEARTBEAT_TIMEOUT` のところで、 migration ロジックに入る前に `markStale(deadHostId)`
+   - **`peer-unavailable` error callback**: peerManager の error handler で `error.type === 'peer-unavailable'` を検知したら該当 peer を `markStale`
+   - **conn.on('close')**: peer connection が閉じた時 (= peer-unavailable と異なる経路) も同様に `markStale`
+
+3. `useGameLoop.ts` の Rule B / freeze 計算は変更不要 (= 既に `staleFrozenIds.has(id)` で除外、 拡張された markStale 経由で自動的に除外対象になる)。
+
+4. test (= TDD): `useStaleDetection.test.ts` (新規 or 既存) に `markStale` の挙動 test を追加 (= 「markStale で staleFrozenIds に追加される」 「同 peer 重複 markStale で sync 1 回のみ」 「recoverStale で逆操作可」)。
 
 ### (b) **Fix B cap を hard freeze → 線形 fall-off** (= semantic 変更、 慎重)
 
@@ -117,24 +146,99 @@ const vPos = virtualPos(p, lastSync, currentTime);
 
 **動機**: H3 (= PeerProvider 再接続 robustness 不足) で、 WebSocket 切断後の同 instance での再接続が PeerJS 既知挙動で困難。 sleep-wake / network split 等で signaling 死亡時に Tab 1 が stuck する症状を解消。
 
-**実装方向**:
-- PeerProvider で `peer.disconnected` event listener を追加、 disconnect 検知で `peer.destroy()` → 新 PeerJS instance 作成 → 同 ID で再接続試行
-- もしくは disconnect 後一定期間 (= 5 sec 等) reconnect を試行、 失敗したら `destroy + 新規作成` flow に escape
-- 既存 ID を保持できれば player state continuity (= score / position) を維持、 ID 取得失敗なら新 ID で再 join (= host 側で旧 ID の cleanup を receive)
+**code paths (= 5/5 audit で確認)**:
 
-**依存**:
-- `src/services/peerProvider.ts` (= 推定 path、 要確認) の peer instance lifecycle を understand
-- PeerJS の `disconnected` / `error` event の正確な semantics (= 自動再接続有り無し)
+| Item | File:Line | Detail |
+|---|---|---|
+| PeerProvider 本体 | [`src/contexts/PeerProvider.tsx`](../src/contexts/PeerProvider.tsx) | 主 file |
+| Beacon ID 計算 | L136 | `const roomPeerId = \`la-${roomName}\`;` |
+| local peer ID 永続 | L126 | `localIdRef = useRef(Math.random()...)` (= 同 tab で stable) |
+| PeerManager instance 生成 | L273-276 (beacon) / L285-288 (game) | `new PeerManager<Message>(...)` |
+| heartbeat 送信 (host) | L533-553 | `setInterval(HEARTBEAT_INTERVAL=1000ms)` |
+| heartbeat 受信 (client) | L570-581 | `peerManager.onMessage("heartbeat", ...)` |
+| heartbeat timeout 検知 | L682-690 | 2500ms threshold で migration trigger |
+| `becomeSoloHost()` | L628-632, L720-726 | no peers reachable で host 化 |
+| `discoverBeaconHolder()` (Stage 2) | L1020-1095 | visibility→visible で probe、 split detect → demote |
+| `demoteToClient()` | L859-981 | beacon contention での降格 |
+
+**実装手順**:
+
+1. **PeerJS の disconnect event を観察**:
+   - `peer.on('disconnected', ...)` listener を attach (= `PeerManager` 抽象越しに or 直接 peer instance に)
+   - PeerJS docs: `disconnected` = signaling server connection lost。 `peer.destroyed === false` だが peer connections 不可能。 `peer.reconnect()` で復旧試行できるが既知の問題で失敗多発。
+   - **要確認**: `PeerManager` (= `src/services/peerManager.ts`? 要 grep) が `peer.on('disconnected')` を expose しているか、 してなければ wrapper 層で listener 追加。
+
+2. **disconnect 検知時の retry + escape**:
+   ```ts
+   const handleDisconnected = () => {
+     console.log('[PeerProvider] Signaling disconnected, attempting reconnect...');
+     setSignalingDeadAt(Date.now());  // ← (e) reload prompt の trigger 用 state
+     try {
+       peer.reconnect();  // PeerJS 自動再接続試行
+     } catch {}
+     // 5 sec 待って復活してなければ destroy + 新規作成
+     setTimeout(() => {
+       if (peer.disconnected) {
+         peer.destroy();
+         // 新 PeerManager 生成、 同 localIdRef.current を渡して同 ID で再 join
+         const newPm = new PeerManager(localIdRef.current, ...);
+         peerManagerRef.current = newPm;
+         setSignalingDeadAt(null);  // 復旧 → reload prompt 不発
+       }
+     }, 5000);
+   };
+   ```
+   - 既存 ID で再 join 成功すれば player state continuity 維持 (= score / position 保持)
+   - ID 取得失敗 (= 旧 ID が server-side で active 残留) なら新 random ID で再 join (= host 側で旧 ID の `peer-unavailable` を受けて自動 cleanup)
+
+3. **境界 case**:
+   - `peer.destroyed === true` (= 完全に死んでる) なら新規作成しか選択肢なし
+   - 同時刻に複数 tab が destroy + 新規作成すると beacon 取り合い race → H2 (host election race) 経路で sort out される (= 既存 logic で OK)
+
+4. **依存 module 確認**:
+   - `PeerManager` の constructor signature (= peer ID + options)
+   - `peer.reconnect()` を直接呼べるか (= PeerManager 越し or peer instance を露出)
+   - 既存の effect 中で `peer.destroy()` が安全に呼ばれて再 mount (= cleanup chain)
 
 ### (e) **「再接続失敗」 reload prompt UX** (= escape hatch、 軽量先行案)
 
 **動機**: H3 治療 (d) は構造的だが PeerProvider 周辺の coding を要する。 短期 patch として、 signaling 死亡が一定期間続いたら user に「再接続失敗、 reload してください」 prompt を出す escape hatch を新設、 reload で完全 fresh state 復帰。
 
-**実装方向**:
-- `useEffect` で `peer.disconnected === true` を監視、 一定期間 (= 10 sec 等) 続けば reload prompt を modal で表示
-- 既存の `WebGLLostOverlay` と同 pattern (= context lost watchdog) で reuse 可、 文言だけ変える
+**code paths (= 5/5 audit で確認)**:
 
-**評価**: (e) だけでは構造治療にならない (= 毎回 reload は UX 後退) だが、 (d) 実装中の interim escape として価値あり。 (a) + (b) + (d) + (e) の併用が最も robust。
+| Item | File:Line | Detail |
+|---|---|---|
+| `WebGLLostOverlay` (reference pattern) | [`src/components/game/WebGLLostOverlay.tsx`](../src/components/game/WebGLLostOverlay.tsx) | modal pattern の reference |
+| state source (= store boolean) | `useGameStore((s) => s.webglContextLost)` | RelativisticGame の DOM polling listener が set |
+| i18n keys | `webglLost.title` / `webglLost.body` / `webglLost.reloadButton` | `src/i18n/translations/{ja,en}.ts` |
+| Connect.tsx (= 既存「シグナリング: ...」 表示) | [`src/components/Connect.tsx`](../src/components/Connect.tsx) L35-48 | `peerStatus` from `usePeer()` context → text |
+| signaling status state | `peerStatus` ('open' / 'connecting' / 'disconnected' / 'error') | PeerProvider の useState |
+
+**実装手順**:
+
+1. `useGameStore` に `signalingDead: boolean` 新設 (= `webglContextLost` と同型)。 setter `setSignalingDead(value)` も追加。
+
+2. `PeerProvider.tsx` で `peerStatus === 'disconnected'` or `'error'` が **N 秒以上持続** したら `setSignalingDead(true)` 呼出:
+   ```ts
+   useEffect(() => {
+     if (peerStatus === 'open' || peerStatus === 'connecting') {
+       setSignalingDead(false);
+       return;
+     }
+     // disconnected / error 継続中
+     const timeoutId = setTimeout(() => setSignalingDead(true), 10000);
+     return () => clearTimeout(timeoutId);
+   }, [peerStatus]);
+   ```
+
+3. `SignalingLostOverlay.tsx` 新設 (= `WebGLLostOverlay.tsx` を copy + 文言変更):
+   - state source: `useGameStore((s) => s.signalingDead)`
+   - i18n keys: `signalingLost.title` / `body` / `reloadButton` 新設、 文言例「ネットワーク接続が失われました」 / 「再接続を試みましたが失敗しました。 ページを再読込してください。」
+   - reload button: `window.location.reload()`
+
+4. `RelativisticGame.tsx` (= 既存 `WebGLLostOverlay` mount site) に `<SignalingLostOverlay />` 追加。
+
+**評価**: (e) だけでは構造治療にならない (= reload する UX 後退) だが、 (d) 実装中の interim escape として価値あり。 また `peerStatus` polling は既存 React state 駆動なので副作用無し、 deploy risk 最小。 (a) + (d) + (e) 併用が最も robust。
 
 ---
 
@@ -196,10 +300,74 @@ Repro 2 は user の手で 1 分内で試せる、 implementation phase の veri
 
 ## §8 完了基準 (= implementation phase 進行時)
 
-- [ ] reliable repro 確立 (= deliberate な「Network: Offline 5+ 秒」 で Phase 2-3 を再現)
+- [ ] reliable repro 確立 (= sleep-wake / Network: Offline で deliberate に発火) ✅ **達成済**
 - [ ] (a) staleFrozenIds 拡張 実装 (= disconnect callback に markStale 追加)
 - [ ] PeerProvider の disconnect 検出経路を grep + 全 callback で markStale 呼び出し
 - [ ] 既存 247 test pass + 新 test (= disconnect → staleFrozenIds に追加、 Rule B 不発化、 復活で recoverStale)
-- [ ] (c) HUD 「接続中の相手」 表示の stale/disconnect 整合
+- [ ] (d) PeerJS instance reset 実装 (= peer.on('disconnected') → reconnect 試行 → destroy + 新規作成 escape)
+- [ ] (e) reload prompt UX 実装 (= signalingDead 10 sec timeout で SignalingLostOverlay 表示)
+- [ ] (c) HUD 「接続中の相手」 表示の stale/disconnect 整合 (= optional、 (a) 実装で staleFrozenIds に入った peer の表示を「stale」 マーク)
 - [ ] preview / 本番 deploy
-- [ ] reliable repro で「両側 因果律跳躍 同時 fire しない」 + 「LH worldline 縞 出ない」 + 「peer 不可視 transient < 1 sec」 を verify
+- [ ] reliable repro で「両側 因果律跳躍 同時 fire しない」 + 「LH worldline 縞 出ない」 + 「peer 不可視 transient < 1 sec」 + 「sleep-wake stuck から自動復帰 or reload prompt 表示」 を verify
+
+---
+
+## §9 implementation 推奨順 + verify 手順 (= 5/5 PM 追加、 fresh session 引き継ぎ用)
+
+### 推奨順序: (e) → (a) → (d)
+
+**理由**:
+- **(e) reload prompt** が一番安全な escape hatch (= 既存 `WebGLLostOverlay` pattern reuse、 risk 最小)。 これだけ deploy しても sleep-wake stuck で「reload してください」 modal が出るので user UX 改善
+- **(a) staleFrozenIds 拡張** は既存機構の use case 拡張で risk 中、 H1 (Rule B 暴走) 経路を構造的に遮断
+- **(d) PeerJS instance reset** が一番 risk 高 (= 不慣れな PeerJS 内部 lifecycle、 race 含む)。 (a)+(e) で大半の症状が緩和されてから着手するのが prudent
+
+### 各 fix の verify 手順
+
+#### (e) reload prompt verify
+1. preview 起動、 2 tab 開いて play
+2. tab 1 で Chrome DevTools「Network: Offline」 にする
+3. 10 sec 待つ
+4. **expected**: tab 1 に「ネットワーク接続が失われました、 再読込してください」 modal が表示される
+5. reload button 押下で復帰
+6. tab 2 は Online のまま継続 play 可
+
+#### (a) staleFrozenIds 拡張 verify
+1. preview 起動、 2 tab 開いて play (= peer 互いに認識)
+2. tab 1 console で `window.__game.getState().staleFrozenIds` (= 空 Set 確認)
+3. tab 1 で Chrome DevTools「Network: Offline」 にする
+4. heartbeat timeout (= 2.5 sec) 経過
+5. **expected**: tab 1 console で `staleFrozenIds` に tab 2 の peerId が入る (= markStale 経由)
+6. tab 1 console で `__game.getState().causalityJumping` (= false 確認、 Rule B 不発)
+7. Network Online に戻す
+8. **expected**: peer 復活後 `staleFrozenIds` から tab 2 が消える (= recoverStale 経由)
+9. 既存 test pass + 新 test (= `useStaleDetection.test.ts` の markStale テスト)
+
+#### (d) PeerJS instance reset verify
+1. preview 起動、 2 tab 開いて play (= 互いに認識)
+2. tab 1 で Chrome DevTools「Network: Offline」 5+ sec 切断 → Online 復帰
+3. **expected**: tab 1 console で `[PeerProvider] Signaling disconnected, attempting reconnect...` log → `peer.reconnect()` 試行 → 失敗で `peer.destroy()` + 新 PeerManager 生成 log → 復帰成功で「シグナリング: 接続OK」 復帰
+4. **expected**: tab 1 と tab 2 が再び互いを認識 (= peer ID 同じなら state continuity 維持)
+5. 死亡 / 撃破 / score 等の通常 game flow が継続可能
+
+### 各 fix の risk audit
+
+| Fix | Risk | 緩和策 |
+|---|---|---|
+| (e) reload prompt | `peerStatus` の遷移 timing で false positive (= 一瞬 disconnected → connecting 中に modal) | 10 sec timeout で sufficient buffering、 短期 flap は無視される |
+| (a) staleFrozenIds 拡張 | `markStale` 重複 call で sync 過多 → 性能影響 | `if (!has(id))` guard で 1 度のみ sync (= 既存 `recoverStale` と対称) |
+| (a) | disconnect 検知が誤判定 (= 短期 packet loss で peer を stale 化 → 即時 recoverStale 不発で UX 後退) | heartbeat timeout 2.5 sec の既存 buffer + recoverStale 経路 (= peer 復活で revert) で吸収 |
+| (d) PeerJS reset | `peer.destroy()` 後の新 instance 生成 race (= 同 ID で server side conflict) | 既存 ID で再 join 失敗 → 新 random ID で再 join に fallback、 host 側で旧 ID の cleanup を receive |
+| (d) | 同時刻に複数 tab が destroy + 新規作成 → beacon 取り合い race | 既存 H2 (host election race) logic で sort out、 H2 経路は既知の挙動 |
+| (d) | `peerManagerRef.current` の更新が React lifecycle と衝突 (= effect cleanup chain 壊す) | 既存 useEffect cleanup pattern を踏襲、 PeerManager 内部の dispose lifecycle に合わせる |
+
+### 着手前の確認事項 (= fresh session が最初に見るべき)
+
+1. **PeerManager の signature 確認**: `src/services/peerManager.ts` (= 推定) を読んで constructor + event API を理解。 `disconnected` event を expose しているか? していなければ wrapper 拡張要
+2. **既存 effect cleanup chain の理解**: PeerProvider の useEffect 群が destroy / unmount でどう連鎖するか (= 新 instance への置き換えが既存 cleanup と衝突しないこと)
+3. **localIdRef の 永続性**: tab hide/show / sleep-wake で `localIdRef.current` (= L126) が変わるか? 変わらないなら再 join で同 ID 維持可。 変わるなら新 ID で fresh join
+
+### 着手しない場合の運用継続 (= γ defer 中)
+
+- sleep-wake で stuck したら **手動 reload** で復帰 (= user mental model)
+- multi-tab cascade を避ける (= host migration を deliberate に triggered する situation を回避)
+- Bug 11 ledger と本 plan で plan + repro 完備、 fresh session で着手判断時に基本情報は揃っている
