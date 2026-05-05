@@ -546,15 +546,30 @@ export const SceneContent = ({
           },
         )}
 
-        {/* レーザー現在位置 (発射点 + 方向 × 経過時間, z=0) */}
-        {observerPos && lasers.map((laser) => {
-          const lambda = observerPos.t - laser.emissionPos.t;
-          if (lambda < 0 || lambda > laser.range) return null;
-          const lx = laser.emissionPos.x + laser.direction.x * lambda;
-          const ly = laser.emissionPos.y + laser.direction.y * lambda;
+        {/* レーザー past 光円錐交点 (= 観測者の lab-frame 過去光円錐 ∩ laser worldline)
+            を rest frame xy で描画 (z=0)。 Bug 6 真因治療。
+            旧仕様 (= `lambda·direction + emission` で lab-frame の laser「現在位置」 を
+            描画) は **光の伝達時間を無視** していた = 「いま laser はここ」 という瞬時
+            通信前提の position。 これだと approaching laser が等速 (= 1c lab) で動く
+            だけで「迫ってくる速い」 効果が消える (= user 報告「ゆっくり近づいてくる」)。
+            正しくは observer に届いた光の発射事象 (= past-cone ∩ worldline) を描く:
+            laser が r(s) で発した photon は t_e+s+|r(s)| に observer 着、 approaching
+            laser ではこれが s に依らず ≈ 一定 → 全 laser 線上事象が同 observer 時刻に
+            届く burst 効果が出る。 つまり「速く見える」 は **lab-frame の光円錐交点
+            計算だけで出る**、 boost や aberration とは別軸 (= 私の以前の説明誤り、
+            5/6 朝 user 訂正)。
+            実装: 時空 mode で precomputed の `laserIntersections` (= world-frame past
+            -cone 交点、 `pastLightConeIntersectionLaser` 経由) をそのまま使用、
+            `transformEventForDisplay` で rest frame xy に座標変換するのは **他 PLC
+            entity (= ship circle L520-547) と座標 frame を統一する目的**。 frame 揃え
+            のための boost であって、 「速い見え方」 効果自体は past-cone 計算で既に
+            出ている。 同パターンの 2D Radar 実装は [hud/Radar.tsx](hud/Radar.tsx)
+            L206-246 参照。 */}
+        {laserIntersections.map(({ laser, pos }) => {
+          const dp = transformEventForDisplay(pos, observerPos, observerBoost);
           const c = getThreeColor(laser.color);
           return (
-            <mesh key={`plc3d-laser-${laser.id}`} position={[lx, ly, 0]}>
+            <mesh key={`plc3d-laser-${laser.id}`} position={[dp.x, dp.y, 0]}>
               <circleGeometry args={[0.18, 6]} />
               <meshBasicMaterial color={c} side={THREE.DoubleSide} />
             </mesh>
