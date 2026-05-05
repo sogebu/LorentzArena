@@ -42,8 +42,8 @@ import {
   SHIP_NOZZLE_THROAT_RADIUS,
 } from "./constants";
 import {
+  ALWAYS_ON_TOP_FG_MESH_PROPS,
   ALWAYS_ON_TOP_MATERIAL_PROPS,
-  ALWAYS_ON_TOP_MESH_PROPS,
 } from "./alwaysOnTopRender";
 import { transformEventForDisplay } from "./displayTransform";
 import { RocketHullRenderer } from "./RocketHullRenderer";
@@ -359,7 +359,7 @@ export const RocketShipRenderer = ({
               ref={rearExhaustOuterRef}
               geometry={sharedGeometries.exhaustCone}
               visible={false}
-              {...ALWAYS_ON_TOP_MESH_PROPS}
+              {...ALWAYS_ON_TOP_FG_MESH_PROPS}
             >
               <meshBasicMaterial
                 ref={rearExhaustOuterMatRef}
@@ -374,7 +374,7 @@ export const RocketShipRenderer = ({
               ref={rearExhaustInnerRef}
               geometry={sharedGeometries.exhaustCone}
               visible={false}
-              {...ALWAYS_ON_TOP_MESH_PROPS}
+              {...ALWAYS_ON_TOP_FG_MESH_PROPS}
             >
               <meshBasicMaterial
                 ref={rearExhaustInnerMatRef}

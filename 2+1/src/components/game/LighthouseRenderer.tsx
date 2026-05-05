@@ -6,8 +6,8 @@ import { observableImageCells, requiredImageCellRadius } from "../../physics";
 import { getVelocity4 } from "../../physics/vector";
 import { selectIsDead, useGameStore } from "../../stores/game-store";
 import {
+  ALWAYS_ON_TOP_BG_MESH_PROPS,
   ALWAYS_ON_TOP_MATERIAL_PROPS,
-  ALWAYS_ON_TOP_MESH_PROPS,
 } from "./alwaysOnTopRender";
 import { buildApparentShapeMatrix } from "./apparentShape";
 import { pastConeIntersectionWithFrozenFallback } from "./pastConeFallback";
@@ -185,7 +185,7 @@ export const LighthouseRenderer = ({
                 <group position={[0, 0, -LIGHTHOUSE_SINK * 0.5]} scale={0.5}>
                   {/* Body: tapered cylinder, base at event */}
                   <mesh
-                    {...ALWAYS_ON_TOP_MESH_PROPS}
+                    {...ALWAYS_ON_TOP_BG_MESH_PROPS}
                     position={[0, 0, 0.5]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.body}
@@ -204,7 +204,7 @@ export const LighthouseRenderer = ({
 
                   {/* Two horizontal bands */}
                   <mesh
-                    {...ALWAYS_ON_TOP_MESH_PROPS}
+                    {...ALWAYS_ON_TOP_BG_MESH_PROPS}
                     position={[0, 0, 0.2]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.bodyBand}
@@ -219,7 +219,7 @@ export const LighthouseRenderer = ({
                     />
                   </mesh>
                   <mesh
-                    {...ALWAYS_ON_TOP_MESH_PROPS}
+                    {...ALWAYS_ON_TOP_BG_MESH_PROPS}
                     position={[0, 0, 0.7]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.bodyBand}
@@ -236,7 +236,7 @@ export const LighthouseRenderer = ({
 
                   {/* Balcony torus (sits flat in xy plane, encircling lantern base) */}
                   <mesh
-                    {...ALWAYS_ON_TOP_MESH_PROPS}
+                    {...ALWAYS_ON_TOP_BG_MESH_PROPS}
                     position={[0, 0, 1.0]}
                     geometry={G.balcony}
                   >
@@ -254,7 +254,7 @@ export const LighthouseRenderer = ({
 
                   {/* Lantern room: open cylinder, semi-transparent so lamp is visible */}
                   <mesh
-                    {...ALWAYS_ON_TOP_MESH_PROPS}
+                    {...ALWAYS_ON_TOP_BG_MESH_PROPS}
                     position={[0, 0, 1.15]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.lantern}
@@ -273,7 +273,7 @@ export const LighthouseRenderer = ({
 
                   {/* Lamp: bright emissive sphere */}
                   <mesh
-                    {...ALWAYS_ON_TOP_MESH_PROPS}
+                    {...ALWAYS_ON_TOP_BG_MESH_PROPS}
                     position={[0, 0, 1.15]}
                     geometry={G.lamp}
                   >
@@ -287,7 +287,7 @@ export const LighthouseRenderer = ({
 
                   {/* Roof cone */}
                   <mesh
-                    {...ALWAYS_ON_TOP_MESH_PROPS}
+                    {...ALWAYS_ON_TOP_BG_MESH_PROPS}
                     position={[0, 0, 1.41]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.roof}
@@ -306,7 +306,7 @@ export const LighthouseRenderer = ({
 
                   {/* Spire */}
                   <mesh
-                    {...ALWAYS_ON_TOP_MESH_PROPS}
+                    {...ALWAYS_ON_TOP_BG_MESH_PROPS}
                     position={[0, 0, 1.57]}
                     rotation={ROT_Y_TO_Z}
                     geometry={G.spire}
@@ -334,7 +334,7 @@ export const LighthouseRenderer = ({
                 ]}
               >
                 <mesh
-                  {...ALWAYS_ON_TOP_MESH_PROPS}
+                  {...ALWAYS_ON_TOP_BG_MESH_PROPS}
                   scale={[sphereSize, sphereSize, sphereSize]}
                   geometry={sharedGeometries.playerSphere}
                 >
@@ -350,7 +350,7 @@ export const LighthouseRenderer = ({
                   />
                 </mesh>
                 <mesh
-                  {...ALWAYS_ON_TOP_MESH_PROPS}
+                  {...ALWAYS_ON_TOP_BG_MESH_PROPS}
                   scale={[sphereSize * 1.8, sphereSize * 1.8, sphereSize * 1.8]}
                   geometry={sharedGeometries.playerSphere}
                 >
@@ -374,7 +374,7 @@ export const LighthouseRenderer = ({
                 ]}
               >
                 <mesh
-                  {...ALWAYS_ON_TOP_MESH_PROPS}
+                  {...ALWAYS_ON_TOP_BG_MESH_PROPS}
                   scale={[sphereSize, sphereSize, sphereSize]}
                   geometry={sharedGeometries.playerSphere}
                 >
@@ -390,7 +390,7 @@ export const LighthouseRenderer = ({
                   />
                 </mesh>
                 <mesh
-                  {...ALWAYS_ON_TOP_MESH_PROPS}
+                  {...ALWAYS_ON_TOP_BG_MESH_PROPS}
                   scale={[sphereSize * 1.8, sphereSize * 1.8, sphereSize * 1.8]}
                   geometry={sharedGeometries.playerSphere}
                 >

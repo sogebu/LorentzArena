@@ -10,8 +10,8 @@ import {
   type Vector4,
 } from "../../physics";
 import {
+  ALWAYS_ON_TOP_FG_MESH_PROPS,
   ALWAYS_ON_TOP_MATERIAL_PROPS,
-  ALWAYS_ON_TOP_MESH_PROPS,
 } from "./alwaysOnTopRender";
 import { AntennaBeaconRenderer } from "./AntennaBeaconRenderer";
 import {
@@ -748,10 +748,13 @@ export const SelfShipRenderer = ({
           </group>
 
           {/* Exhaust (4 nozzle 各々、旧 ExhaustCone と同 spec、2 層 cone + additive blending)。
-          位置・向き・scale は useFrame で nozzle 個別に動的設定。 ALWAYS_ON_TOP pattern
-          (= alwaysOnTopRender.ts、 mesh.renderOrder=10 + material.depthTest=false +
-          material.depthWrite=false) で世界線 tube 等の背景 D pattern geometry より
-          常に上に描画 (transparent + additive で後勝ち順 + depth buffer 完全無視)。 */}
+          位置・向き・scale は useFrame で nozzle 個別に動的設定。 ALWAYS_ON_TOP **FG** layer
+          (= alwaysOnTopRender.ts、 mesh.renderOrder=11 + material.depthTest=false +
+          material.depthWrite=false) で世界線 tube 等の背景 D pattern geometry より常に上に
+          描画 (transparent + additive で後勝ち順 + depth buffer 完全無視)。 BG layer (= LH、
+          renderOrder=10) より上の FG layer に置くことで、 自機が LH 近接 + 推進中の場面でも
+          exhaust nozzle と LH meshes の sort flicker (= 旧 1 layer 設計の bug) を構造的に
+          回避。 */}
           {nozzleAngles.map((_, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: NOZZLE_COUNT 固定 + 順序不変
             <group key={`exhaust-${i}`}>
@@ -761,7 +764,7 @@ export const SelfShipRenderer = ({
                 }}
                 geometry={sharedGeometries.exhaustCone}
                 visible={false}
-                {...ALWAYS_ON_TOP_MESH_PROPS}
+                {...ALWAYS_ON_TOP_FG_MESH_PROPS}
               >
                 <meshBasicMaterial
                   ref={(el) => {
@@ -780,7 +783,7 @@ export const SelfShipRenderer = ({
                 }}
                 geometry={sharedGeometries.exhaustCone}
                 visible={false}
-                {...ALWAYS_ON_TOP_MESH_PROPS}
+                {...ALWAYS_ON_TOP_FG_MESH_PROPS}
               >
                 <meshBasicMaterial
                   ref={(el) => {
