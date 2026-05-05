@@ -447,14 +447,14 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
           camera={{
             zoom: 30,
             position: [0, 0, 50],
-            // near/far は orthographic camera-space 沿いの clip 範囲。 旧 ±10000 は
-            // `67f645c` (= ortho toggle 導入) の defensive default だが、 一部 GPU/driver
-            // (= 5/5 night odakin 観測の Brave on Mac で 「正射影にした瞬間 chronic context
-            // loss」 = Bug 13 の真因) で過剰 depth range が WebGL precision 問題を trigger。
-            // 実シーン extent (= camera distance 50 + LIGHT_CONE_HEIGHT 20 + 高 γ worldline
-            // 最大 ~100 ls + margin) を考えても ±300 で十分、 ±500 で安全マージン込み。
-            near: -500,
-            far: 500,
+            // ⚠️ Bug 13 active: 正射影 toggle で chronic context loss (= ortho Canvas
+            // mount 直後に GPU crash → auto-remount → repeat の chronic loop) が一部
+            // Mac/Brave で発生。 5/6 朝 commit `5901db5` で near/far を ±10000 → ±500
+            // に縮小したが効果なし (= depth range は trigger ではなかった、 ±10000 に
+            // revert) → 真因は別 layer (= shader compile / GameLights 互換性 / specific
+            // material × ortho camera の TDR timeout 等)。 詳細: SESSION.md Bug 13。
+            near: -10000,
+            far: 10000,
           }}
         >
           <SceneContent
