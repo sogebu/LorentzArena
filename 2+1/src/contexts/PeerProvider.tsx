@@ -753,6 +753,15 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
         );
         transferLighthouseOwnership(newHostId);
       }
+      // Stage 9 root cause cleanup (= 2026-05-05 evening): host 化時に roomPeerId
+      // (= la-{room}) entry を必ず cleanup。 client phase で pm.connect(roomPeerId)
+      // 後 redirect 経由ではなく heartbeat timeout / becomeSoloHost で host 化した
+      // 場合、 conns Map に roomPeerId 残骸が残り HUD「接続中の相手」 で「接続準備
+      // 中/失敗」 赤表示として観察される。 既存 followRedirect / attemptBeaconFallback
+      // の局所 cleanup と整合、 assumeHostRole が「host 化の single source of truth」
+      // という plan 2026-04-19 design 思想と一致する根本治療。 disconnectPeer は冪等
+      // (= 該当 conn 不在なら no-op) なので副作用なし。
+      peerManager.disconnectPeer(roomPeerId);
       setRoleVersion((v) => v + 1);
     };
 
