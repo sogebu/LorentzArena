@@ -2,7 +2,11 @@
 
 ## 現在のステータス
 
-**本番最新 deploy**: 2026-05-05 build `21:50:57` ([`ad52130`](https://github.com/sogebu/LorentzArena/commit/ad52130)) Rule B exit margin LH flicker 治療。 odakin localhost verify 「よさそう」 → production deploy 済。 後続の docs-only commits は次回コード変更 deploy 時に同梱される。
+**本番最新 deploy**: 2026-05-06 build `08:48:05` ([`ca7698c`](https://github.com/sogebu/LorentzArena/commit/ca7698c)) Bug 6 + Bug 13 両方治療。 odakin localhost verify 「直ってる」 「なおってる」 確認済 → production deploy 済。
+
+直近 2 commits:
+- [`ca7698c`](https://github.com/sogebu/LorentzArena/commit/ca7698c) **Bug 6 fix**: PLC 3D laser を `pastLightConeIntersectionLaser` (= lab-frame past-cone ∩ worldline) + `transformEventForDisplay` (= rest frame xy 統一) で描画、 approaching laser に「速く / 瞬時に」 効果が出る (= 旧 lambda 直は光伝達時間を無視して laser 物理現在位置を出していた誤り)
+- [`fb1288b`](https://github.com/sogebu/LorentzArena/commit/fb1288b) **Bug 13 根本治療**: 旧 3 系統 conditional Canvas (= persp/ortho/plc3d) を単一 Canvas + 内部 `<CameraController>` で camera 動的切替に refactor、 toggle で Canvas remount しなくなり user GPU の WebGL context 生成失敗 chronic loop が消滅
 
 ### 最近の作業要約 (詳細 = git log + 各 plan)
 
@@ -30,8 +34,8 @@
 | 1 | 死後 ghost 時間発展せず | Bug 10 と統合解消見込み | ghost camera WASD non-routing 部分は DevTools console focus 由来 false alarm 仮説、 canvas click で要再検証 |
 | 2 | OtherShip flicker | あとで | Bug 10 共通根因 (rAF starve) 疑、 root 撃滅後再評価 |
 | 5 | LH 時刻ジャンプ (host anchor) | ✅ 構造的解消 (`7ae1917` Stage 4) | Rule B 因果律対称ジャンプで lead client 追従、 旧 `minPlayerT` 撤廃 |
-| 6 | PLC スライス 3D 弾速 (= approaching laser が遅く見える) | 🟡 **Phase 0 attempt → revert + Bug 13 で blocked** | 5/5 night 真因特定済: PLC 3D laser rendering が `lambda·direction + emission` (= world-frame の lab 「現在位置」) で aberration を欠く。 真の挙動 = past-cone 交点 + 観測者 rest frame に boost (= 2D Radar の `pastLightConeIntersectionLaser` + `transformEventForDisplay` パターンと同設計)。 Phase 0 fix を `SceneContent.tsx:549` で実装試行 → user verify 中に **Bug 13 chronic context loss が production も含めて再現** 判明、 切り分けで Phase 0 は innocent confirmed (= 旧 code でも chronic loss 発火)、 working tree から revert 済 + 未 commit。 **Bug 13 解決後に Phase 0 を再 apply + 検証する**。 Phase 1 (= 時空図 renderer 群を PLC 3D で再利用してリッチ化) は user 構想「真上から正射影は PLC 2D、 3D はそれを斜めから見た絵」 + 「laser worldline と PLC 交点は基本点 (apex case のみ線分)」 を anchor 化、 Bug 13 後に実装議論 |
-| 13 | **PLC 3D mode + 正射影 mode で WebGL chronic context loss** (= ortho mount 直後 / PLC 3D 数秒で reload overlay 発火、 production 再現済) | 🔴 **near/far fix attempt 失敗 confirmed (5/6 朝)、 真因再調査必要** | **正射影 trigger (= 5/6 朝 user 「正射影にした瞬間に止まります」)**: `RelativisticGame.tsx:444-457` の `near: ±10000` を ±500 に縮小する fix `5901db5` を build `07:30:23` で deploy したが **無効** confirmed (= 同 build で再現)。 console: `[WebGL] context lost (sinceLast=1.77e12ms)` = `lastLostAtRef.current=0` のまま fire = my listener attach (= 200ms polling) **前**に既に context loss 発生 → ortho Canvas mount 直後 GPU が即 crash しているサイン、 depth range は trigger ではなかった (revert 済)。 真因再仮説 (= 検証要): (a) `<Canvas orthographic zoom: 30 position: [0,0,50]>` の R3F 自動 ortho camera と useFrame の手動 position.set/lookAt 衝突、 (b) GameLights point lights × OrthographicCamera での Three.js standard material shader compile が Mac Apple Silicon Metal backend で TDR timeout、 (c) zoom: 30 の高 zoom 値で projection matrix scale が極端、 (d) jellyfish hull (= per-frame TubeGeometry rebuild) × ortho frame culling の interaction。 **PLC 3D trigger (= 別 Canvas)**: depth range fix と無関係、 復帰手順 §「Bug 13 PLC 3D 復帰手順」 参照。 次手 candidate: (1) ortho Canvas を最小 config 化 (= zoom prop / position prop 削除して useFrame に全部任せる)、 (2) GameLights を ortho mode で disable して isolation、 (3) 旧版 (= e.g. e645aef PLC 追加前) で ortho mode を試して regression commit を bisect |
+| 6 | PLC スライス 3D 弾速 (= approaching laser が遅く見える) | ✅ **完全治療 + odakin verify 「直ってる」 (5/6 朝)** | `ca7698c` で `pastLightConeIntersectionLaser` (= lab-frame past-cone ∩ worldline) + `transformEventForDisplay` (= rest frame xy 統一) で描画。 旧 `lambda·direction + emission` は **光伝達時間を無視** して laser 物理現在位置を出していた誤り、 正しくは `t_e + s + |r(s)|` で観測者着の photon 発射事象を出す → approaching laser で全 worldline 事象が同 observer 時刻に着く burst 効果が出て「速く / 瞬時に」 visible。 odakin 訂正で「lab-frame でも近づく laser はいくらでも速くなる、 boost / aberration とは別軸」 と framing 修正、 5/5 night の Phase 0 attempt は Bug 13 と取り違えて revert していたが Bug 13 根本治療後に再 apply で完了 |
+| 13 | **正射影 mode + PLC 3D mode で WebGL chronic context loss** | ✅ **根本治療 deploy 済 (5/6 朝、 build `08:48:05`)** | `fb1288b` で 旧 3 系統 conditional Canvas (= `plc3d-gen` / `ortho-gen` / `persp-gen`) を**単一 Canvas + 内部 `<CameraController>` で camera 動的切替**に refactor。 真因は「toggle で React conditional が `<Canvas key>` を unmount → 新 Canvas mount → user GPU/driver で fresh WebGL context 生成失敗 → auto-remount → chronic loop」。 isolation 試行 #1〜#4 (= camera config / GameLights / ship 種別 / `<Canvas orthographic>` prop) 全て無効、 #4 (= Canvas merge) で chronic loss 完全消失 confirmed → 真因確定 + 構造的治療。 視覚は spacetime persp / spacetime ortho (真の orthographic) / PLC 3D の 3 view が CameraController の useEffect で正しく切替。 odakin verify 「問題なし、 直ってる」 (5/6 朝)。 5/5 night の near/far ±10000→±500 fix attempt (`5901db5`) は無効と判明後 revert (`2a0abc8`)、 isolation #1-#3 attempts (`755e924`/`03753b2`/`78450b1`) も真因絞り込みのために順次 deploy → 全て無効 confirmed の上で根本治療 (`fb1288b`)。 **教訓**: `sinceLast=1.77e12ms` (= listener attach 前 loss) console signature は「mount 直後 GPU 即 crash」 を意味する、 component config patches より前に Canvas remount 自体を疑うべきだった (= 試行 #4 で気づいた、 #1-#3 は後付けで見れば不要だった) |
 | 14 | **Background tab で physics runaway (= 寝ている間に未来に超高速 drift)** | 🆕 **active investigation、 真因未特定** | 2026-05-06 朝 user 報告: スマホ Brave で 8 時間 background 後、 世界時刻 `20340058.16s` (= 2034 万秒 = 235 日分、 wall_clock 8 時間で 700x speedup) / 位置 `(-19164502.22, 6810953.07)` = ±2000 万 ls 遠方 / 現速 0.3% c, γ=1.000 / 撃破数 odakin 28 / LH 3 で長 play 継続。 視覚: 中心から放射状光 (= 累積 worldline / laser worldline 多量) が異常密集。 真因仮説: (a) モバイル Brave background での setInterval throttle (= 1Hz minimum) で各 tick wall_dt が 1+ 秒になり pos.t 大 advance、 (b) self Rule B が LH を peer 含む (`useGameLoop.ts:585-663`) ため LH ↔ self で互いに ratchet forward → 位置・時刻累積拡大、 (c) frozen worldLines / debrisRecords / killLog の 8 時間蓄積で視覚異常密集。 同 session 内 LorentzArena Bug 10 の「rAF starve」 と対極 (= 「rAF 暴走」)。 **propagation 観察 (= user 同朝 follow-up)**: PC から同 production URL で join 試みたが「別ホスト」 になった (= スマホの runaway 状態には join せず separate host 化)、 おそらくスマホ background tab の signaling connection 途絶でスマホ beacon が新 joiner から unreachable → PC が `becomeSoloHost` fallback した結果。 **production 上の potential 害**: もし新 joiner が runaway 状態の peer に join 成功すると、 spawn 時刻 `(min + max) / 2` formula (= 4/28 `3ba639a`) で**新 joiner も runaway peer の半分まで未来に spawn される + Rule B convergence で更に引き寄せられる** = full propagation。 今回は signaling 死亡で偶然 isolation されたが、 短時間 background → 復帰サイクルで peer reachable のまま runaway する条件で propagation 発生する race あり。 復帰時 priority: 起きている間に再現するかの実機 check + repro 条件 isolation + spawn 時刻 cap (= 例えば observer.t で clamp) の防衛策検討 |
 | 7 | 相手死亡瞬間描画消失 | ✅ fix 済 (`c7f7960`) | past-cone marker と future marker の isDead filter 分離 |
 | 8 | hidden 復帰 LH 未来跳躍 | ✅ Stage 6 + Stage 4 で解消 (`dc38dba` + `7ae1917`) | bounded catchup で「自機より先まで飛ぶ」 防止 |
@@ -87,21 +91,10 @@
 
 ### 実機検証待ち (= odakin verify、 復帰時 priority)
 
-**🆕 Bug 13 (PLC 3D chronic context loss) 復帰手順** — 次セッションは**ここから着手**:
+**5/6 朝 build `08:48:05`** (= 最新):
+- ✅ Bug 6 (PLC 3D laser approaching speed)、 ✅ Bug 13 (正射影 / PLC 3D chronic loss): odakin localhost verify 完了 + production deploy 済 (`ca7698c` + `fb1288b`)。 verify 残: 高 γ 多 tab multi-player で laser「速く / 瞬時に当たる」 演出が正しく出るか + 各 view (時空図 persp / ortho / PLC 3D) を高速 toggle 連打しても context loss 不発
 
-`https://sogebu.github.io/LorentzArena/` で reload してから 3 シナリオを個別に試して chronic loss が出るか観察 (= 各 30 秒待つ):
-
-1. **時空図 + 透視投影 のまま 60 秒以上 play (PLC slice / 正射影 触らない)**: chronic loss 出るか? 出るなら long-play 蓄積系の bug、 frozen worldLines / stardust が真因。 出ないなら baseline OK
-2. **時空図 + 正射影 (= ortho toggle のみ on) で 30 秒 play**: chronic loss 出るか? 出るなら **正射影 mode 特有 bug**、 [`RelativisticGame.tsx:444-452`](src/components/RelativisticGame.tsx) の `<Canvas orthographic camera={{ near: -10000, far: 10000 }}>` の極端 depth range が GPU depth precision を圧迫している仮説 → near を妥当な値 (例: -100, far: 100) に修正で fix 可能性
-3. **PLC 3D 即 on で 30 秒 play (他 toggle 触らない)**: chronic loss 出るか? 出るなら PLC 3D rendering 内の何かが trigger、 component を 1 つずつ disable で isolate (= GameLights / SelfShipRenderer / PLC 交差 circles / ref rings 順に切る)
-
-切り分け logic table:
-- (1) 出る → long-play 蓄積、 別の Bug 10 系統 latent path
-- (1) 出ず + (2) 出る → 正射影 camera near/far 真因 (修正 cheap、 同一 commit で deploy 可能)
-- (1)(2) 出ず + (3) 出る → PLC 3D 限定、 component 単位 isolation
-- 全部出る → 共通 layer (= shared renderer or zustand store の蓄積) 真因、 deeper investigation
-
-**Bug 6 (PLC 3D laser slow approaching)**: Bug 13 解決後に Phase 0 fix を再 apply。 working tree は現在 clean (= Phase 0 revert 済)、 [`SceneContent.tsx:549`](src/components/game/SceneContent.tsx) に diff を再書き込みするだけ。 内容は `lasers.map` → `laserIntersections.map` + `transformEventForDisplay(pos, observerPos, observerBoost)` で rest-frame xy に変換、 既存 helper のみで完結 (= 新規 helper 不要)。 詳細物理解釈: approaching laser は rest frame で aberration により観測者方向に photon が圧縮されて「迫ってくる、 速い」 見え方になる、 lab frame の `lambda·direction` は observer motion を反映せず一定速度で見せる旧仕様。
+**🆕 Bug 14 (background tab で physics runaway) は未着手**: 5/6 朝 user 報告のスマホ overnight runaway の repro 条件 isolation。 関連: PC で同 production join 試行で「別ホスト」 化 (= signaling 死亡で偶然 isolation)、 同 room join に成功した場合 spawn 時刻 (min+max)/2 + Rule B convergence で **新 joiner も runaway peer の半分まで未来 spawn** される race の防衛策検討
 
 **5/5 night** (build `21:50:57`):
 - (e) **Rule B exit margin** (`ad52130`): localhost 「よさそう」 確認済 + production deploy 済。 multi-tab / 高 γ 混在 / sleep-wake 後 で flicker 完全消失か、 通常 play で visual / 因果律跳躍 overlay 発火頻度に体感差ないか確認
