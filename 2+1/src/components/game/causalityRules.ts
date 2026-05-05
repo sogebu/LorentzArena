@@ -89,10 +89,14 @@ export const causalityJumpLambdaSingle = (
  * 全 peer の cone から脱出するために必要な forward distance (= 各 peer の単独脱出に必要な
  * λ のうち最大)。
  *
- * 適用後の me_new (= me + λ·u^μ) は、 max を与えた peer の過去 null cone 表面上にちょうど
- * 載り、 他の peer の cone は既に外側にある (= max の定義より)。
+ * 適用後の me_new (= me + λ·u^μ) は、 max を与えた peer の過去 null cone 表面より
+ * `CAUSALITY_JUMP_EXIT_MARGIN_LS` だけ spacelike 側に着地し、 他の peer の cone は既に
+ * 外側にある (= max の定義より)。 全 peer に共通 ε が加算されるため argmax (= jump driver
+ * の peer) は不変、 max を与える peer の挙動だけが boundary chatter を生まない設計。
  *
- * peers が空 / 全 peer が spacelike or future なら 0 を返す (= 何もしない)。
+ * peers が空 / 全 peer が spacelike or future なら 0 を返す (= 何もしない、 ε 加算なし)。
+ *
+ * 詳細: `causalityJumpLambdaSingle` docstring §Exit margin。
  */
 export const causalityJumpLambda = (
   me: Vector4,
