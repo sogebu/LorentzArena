@@ -1,11 +1,13 @@
 import { gamma, type Vector3, type Vector4 } from "../../physics";
+import { CAUSALITY_JUMP_EXIT_MARGIN_LS } from "./constants";
 
 /**
  * Rule B (= 因果律対称ジャンプ) の中核計算。
  *
  * **Rule B**: me が peer の **過去光円錐内** (= peer.t > me.t AND timelike (peer - me)) にいる
- * とき、 me を `me + λ·u^μ` で advance させて peer の過去 null cone 表面まで forward exit
- * する λ を求める。 peer から見れば「観測済の過去事象」 として既に光が届いた瞬間に対応。
+ * とき、 me を `me + λ·u^μ` で advance させて peer の過去 null cone 表面 **+ exit margin** まで
+ * forward exit する λ を求める。 peer から見れば「観測済の過去事象」 として既に光が届いた瞬間
+ * の少し外側 (= spacelike 側) に対応。
  *
  * **公式の導出** (`plans/2026-05-02-causality-symmetric-jump.md` §3):
  *
@@ -21,10 +23,26 @@ import { gamma, type Vector3, type Vector4 } from "../../physics";
  *
  *   timelike past で B ≥ √C (= 逆 Cauchy-Schwarz)、 disc = B² - C ≥ 0。 forward exit (= 小さい
  *   方の正根) は:
- *     `λ_exit = B - √(B² - C)`
+ *     `λ_surface = B - √(B² - C)`
  *
  *   返り値: λ > 0 で forward exit が必要、 0 で対象外 (= spacelike already / future / disc 数値
  *   ガード等)。
+ *
+ * **Exit margin (= surface ぴったりではなく ε 内側に着地)**:
+ *
+ *   `λ_exit = λ_surface + CAUSALITY_JUMP_EXIT_MARGIN_LS`  (jump 発火時のみ)
+ *
+ *   旧仕様 (`λ = λ_surface`) は me を peer の null cone 表面ぴったり (= `l = (peer-me)·(peer-me)
+ *   = 0` 境界) に着地させていたが、 次 tick の Rule A 判定 `l < -threshold` が virtualPos /
+ *   数値誤差 / network jitter で ON/OFF を flip する boundary chatter race が判明
+ *   (= 2026-05-05 LH flicker 仮説 i)。 着地点を spacelike 側に ε だけ押し込めば次 tick の
+ *   Rule A は確実に no-freeze、 振動が消える。
+ *
+ *   ε は Rule A の `CAUSAL_FREEZE_HYSTERESIS` (l 単位、 wasFrozen=true 時のみ閾値厚) と
+ *   complementary な対称構造: Rule A が「凍結状態を抜けるには明確に外側まで」、 Rule B が
+ *   「jump 着地は surface より明確に内側まで」 で、 因果律 state machine 全体が boundary に
+ *   張り付かない設計。 詳細: `constants.ts:CAUSALITY_JUMP_EXIT_MARGIN_LS` docstring +
+ *   DESIGN.md §因果律対称化 + 5/5 exit margin 拡張。
  *
  * **B の符号と λ_exit の関係 (= 逆 Cauchy-Schwarz の系)**:
  * - me が peer の方向に「向かう」 (u·Δxy > 0): B 小、 λ_exit 大 (= cone 脱出は遅い、 peer の
@@ -37,7 +55,7 @@ import { gamma, type Vector3, type Vector4 } from "../../physics";
  *
  * **codebase signature 注意**: `physics/vector.ts` の Minkowski 内積は (+,+,+,-) (= spacelike
  * positive、 `lorentzDot = x²+y²+z²-t²`)。 plan §3.1 は (+,-,-,-) を引き合いに出しているが、
- * `λ_exit = B - √(B²-C)` 公式は signature 不変な代数恒等式 `γ² - |u|² = 1` のみに依存し、
+ * `λ_surface = B - √(B²-C)` 公式は signature 不変な代数恒等式 `γ² - |u|² = 1` のみに依存し、
  * いずれの signature でも同じ。 本実装は coord time / spatial coord を直接扱うので signature
  * 影響なし。
  */
@@ -60,8 +78,10 @@ export const causalityJumpLambdaSingle = (
   const B = g * dt - meU.x * dx - meU.y * dy;
   const disc = B * B - C;
   if (disc < 0) return 0; // 数値ガード: 理論上 timelike past で disc ≥ 0 (逆 Cauchy-Schwarz)
-  const lambdaExit = B - Math.sqrt(disc);
-  return Math.max(0, lambdaExit);
+  const lambdaSurface = B - Math.sqrt(disc);
+  // jump 発火時のみ exit margin を加算 (= surface ぴったりの boundary chatter 回避)。
+  // λ_surface ≤ 0 のケース (= 既に surface 上 / 数値誤差で過剰計算) は不発で 0 return。
+  return lambdaSurface > 0 ? lambdaSurface + CAUSALITY_JUMP_EXIT_MARGIN_LS : 0;
 };
 
 /**

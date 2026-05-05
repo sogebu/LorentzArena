@@ -14,11 +14,19 @@ import {
   createVector4,
   createWorldLine,
 } from "../../physics";
-import { ENERGY_MAX, MAX_WORLDLINE_HISTORY } from "./constants";
+import {
+  CAUSALITY_JUMP_EXIT_MARGIN_LS,
+  ENERGY_MAX,
+  MAX_WORLDLINE_HISTORY,
+} from "./constants";
 import { processLighthouseAI } from "./gameLoop";
 import type { KillEventRecord, RelativisticPlayer } from "./types";
 
 const LH_ID = "la-default-0";
+// jump 発火時 (= λ_surface > 0) のみ exit margin が加算される (= LH は u=0、 γ=1 なので
+// pos.t advance は λ そのまま)。 詳細: `causalityRules.ts` docstring +
+// `constants.ts:CAUSALITY_JUMP_EXIT_MARGIN_LS`。
+const EPS = CAUSALITY_JUMP_EXIT_MARGIN_LS;
 
 const makePlayer = (
   id: string,
@@ -84,7 +92,7 @@ describe("processLighthouseAI Rule B integration", () => {
     expect(result.newPs.pos.t).toBeCloseTo(100, 9);
   });
 
-  it("1 alive peer at same xy in future: λ = Δt、 LH catches up to peer.t exactly", () => {
+  it("1 alive peer at same xy in future: λ_surface = Δt、 着地は peer.t + EPS (= surface ぴったりではなく ε 内側)", () => {
     const lh = makePlayer(LH_ID, { t: 50, x: 0, y: 0 });
     const peer = makePlayer("p", { t: 100, x: 0, y: 0 }); // Δt=50, |Δxy|=0
     const players = new Map([
@@ -92,18 +100,18 @@ describe("processLighthouseAI Rule B integration", () => {
       ["p", peer],
     ]);
     const result = callLH(players);
-    expect(result.newPs.pos.t).toBeCloseTo(100, 9);
+    expect(result.newPs.pos.t).toBeCloseTo(100 + EPS, 9);
   });
 
-  it("1 alive peer offset spatially: λ = Δt - |Δxy| (= peer's past null cone surface at LH's xy)", () => {
+  it("1 alive peer offset spatially: λ_surface = Δt - |Δxy|、 着地は surface + EPS", () => {
     const lh = makePlayer(LH_ID, { t: 50, x: 0, y: 0 });
-    const peer = makePlayer("p", { t: 100, x: 30, y: 0 }); // Δt=50, |Δxy|=30 → λ=20
+    const peer = makePlayer("p", { t: 100, x: 30, y: 0 }); // Δt=50, |Δxy|=30 → λ_surface=20
     const players = new Map([
       [LH_ID, lh],
       ["p", peer],
     ]);
     const result = callLH(players);
-    expect(result.newPs.pos.t).toBeCloseTo(70, 9); // 50 + 20
+    expect(result.newPs.pos.t).toBeCloseTo(70 + EPS, 9); // 50 + 20 + EPS
   });
 
   it("1 alive peer too far spatially (Δt² < |Δxy|², spacelike): no jump", () => {
@@ -122,7 +130,7 @@ describe("processLighthouseAI Rule B integration", () => {
     // 新仕様 (Rule B): LH = max_P (P.t - |P.xy - LH.xy|)
     //   - host contribution: 100 - 0 = 100
     //   - client contribution: 200 - 10 = 190
-    //   max = 190 → LH jumps to lh.t + (190 - 50) = 50 + 140 = 190
+    //   max = 190 → λ_surface = 190 - 50 = 140 → 着地は 50 + 140 + EPS
     const lh = makePlayer(LH_ID, { t: 50, x: 0, y: 0 });
     const host = makePlayer("host", { t: 100, x: 0, y: 0 }); // u=0
     const client = makePlayer("client", { t: 200, x: 10, y: 0 }, { x: 1, y: 0 });
@@ -132,7 +140,7 @@ describe("processLighthouseAI Rule B integration", () => {
       ["client", client],
     ]);
     const result = callLH(players);
-    expect(result.newPs.pos.t).toBeCloseTo(190, 9);
+    expect(result.newPs.pos.t).toBeCloseTo(190 + EPS, 9);
     expect(result.newPs.pos.t).toBeGreaterThan(100); // 旧仕様の「host 時刻に anchor」 ではない
   });
 
@@ -172,11 +180,11 @@ describe("processLighthouseAI Rule B integration", () => {
     expect(result.newPs.pos.t).toBeCloseTo(50, 9);
   });
 
-  it("multi peer mix (alive + dead): max λ over all virtualPos", () => {
+  it("multi peer mix (alive + dead): max λ over all virtualPos (= 全 peer に共通 EPS、 max 順位不変)", () => {
     const lh = makePlayer(LH_ID, { t: 100, x: 0, y: 0 });
-    const a = makePlayer("a", { t: 110, x: 0, y: 0 }); // λ_a = 10
-    const b = makePlayer("b", { t: 130, x: 5, y: 0 }); // λ_b = 130 - 100 - 5 = 25
-    const c = makePlayer("c", { t: 105, x: 0, y: 0 }); // λ_c = 5
+    const a = makePlayer("a", { t: 110, x: 0, y: 0 }); // λ_surface_a = 10
+    const b = makePlayer("b", { t: 130, x: 5, y: 0 }); // λ_surface_b = 130 - 100 - 5 = 25
+    const c = makePlayer("c", { t: 105, x: 0, y: 0 }); // λ_surface_c = 5
     const players = new Map([
       [LH_ID, lh],
       ["a", a],
@@ -185,7 +193,7 @@ describe("processLighthouseAI Rule B integration", () => {
     ]);
     const result = callLH(players, { currentTime: 0 });
     // alive peer の lastUpdateTimes 未指定 → fallback currentTime → tau=0 → virtualPos = pos そのまま
-    expect(result.newPs.pos.t).toBeCloseTo(125, 9); // 100 + max(10, 25, 5) = 125
+    expect(result.newPs.pos.t).toBeCloseTo(125 + EPS, 9); // 100 + max(10, 25, 5) + EPS
   });
 });
 
@@ -195,13 +203,13 @@ describe("processLighthouseAI Rule B integration", () => {
 describe("processLighthouseAI Rule B 大ジャンプ凍結 (Fix C)", () => {
   it("大ジャンプ (λ ≥ 0.5 ls): result.largeJumpFrozenLh に旧 LH player を返す", () => {
     const lh = makePlayer(LH_ID, { t: 50, x: 0, y: 0 });
-    const peer = makePlayer("p", { t: 60, x: 0, y: 0 }); // λ = 10 (= 大ジャンプ)
+    const peer = makePlayer("p", { t: 60, x: 0, y: 0 }); // λ_surface = 10 (= 大ジャンプ)
     const players = new Map([
       [LH_ID, lh],
       ["p", peer],
     ]);
     const result = callLH(players);
-    expect(result.newPs.pos.t).toBeCloseTo(60, 9);
+    expect(result.newPs.pos.t).toBeCloseTo(60 + EPS, 9);
     expect(result.largeJumpFrozenLh).toBeDefined();
     expect(result.largeJumpFrozenLh!.id).toBe(LH_ID);
     expect(result.largeJumpFrozenLh!.color).toBe(lh.color);
@@ -209,18 +217,18 @@ describe("processLighthouseAI Rule B 大ジャンプ凍結 (Fix C)", () => {
     expect(result.largeJumpFrozenLh!.worldLine.history.length).toBeGreaterThan(0);
     // newWl は 1 点 (= 新セグメント開始)
     expect(result.newWl.history.length).toBe(1);
-    expect(result.newWl.history[0].pos.t).toBeCloseTo(60, 9);
+    expect(result.newWl.history[0].pos.t).toBeCloseTo(60 + EPS, 9);
   });
 
   it("小ジャンプ (λ < 0.5 ls): result.largeJumpFrozenLh は undefined、 worldLine 連続", () => {
     const lh = makePlayer(LH_ID, { t: 50, x: 0, y: 0 });
-    const peer = makePlayer("p", { t: 50.3, x: 0, y: 0 }); // λ = 0.3 (< 0.5、 小ジャンプ)
+    const peer = makePlayer("p", { t: 50.3, x: 0, y: 0 }); // λ_surface = 0.3 (< 0.5、 小ジャンプ)
     const players = new Map([
       [LH_ID, lh],
       ["p", peer],
     ]);
     const result = callLH(players);
-    expect(result.newPs.pos.t).toBeCloseTo(50.3, 9);
+    expect(result.newPs.pos.t).toBeCloseTo(50.3 + EPS, 9);
     expect(result.largeJumpFrozenLh).toBeUndefined();
     // newWl は前 history (= initial 1 点) + 新 1 点 = 2 点
     expect(result.newWl.history.length).toBe(2);

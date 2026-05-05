@@ -4,6 +4,25 @@
 
 **本番最新 deploy**: 2026-05-05 build `20:01:05` ([`ffd81b3`](https://github.com/sogebu/LorentzArena/commit/ffd81b3))。
 
+**5/5 night Rule B exit margin (= LH flicker boundary chatter 治療、 deploy pending odakin verify)**:
+- 🟢 **`causalityJumpLambdaSingle` に `CAUSALITY_JUMP_EXIT_MARGIN_LS = 0.001 ls` 加算**: Rule B
+  の λ_exit が peer の過去 null cone surface ぴったり (= `l = (peer-me)·(peer-me) ≈ 0` 境界)
+  に着地する設計を、 surface より ε だけ spacelike 側 (= peer から光速がまだ追いついていない
+  領域) に押し込む terminal patch。 次 tick Rule A 判定 `l < -threshold` が boundary で flip
+  する race (= 仮説 (i) bouncy max + 数値誤差 + network jitter の複合) を構造的に消滅。
+  odakin 仮説「過去光円錐ぴったりじゃなくてちょっとだけ未来まで飛ばしたら治りそう」 を物理
+  解釈に落とし込んだ実装。 caller (`gameLoop.ts:328` LH Rule B / `useGameLoop.ts:614` 自機
+  Rule B) 不変、 ε は λ 公式の terminal patch として `causalityJumpLambdaSingle` 内で localized
+- **設計対称性**: Rule A の `CAUSAL_FREEZE_HYSTERESIS = 2.0` (l 単位、 wasFrozen=true 時のみ
+  閾値厚 = gameplay smoothing) と Rule B の `EXIT_MARGIN_LS = 0.001` (λ 単位、 jump 発火時の
+  み加算 = numerical stability) を complementary に配置、 「surface ぴったりの境界 state を
+  回避」 する同一思想。 Stage 11 (`ffd81b3`) で `causalFrozenRef` boolean dual を撤廃した
+  zustand selector if-changed gate と相乗で、 flag chattering 抑制が完成
+- **検証**: 253 test 全 pass (= causalityRules.test 7 件 + lighthouseRuleB.test 6 件で expected
+  を `+ EPS` 相対化、 surface invariant test を厳密展開 `-2·B'·EPS + EPS²` に書き換え)、
+  typecheck clean、 lint 新規 warning 無し
+- **詳細**: [DESIGN.md §Rule B exit margin](DESIGN.md) + [`constants.ts:CAUSALITY_JUMP_EXIT_MARGIN_LS`](src/components/game/constants.ts) docstring + [`causalityRules.ts:causalityJumpLambdaSingle`](src/components/game/causalityRules.ts) docstring
+
 **5/5 evening Stage 11 M25 sweep audit + root cause 治療** (= Bug 11 完了後の thorough audit で発見した最後の二重管理を撤廃):
 - 🟢 **causalFrozenRef / causalityJumpingRef 撤廃** (`ffd81b3`、 build `20:01:05`): user 問い「source of truth が複数あるところ、 他にもう絶対にない?」 で thorough M25 audit、 useGameLoop の `causalFrozenRef` (boolean) ↔ `useGameStore.causallyFrozen` (boolean) と対称な `causalityJumping` の **boolean dual** を発見。 初回 audit は「許容 mirror」 暫定判定だったが、 user challenge「絆創膏の上に絆創膏じゃなくて根本治療、 という思想でも A (docstring 補強) がいい?」 で再考、 ref を介した re-render 抑制は zustand selector 同値判定で同等達成される + read も getState() で cheap + 構造同値の boolean dual は staleFrozenAtRef (Map vs Set 構造違い) のような必須 mirror ではないと判明。 ref 撤廃で全 read site (= dead skip × 2 + hysteresis baseline 引数 + if-changed gate × 2) を `fresh.causallyFrozen` 等で代替、 単一 canonical 化。 メタ原則 M25 §実例 4 として永続化、 教訓「許容 mirror 認定は anchor bias で誤りやすい、 そもそも duplication が必要か?を skip するな」 を記録
 
@@ -142,6 +161,13 @@
 3. 枠半幅 `ARENA_RADIUS = 40` の縮小 (40 → 15-20) は UX 改善後に効果評価して判断
 
 ### 実機検証待ち (= odakin verify、 復帰時 priority)
+
+**5/5 night deploy 群 (= 未 deploy、 commit pending)**:
+- (e) **Rule B exit margin** (= LH flicker boundary chatter 治療): 5/5 evening の後にも LH
+  flicker 残存報告 → odakin 仮説「surface ぴったりじゃなくて ε 未来側に飛ばしたら治りそう」
+  を物理解釈 + 実装。 LH 撃破連打 / 多 tab 多 peer / 高 γ player 混在シナリオで LH flicker
+  消失するか、 通常 play で visual 不変 (= LH 動きが変わってないか)、 因果律跳躍 overlay の
+  発火頻度に体感差ないか確認
 
 **5/5 deploy 群 (= build 09:35:38 まで反映)**:
 - (a) **camera yaw 追従 lag** (`d3ecadf`): legacy_classic で「機体先行 → camera が swing で追いかける」 chase camera 感が出るか、 操作感に違和感ないか (= τ=0.12s 体感調整 余地)

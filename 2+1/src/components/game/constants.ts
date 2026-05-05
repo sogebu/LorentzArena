@@ -118,6 +118,46 @@ export const WORLDLINE_GAP_THRESHOLD_MS = 500;
 // 詳細: plans/2026-05-02-causality-symmetric-jump.md §6 Stage 3 + Stage 5
 export const LARGE_JUMP_THRESHOLD_LS = 0.5;
 
+// Rule B (= 因果律対称ジャンプ) の着地点を peer の過去 null cone surface ぴったりではなく、
+// surface より ε だけ spacelike 側 (= peer から見て光速がまだ追いついていない領域) に進める
+// 安全マージン (単位: 座標時 ls = u^μ 方向の advance 量)。
+//
+// **動機 (= boundary chatter 防止)**: 旧仕様の「surface ぴったり着地」 では me の next-tick
+// 状態が `l = (peer-me)·(peer-me) ≈ 0` の境界になり、 Rule A (`checkCausalFreeze`) の判定
+// `l < -threshold` が virtualPos / 数値誤差 / network jitter で ON/OFF を flip する race が
+// 発生していた (= 2026-05-05 観察 LH flicker 仮説 i)。 着地点を spacelike 側に ε だけ押し
+// 込めば次 tick の Rule A は確実に false (= no freeze)、 boundary 振動が消える。
+//
+// **Rule A 側 hysteresis との対称構造** (= DESIGN.md §因果律対称化 5/5 拡張):
+// - `CAUSAL_FREEZE_HYSTERESIS = 2.0` (l 単位、 wasFrozen=true で閾値厚): 「freeze 状態を抜ける
+//   には surface から明確に外側まで」 = 凍結 flag の chattering 防止 (= gameplay smoothing scale)
+// - `CAUSALITY_JUMP_EXIT_MARGIN_LS` (λ 単位、 常時加算): 「jump 着地は surface より明確に内側
+//   まで」 = jump 後の Rule A 境界 chatter 防止 (= numerical stability scale)
+//
+// 両者は scale も unit も異なるが「surface ぴったりの境界 state を回避する」 という同一思想。
+// Rule A が「凍結に入る/抜ける」 軸の hysteresis を担い、 Rule B が「jump 後 surface 上に
+// 留まらない」 軸を担うことで、 因果律 state machine 全体が boundary に張り付かない。
+//
+// **値選定 (= 0.001 ls)**:
+// - 1ms world clock 相当 (= 60Hz frame 16.67ms の 6%、 視覚 / gameplay 影響ゼロ)
+// - 数値誤差 (= eps_machine ≈ 1e-15 ls) を 12 桁上回る安全域
+// - LARGE_JUMP_THRESHOLD_LS = 0.5 の 1/500、 通常 jump scale を絶対超えない
+// - 大きすぎると Rule B fire 毎の coord time drift が累積するが、 次 tick の Rule B は spacelike
+//   側に既にいる前提で skip (C ≤ 0) するため drift は 1 回限り = ε のみ
+//
+// **既存挙動への影響**: λ > 0 の case (= forward exit jump 発火時) のみ ε 加算。 λ = 0 case
+// (= peer が past / spacelike / future) は不変。 既存 test の数値 assertion (= λ exact 値、
+// surface 着地後 l ≈ 0 等) は ε 分シフトする 13 件、 全て constants からの import で意図 transparent。
+//
+// **Stage 11 (`ffd81b3` 5/5 evening) との相乗**: Stage 11 で `causalFrozenRef` boolean dual を
+// 撤廃し `fresh.causallyFrozen` 直読み + zustand selector if-changed gate に統一。 ε margin で
+// Rule A flag が安定 false を返せば selector 同値判定が re-render を完全 suppress、 旧 ref
+// 撤廃で同等の re-render 抑制という Stage 11 の design intent が完成する。
+//
+// 詳細: DESIGN.md §因果律対称化 + 5/5 exit margin 拡張、
+// plans/2026-05-02-causality-symmetric-jump.md §3 (λ_exit 公式)。
+export const CAUSALITY_JUMP_EXIT_MARGIN_LS = 0.001;
+
 // connections から peer が消えた時、即座に players map から削除せずに猶予時間を置く。
 // 目的: host migration / 短時間 tab hidden / 一過的 network blip で一瞬 connection が
 // 切れた相手を、猶予内に再接続したら players map に残したまま復帰させる。

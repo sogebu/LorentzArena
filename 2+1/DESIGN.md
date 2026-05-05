@@ -353,6 +353,54 @@ plan v2 + dead-skip hotfix で本判断は plan §6 Stage 7 / §7.10 から逸�
 `_killLog` 引数 (= unused 警告抑制 underscore prefix) を `processLighthouseAI` /
 `checkCausalFreeze` の signature に保持してある。
 
+### Rule B exit margin (= 2026-05-05 拡張、 boundary chatter 防止)
+
+Stage 4 (= 5/2) で導入した Rule B は λ_exit = B - √(B²-C) で me を peer の **過去 null cone
+表面ぴったり** に着地させる設計だった。 しかしその後 5/5 evening の LH flicker 観察で、 surface
+ぴったり着地が次 tick の Rule A 判定 `l < -threshold` を境界 (l ≈ 0) で flip させる **boundary
+chatter race** を生むことが判明。 root cause は以下:
+
+1. **Rule B が surface ぴったり着地** → me の next-tick 状態が `l = (peer-me)·(peer-me) ≈ 0`
+2. **virtualPos / 数値誤差 / network jitter** で `l` が ±数 ULP 揺れる
+3. **Rule A** (`checkCausalFreeze`、 wasFrozen=false 時 threshold=0) が `l < 0` で freeze、
+   `l > 0` で no-freeze を毎 tick flip → `causallyFrozen` flag が振動 → Stage 11 (`ffd81b3`)
+   で zustand selector if-changed gate に統一した re-render 抑制が効かず、 視覚的 flicker
+
+**修正**: Rule B の λ_exit に `CAUSALITY_JUMP_EXIT_MARGIN_LS = 0.001 ls` を加算し、 着地点を
+surface より ε だけ **spacelike 側 (= peer から見て光速がまだ追いついていない領域)** に押し込む。
+次 tick の Rule A は `l > 0` (= spacelike) を確実に検知し、 boundary 振動が消える。
+
+**Rule A 側 hysteresis との対称構造**:
+
+| 軸 | mechanism | scale | trigger condition |
+|---|---|---|---|
+| Rule A | `CAUSAL_FREEZE_HYSTERESIS = 2.0` (l 単位) | gameplay smoothing | `wasFrozen=true` 時のみ閾値厚 |
+| Rule B | `CAUSALITY_JUMP_EXIT_MARGIN_LS = 0.001` (λ 単位) | numerical stability | jump 発火時 (= λ_surface > 0) のみ加算 |
+
+両者は scale も unit も異なるが「**surface ぴったりの境界 state を回避する**」 という同一思想。
+Rule A が「凍結状態の保持に hysteresis」、 Rule B が「jump 着地に exit margin」 を担うことで、
+因果律 state machine 全体が boundary に張り付かない設計。 plan §3 の λ_exit 公式は不変、
+ε は jump 公式の **terminal patch** として `causalityJumpLambdaSingle` 内で加算 (= caller 側
+`gameLoop.ts:328` / `useGameLoop.ts:614` 不変、 既存挙動への影響を局所化)。
+
+**Stage 11 (= `causalFrozenRef` 撤廃) との相乗**: Stage 11 で `causalFrozenRef` boolean dual を
+撤廃し `fresh.causallyFrozen` 直読み + zustand selector if-changed gate に統一していた。 ε margin
+で Rule A flag が安定 false を返せるようになり、 selector 同値判定が re-render を完全 suppress
+できる (= 旧 ref 撤廃で同等の re-render 抑制という Stage 11 design intent が完成)。 この相乗が
+flicker の根本治癒の決め手。
+
+**値選定 (= 0.001 ls)**:
+- 1ms world clock 相当 (= 60Hz frame 16.67ms の 6%、 視覚 / gameplay 影響ゼロ)
+- 数値誤差 (= eps_machine ≈ 1e-15 ls) を 12 桁上回る安全域
+- LARGE_JUMP_THRESHOLD_LS = 0.5 の 1/500、 通常 jump scale を絶対超えない
+- 大きすぎると Rule B fire 毎の coord time drift が累積するが、 次 tick の Rule B は spacelike
+  側に既にいる前提で skip (C ≤ 0) するため drift は 1 回限り = ε のみ
+
+詳細: `constants.ts:CAUSALITY_JUMP_EXIT_MARGIN_LS` docstring + `causalityRules.ts:causalityJumpLambdaSingle`
+docstring。 Test 影響: causalityRules.test.ts 7 件 + lighthouseRuleB.test.ts 6 件で expected 値を
+`+ EPS` 相対で記述、 surface invariant test (= 旧「null cone 上 → 0」) は「surface + EPS spacelike
+側 → -2·B'·EPS + EPS²」 の厳密展開で書き換え。
+
 ### Stage 8 spawn 時刻仕様 (γ) `(min + max) / 2` 確定の理由
 
 plan §6 Stage 8 で 4 案 (α / β / γ / δ) を比較、 (γ) の中間値仕様を確定。 (α) `now wall_clock`
