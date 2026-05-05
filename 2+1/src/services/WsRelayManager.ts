@@ -230,6 +230,47 @@ export class WsRelayManager<T> {
     }
   }
 
+  /**
+   * Signaling self-recovery (= Bug 11 候補 (d) transport 対称版、 思想 doc:
+   * `design/network-recovery.md` 軸 2 system topology 軸 + transport 対称性):
+   * WebSocket 切断後の再接続経路。 PeerManager.reconnect() と同 API で union
+   * `NetworkManager` 型から transport 抽象的に呼べる (= PeerProvider 側で
+   * instanceof check 不要、 transport 対称性が architecture 的に確立される)。
+   *
+   * **動作**:
+   * 1. WS が `OPEN` or `CONNECTING` 状態なら no-op (= 既に復旧中)
+   * 2. それ以外 (= `CLOSED` / null) → 旧 ws を close してから `openSocket()` 再呼出
+   * 3. 既存 `addEventListener("open"/"close"/"error"/"message")` 経路で peerStatus
+   *    が "connecting" → "open" に遷移、 PeerProvider の subscribers が再 evaluate
+   *
+   * **conns 保持**: 既存 close listener が `conns.clear() + notifyConnectionChange()`
+   * を呼ぶ設計、 reconnect 後は relay server から peers list を再 receive して conns
+   * 再構築される (= existing flow を踏襲、 race なし)。
+   *
+   * **localId 維持**: 同 ID で再 register、 server side で旧 entry が active 残留
+   * していても server は new connection でreplace する設計 (relay-server 仕様)。
+   */
+  reconnect() {
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.OPEN ||
+        this.ws.readyState === WebSocket.CONNECTING)
+    ) {
+      return;
+    }
+    // eslint-disable-next-line no-console
+    console.log("[WsRelayManager] Attempting WebSocket reconnect");
+    if (this.ws) {
+      try {
+        this.ws.close();
+      } catch {
+        // ignore
+      }
+      this.ws = null;
+    }
+    this.openSocket();
+  }
+
   id() {
     return this.localId;
   }

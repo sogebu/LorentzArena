@@ -490,26 +490,26 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     });
   }, [peerManager, connectionPhase]);
 
-  // System topology 軸 (Bug 11 plan 候補 (d)): peerStatus が disconnected を
-  // 5 sec 持続したら PeerManager.reconnect() で signaling self-recovery を試行。
-  // PeerJS WebSocket 切断後の同 instance 再接続が困難な既知挙動 (H3) を、
-  // peer.reconnect() 試行 → 失敗で destroy + 新 Peer 作成で吸収する。 思想 doc:
-  // design/network-recovery.md 軸 2 (system topology 軸) + 軸 3 H3。
+  // System topology 軸 (Bug 11 plan 候補 (d) transport 対称完成版): peerStatus が
+  // disconnected を 5 sec 持続したら NetworkManager.reconnect() で signaling
+  // self-recovery を試行。 PeerJS / WS Relay 両 transport で同 API、 transport 抽象
+  // 的に呼べる (= 8/5 evening Stage 8-A で WsRelayManager にも reconnect() 追加、
+  // instanceof check 廃止で transport 対称性 architecture 的に確立)。
+  // 思想 doc: design/network-recovery.md 軸 2 (system topology 軸) + transport 対称性。
   //
   // 設計選択:
   // - 5 sec の grace で短期 flap (= browser tab focus 喪失等) を無視
-  // - PeerManager のみ対象 (= WsRelayManager は別 transport で別 plan defer)
-  // - reconnect は instance 内 logic、 caller 側は state を変えない (= localId 維持で
-  //   既存 ID で再 join 試行、 失敗時は内部で destroy + 新規作成)
+  // - PeerJS / WS Relay 両 transport 対象 (= NetworkManager union type の全 member が
+  //   reconnect() を実装する transport 抽象 contract)
+  // - reconnect は instance 内 logic、 caller 側は state を変えない
   // - peerStatus が "open" に復帰したら (e) 経路 (10 sec timeout) もリセットされる
   useEffect(() => {
     if (!peerManager) return;
     if (peerStatus.status !== "disconnected") return;
-    if (!(peerManager instanceof PeerManager)) return;
     const timeoutId = setTimeout(() => {
       // eslint-disable-next-line no-console
       console.log(
-        "[PeerProvider] Signaling disconnected 5 sec — attempting PeerManager.reconnect()",
+        "[PeerProvider] Signaling disconnected 5 sec — attempting reconnect()",
       );
       peerManager.reconnect();
     }, 5000);
