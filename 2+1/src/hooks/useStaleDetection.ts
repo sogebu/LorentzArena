@@ -127,6 +127,31 @@ export function useStaleDetection() {
     if (had) syncStoreMirror();
   };
 
+  /**
+   * peer の disconnect を **即時** stale 認定する (= `recoverStale` の対称形)。
+   *
+   * **動機**: `checkStale` の wall threshold (5 秒) と useGameLoop の Fix B cap
+   * (`MAX_VIRTUAL_TAU_SEC = 2`) の間に **3 秒 unprotected window** が存在し、
+   * peer が消えてから 2..5 秒の間 Rule B (因果律跳躍) が両側で永続発火 →
+   * frozenWorldLines mount storm を起こす (= Bug 11 H1 の真因)。 disconnect
+   * を検出した瞬間に `markStale` を呼べば窓を ms オーダーに圧縮できる。
+   *
+   * **caller**: WebRTC connection の close 検知 (= `RelativisticGame.tsx` の
+   * connection drop loop で `onConnectionChange` diff から削除 peerId を抽出)。
+   * heartbeat timeout 経路は **conn.close と並行して発火する**ため redundant、
+   * 本 hook では呼ばない (= conn.close 単一経路で markStale)。
+   *
+   * **冪等**: 既に stale な peer に対しては no-op (= sync skip)。
+   *
+   * **思想 doc**: [`design/network-recovery.md`](../../design/network-recovery.md)
+   * 軸 2 (per-peer view 軸) + 軸 3 H1 + §3.5 (3 秒 unprotected window の数学)。
+   */
+  const markStale = (playerId: string, currentTime?: number) => {
+    if (staleFrozenAtRef.current.has(playerId)) return;
+    staleFrozenAtRef.current.set(playerId, currentTime ?? Date.now());
+    syncStoreMirror();
+  };
+
   // 単一 peer の stale 関連 ref をまとめて purge。grace period 付き peer removal
   // (RelativisticGame の PEER_REMOVAL_GRACE_MS) で setTimeout 発火時、Stage 3 GC
   // 発火時の両方で使う。
@@ -145,6 +170,7 @@ export function useStaleDetection() {
       lastCoordTimeRef,
       checkStale,
       recoverStale,
+      markStale,
       cleanupPeer,
     }),
     [],

@@ -212,10 +212,18 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     // connections から落ちた peer に対し、まだ pending が無ければ removal を予約。
     // Stage C: log エントリは残す (未 respawn kill が残っていても GC は Stage C-4
     // の pair 成立ベース)。
+    //
+    // Bug 11 候補 (a) (2026-05-05): peer disconnect を **即時** markStale して
+    // Rule B の 3 秒 unprotected window (= Fix B cap 2sec と stale 5sec の間で
+    // Rule B 永続発火) を ms オーダーに圧縮する。 grace timeout の前に markStale
+    // を呼ぶことで、 grace 中の Rule B 暴走 (= H1) を遮断。 思想 doc:
+    // design/network-recovery.md 軸 2 (per-peer 軸) + 軸 3 H1 + §3.5。
     for (const playerId of store.players.keys()) {
       if (isLighthouse(playerId)) continue;
       if (connectedIds.has(playerId)) continue;
       if (pendingRemovalTimeoutsRef.current.has(playerId)) continue;
+
+      stale.markStale(playerId);
 
       const timeout = setTimeout(() => {
         pendingRemovalTimeoutsRef.current.delete(playerId);
