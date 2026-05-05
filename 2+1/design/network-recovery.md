@@ -26,6 +26,23 @@ normal play / migration はどちらも star を前提に回るが、 post-split
 
 3 軸は完全に直交、 互いの implementation に干渉ゼロ、 補完関係。 1 軸の修正が他軸の問題を解消することはない (= H1 を fix しても H3 は残る、 逆も同様)。
 
+### per-peer view 軸の layer 対称性 (= 5/5 evening 4 軸 sweep deeper analysis で確立)
+
+per-peer view 軸 (= staleFrozenIds 拡張) の中でも、 peer disconnect 検出は **3 つの独立 layer から signal を受ける** べきという layer 対称性が要請される。 各 layer の独立性:
+
+| layer | signal | 他 layer から見えるか |
+|---|---|---|
+| **WebRTC DataChannel** | `dc.on('close')` 経由の TCP/SCTP / ICE close event | 他 layer からは見えない (= TCP-level) |
+| **アプリ層 keepalive** | heartbeat ping 不到来の app-level 検知 | アプリ層独自、 silent failure を補う |
+| **PeerJS signaling** | `peer-unavailable` error (= signaling server 経由の peer 不在通知) | signaling-only signal、 P2P 確立前/失敗で発火 |
+
+**timing 帰結**:
+- normal disconnect: WebRTC layer が 1 frame 内 (~16ms) で markStale triggered
+- sleep-wake silent failure: signaling layer (即時) > heartbeat timeout (2.5sec via disconnectPeer chain) > WebRTC layer (driver dependent、 数秒〜数十秒)
+- migration race: signaling layer (= 新 host 接続失敗での peer-unavailable) で最早期捕捉
+
+→ 全 layer から signal を取って markStale 経路に集約することで H1 (= 3 秒 unprotected window) を実用上不発化、 layer 対称な fail-fast 検出が Bug 11 plan §3 (a) の真の要件 (= [Bug 11 plan §3 (a) Step 2 5/5 evening scope](../plans/2026-05-05-network-split-rule-b-runaway.md))。
+
 ## 軸 3: Bug 11 真因 3 層 chain (H1+H2+H3 統合)
 
 ### H1 (per-peer): 3 秒 unprotected window で Rule B 永続発火
