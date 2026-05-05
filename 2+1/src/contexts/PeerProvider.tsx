@@ -23,6 +23,7 @@ import { SNAPSHOT_BROADCAST_INTERVAL_MS } from "../components/game/constants";
 import { buildSnapshot } from "../components/game/snapshot";
 import { PeerManager, type PeerServerStatus } from "../services/PeerManager";
 import { WsRelayManager, type WsRelayStatus } from "../services/WsRelayManager";
+import { useGameStore } from "../stores/game-store";
 import type { ConnectionStatus, Message } from "../types";
 import {
   appendToJoinRegistry,
@@ -460,6 +461,39 @@ export const PeerProvider = ({ children, roomName }: PeerProviderProps) => {
     setAutoFallbackTriggered(true);
     setActiveTransportState("wsrelay");
   }, [preferredTransportMode, wsRelayUrl, activeTransport, peerStatus]);
+
+  // Signaling self-recovery 軸 (Bug 11 plan 候補 (e)): peerStatus が disconnected/error
+  // を 10 sec 持続したら `signalingDead` を立てて SignalingLostOverlay を表示。 sleep-wake /
+  // network split で WebSocket 切断後の同 instance 再接続が PeerJS 既知挙動で困難になる
+  // ケースの escape hatch。 思想 doc: design/network-recovery.md 軸 2/3 (escape hatch + H3)。
+  //
+  // false trigger 除外:
+  // - `connecting` は起動直後の signaling 接続前なので modal 出さない
+  // - `error.type === 'unavailable-id'` は room discovery auto-connect flow の expected
+  //   error (PeerManager.ts L74 comment 参照)、 起動時 room 試行で transient に発生
+  // - `error.type === 'ws_error' | 'relay_error' | 'config_error'` は WS Relay 系の error
+  //   経路で、 既存の Auto-fallback useEffect が transport 切替で吸収する設計。 こちらの
+  //   modal trigger 対象から外す
+  useEffect(() => {
+    const setSignalingDead = useGameStore.getState().setSignalingDead;
+    if (peerStatus.status === "open" || peerStatus.status === "connecting") {
+      setSignalingDead(false);
+      return;
+    }
+    if (
+      peerStatus.status === "error" &&
+      (peerStatus.type === "unavailable-id" ||
+        peerStatus.type === "ws_error" ||
+        peerStatus.type === "relay_error" ||
+        peerStatus.type === "config_error")
+    ) {
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      useGameStore.getState().setSignalingDead(true);
+    }, 10000);
+    return () => clearTimeout(timeoutId);
+  }, [peerStatus]);
 
   // Host: proactively broadcast peerList when connections change.
   // Also update peerOrderRef on the host side.

@@ -255,6 +255,22 @@ export interface GameState {
    */
   webglContextLost: boolean;
   /**
+   * PeerJS signaling layer (= WebSocket to PeerServer) が **N 秒以上死亡持続** した時に
+   * 立つ flag。 sleep-wake / network split / OS suspend resume で WebSocket 切断後の同
+   * Peer instance 再接続が PeerJS 既知挙動で困難 (= `Cannot connect to new Peer after
+   * disconnecting from server` で stuck) になるため、 user に「再読込」 を促す escape hatch。
+   *
+   * 設計: `webglContextLost` と同型の boolean flag、 `SignalingLostOverlay` が subscribe して
+   * modal 表示。 `peerStatus.status === 'disconnected' | 'error'` が 10 秒以上持続したら
+   * `PeerProvider` の useEffect が立てる (= `peer-unavailable` の room discovery transient は
+   * 除外、 PeerManager.ts L74 comment 参照)。 詳細思想: `design/network-recovery.md` 軸 2
+   * (escape hatch 軸) + 軸 3 (H3: PeerJS WebSocket 切断後の再接続困難)。
+   *
+   * Bug 11 plan 候補 (e) として 2026-05-05 導入。 (a)/(d) deploy までの安全網 + permanent な
+   * 全 mode 対称 escape hatch。
+   */
+  signalingDead: boolean;
+  /**
    * Canvas remount 用の generation counter。 WebGL context loss 検知のたびに increment、
    * 各 `<Canvas key="...">` に含めることで React が Canvas を unmount + mount し直し、 R3F
    * が新 WebGL context を作る → scene 全体を seamless に再構築する自動復旧経路。 user は
@@ -330,6 +346,7 @@ export interface GameState {
   /** Rule B (= 因果律跳躍) の現在の fire 状態を set。 「因果律跳躍」 overlay が subscribe。 */
   setCausalityJumping: (v: boolean) => void;
   setWebglContextLost: (v: boolean) => void;
+  setSignalingDead: (v: boolean) => void;
   incrementCanvasGeneration: () => void;
 
   // --- Actions: game logic ---
@@ -419,6 +436,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   causallyFrozen: false,
   causalityJumping: false,
   webglContextLost: false,
+  signalingDead: false,
   canvasGeneration: 0,
   displayNames: new Map(),
 
@@ -464,6 +482,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   setCausallyFrozen: (v) => set({ causallyFrozen: v }),
   setCausalityJumping: (v) => set({ causalityJumping: v }),
   setWebglContextLost: (v) => set({ webglContextLost: v }),
+  setSignalingDead: (v) => set({ signalingDead: v }),
   incrementCanvasGeneration: () =>
     set((s) => ({ canvasGeneration: s.canvasGeneration + 1 })),
 

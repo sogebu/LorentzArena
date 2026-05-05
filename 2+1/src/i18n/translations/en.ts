@@ -20,6 +20,11 @@ export const en: Record<TranslationKey, string> = {
   "webglLost.body":
     "The browser reclaimed GPU resources. Physics still runs internally but the screen appears frozen. Click \"Reload\" to recover.",
   "webglLost.reloadButton": "Reload",
+  // Signaling layer (PeerJS WebSocket) lost overlay
+  "signalingLost.title": "Network connection lost",
+  "signalingLost.body":
+    "The connection dropped (likely PC sleep or network outage) and could not be re-established. Click \"Reload\" to reconnect.",
+  "signalingLost.reloadButton": "Reload",
   // Tutorial overlay (mobile only, shown once per browser)
   "tutorial.title": "Controls",
   "tutorial.swipeHorizontal": "Horizontal swipe: Turn",

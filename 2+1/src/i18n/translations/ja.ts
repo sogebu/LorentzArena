@@ -20,6 +20,11 @@ export const ja = {
   "webglLost.body":
     "ブラウザが GPU リソースを解放しました。 物理計算は内部で進んでいますが画面が固まって見えます。 「再読込」 で復帰できます。",
   "webglLost.reloadButton": "再読込",
+  // Signaling layer (PeerJS WebSocket) lost overlay
+  "signalingLost.title": "ネットワーク接続が失われました",
+  "signalingLost.body":
+    "PC のスリープや回線断で接続が切れたまま復帰できなくなりました。 「再読込」 で接続をやり直してください。",
+  "signalingLost.reloadButton": "再読込",
   // Tutorial overlay (mobile only, shown once per browser)
   "tutorial.title": "操作方法",
   "tutorial.swipeHorizontal": "左右スワイプ：方向転換",

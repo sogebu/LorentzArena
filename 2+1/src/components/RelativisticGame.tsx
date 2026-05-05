@@ -15,6 +15,7 @@ import {
 } from "./game/constants";
 import { HUD } from "./game/HUD";
 import { TutorialOverlay } from "./game/TutorialOverlay";
+import { SignalingLostOverlay } from "./game/SignalingLostOverlay";
 import { WebGLLostOverlay } from "./game/WebGLLostOverlay";
 import { isLighthouse } from "./game/lighthouse";
 import { createMessageHandler } from "./game/messageHandler";
@@ -455,6 +456,11 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       {/* WebGL context lost recovery: 全世界凍結 (= GPU resource 回収) 時に再読込 UI を出す。
           詳細: WebGLLostOverlay の docstring。 */}
       <WebGLLostOverlay />
+
+      {/* PeerJS signaling 死亡 (= sleep-wake / network split で WebSocket 切断後の再接続困難)
+          時に再読込 UI を出す escape hatch。 詳細: SignalingLostOverlay の docstring + 思想 doc
+          design/network-recovery.md (Bug 11 plan 候補 (e))。 */}
+      <SignalingLostOverlay />
 
       {/* モバイル初回チュートリアル (localStorage でブラウザ毎 1 回のみ)。
           touch 非対応端末では render されない。z-index: 1000 で HUD 上に overlay。 */}
