@@ -193,6 +193,9 @@ export const LighthouseRenderer = ({
                       metalness={0.05}
                       transparent
                       depthWrite={false}
+                      polygonOffset
+                      polygonOffsetFactor={1}
+                      polygonOffsetUnits={1}
                       opacity={0.95 * alpha}
                     />
                   </mesh>
@@ -209,6 +212,9 @@ export const LighthouseRenderer = ({
                       emissiveIntensity={0.4}
                       transparent
                       depthWrite={false}
+                      polygonOffset
+                      polygonOffsetFactor={1}
+                      polygonOffsetUnits={1}
                       opacity={0.95 * alpha}
                     />
                   </mesh>
@@ -223,6 +229,9 @@ export const LighthouseRenderer = ({
                       emissiveIntensity={0.4}
                       transparent
                       depthWrite={false}
+                      polygonOffset
+                      polygonOffsetFactor={1}
+                      polygonOffsetUnits={1}
                       opacity={0.95 * alpha}
                     />
                   </mesh>
@@ -240,6 +249,9 @@ export const LighthouseRenderer = ({
                       metalness={0.3}
                       transparent
                       depthWrite={false}
+                      polygonOffset
+                      polygonOffsetFactor={1}
+                      polygonOffsetUnits={1}
                       opacity={0.95 * alpha}
                     />
                   </mesh>
@@ -257,6 +269,9 @@ export const LighthouseRenderer = ({
                       roughness={0.3}
                       transparent
                       depthWrite={false}
+                      polygonOffset
+                      polygonOffsetFactor={1}
+                      polygonOffsetUnits={1}
                       opacity={0.55 * alpha}
                       side={THREE.DoubleSide}
                     />
@@ -271,6 +286,9 @@ export const LighthouseRenderer = ({
                       color={lampColor}
                       transparent
                       depthWrite={false}
+                      polygonOffset
+                      polygonOffsetFactor={1}
+                      polygonOffsetUnits={1}
                       opacity={alpha}
                     />
                   </mesh>
@@ -289,6 +307,9 @@ export const LighthouseRenderer = ({
                       metalness={0.2}
                       transparent
                       depthWrite={false}
+                      polygonOffset
+                      polygonOffsetFactor={1}
+                      polygonOffsetUnits={1}
                       opacity={0.95 * alpha}
                     />
                   </mesh>
@@ -305,6 +326,9 @@ export const LighthouseRenderer = ({
                       emissiveIntensity={0.6}
                       transparent
                       depthWrite={false}
+                      polygonOffset
+                      polygonOffsetFactor={1}
+                      polygonOffsetUnits={1}
                       opacity={alpha}
                     />
                   </mesh>
@@ -333,6 +357,9 @@ export const LighthouseRenderer = ({
                     metalness={0.1}
                     transparent
                     depthWrite={false}
+                    polygonOffset
+                    polygonOffsetFactor={1}
+                    polygonOffsetUnits={1}
                     opacity={PLAYER_MARKER_MAIN_OPACITY_OTHER}
                   />
                 </mesh>
@@ -344,6 +371,9 @@ export const LighthouseRenderer = ({
                     color={mainColor}
                     transparent
                     depthWrite={false}
+                    polygonOffset
+                    polygonOffsetFactor={1}
+                    polygonOffsetUnits={1}
                     opacity={PLAYER_MARKER_GLOW_OPACITY_OTHER}
                   />
                 </mesh>
@@ -371,6 +401,9 @@ export const LighthouseRenderer = ({
                     metalness={0.1}
                     transparent
                     depthWrite={false}
+                    polygonOffset
+                    polygonOffsetFactor={1}
+                    polygonOffsetUnits={1}
                     opacity={PLAYER_MARKER_MAIN_OPACITY_OTHER}
                   />
                 </mesh>
@@ -382,6 +415,9 @@ export const LighthouseRenderer = ({
                     color={mainColor}
                     transparent
                     depthWrite={false}
+                    polygonOffset
+                    polygonOffsetFactor={1}
+                    polygonOffsetUnits={1}
                     opacity={PLAYER_MARKER_GLOW_OPACITY_OTHER}
                   />
                 </mesh>
