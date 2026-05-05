@@ -440,43 +440,25 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
             isFiring={isFiring}
           />
         </Canvas>
-      ) : useOrthographic ? (
-        <Canvas
-          key={`ortho-gen${canvasGeneration}`}
-          // ⚠️ Bug 13 isolation 試行 #3 (5/6 朝): `orthographic` prop を削除して
-          // perspective Canvas として描画 (= R3F が PerspectiveCamera を作る)。 直前の
-          // 試行 #1 (camera prop 最小化、 `755e924`) + #2 (GameLights を ortho mode で
-          // ambient 置換、 `03753b2`) いずれも無効、 user は ship 種別 (クラゲ vs 従来)
-          // でも crash 確認 → camera config / GameLights / ship hull は trigger ではない
-          // 確定。 残るのは `orthographic` prop 自体が R3F 内部で OrthographicCamera 生成
-          // → user GPU/driver で WebGL 互換問題を trigger する仮説。 視覚は perspective
-          // (= 平行投影でない通常 3D) になる、 useFrame は `useOrthographic=true` を引き
-          // 続き受け取って camera distance 50 を使う。 effects あれば `orthographic` prop
-          // 真因 confirmed、 fix 方向は ortho 廃止 or 別実装 (= 細い FOV perspective で
-          // 視覚的 ortho 近似 / Three.js OrthographicCamera を `<primitive>` で直接生成)。
-          camera={{ position: [0, 0, 0], fov: 75 }}
-        >
-          <SceneContent
-            myId={myId}
-            showInRestFrame={showInRestFrame}
-            useOrthographic={true}
-            plc3d={false}
-            headingYawRef={headingYawRef}
-            cameraYawRef={cameraYawRef}
-            cameraPitchRef={cameraPitchRef}
-            thrustAccelRef={thrustAccelRef}
-            isFiring={isFiring}
-          />
-        </Canvas>
       ) : (
+        // ⚠️ Bug 13 isolation 試行 #4 (5/6 朝): persp と ortho の Canvas branch を merge、
+        // 同一 Canvas key で toggle 時に Canvas remount を抑止。 試行 #1〜#3 で camera
+        // config / GameLights / ship 種別 / `orthographic` prop 全て無効 confirmed →
+        // 残るは「**Canvas remount 自体が user GPU で WebGL context 生成失敗を trigger**」
+        // 仮説 (= console の `sinceLast=1.77e12ms` = listener attach 前 loss = mount 直後
+        // GPU 即 crash というパターンと整合)。 単一 Canvas にすれば toggle で remount され
+        // ず、 `useOrthographic` flag は SceneContent に pass されて useFrame で camera
+        // distance だけが切替わる (= 50 vs 10、 視覚は perspective で「遠目」 ↔ 「近接」)。
+        // 効果あれば真因 confirmed、 正規 ortho 視覚は別 method (= `<orthographicCamera>`
+        // を Canvas 内動的切替 / drei) で再実装。 無ければ更に deeper investigation。
         <Canvas
-          key={`persp-gen${canvasGeneration}`}
+          key={`game-gen${canvasGeneration}`}
           camera={{ position: [0, 0, 0], fov: 75 }}
         >
           <SceneContent
             myId={myId}
             showInRestFrame={showInRestFrame}
-            useOrthographic={false}
+            useOrthographic={useOrthographic}
             plc3d={false}
             headingYawRef={headingYawRef}
             cameraYawRef={cameraYawRef}
