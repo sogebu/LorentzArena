@@ -210,11 +210,38 @@ if (isWitness) {
 
 **却下根拠**: 我々が答える質問は historical existential (= 過去区間内に誰か broadcast したか) で local message log の existence check で決定可能 (= §「local 計算可能性」 の verification)。 round-trip 不要、 schema 拡張も最小 (= `selfActive` 1 boolean)。
 
-### §6.5 ✗ post-suspend handshake (将来課題)
+### §6.5 ✗ post-suspend handshake (永続却下) / ⏸ snapshot rejoin trigger (un-defer 候補)
 
-**主張案**: wake 時 reconnect で peer に 「私の suspend 中、 あなた active だった?」 を問い合わせる。
+**初期 主張案**: wake 時 reconnect で peer に 「私の suspend 中、 あなた active だった?」 を問い合わせる handshake (= activeQuery + activeReport 2 message types + per-peer cumulative active time tracking)。
 
-**defer 根拠**: 現 plan は local で検出可能な範囲を完全 optimal にカバー、 検出不能 case は Rule B fallback。 handshake は L4 設計の上に乗る増分機能、 backbone 不変なため後付け可能。 別 plan で対処。
+**5/6 plan 確定時の defer 判断**: 現 plan は local で検出可能な範囲を完全 optimal にカバー、 検出不能 case (= WebRTC died) は Rule B fallback で eventual consistency。 handshake は L4 設計の上に乗る増分機能、 backbone 不変なため後付け可能、 別 plan で対処、 と defer。
+
+**2026-05-06 deploy 後 user push back からの再分析** (= [odakin-prefs work-discipline §「Fix 提案の 3 verification」](../../../odakin-prefs/work-discipline.md) を spiral で application):
+
+1. **handshake 永続却下**: schema 増分 (= 2 新 message types) + state machine 複雑化、 mechanism overload (= activity tracking 専用 mechanism 追加)。 V2 (= mechanism classification) で過負荷 signal、 「activity tracking 専用 mechanism」 は既存 globalActive と冗長で structural overhead が高い。
+
+2. **代替案 (a) cumActive piggyback も却下**: broadcast schema に `cumulativeActiveSeconds` field 追加で全 case unified を狙ったが V1 (= numeric trace) で:
+   - **B-disconnect over-count**: A 視点で B 短期切断 + reconnect 時、 max(self_delta, peer_max_delta) で B の cumActive catchup が own active で integrate 済の期間を再 integrate
+   - **case 4 under-count with min clamp**: post-reconnect tick で `min(rawDTau=8ms, peer_delta=3600)` clamp で peer_delta=3600 を取り損ね、 self.pos.t 8ms しか進まず Rule B 跳躍が依然必要
+   - 5 種 refinement (= max → min → max with clamp → max(self, min(peer, rawDTau-self)) → min(rawDTau, self+peer)) で他 case 破壊、 closed-form root 不可と判定。
+
+3. **代替案 (b) snapshot rejoin trigger** (= **un-defer 候補、 推奨 fix path**): long-gap detect (= `rawDTau > LONG_GAP_THRESHOLD = 10 sec`) で snapshotRequest を BH に送って既存 snapshot mechanism で event state (= killLog / scores / debris / 等) を sync。 V2 (= code coverage verify) で [`RelativisticGame.tsx:216`](../src/components/RelativisticGame.tsx#L216) の `if (store.players.has(newId)) continue;` (= "Stage F: 既存 peer は event log から self-maintained") を確認、 wake-from-suspend で **host は snapshot push を skip** する明示設計、 self は missed event recovery 経路が**無い**。 つまり 5/6 deploy のみで wake handle されるのは Rule B catchup による pos.t 同期だけで、 event 系 state は stale のまま (= missed kill で 「self alive 認識 vs peer 死亡扱い」 inconsistent state)。 snapshot rejoin trigger は genuine 必要。
+
+**現状 5/6 deploy で覆われる範囲** (= V2 で確認):
+- ✓ self.pos.t: Rule B catchup で同期 (= peer.pos.t 受信 → 自分が past cone 内 → λ jump で前進)
+- ✗ event 系 (= killLog / scores / debris): host snapshot push skip + self snapshotRequest auto-trigger 不発で stale のまま、 missed kill で inconsistent state 発生可
+
+**un-defer trigger** (= snapshot rejoin trigger 実装着手の判断条件):
+1. **mobile overnight 実機 verify** で missed kill / score の UX 影響 reported (= 5/6 deploy 後 mobile での observation)
+2. **multi-tab P1/P2 verify** で 「self alive 認識 vs peer 死亡扱い」 等の visible inconsistent state 観察
+
+**実装 scope** (= un-defer 時、 backbone 不変):
+- `useGameLoop.ts` 冒頭で `rawDTau > LONG_GAP_THRESHOLD` 検知 → BH に `snapshotRequest` 送出 (= 既存 message type 再利用、 schema 変更不要)
+- `applySnapshot` の wake-from-suspend mode branch (= 既存 isMigrationPath subset、 event 系 snapshot 優先で merge / self.phaseSpace.pos.t は local 優先 = Rule B catchup と整合)
+- self が BH の場合は別経路 (= snapshotRequest 不要、 自分が canonical source、 solo or post-migration)
+- **新 message type 追加 0 個**、 **新 schema field 追加 0 個** (= cumActive piggyback / handshake 案の structural cost と対照、 既存 mechanism の trigger 拡張のみ)
+
+**関連メタ規律**: 本節分析は [`odakin-prefs/work-discipline.md §「Fix 提案の 3 verification」`](../../../odakin-prefs/work-discipline.md) の universal application 例 (= V1 で cumActive 却下、 V2 で 「Rule B fallback で十分」 仮判断を撤回)。
 
 ---
 
