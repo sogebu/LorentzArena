@@ -224,7 +224,7 @@ if (isWitness) {
 - [`repro/2026-05-06-bug14-state/`](../repro/2026-05-06-bug14-state/) — 12.5h suspend + alive human 単独 runaway の実機 evidence
 - [`design/physics.md`](../design/physics.md) — dτ = wall_dt の P1 設計柱
 - [`design/network-recovery.md`](../design/network-recovery.md) — Rule B catchup 経路
-- [`design/meta-principles.md`](../design/meta-principles.md) — §M41 (β/γ diagnostic)、 §M42 (ring buffer GC)、 追加 §M43 候補
+- [`design/meta-principles.md`](../design/meta-principles.md) — §M41 (β/γ diagnostic)、 §M42 (ring buffer GC)、 §M43 (= dτ semantic = global active time、 本 plan で導入)
 - [`plans/2026-05-02-causality-symmetric-jump.md`](2026-05-02-causality-symmetric-jump.md) — Rule B 設計 + §11.6 λ cap 却下根拠 (= 本 plan の L0 dTau cap 却下と独立)
 - [`plans/2026-05-06-npc-asymmetric-causality.md`](2026-05-06-npc-asymmetric-causality.md) — NPC 経路の伝染遮断、 本 plan の前提として完了
 - [`src/hooks/useGameLoop.ts`](../src/hooks/useGameLoop.ts) — gameLoop fire site、 visibility check + broadcast
