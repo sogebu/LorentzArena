@@ -104,7 +104,7 @@ describe("applySnapshot", () => {
       { id: "peer", posT: 1.0, posX: 2 },
     ]);
 
-    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
+    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef(), makeLastUpdateRef());
 
     const { players } = useGameStore.getState();
     expect(players.has("me")).toBe(true);
@@ -123,7 +123,7 @@ describe("applySnapshot", () => {
     // snapshot: host が相対的に古い自機情報を持っている (pos.t=2)
     const msg = makeSnapshot([{ id: "me", posT: 2.0, posX: 999 }]);
 
-    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
+    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef(), makeLastUpdateRef());
 
     const me = useGameStore.getState().players.get("me");
     expect(me).toBeDefined();
@@ -146,7 +146,7 @@ describe("applySnapshot", () => {
       { id: "peer", posT: 2.0, posX: 999 },
     ]);
 
-    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
+    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef(), makeLastUpdateRef());
 
     const peer = useGameStore.getState().players.get("peer");
     expect(peer?.phaseSpace.pos.t).toBe(5.0);
@@ -172,7 +172,7 @@ describe("applySnapshot", () => {
       displayNames: { peer: "Peer", me: "Me" },
     };
 
-    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
+    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef(), makeLastUpdateRef());
 
     const { displayNames } = useGameStore.getState();
     // snapshot 側で上書き
@@ -212,7 +212,7 @@ describe("applySnapshot", () => {
       ],
     };
 
-    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
+    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef(), makeLastUpdateRef());
 
     const { killLog } = useGameStore.getState();
     expect(killLog).toHaveLength(1);
@@ -249,7 +249,7 @@ describe("applySnapshot", () => {
       { id: "victim", posT: 5.0 },
     ]);
 
-    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
+    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef(), makeLastUpdateRef());
 
     const { killLog } = useGameStore.getState();
     expect(killLog).toHaveLength(1);
@@ -313,7 +313,7 @@ describe("applySnapshot", () => {
     const victimEntry = msg.players.find((p) => p.id === "victim");
     if (victimEntry) victimEntry.isDead = false;
 
-    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
+    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef(), makeLastUpdateRef());
 
     const state = useGameStore.getState();
     expect(state.respawnLog).toHaveLength(1);
@@ -365,7 +365,7 @@ describe("applySnapshot", () => {
     if (victimEntry) victimEntry.isDead = true;
 
     // BH が alice の snapshot を受信 (Stage 1.5 で新たに開く経路)
-    applySnapshot(bhId, aliceSnapshot, () => "#fff", makeLastUpdateRef());
+    applySnapshot(bhId, aliceSnapshot, () => "#fff", makeLastUpdateRef(), makeLastUpdateRef());
 
     const state = useGameStore.getState();
     // BH の killLog に alice 観測の kill が union-merge される
@@ -396,7 +396,7 @@ describe("applySnapshot", () => {
     // snapshot: late-joiner は含まれていない
     const msg = makeSnapshot([{ id: "me", posT: 5.0 }]);
 
-    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
+    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef(), makeLastUpdateRef());
 
     const { players } = useGameStore.getState();
     // local-only だった late-joiner は保護されて残る (5 秒消えてから復帰の blip 防止)
@@ -417,7 +417,7 @@ describe("applySnapshot", () => {
       scores: { me: 0, other: 5 }, // host 観測者の視点は別
     };
 
-    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
+    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef(), makeLastUpdateRef());
 
     const { scores } = useGameStore.getState();
     // local 観測者の scores は上書きされない
@@ -440,7 +440,7 @@ describe("applySnapshot", () => {
       { id: "peer", posT: 5.0, posX: 999 },
     ]);
 
-    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef());
+    applySnapshot(myId, msg, () => "#fff", makeLastUpdateRef(), makeLastUpdateRef());
 
     const peer = useGameStore.getState().players.get("peer");
     expect(peer?.phaseSpace.pos.t).toBe(5.0);
@@ -602,7 +602,7 @@ describe("buildSnapshot / applySnapshot heading / alpha round-trip", () => {
     // 新規 join 側で applySnapshot して state が復元されるか
     const clientId = "newjoiner";
     useGameStore.setState({ players: new Map() });
-    applySnapshot(clientId, msg, () => "#fff", { current: new Map() });
+    applySnapshot(clientId, msg, () => "#fff", { current: new Map() }, { current: new Map() });
     const rehydratedMe = useGameStore.getState().players.get(myId);
     expect(rehydratedMe?.phaseSpace.heading.w).toBeCloseTo(heading.w, 9);
     expect(rehydratedMe?.phaseSpace.alpha.x).toBeCloseTo(0.2, 9);
@@ -615,7 +615,7 @@ describe("buildSnapshot / applySnapshot heading / alpha round-trip", () => {
       { id: "b", posT: 2 },
     ]);
     useGameStore.setState({ players: new Map() });
-    applySnapshot("me", msg, () => "#fff", { current: new Map() });
+    applySnapshot("me", msg, () => "#fff", { current: new Map() }, { current: new Map() });
     const a = useGameStore.getState().players.get("a");
     expect(a?.phaseSpace.heading).toEqual({ w: 1, x: 0, y: 0, z: 0 });
     expect(a?.phaseSpace.alpha).toEqual({ t: 0, x: 0, y: 0, z: 0 });

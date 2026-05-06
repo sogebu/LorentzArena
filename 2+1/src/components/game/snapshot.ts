@@ -162,6 +162,7 @@ export const applySnapshot = (
   msg: SnapshotMsg,
   getPlayerColor: (id: string) => string,
   lastUpdateTimeRef: React.MutableRefObject<Map<string, number>>,
+  lastWitnessTimeRef: React.MutableRefObject<Map<string, number>>,
 ): void => {
   const store = useGameStore.getState();
   // 既に自機 state がある = migration / snapshotRequest retry 経路。
@@ -241,7 +242,13 @@ export const applySnapshot = (
     // 既存 peer (isMigrationPath): 既知 id は skip、未知 id (= 再 add via snapshot
     // or 新規 peer) のみ初期化 → freeze + GC 時計が正しく回る。
     if (!store.players.has(sp.id)) {
-      lastUpdateTimeRef.current.set(sp.id, Date.now());
+      const snapshotNow = Date.now();
+      lastUpdateTimeRef.current.set(sp.id, snapshotNow);
+      // Bug 14 完全治療 (2026-05-06): snapshot は host が active で送信しているという
+      // 強い signal、 含まれる peer も pre-snapshot 時点では active だった可能性が高い
+      // ため bootstrap として witness 化。 transient false-positive (= 含まれた peer が
+      // 実は idle の場合) は joiner の prev tick が snapshot 時刻を超えて自然解消する。
+      lastWitnessTimeRef.current.set(sp.id, snapshotNow);
     }
   }
 

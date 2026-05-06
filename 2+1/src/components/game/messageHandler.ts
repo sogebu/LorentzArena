@@ -34,6 +34,13 @@ export type MessageHandlerDeps = {
   lastUpdateTimeRef: React.MutableRefObject<Map<string, number>>;
   lastCoordTimeRef: React.MutableRefObject<Map<string, { wallTime: number; posT: number }>>;
   /**
+   * Bug 14 完全治療 (2026-05-06): peer の active witness 専用 ref。 `msg.selfActive ===
+   * true` の broadcast でのみ更新 (= 旧 build からの broadcast は `selfActive` undefined
+   * → `?? true` fallback で active 扱い、 後方互換)。 `useGameLoop` の peerActive 判定が
+   * 唯一の reader、 mutual amplification convergence のための structural separation。
+   */
+  lastWitnessTimeRef: React.MutableRefObject<Map<string, number>>;
+  /**
    * 旧 `staleFrozenRef` 直接 mutate 経路を廃止し、 useStaleDetection の `recoverStale`
    * helper 経由に統一 (2026-05-04 二重管理解消)。 stale 集合 + lastCoordTimeRef を
    * 整合的に reset し、 store mirror も同時 sync する。
@@ -117,6 +124,7 @@ export const createMessageHandler =
       getPlayerColor,
       lastUpdateTimeRef,
       lastCoordTimeRef,
+      lastWitnessTimeRef,
       recoverStale,
     } = deps;
     const store = useGameStore.getState();
@@ -187,6 +195,13 @@ export const createMessageHandler =
         wallTime: now,
         posT: msg.position.t,
       });
+      // Bug 14 完全治療 (2026-05-06): active witness は selfActive=true のみ。 旧 build
+      // 互換 fallback で undefined は true 扱い (= 全員新 build 揃った後の mutual
+      // amplification convergence は selfActive=false broadcast を非 witness 化することで
+      // 成立、 §「両者 hidden の収束」 plan 参照)。
+      if (msg.selfActive ?? true) {
+        lastWitnessTimeRef.current.set(playerId, now);
+      }
       store.setPlayers((prev: Map<string, RelativisticPlayer>) => {
         // heading / alpha は旧 build からの broadcast では欠落 → default 補完。
         const heading = parseOptionalQuaternion(msg.heading);
@@ -267,7 +282,7 @@ export const createMessageHandler =
       ) {
         return;
       }
-      applySnapshot(myId, msg, getPlayerColor, lastUpdateTimeRef);
+      applySnapshot(myId, msg, getPlayerColor, lastUpdateTimeRef, lastWitnessTimeRef);
     } else if (msg.type === "laser") {
       if (
         !isValidString(msg.id) ||
@@ -335,7 +350,14 @@ export const createMessageHandler =
       // リスポーンエフェクト」 bug)。 phaseSpace / hit handler と同じ self echo guard。
       if (msg.playerId === myId) return;
       recoverStale(msg.playerId);
-      lastUpdateTimeRef.current.set(msg.playerId, Date.now());
+      const respawnNow = Date.now();
+      lastUpdateTimeRef.current.set(msg.playerId, respawnNow);
+      // Bug 14: respawn message も selfActive で gate (= phaseSpace と対称、 旧 build
+      // fallback true)。 hidden peer の auto-respawn が globalActive 経路で発火する
+      // ケースで mutual amplification を防ぐ。
+      if (msg.selfActive ?? true) {
+        lastWitnessTimeRef.current.set(msg.playerId, respawnNow);
+      }
       const existingColor =
         store.players.get(msg.playerId)?.color ?? getPlayerColor(msg.playerId);
       // ballistic stale 復帰の場合 msg.u がある (= 凍結時 4-velocity を継承)。

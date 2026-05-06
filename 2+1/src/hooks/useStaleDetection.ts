@@ -53,6 +53,22 @@ export function useStaleDetection() {
   >(new Map());
 
   /**
+   * Bug 14 完全治療 (2026-05-06 plan: bug14-global-active-time §2.3): peer の active
+   * witness 専用 ref。 receiver は `msg.selfActive === true` の broadcast のみ更新する。
+   * `useGameLoop` の `peerActive` check (= globalActive 判定) で唯一読まれる。
+   *
+   * 設計: 既存 `lastUpdateTimeRef` (= 任意 broadcast の wall_clock、 virtualPos /
+   * stale 検知用に unconditional 更新) と分離。 `selfActive` で gate すると virtualPos
+   * の `lastSync` 経路で overshoot を引き起こすため、 witness 用 ref を別建てして
+   * lastUpdateTimeRef の semantic を不変に保つ。
+   *
+   * 旧 build (= `selfActive` field 不在の broadcast) からの message は msg.selfActive
+   * が undefined → `?? true` fallback で active witness 扱い (= mixed build session で
+   * 旧仕様互換、 全員新 build 揃った後 mutual amplification convergence 成立)。
+   */
+  const lastWitnessTimeRef = useRef<Map<string, number>>(new Map());
+
+  /**
    * staleFrozenAtRef を変更した直後に zustand store の `staleFrozenIds` ミラーを同期する。
    * `buildSnapshot` 等の zustand-only コンテキスト (= PeerProvider 周期 broadcast、
    * RelativisticGame ad-hoc sendTo) から stale 集合を読むため。 詳細: game-store.ts
@@ -190,6 +206,7 @@ export function useStaleDetection() {
     const had = staleFrozenAtRef.current.delete(playerId);
     lastUpdateTimeRef.current.delete(playerId);
     lastCoordTimeRef.current.delete(playerId);
+    lastWitnessTimeRef.current.delete(playerId);
     if (had) syncStoreMirror();
   };
 
@@ -199,6 +216,7 @@ export function useStaleDetection() {
       staleFrozenAtRef,
       lastUpdateTimeRef,
       lastCoordTimeRef,
+      lastWitnessTimeRef,
       checkStale,
       recoverStale,
       markStale,

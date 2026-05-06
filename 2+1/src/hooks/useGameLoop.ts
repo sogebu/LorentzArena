@@ -20,6 +20,7 @@ import {
   GC_PAST_LCH_MULTIPLIER,
   HIT_DAMAGE,
   HIT_DEBRIS_MAX_LAMBDA,
+  LARGE_GAP_THRESHOLD_SEC,
   LASER_RANGE,
   LIGHT_CONE_HEIGHT,
   LIGHTHOUSE_HIT_DAMAGE,
@@ -177,21 +178,55 @@ export function useGameLoop({
     };
 
     const gameLoop = () => {
-      // hidden 中は game loop を skip。 lastTimeRef は **毎 throttle tick で current に更新**
-      // して復帰時の dτ を最後の throttle tick 以降の小値に抑える (= 旧実装は lastTimeRef
-      // を fresh 化せず復帰時 dτ が hidden 全体 = 巨大値になり ballistic catchup branch が
-      // 必要だった)。 復帰後の convoy 合流は Stage 5 の Rule B が毎 tick 評価で処理する
-      // (= λ_exit max まで forward jump、 大 λ なら worldLine 凍結 + 新セグメント)。
-      // 詳細: plans/2026-05-02-causality-symmetric-jump.md §6 Stage 6 +
-      // design/state-ui.md:156。
-      if (document.hidden) {
-        lastTimeRef.current = Date.now();
+      // Bug 14 完全治療 (2026-05-06 plan: bug14-global-active-time §2.2):
+      // 旧仕様 `if (document.hidden) return` は per-client active time semantic
+      // (≡ performance.now() 流) で、 P2 (= 「peer active なら自機も進める」) と直接
+      // 矛盾していた (= 自機 hidden + peer active で自機 pos.t だけ凍結 → 復帰時 Rule B
+      // 跳躍頻発)。 また mobile 完全 suspend で setInterval が fire せず lastTimeRef
+      // reset が走らない経路で巨大 dTau が発生し integrator 爆発 (= Bug 14 root cause、
+      // live capture で 12.5h suspend 確認: repro/2026-05-06-bug14-state/)。
+      //
+      // 新仕様 `globalActive ≡ selfActive ∨ ∃peer: peerActive` で 2 原則を直接表現:
+      // - **P1**: 全員 idle → skip (= 数値肥大化防止)
+      // - **P2**: 誰か active → 全員進める (= 因果律 split / Rule A 凍結 / Rule B 跳躍 防止)
+      //
+      // selfActive は「現在 visible かつ event loop が普通の cadence で fire」 = 自機が
+      // 観察者として時間を進めている状態。 peerActive は existing `lastUpdateTimeRef` の
+      // existence check で「過去 [prev, now] 区間内に peer broadcast 受信」 = peer の
+      // game loop が回っていた witness (= 詳細 §「local 計算可能性」)。 LH は host が
+      // 内部 update する設計のため exclude (host self-trigger 防止、 host 自身の player
+      // ID broadcast が canonical witness)。
+      //
+      // dTau (= rawDTau) は内部 substep で integrator stable (= MAX_STABLE_SUB_DTAU、
+      // gameLoop.ts: processPlayerPhysics + processLighthouseAI)。 mobile suspend 復帰
+      // 後の peer active case で full rawDTau (e.g. 3600 sec) を正しく integrate する。
+      const prevLastTime = lastTimeRef.current;
+      const currentTime = Date.now();
+      const rawDTau = (currentTime - prevLastTime) / 1000;
+      lastTimeRef.current = currentTime;
+
+      const selfActive = !document.hidden && rawDTau < LARGE_GAP_THRESHOLD_SEC;
+      // peerActive 判定は lastWitnessTimeRef (= selfActive=true broadcast 受信時のみ
+      // 更新される separate ref) を読む。 lastUpdateTimeRef を直読すると hidden peer の
+      // selfActive=false broadcast でも更新されて mutual amplification (= 両者 hidden で
+      // 自己強化的に integrate を続ける) が消えない。 lastUpdateTimeRef は virtualPos /
+      // stale 検知の lastSync として依然 unconditional 更新が必要 (= overshoot 防止)、
+      // よって 2 ref に分離するのが structural 正答。
+      let peerActive = false;
+      for (const [peerId, lastWitness] of stale.lastWitnessTimeRef.current) {
+        if (peerId === myId) continue;
+        if (isLighthouse(peerId)) continue;
+        if (lastWitness > prevLastTime) {
+          peerActive = true;
+          break;
+        }
+      }
+
+      if (!selfActive && !peerActive) {
         return;
       }
 
-      const currentTime = Date.now();
-      const dTau = (currentTime - lastTimeRef.current) / 1000;
-      lastTimeRef.current = currentTime;
+      const dTau = rawDTau;
 
       const store = useGameStore.getState();
 
@@ -692,6 +727,7 @@ export function useGameLoop({
               velocity: newPs.u,
               heading: newPs.heading,
               alpha: newPs.alpha,
+              selfActive,
             });
           }
         }
@@ -764,6 +800,11 @@ export function useGameLoop({
             velocity: result.newPs.u,
             heading: result.newPs.heading,
             alpha: result.newPs.alpha,
+            // LH broadcast は host が active で送信、 receiver の peerActive check は
+            // !isLighthouse 除外で elide されるため selfActive flag は機能上 no-op。
+            // 構造的整合性のため host の selfActive を継承して付与 (= host が hidden
+            // のときは LH も非 witness 扱い)。
+            selfActive,
           });
 
           // Fix C (= 2026-05-04 plan §3): LH の Rule B 大ジャンプ時、 旧 LH worldLine を
@@ -904,6 +945,11 @@ export function useGameLoop({
                 type: "respawn" as const,
                 playerId: victimId,
                 position: respawnPos,
+                // setTimeout fire 時点で document.hidden を再評価 (= closure 経由の
+                // gameLoop tick selfActive は RESPAWN_DELAY 経過後 stale なため)。
+                // rawDTau ベース部分は setTimeout 文脈で意味を持たない (= gameLoop tick
+                // でない) ため document.hidden のみで近似。
+                selfActive: !document.hidden,
               });
               const existingColor =
                 currentStore.players.get(victimId)?.color ??
@@ -969,6 +1015,7 @@ export function useGameLoop({
               type: "respawn" as const,
               playerId: victimId,
               position: respawnPos,
+              selfActive,
             });
             const existingColor =
               pollState.players.get(victimId)?.color ??

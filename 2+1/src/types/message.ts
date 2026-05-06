@@ -31,6 +31,17 @@ export type Message =
       velocity: { x: number; y: number; z: number };
       heading?: { w: number; x: number; y: number; z: number };
       alpha?: { t: number; x: number; y: number; z: number };
+      /**
+       * Bug 14 完全治療 (2026-05-06): sender が genuine active witness かを示す flag。
+       * `true`: sender が visible かつ event loop も普通の cadence で fire していた状態
+       * (= 他 peer の globalActive 判定で active witness として count される)。
+       * `false`: sender が hidden / lag / suspend 中で globalActive 経路により integrate
+       * しているが genuine active ではない (= witness にしない、 mutual amplification 防止)。
+       * 旧 build からの broadcast は欠落 → receiver は `?? true` で fallback (= 旧仕様
+       * 互換、 全員新 build 揃った後に mutual amplification convergence が成立)。
+       * 詳細: plans/2026-05-06-bug14-global-active-time.md §2.3。
+       */
+      selfActive?: boolean;
     }
   | {
       /**
@@ -98,6 +109,12 @@ export type Message =
       playerId: string;
       position: { t: number; x: number; y: number; z: number };
       u?: { x: number; y: number; z: number };
+      /**
+       * Bug 14 完全治療 (2026-05-06): phaseSpace と同じ active witness flag。 hidden peer
+       * の auto-respawn が globalActive 経路で fire するケースで mutual amplification を
+       * 防ぐ。 詳細は phaseSpace の selfActive docstring 参照。
+       */
+      selfActive?: boolean;
     }
   | {
       /**

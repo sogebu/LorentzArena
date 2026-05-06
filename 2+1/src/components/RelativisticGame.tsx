@@ -302,6 +302,7 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         getPlayerColor,
         lastUpdateTimeRef: stale.lastUpdateTimeRef,
         lastCoordTimeRef: stale.lastCoordTimeRef,
+        lastWitnessTimeRef: stale.lastWitnessTimeRef,
         recoverStale: stale.recoverStale,
       }),
     );

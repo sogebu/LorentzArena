@@ -48,6 +48,7 @@ function makeDeps(
   lastCoordTimeRef: MutableRefObject<
     Map<string, { wallTime: number; posT: number }>
   >;
+  lastWitnessTimeRef: MutableRefObject<Map<string, number>>;
   recoverStale: (playerId: string) => void;
 } {
   return {
@@ -60,6 +61,7 @@ function makeDeps(
     getPlayerColor: () => "#fff",
     lastUpdateTimeRef: { current: new Map() },
     lastCoordTimeRef: { current: lastCoord },
+    lastWitnessTimeRef: { current: new Map() },
     recoverStale: vi.fn(),
   };
 }
