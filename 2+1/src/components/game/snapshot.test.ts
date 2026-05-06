@@ -13,6 +13,7 @@ import {
   LIGHTHOUSE_ID_PREFIX,
   MAX_WORLDLINE_HISTORY,
 } from "./constants";
+import { isLighthouse } from "./lighthouse";
 import { applySnapshot, buildSnapshot } from "./snapshot";
 import type { RelativisticPlayer } from "./types";
 
@@ -31,6 +32,7 @@ function makePlayer(
   );
   return {
     id,
+    kind: isLighthouse(id) ? "npc" : "human",
     ownerId,
     phaseSpace,
     worldLine: appendWorldLine(

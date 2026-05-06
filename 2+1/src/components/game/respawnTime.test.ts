@@ -7,6 +7,7 @@ import {
   createWorldLine,
 } from "../../physics";
 import { ENERGY_MAX, MAX_WORLDLINE_HISTORY } from "./constants";
+import { isLighthouse } from "./lighthouse";
 import { getLatestSpawnT } from "./respawnTime";
 import type { RelativisticPlayer, RespawnEventRecord } from "./types";
 
@@ -25,6 +26,7 @@ function makePlayer(id: string, originT: number, nowT: number): RelativisticPlay
   );
   return {
     id,
+    kind: isLighthouse(id) ? "npc" : "human",
     ownerId: id,
     phaseSpace: now,
     worldLine: wl,

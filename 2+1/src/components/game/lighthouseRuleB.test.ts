@@ -17,12 +17,16 @@ import {
 import {
   CAUSALITY_JUMP_EXIT_MARGIN_LS,
   ENERGY_MAX,
+  LIGHTHOUSE_ID_PREFIX,
   MAX_WORLDLINE_HISTORY,
 } from "./constants";
 import { processLighthouseAI } from "./gameLoop";
+import { isLighthouse } from "./lighthouse";
 import type { KillEventRecord, RelativisticPlayer } from "./types";
 
-const LH_ID = "la-default-0";
+// 正規 prefix 付きの LH ID (= NPC 非対称 plan 後、 `kind` field を ID から正しく
+// derive するため、 旧 "la-default-0" は "lighthouse-0" に統一)。
+const LH_ID = `${LIGHTHOUSE_ID_PREFIX}0`;
 // jump 発火時 (= λ_surface > 0) のみ exit margin が加算される (= LH は u=0、 γ=1 なので
 // pos.t advance は λ そのまま)。 詳細: `causalityRules.ts` docstring +
 // `constants.ts:CAUSALITY_JUMP_EXIT_MARGIN_LS`。
@@ -39,6 +43,7 @@ const makePlayer = (
   );
   return {
     id,
+    kind: isLighthouse(id) ? "npc" : "human",
     ownerId: id,
     phaseSpace: ps,
     worldLine: appendWorldLine(createWorldLine(MAX_WORLDLINE_HISTORY), ps),

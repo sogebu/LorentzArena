@@ -12,6 +12,7 @@ import {
   MAX_FROZEN_WORLDLINES,
   MAX_WORLDLINE_HISTORY,
 } from "./constants";
+import { isLighthouse } from "./lighthouse";
 import type { FrozenWorldLine, RelativisticPlayer } from "./types";
 import { isLargeJump, pushFrozenWorldLine } from "./worldLineGap";
 
@@ -29,6 +30,7 @@ const makePlayer = (
   }
   return {
     id,
+    kind: isLighthouse(id) ? "npc" : "human",
     ownerId: id,
     phaseSpace: ps,
     worldLine,

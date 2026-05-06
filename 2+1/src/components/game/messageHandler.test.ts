@@ -9,6 +9,7 @@ import {
 } from "../../physics";
 import { useGameStore } from "../../stores/game-store";
 import { ENERGY_MAX, MAX_WORLDLINE_HISTORY, WORLDLINE_GAP_THRESHOLD_MS } from "./constants";
+import { isLighthouse } from "./lighthouse";
 import {
   createMessageHandler,
   type MessageHandlerDeps,
@@ -27,6 +28,7 @@ function makePlayer(
   );
   return {
     id,
+    kind: isLighthouse(id) ? "npc" : "human",
     ownerId: id,
     phaseSpace,
     worldLine: appendWorldLine(

@@ -216,8 +216,14 @@ export const createMessageHandler =
         // ownerId: 人間プレイヤーは自己所有 (= playerId)。Lighthouse は host が owner だが、
         // 受信側からは即座に特定できないため、既存値を保持 (Stage E で正式化)。
         const ownerId = existing?.ownerId ?? (isLighthouse(playerId) ? "" : playerId);
+        // 2026-05-06 NPC 非対称 plan: kind は ID prefix から derive (= wire format に kind
+        // を乗せず、 受信側で `isLighthouse(playerId) ? 'npc' : 'human'` で復元、 旧 client
+        // 互換性維持)。 既存 player の kind を temper せず preserve。
+        const kind: "human" | "npc" =
+          existing?.kind ?? (isLighthouse(playerId) ? "npc" : "human");
         next.set(playerId, {
           id: playerId,
+          kind,
           ownerId,
           phaseSpace,
           worldLine,

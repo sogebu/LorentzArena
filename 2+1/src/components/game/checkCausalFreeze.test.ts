@@ -8,6 +8,7 @@ import {
 } from "../../physics";
 import { ARENA_HALF_WIDTH, ENERGY_MAX, MAX_WORLDLINE_HISTORY } from "./constants";
 import { checkCausalFreeze } from "./gameLoop";
+import { isLighthouse } from "./lighthouse";
 import type { KillEventRecord, RelativisticPlayer } from "./types";
 
 const L = ARENA_HALF_WIDTH; // 20
@@ -28,6 +29,7 @@ function makePlayer(
   const wl = appendWorldLine(createWorldLine(MAX_WORLDLINE_HISTORY), ps);
   return {
     id,
+    kind: isLighthouse(id) ? "npc" : "human",
     ownerId: id,
     phaseSpace: ps,
     worldLine: wl,

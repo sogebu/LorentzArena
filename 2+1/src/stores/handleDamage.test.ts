@@ -7,6 +7,7 @@ import {
   MAX_WORLDLINE_HISTORY,
   POST_HIT_IFRAME_MS,
 } from "../components/game/constants";
+import { isLighthouse } from "../components/game/lighthouse";
 import type { RelativisticPlayer } from "../components/game/types";
 import {
   appendWorldLine,
@@ -30,6 +31,7 @@ function makePlayer(
   );
   return {
     id,
+    kind: isLighthouse(id) ? "npc" : "human",
     ownerId: id,
     phaseSpace,
     worldLine: appendWorldLine(

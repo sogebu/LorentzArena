@@ -24,6 +24,36 @@ export const isLighthouse = (id: string): boolean =>
   id.startsWith(LIGHTHOUSE_ID_PREFIX);
 
 /**
+ * 「causality 計算で human player を制約しない entity」 の typed 判定。
+ *
+ * **設計原理 (= NPC 非対称、 plans/2026-05-06-npc-asymmetric-causality.md §1.2)**:
+ * NPC は human の Rule A / Rule B / spawn 時刻 計算に入力として現れない。 逆に、
+ * human の `pos.t` は NPC の causality 計算 (= NPC が human を追う側) に通常通り
+ * 入力される。 物理的根拠: NPC は「他者の inertial frame に対する優先 reference」
+ * ではなく、 シミュレーションの一部。
+ *
+ * **`isLighthouse(id)` との違い**:
+ * - `isLighthouse(id)`: LH 固有 identity の判定 (= 色 / hit radius / 名前 /
+ *   render dispatch / score 加算分岐)、 ID prefix 由来の string check
+ * - `isNpc(p)`: causality semantics の判定、 `p.kind === 'npc'` 由来の typed check
+ *
+ * 現時点で NPC = LH のみのため両者は同値だが、 **意味的に別軸**。 一本化すると
+ * 将来 NPC 種追加時 (= 隕石 / ボス) に LH-specific 経路に NPC 一般 ルールが流出する
+ * risk あり (= plans/2026-05-06-npc-asymmetric-causality.md §11.1 「やらないこと」)。
+ *
+ * **適用 site** (= plan §3.1):
+ * - `checkCausalFreeze` peer iteration (= human の Rule A)
+ * - `useGameLoop.ts` self の Rule B `peerVirtualPositions`
+ * - `processLighthouseAI` peer iteration (= NPC 同士の Rule B 循環防止)
+ * - `computeSpawnCoordTime` peer iteration (= spawn 時刻 anchor)
+ *
+ * **非適用 site**: LH-specific 挙動 (= 色 / hit radius / render dispatch / score) は
+ * 引き続き `isLighthouse(id)` を使う。 一本化は plan §11.1 で禁止明記。
+ */
+export const isNpc = (player: RelativisticPlayer): boolean =>
+  player.kind === "npc";
+
+/**
  * このプレイヤーを駆動するのが自分（`myId`）かどうか。
  * Authority 解体で hit detection 等を「owner のみ」に絞る際に使う。
  */
@@ -51,6 +81,7 @@ export const createLighthouse = (
   wl = appendWorldLine(wl, ps);
   return {
     id,
+    kind: "npc",
     ownerId,
     phaseSpace: ps,
     worldLine: wl,

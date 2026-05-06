@@ -622,6 +622,11 @@ export const useGameStore = create<GameState>()((set, get) => ({
         }
       : {
           id: playerId,
+          // 2026-05-06 NPC 非対称 plan: kind は ID prefix から derive (= LH なら 'npc'、
+          // それ以外 'human')。 human の causality 入力 filter で `isNpc(player)` 経由で
+          // 使う。 `isLighthouse(id)` と現時点で同値だが意味的に別軸 (= 詳細は types.ts
+          // RelativisticPlayer.kind docstring + plan §1.5)。
+          kind: isLighthouse(playerId) ? "npc" : "human",
           ownerId: options?.ownerId ?? playerId,
           phaseSpace: ps,
           worldLine: newWorldLine,

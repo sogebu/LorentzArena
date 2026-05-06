@@ -219,6 +219,10 @@ export const applySnapshot = (
     }
     nextPlayers.set(sp.id, {
       id: sp.id,
+      // 2026-05-06 NPC 非対称 plan: kind は ID prefix から derive (= wire format に kind
+      // を乗せず、 受信側で `isLighthouse(sp.id) ? 'npc' : 'human'` で復元、 旧 client
+      // 互換性維持)。
+      kind: isLighthouse(sp.id) ? "npc" : "human",
       ownerId: sp.ownerId,
       phaseSpace,
       worldLine: wl,

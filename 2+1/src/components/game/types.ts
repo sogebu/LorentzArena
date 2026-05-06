@@ -126,6 +126,28 @@ export type HitEventRecord = {
 export type RelativisticPlayer = {
   id: string;
   /**
+   * NPC vs human の type-level discriminator (= 2026-05-06、 NPC 非対称 plan)。
+   *
+   * - `'human'`: human player、 通常 causality 入力に入る (= Rule A / B / spawn 計算で
+   *   ピア集合に含まれる、 自分の `pos.t` が他者の anchor に寄与)
+   * - `'npc'`: causality 計算で **human を制約しない** class (= 「NPC = subordinate」、
+   *   `isNpc(player)` で判別)。 現時点で NPC = LH のみ。 ただし NPC 自身の Rule B
+   *   (= LH AI の human 追跡) は引き続き動作する (= 入力 filter のみで NPC の
+   *   advance ロジックは不変)
+   *
+   * **`isLighthouse(id)` との違い**: `isLighthouse` は LH 固有 identity 判定
+   * (= 色 / hit radius / 名前 / render dispatch / score 加算)、 `kind` は causality
+   * semantics 判定。 現時点で両者同値だが意味的に別軸、 将来 NPC 種が増えた時 (= 隕石 /
+   * ボス) に LH-specific 経路と NPC 一般経路が混ざらないよう独立保持する。
+   *
+   * **wire format**: snapshot / phaseSpace message では送信せず、 受信側で id-prefix
+   * から derive する (= `isLighthouse(id) ? 'npc' : 'human'`)。 旧 client (= `kind`
+   * field を message に乗せない) との混在維持、 protocol 変更なし。
+   *
+   * 詳細: plans/2026-05-06-npc-asymmetric-causality.md §1.5 + §6.2
+   */
+  kind: "human" | "npc";
+  /**
    * このプレイヤーを駆動する peer の ID。
    * - 人間プレイヤー: owner = 本人 (ownerId === id)
    * - Lighthouse: owner = 現 beacon holder（= 旧 host）

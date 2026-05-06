@@ -7,6 +7,7 @@ import {
   createWorldLine,
 } from "../../physics";
 import { ENERGY_MAX, MAX_WORLDLINE_HISTORY } from "./constants";
+import { isLighthouse } from "./lighthouse";
 import type { KillEventRecord, RelativisticPlayer } from "./types";
 import { lastSyncForDead, virtualPos } from "./virtualWorldLine";
 
@@ -21,6 +22,7 @@ const makePlayer = (
   );
   return {
     id,
+    kind: isLighthouse(id) ? "npc" : "human",
     ownerId: id,
     phaseSpace: ps,
     worldLine: appendWorldLine(createWorldLine(MAX_WORLDLINE_HISTORY), ps),
