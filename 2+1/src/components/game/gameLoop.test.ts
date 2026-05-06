@@ -56,7 +56,7 @@ function makePlayer(
   };
 }
 
-describe("processPlayerPhysics substep stability (Bug 14 plan §2.1)", () => {
+describe("processPlayerPhysics implicit Euler stability (Bug 14 plan §2.1, post-deploy refactor)", () => {
   it("通常 dTau (= 0.008 sec、 N=1): 安定、 通常挙動", () => {
     const me = makePlayer("me", { x: 0.5, y: 0, z: 0 });
     const result = processPlayerPhysics(
@@ -167,9 +167,10 @@ describe("processPlayerPhysics substep stability (Bug 14 plan §2.1)", () => {
     }
   });
 
-  it("FRICTION_COEFFICIENT が想定通り (= 0.5)、 substep 計算の前提", () => {
-    // この test は substep の前提条件 docstring の意味を fix する。 friction 値が
-    // 変更されたら MAX_STABLE_SUB_DTAU の安定境界が変わるため警告として機能。
+  it("FRICTION_COEFFICIENT が想定通り (= 0.5)、 implicit Euler 計算の前提", () => {
+    // この test は implicit Euler の前提条件 docstring の意味を fix する。 friction 値
+    // が変更されたら test の expected value (= u/(1+γkΔ) で導出) も再計算が必要なため
+    // 警告として機能。 `newU = (u + a × dτ) / (1 + γkΔ)` の k がここで定義される。
     expect(FRICTION_COEFFICIENT).toBe(0.5);
   });
 });

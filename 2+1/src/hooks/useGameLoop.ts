@@ -197,9 +197,11 @@ export function useGameLoop({
       // 内部 update する設計のため exclude (host self-trigger 防止、 host 自身の player
       // ID broadcast が canonical witness)。
       //
-      // dTau (= rawDTau) は内部 substep で integrator stable (= MAX_STABLE_SUB_DTAU、
-      // gameLoop.ts: processPlayerPhysics + processLighthouseAI)。 mobile suspend 復帰
-      // 後の peer active case で full rawDTau (e.g. 3600 sec) を正しく integrate する。
+      // dTau (= rawDTau) は `evolvePhaseSpace` の semi-implicit Euler で integrator
+      // unconditionally stable (= `newU = (u + a × dτ) / (1 + γkΔ)` の closed-form 1 step、
+      // 任意 dτ で発散しない、 旧 substep workaround は 2026-05-06 post-deploy で撤廃)。
+      // mobile suspend 復帰後の peer active case で full rawDTau (e.g. 3600 sec) を正しく
+      // integrate する。 詳細: `physics/mechanics.ts` + `claude-config/conventions/scientific-computing.md §2`。
       const prevLastTime = lastTimeRef.current;
       const currentTime = Date.now();
       const rawDTau = (currentTime - prevLastTime) / 1000;
