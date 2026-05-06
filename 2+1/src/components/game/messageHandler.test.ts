@@ -227,3 +227,120 @@ describe("messageHandler phaseSpace heading / alpha (backward compat)", () => {
     expect(peer?.phaseSpace.heading).toEqual({ w: 1, x: 0, y: 0, z: 0 });
   });
 });
+
+// Bug 14 完全治療 (2026-05-06 plan: bug14-global-active-time §2.3): selfActive flag に
+// よる lastWitnessTimeRef gating の test。 lastUpdateTimeRef は unconditional 更新、
+// lastWitnessTimeRef は selfActive=true のみ更新、 selfActive=undefined は旧 build 互換
+// fallback で true 扱い、 が contract。
+describe("messageHandler selfActive witness gating (Bug 14 plan)", () => {
+  beforeEach(() => {
+    resetStore();
+  });
+
+  it("selfActive=true: lastWitnessTimeRef + lastUpdateTimeRef 両方を更新", () => {
+    const deps = makeDeps("me");
+    const handler = createMessageHandler(deps);
+    handler("peer", {
+      type: "phaseSpace" as const,
+      senderId: "peer",
+      position: { t: 1.0, x: 0, y: 0, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      selfActive: true,
+    });
+    expect(deps.lastUpdateTimeRef.current.has("peer")).toBe(true);
+    expect(deps.lastWitnessTimeRef.current.has("peer")).toBe(true);
+  });
+
+  it("selfActive=false: lastUpdateTimeRef のみ更新、 lastWitnessTimeRef は更新しない", () => {
+    const deps = makeDeps("me");
+    const handler = createMessageHandler(deps);
+    handler("peer", {
+      type: "phaseSpace" as const,
+      senderId: "peer",
+      position: { t: 1.0, x: 0, y: 0, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      selfActive: false,
+    });
+    expect(deps.lastUpdateTimeRef.current.has("peer")).toBe(true);
+    expect(deps.lastWitnessTimeRef.current.has("peer")).toBe(false);
+  });
+
+  it("selfActive=undefined (旧 build 互換): fallback で active 扱い、 両方更新", () => {
+    const deps = makeDeps("me");
+    const handler = createMessageHandler(deps);
+    handler("peer", {
+      type: "phaseSpace" as const,
+      senderId: "peer",
+      position: { t: 1.0, x: 0, y: 0, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      // selfActive 欠落 (= 旧 build broadcast)
+    });
+    expect(deps.lastUpdateTimeRef.current.has("peer")).toBe(true);
+    expect(deps.lastWitnessTimeRef.current.has("peer")).toBe(true);
+  });
+
+  it("respawn message も selfActive で gate (= phaseSpace と対称)", () => {
+    const deps = makeDeps("me");
+    const handler = createMessageHandler(deps);
+
+    // selfActive=false respawn: lastWitness 不変
+    handler("peer", {
+      type: "respawn" as const,
+      playerId: "peer",
+      position: { t: 1.0, x: 0, y: 0, z: 0 },
+      selfActive: false,
+    });
+    expect(deps.lastUpdateTimeRef.current.has("peer")).toBe(true);
+    expect(deps.lastWitnessTimeRef.current.has("peer")).toBe(false);
+
+    // selfActive=true respawn: lastWitness 更新
+    handler("peer", {
+      type: "respawn" as const,
+      playerId: "peer",
+      position: { t: 2.0, x: 0, y: 0, z: 0 },
+      selfActive: true,
+    });
+    expect(deps.lastWitnessTimeRef.current.has("peer")).toBe(true);
+  });
+
+  it("mutual amplification convergence: 連続 selfActive=false で lastWitness 古いまま", () => {
+    const deps = makeDeps("me");
+    const handler = createMessageHandler(deps);
+
+    // T=10 active broadcast (= pre-hidden の最後の active witness)
+    const t0 = Date.now();
+    handler("peer", {
+      type: "phaseSpace" as const,
+      senderId: "peer",
+      position: { t: 1.0, x: 0, y: 0, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      selfActive: true,
+    });
+    const witnessAtActive = deps.lastWitnessTimeRef.current.get("peer");
+    expect(witnessAtActive).toBeDefined();
+    expect(witnessAtActive! >= t0).toBe(true);
+
+    // 連続 selfActive=false (= hidden 後の broadcast)
+    handler("peer", {
+      type: "phaseSpace" as const,
+      senderId: "peer",
+      position: { t: 1.5, x: 0, y: 0, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      selfActive: false,
+    });
+    handler("peer", {
+      type: "phaseSpace" as const,
+      senderId: "peer",
+      position: { t: 2.0, x: 0, y: 0, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      selfActive: false,
+    });
+
+    // lastWitness は active witness のまま、 lastUpdate は最新更新
+    const witnessAfter = deps.lastWitnessTimeRef.current.get("peer");
+    const updateAfter = deps.lastUpdateTimeRef.current.get("peer");
+    expect(witnessAfter).toBe(witnessAtActive);
+    expect(updateAfter).toBeDefined();
+    expect(updateAfter! >= witnessAtActive!).toBe(true);
+  });
+});
