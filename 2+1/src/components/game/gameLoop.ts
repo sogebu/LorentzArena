@@ -37,7 +37,7 @@ import {
   THRUST_ENERGY_RATE,
 } from "./constants";
 import { causalityJumpLambda } from "./causalityRules";
-import { computeInterceptDirection, isLighthouse, perturbDirection } from "./lighthouse";
+import { computeInterceptDirection, isLighthouse, isNpc, perturbDirection } from "./lighthouse";
 import { findLaserHitPosition } from "./laserPhysics";
 import type { ControlScheme } from "../../stores/game-store";
 import type { KillEventRecord, Laser, RelativisticPlayer } from "./types";
@@ -307,7 +307,11 @@ export function processLighthouseAI(
   // + Stage 4。
   const peerVirtualPositions: { pos: Vector4 }[] = [];
   for (const [pId, p] of players) {
-    if (isLighthouse(pId)) continue;
+    // NPC skip (= 2026-05-06 NPC 非対称 plan §3.1): NPC 同士の Rule B 循環を防ぐ
+    // ため、 LH が他 NPC を peer set に含めない。 旧 `isLighthouse(pId)` と同等挙動
+    // だが typed predicate `isNpc(p)` で causality semantics を明示 (= LH-specific
+    // identity check と意味的に分離、 詳細: lighthouse.ts:isNpc docstring)。
+    if (isNpc(p)) continue;
     if (pId === lhId) continue;
     // dead は LH の Rule B target から除外 (= 死亡 player の virtualPos に LH が引っ張られ
     // ない、 ゲームプレイ上 alive peer 追従が natural)。 plan §6 Stage 7 / §7.10 は dead
@@ -589,7 +593,12 @@ export function checkCausalFreeze(
   const nowWall = currentWallTime ?? Date.now();
   for (const [id, player] of players) {
     if (id === myId) continue;
-    if (isLighthouse(id)) continue;
+    // NPC skip (= 2026-05-06 NPC 非対称 plan §3.1): NPC は human の Rule A で freeze
+    // trigger 対象外。 旧 `isLighthouse(id)` の docstring 無し片肺 hotfix を typed
+    // predicate `isNpc(p)` に置換、 causality semantics を明示。 「LH が human を causally
+    // 凍結させない」 という gameplay 上の意図を type-level で表現 (= LH-specific identity
+    // check との意味的別軸、 詳細: lighthouse.ts:isNpc docstring + plan §1.2 / §10.3)。
+    if (isNpc(player)) continue;
     // dead skip (= 2026-05-02 hotfix、 plan §6 Stage 7 の「dead 包含」 案を実機検証で撤回):
     // dead-me の virtualPos が alive other を不当に freeze させる regression が判明したため、
     // Rule A (本関数) と Rule B (LH AI / alive 自機) で dead を除外。 死後 inertial の
