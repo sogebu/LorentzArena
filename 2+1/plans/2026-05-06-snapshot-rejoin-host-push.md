@@ -206,7 +206,103 @@ scope creep。 帯域消費が常時、 wake-from-suspend という rare event �
 
 ---
 
-## §7 References
+## §7 設計哲学 (= 本 plan に至った deep think の核)
+
+本 plan の RCA 経緯から、 個別の「skip 条件 1 line 拡張」 を超える **5 つの design philosophy** を抽出。 future debug 規律として記録。
+
+### §7.1 対称設計を design choice の最優先軸に置く
+
+design choice の二択で 「**新規 joiner case と wake-from-suspend case を同 mechanism で handle**」 vs 「**新規 joiner case と wake-from-suspend case を異なる mechanism (= self pull) で handle**」 があれば、 **対称を選ぶ**。
+
+理由:
+- future contributor の cognitive load が下がる (= 1 mechanism 理解で両 case 把握)
+- 規模拡張時の特殊 case scaling が容易 (= 新 case が出ても同 mechanism の skip 条件追加で済む、 新 mechanism 追加せず)
+- bug 表面化 pattern が同型化する (= 1 mechanism の bug fix で複数 case が改善)
+
+本 plan 適用例: Option B (= self 側 retry) を「規模拡張時の自然な道」 と感じても、 既存 host push との **対称性逸脱** signal で却下。 既存 case 間で同 mechanism が成立しているなら、 新 case も同 mechanism で扱える方法を最優先で探す。
+
+### §7.2 Event-driven > polling: 「真実の source に近い場所で trigger」
+
+state 変化を polling で検知するのは 「変化を感知できなかった」 失敗が常に可能。 OS / runtime / library が event を直接発行する場合、 それを起点とする方が **timing 確実 + indirect 推定誤差排除 + bandwidth 効率** で strictly 優位。
+
+本 plan 適用例:
+- self 側 polling: WebRTC connection state を gameLoop tick で間接推定、 timing 不確実 + missed window 可能性
+- host 側 event: `peer.on('connection', ...)` で WebRTC connection open event を直接受信、 timing 確実 + buffering / drop race 排除
+
+一般則: 「**X の変化を検知したい**」 → 「**X を発生させる layer に最も近い event を listen**」。 階層を跨いで間接観測する polling は workaround、 event source layer での listen が root。
+
+### §7.3 暗黙の時間軸前提は長期 case で必ず破れる
+
+state-only な skip 条件 (= 「state X が条件を満たすなら skip」) は暗黙に **「state X が変化する間隔 < skip の有効期間」** という時間軸前提を持つ。 短期 case (= 通常運用) では成立、 長期 case (= 異常 / suspend / disconnect) で破れる。
+
+本 plan 適用例: `if (store.players.has(newId)) continue` の skip 条件は **「player entry が連続的に最新 broadcast で self-maintained」** という time-implicit assumption を持つ。 短期 reconnect (= ms-sec) では成立、 long-disconnect (= mobile suspend、 minutes-hours) で event log の stale 化により破れる。
+
+一般則: state-only な skip 条件を書くときは **「この skip は state X が時間軸でどれくらい trustable な前提か?」** を明示的に audit。 「変化する間隔の上限」 を超える case で破れるなら、 skip 条件に時間軸を加える (= `lastSeen > threshold` で破れた前提を補正)。
+
+これは [`debugging-discipline.md §4`](../../../claude-config/conventions/debugging-discipline.md) sibling audit の前段: structural skip 条件全般で時間軸 audit を回す。
+
+### §7.4 情報の所在地で責務配置: passive vs active recovery role division
+
+「**情報を持っている側が active な役割**」、 「**情報を持っていない側は passive (= 受け待つ)**」 の役割配分が責務設計の natural class fit。
+
+本 plan 適用例:
+- WebRTC connection の **reconnect 完了 event** は **host 側が直接観測** (= peer.on('connection', ...) で fire)、 self 側は間接的にしか知れない
+- → host が active 役割 (= snapshot push)、 self は passive 役割 (= snapshot 受信を待つ)
+- self 側を active 化 (= self pull) すると **情報を持っていない側が情報を要求する** 形になり、 polling / 推定 / state 機械が必要
+
+一般則: data flow の責務配置は 「**情報を持っている側に active 役割**」 を割り当てる。 当事者 (= self) と観測者 (= host) のうち、 重要 event の primary source を持つ側に active recovery を任せる。
+
+### §7.5 Net negative LOC: 真の根本治療は逆説的に code を減らす
+
+workaround は **新 mechanism を追加** する (= retry state machine、 cap、 listener 等で LOC 増)、 root fix は **既存 mechanism の責務拡張 / 用途整合化** で済む (= 1 line skip 条件拡張等で LOC 微増 or 減)。
+
+LOC が増える fix は workaround sign の可能性、 LOC が減る fix は responsibility 純化 の可能性が高い。
+
+本 plan 適用例:
+- Option B (= self 側 retry): retry state ref + max attempts + backoff + state cleanup = 数十 LOC 増
+- Root-1 (= host skip 拡張): 1 line skip 条件 + 計算 2-3 line + self 側 trigger 完全撤回 (= 数十 LOC 削除) = **net negative LOC**
+
+一般則: fix proposal の最終形を見たら 「これは LOC を増やすか減らすか?」 を 1 つの heuristic として使う。 大きく増やす fix は 「**既存 mechanism の責務拡張で済まなかった理由**」 を明示できないと workaround の可能性。
+
+### §7.6 Multi-round audit reflex: 「これで完璧」 verdict は直前の depth 仮定でしかない
+
+「これで完璧 / 終わり / root」 verdict は audit が到達した **直前の depth** を信じた verdict、 user pushback で **次の depth** が露見することがある。 各 round で 1 verdict 出すのが norm、 「max round 数」 や 「これ以上は overengineer」 を事前設定するのは無意味、 **user epistemic skepticism signal を常に audit trigger として待つ姿勢**。
+
+本 plan 適用例:
+- Round 1 (= 5/6 deploy): substep + globalActive で「Bug 14 完全治療」 verdict
+- Round 2 (= user 「絆創膏」): handshake / cumActive 検討、 cumActive V1 fail で snapshot rejoin trigger に到達 「これで真の root」 verdict
+- Round 3 (= user 「もう一度深く」): V2 fail (= host snapshot push skip 設計) 発見、 snapshot rejoin trigger 必要と再 confirm 「これで確実に完了」 verdict
+- Round 4 (= user 「原理的におかしくない?」): implicit Euler refactor (= V3 algorithm 網羅) で substep workaround を撤廃 「最終 root」 verdict
+- Round 5 (= user 「前は出てなかった」): WebRTC reconnect timing で trigger drop 判明、 Option B 検討
+- Round 6 (= 自己 reflection): Option B も L4 違反、 Root-1 (= host push 拡張) に到達
+
+各 round で「これで完了」 と verdict したが、 user pushback / 自己 reflection で次の depth が露見。 [`debugging-discipline.md §2`](../../../claude-config/conventions/debugging-discipline.md) の audit verdict 「正当化済」 再評価 reflex を **連続 6 round 適用** した珍しい実例として価値。
+
+一般則: 「これで完璧」 と書いた瞬間に **「次の round はあるか?」** を反射的に問う。 round が無限に続くわけではない (= 各 round で genuine な depth 進展がある場合のみ有効)、 但し round 数を事前に縛らず user signal で判定する。
+
+### §7.7 Cross-philosophical synthesis: 設計の 6 視点 chained
+
+§7.1-§7.6 は独立 principle ではなく **chain として作用**:
+
+```
+対称設計 (§7.1) を最優先
+  ↓ どの mechanism が responsibility 持つか?
+情報所在地 (§7.4) で責務配置
+  ↓ active 側 (= 情報持つ側) でどう trigger?
+Event-driven (§7.2) で trigger 信頼性
+  ↓ skip 条件は state-only か?
+時間軸 audit (§7.3) で skip robustness 確認
+  ↓ fix の規模感 sanity check
+Net LOC (§7.5) で workaround vs root 判定
+  ↓ 各 round の verdict
+Multi-round reflex (§7.6) で次 depth audit
+```
+
+任意の design choice / fix proposal で 6 視点を順に通すと、 workaround 候補が早期に signal される。
+
+---
+
+## §8 References
 
 - [`plans/2026-05-06-bug14-global-active-time.md §6.5`](2026-05-06-bug14-global-active-time.md) — supersedes、 self 側 trigger 案 (= 本 plan で revert)
 - [`src/components/RelativisticGame.tsx:216`](../src/components/RelativisticGame.tsx#L216) — Stage F skip 条件 (= Stage 2 で時間軸拡張)
