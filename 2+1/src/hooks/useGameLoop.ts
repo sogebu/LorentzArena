@@ -39,7 +39,7 @@ import {
   processPlayerPhysics,
 } from "../components/game/gameLoop";
 import { isTouchDevice } from "../components/game/hud/utils";
-import { isLighthouse } from "../components/game/lighthouse";
+import { isLighthouse, isNpc } from "../components/game/lighthouse";
 import { createRespawnPosition } from "../components/game/respawnTime";
 import type { useTouchInput } from "../components/game/touchInput";
 import type { Laser, RelativisticPlayer } from "../components/game/types";
@@ -596,6 +596,14 @@ export function useGameLoop({
           const peerVirtualPositions: { pos: Vector4 }[] = [];
           for (const [pId, p] of fresh.players) {
             if (pId === myId) continue;
+            // NPC skip (= 2026-05-06 NPC 非対称 plan §3.1 の core 変更): NPC は human の
+            // Rule B target にしない。 既存 checkCausalFreeze の片肺 LH skip
+            // (gameLoop.ts:checkCausalFreeze) と整合させて、 走行中 Rule A/B 両方で NPC を
+            // 一律 除外。 「LH = subordinate、 human を causally 制約しない」 という gameplay
+            // semantics を type-level で表現 (= 詳細: lighthouse.ts:isNpc docstring +
+            // plan §1.2 / §10.3、 5/2 plan §10.4 LH 特別扱い不要 とは直交軸: §10.4 は LH 自身
+            // の advance ロジック、 本 plan は LH state が他者 causality 入力に入るかの議論)。
+            if (isNpc(p)) continue;
             // dead skip (= 2026-05-02 hotfix、 plan §6 Stage 7 の「dead 包含」 案を実機検証で
             // 撤回): dead-me の virtualPos が alive other を不当に freeze させる regression が
             // 判明したため Rule A (checkCausalFreeze) と同様 Rule B でも dead を除外。 死後
