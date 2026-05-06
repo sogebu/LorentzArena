@@ -804,8 +804,8 @@ ALWAYS_ON_TOP 撤去計画時:
 
 1. **思想 anchor 化**: 着手前に design doc 新設で「軸」 整理。 Bug 11 では `design/network-recovery.md` 6 軸 (Phase 別の対称性 / Recovery 3 直交軸 / 真因 chain / 通信トポロジー / 治療優先順 / 既存メタ原則対応) を anchor 化してから実装着手。 思想 anchor 無しで実装に入ると判断軸が ad-hoc 化、 後から「これは何のための fix?」 が分からなくなる
 2. **連続実装**: 直交軸の fix を Stage X-A/B/C 等で独立 commit + 全部入り 1 deploy。 user の「どんどん行こう」 stance + 私の risk 管理 (= 各 stage typecheck + test pass 確認) の組合せ。 各 stage 独立 commit で revert 可能性確保、 deploy 1 回で user verify cost 削減
-3. **4 軸 sweep drift 修正**: 連続 commit 後の最終 push 前に整合性 / 無矛盾性 / 効率性 / 安全性を sweep、 drift があれば即修正 commit (= [`work-discipline.md §Multi-commit refactor では 4 軸 sweep で docstring drift を必ず捕まえる`](../../odakin-prefs/work-discipline.md))。 sweep を skip すると docstring と実装の caller scope drift 等が遅延発覚、 future contributor を mislead する
-4. **根本治療 sweep (= user challenge driven)**: user の「絆創膏の上に絆創膏じゃなくて根本治療」 reminder で残課題を re-audit、 cosmetic / scope 外と暫定判定したものを root cause で再治療。 Bug 11 では Stage 8 (transport / direction / mesh-ish 対称性) + Stage 9 (assumeHostRole cleanup) + Stage 10 (Vite HMR pattern 文書化) として連続実施。 「fully closed」 認定後の user challenge は判定 reset trigger ([`work-discipline.md §audit verdict 「正当化済」 は user 質問で再評価する`](../../odakin-prefs/work-discipline.md))
+3. **4 軸 sweep drift 修正**: 連続 commit 後の最終 push 前に整合性 / 無矛盾性 / 効率性 / 安全性を sweep、 drift があれば即修正 commit (= [`work-discipline.md §Multi-commit refactor では 4 軸 sweep で docstring drift を必ず捕まえる`](../../../odakin-prefs/work-discipline.md))。 sweep を skip すると docstring と実装の caller scope drift 等が遅延発覚、 future contributor を mislead する
+4. **根本治療 sweep (= user challenge driven)**: user の「絆創膏の上に絆創膏じゃなくて根本治療」 reminder で残課題を re-audit、 cosmetic / scope 外と暫定判定したものを root cause で再治療。 Bug 11 では Stage 8 (transport / direction / mesh-ish 対称性) + Stage 9 (assumeHostRole cleanup) + Stage 10 (Vite HMR pattern 文書化) として連続実施。 「fully closed」 認定後の user challenge は判定 reset trigger ([`work-discipline.md §audit verdict 「正当化済」 は user 質問で再評価する`](../../../odakin-prefs/work-discipline.md))
 5. **meta-audit (= source of truth 単一化 sweep)**: 完了後の最終 audit で M25 違反候補を thorough sweep、 「許容 mirror」 暫定判定にも構造違いの有無で再判定。 Bug 11 では Stage 11 で causal* boolean dual を発見・撤廃、 教訓を M25 §実例 4 として永続化。 「Bug 11 完了 → 関連状態の M25 sweep」 が完了条件
 
 #### Why
@@ -828,7 +828,7 @@ ALWAYS_ON_TOP 撤去計画時:
   - phase 2: 各 stage 独立 commit + 1 deploy (= user verify cost 削減)
   - phase 3: 連続 commit 後の push 前に 4 軸 sweep
   - phase 4: 「fully closed」 認定後の user challenge を判定 reset として受け入れる
-  - phase 5: 完了後に M25 sweep audit (= [`work-discipline.md §Same-session で M25 違反を見つけたら兄弟 audit を直ちに実施`](../../odakin-prefs/work-discipline.md) と整合)
+  - phase 5: 完了後に M25 sweep audit (= [`work-discipline.md §Same-session で M25 違反を見つけたら兄弟 audit を直ちに実施`](../../../odakin-prefs/work-discipline.md) と整合)
 
 #### 過去事例
 
@@ -914,7 +914,7 @@ ALWAYS_ON_TOP 撤去計画時:
 
 #### claude-config promote 判定
 
-本 entry は LorentzArena 1 事例から抽出。 同 pattern (= numerical optimization landing on optima、 state machine threshold flicker、 物理 simulation null cone surface 等) が **他の科学計算 / 数値解析リポ (= bayes-kai / forward-scattering / einstein-cartan / 等)** で 2 件目発生したら、 [`claude-config/conventions/scientific-computing.md`](../../claude-config/conventions/scientific-computing.md) に「公式が境界に着地する設計の chatter リスク」 として promote 検討。 現時点では LorentzArena meta-principles に留める ([`work-discipline.md L177`](../../odakin-prefs/work-discipline.md))。
+本 entry は LorentzArena 1 事例から抽出。 同 pattern (= numerical optimization landing on optima、 state machine threshold flicker、 物理 simulation null cone surface 等) が **他の科学計算 / 数値解析リポ (= bayes-kai / forward-scattering / einstein-cartan / 等)** で 2 件目発生したら、 [`claude-config/conventions/scientific-computing.md`](../../../claude-config/conventions/scientific-computing.md) に「公式が境界に着地する設計の chatter リスク」 として promote 検討。 現時点では LorentzArena meta-principles に留める ([`work-discipline.md L177`](../../../odakin-prefs/work-discipline.md))。
 
 ---
 
@@ -948,7 +948,7 @@ ALWAYS_ON_TOP 撤去計画時:
 
 #### claude-config promote 判定
 
-本 entry は LorentzArena 1 事例から抽出。 同 pattern (= listener-based observability で fire タイミング = trigger phase の手がかり) が他リポ (= bayes-kai / network 系 / 等) で 2 件目発生したら、 [`claude-config/docs/usage-tips.ja.md`](../../claude-config/docs/usage-tips.ja.md) に「listener event timestamp で trigger phase を読む」 として promote 検討。 現時点では LorentzArena meta-principles に留める ([`work-discipline.md L177`](../../odakin-prefs/work-discipline.md))。
+本 entry は LorentzArena 1 事例から抽出。 同 pattern (= listener-based observability で fire タイミング = trigger phase の手がかり) が他リポ (= bayes-kai / network 系 / 等) で 2 件目発生したら、 [`claude-config/docs/usage-tips.ja.md`](../../../claude-config/docs/usage-tips.ja.md) に「listener event timestamp で trigger phase を読む」 として promote 検討。 現時点では LorentzArena meta-principles に留める ([`work-discipline.md L177`](../../../odakin-prefs/work-discipline.md))。
 
 ---
 
@@ -992,7 +992,7 @@ ALWAYS_ON_TOP 撤去計画時:
 
 #### claude-config promote 判定
 
-本 entry は LorentzArena 1 事例から抽出。 相対論 simulation / visualization リポ (= twcu-phys-* の物理研究 / 教科書 project / forward-scattering) で 2 件目発生したら、 [`claude-config/conventions/scientific-computing.md`](../../claude-config/conventions/scientific-computing.md) に「相対論 visual effect の cause 分離」 として promote 検討。 現時点では LorentzArena meta-principles に留める ([`work-discipline.md L177`](../../odakin-prefs/work-discipline.md))。
+本 entry は LorentzArena 1 事例から抽出。 相対論 simulation / visualization リポ (= twcu-phys-* の物理研究 / 教科書 project / forward-scattering) で 2 件目発生したら、 [`claude-config/conventions/scientific-computing.md`](../../../claude-config/conventions/scientific-computing.md) に「相対論 visual effect の cause 分離」 として promote 検討。 現時点では LorentzArena meta-principles に留める ([`work-discipline.md L177`](../../../odakin-prefs/work-discipline.md))。
 
 ---
 ### M35. NPC 非対称 causality: subordinate class は他者を制約しない
@@ -1046,7 +1046,7 @@ ALWAYS_ON_TOP 撤去計画時:
 
 #### claude-config promote 判定
 
-本 entry は spread aggregation の universal pattern。 他の cluster center 計算 (= 学術データ集計 / scheduling 中央値 / 等) で midpoint / mean / median の選択が question になる場面で参照可。 但し LorentzArena 内 plan §1.3 の数値検証で sufficient なため、 別 plan で 2 件目発生したら [`claude-config/conventions/scientific-computing.md`](../../claude-config/conventions/scientific-computing.md) に promote 検討。 現時点では LorentzArena に留める。
+本 entry は spread aggregation の universal pattern。 他の cluster center 計算 (= 学術データ集計 / scheduling 中央値 / 等) で midpoint / mean / median の選択が question になる場面で参照可。 但し LorentzArena 内 plan §1.3 の数値検証で sufficient なため、 別 plan で 2 件目発生したら [`claude-config/conventions/scientific-computing.md`](../../../claude-config/conventions/scientific-computing.md) に promote 検討。 現時点では LorentzArena に留める。
 
 ---
 
@@ -1090,7 +1090,7 @@ export const isNpc = (player: RelativisticPlayer): boolean =>
 
 #### claude-config promote 判定
 
-本 entry は class-based filter pattern の universal applicable insight。 但し具体例 (= LH NPC) は LorentzArena 固有。 他リポで discriminated union vs runtime check の選択が question になる場面で 2 件目出たら、 [`claude-config/CONVENTIONS.md`](../../claude-config/CONVENTIONS.md) または `convention-design-principles.md` に promote 検討。 現時点では LorentzArena に留める。
+本 entry は class-based filter pattern の universal applicable insight。 但し具体例 (= LH NPC) は LorentzArena 固有。 他リポで discriminated union vs runtime check の選択が question になる場面で 2 件目出たら、 [`claude-config/CONVENTIONS.md`](../../../claude-config/CONVENTIONS.md) または `convention-design-principles.md` に promote 検討。 現時点では LorentzArena に留める。
 
 ---
 
@@ -1178,7 +1178,7 @@ export const isNpc = (player: RelativisticPlayer): boolean =>
 
 #### claude-config promote 判定
 
-本 entry は universal な「数値仮説の bound check」 pattern (= 物理だけでなく性能 / メモリ / 容量 系の runaway claim にも applicable)。 他リポで類似 pattern が 2 件目発生したら [`claude-config/conventions/scientific-computing.md`](../../claude-config/conventions/scientific-computing.md) に promote 検討。 現時点では LorentzArena に留めるが、 universal pattern として既に odakin-prefs/work-discipline.md に同型 § を新設済 (= 2026-05-06 同 plan)。
+本 entry は universal な「数値仮説の bound check」 pattern (= 物理だけでなく性能 / メモリ / 容量 系の runaway claim にも applicable)。 他リポで類似 pattern が 2 件目発生したら [`claude-config/conventions/scientific-computing.md`](../../../claude-config/conventions/scientific-computing.md) に promote 検討。 現時点では LorentzArena に留めるが、 universal pattern として既に odakin-prefs/work-discipline.md に同型 § を新設済 (= 2026-05-06 同 plan)。
 
 ---
 ### M41. pos.t / pos.xy 比 と β = √(x²+y²)/t で friction-internal vs external origin を判別する diagnostic
@@ -1254,7 +1254,7 @@ export const isNpc = (player: RelativisticPlayer): boolean =>
 
 #### claude-config promote 判定
 
-本 entry は universal applicable な「ring buffer GC + long-running RCA」 pattern。 [`claude-config/conventions/android-chromium-remote-debug.md §5.3`](../../claude-config/conventions/android-chromium-remote-debug.md) で「ring buffer GC を意識した repro 規律」 として universal 化済。 LorentzArena 固有の data structure 一覧は本 entry に保持、 universal 化は完了。
+本 entry は universal applicable な「ring buffer GC + long-running RCA」 pattern。 [`claude-config/conventions/android-chromium-remote-debug.md §5.3`](../../../claude-config/conventions/android-chromium-remote-debug.md) で「ring buffer GC を意識した repro 規律」 として universal 化済。 LorentzArena 固有の data structure 一覧は本 entry に保持、 universal 化は完了。
 
 ---
 
