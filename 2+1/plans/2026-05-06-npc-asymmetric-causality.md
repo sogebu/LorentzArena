@@ -1,7 +1,7 @@
 # Plan: NPC 非対称 causality + spawn formula 整備 + type-level kind 化
 
 **起草**: 2026-05-06、 odakin 提案 (= LorentzArena session、 Bug 14 propagation race 議論からの分岐 + 構造整備の追加提案)
-**Status**: 設計合意済 (= 2026-05-06 odakin 確認、 implementation 着手前 plan 再確認)
+**Status**: ✅ **Closed** (= 2026-05-06 朝〜昼 implementation 完了、 263 test pass、 typecheck/lint clean、 wire format 不変。 Stage 6 production deploy + odakin 実機 verify 待ち)
 **目的**: causality calc layer の入力 semantics を 3 軸で整備:
 - **(I) class 軸**: NPC を human の causality calc 全 site で uniform に skip (= 既存 `checkCausalFreeze` の片肺 LH skip を完成)
 - **(II''') 集約形式**: spawn 計算で `(min+max)/2` (midpoint) → `sum/N` (mean) に変更、 `excludeId` 撤廃で self も virtualPos で寄与

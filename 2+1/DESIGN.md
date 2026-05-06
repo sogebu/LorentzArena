@@ -412,6 +412,56 @@ Bug 9 (= 新 join 即凍結) の構造的解消は Rule B convergence が担う�
 強く依存しない設計を維持。 詳細: [`respawnTime.ts`](src/components/game/respawnTime.ts) の
 `computeSpawnCoordTime` docstring、 plan §12 #1。
 
+**2026-05-06 (γ → γ') 移行**: NPC 非対称 plan で (γ) midpoint を (γ') mean (= sum/N) に refine、
+合わせて NPC skip + excludeId 撤去 + self 包含 を実装。 詳細は次節 §NPC 非対称 + spawn formula
+整備。 (α) は plan §11.13 で **永続却下** (= P1 設計柱と矛盾、 wall_clock = 固有時で coord time
+と無関係)、 5/2 plan §10.1 ✗「pos.t = wall_clock 同期」 と同型却下対象。
+
+### NPC 非対称 + spawn formula 整備 (2026-05-06)
+
+5/2 plan + dead-skip hotfix の延長として、 causality calc 経路を 3 軸で structural 整備。
+plan 正本: [`plans/2026-05-06-npc-asymmetric-causality.md`](plans/2026-05-06-npc-asymmetric-causality.md)。
+
+**3 軸 independent な変更**:
+
+1. **(I) NPC 非対称** [class 軸]: causality calc 全 4 site (= `checkCausalFreeze` / `useGameLoop`
+   self Rule B / `processLighthouseAI` / `computeSpawnCoordTime`) で NPC を peer iteration から
+   skip。 既存 `checkCausalFreeze:592` の docstring 無し片肺 LH skip を完成させる形 (= 5/2 ~ 5/6
+   の間に経緯不明で混入していた hotfix を typed predicate `isNpc(p)` で正規化)。 「**NPC =
+   subordinate、 human を causally 制約しない**」 という gameplay semantics を全 human 経路で uniform 化
+2. **(II''') mean formula + excludeId 撤去 + self 包含** [集約形式]: `computeSpawnCoordTime` を
+   `(min + max) / 2` (midpoint) → `sum / N` (mean) に変更、 `excludeId` 引数撤去で self も
+   virtualPos で寄与。 利点: outlier robustness (= runaway peer 1 つで anchor が引きずられにくい、
+   Bug 14 partial defense) + signature 簡素化 + solo respawn corner case 構造的消滅 (= peers
+   常に non-empty)
+3. **(III) type-level kind field** [表現軸]: `RelativisticPlayer.kind: 'human' | 'npc'` field
+   追加 + `isNpc(player)` typed predicate。 ID prefix runtime check の fragility 解消、 wire
+   format 不変 (= 受信側で id-prefix から derive、 backward compat 完璧)
+
+**5/2 plan §10.4 「LH 特別扱い不要」 との直交性 (= 重要)**:
+- 5/2 §10.4 は **LH 自身の advance ロジック** (= LH が wall_clock-ish にどう追従するか) の議論
+- 本変更 (I) は **LH state が他者の causality 入力に入るか** の議論 (= LH の advance ロジックは
+  不変、 LH は依然 Rule B で human を追う)
+- 両者完全直交、 §10.4 の「LH 特別扱い不要」 結論は LH 自身の挙動について依然 valid
+
+**5/2 plan §4 「死者の二本世界線モデル」 の温存**:
+spawn 計算で dead は引き続き `virtualPos` extension で寄与する (= 過去議論で出た「dead = 死亡時
+spacetime 点固定」 案 (II'') は撤回)。 dead を除外すると alive 群との時刻 split が systemic に
+広がるため、 dead virtual continuation で cluster 同期維持する 5/2 §4 設計を causality calc
+layer で温存。 走行中 Rule A/B (= dead 完全 skip) と spawn 計算 (= dead 包含) の dead 扱い
+asymmetric は **dead の役割の違い** から導出される必然 (= active reaction vs anchor 計算、 plan
+§4.2 で詳述)。 走行中 dead-skip hotfix の **regression mechanism** は「dead-me の virtualPos が
+alive-other の future cone に入って Rule A `l < -threshold` を trigger」 (= 5/2 dead-skip docstring
+明記)、 これは active reaction では起きるが anchor 計算では起きない。
+
+**Bug 14 propagation race との関係**:
+本変更で **LH 経路の伝染を構造的に断つ** (= LH が runaway 状態でも human の Rule B + spawn
+anchor に流出しない)。 残る human ↔ human 軸の伝染は別 plan の L1 plausibility filter で対処、
+本変更は defense-in-depth の一部。 mean formula は alive human runaway 1 outlier に対する partial
+defense として副次的に効く (= 1/N 重みで pull、 midpoint より robust)。
+
+詳細: [`plans/2026-05-06-npc-asymmetric-causality.md`](plans/2026-05-06-npc-asymmetric-causality.md) §1-§5。
+
 ### Bug 10 「全世界凍結」 の真因と fundamental fix
 
 5/2 セッション末、 odakin が「世界全体 + 背景の星屑も止まる」 と詳細観察。 SESSION の Bug 1

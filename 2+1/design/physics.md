@@ -150,6 +150,21 @@ Lighthouse (静止 AI) が誰かの過去光円錐内に落ちたら、最も過
 
 **この誤解を修正に持ち込まないこと**。 `dτ` / `pos.t` の semantics を変える PR / 提案は **基本却下**、 アルゴリズム側で lag を許容する設計にする。
 
+**(α) `now wall_clock` anchor 案の永続却下** (2026-05-06、 `plans/2026-05-06-npc-asymmetric-causality.md` §11.13):
+
+5/2 plan §6 Stage 8 で「(α) `now wall_clock` 自分基準」 が spawn pos.t 案として「plan 推奨」 と書かれていたが、 上記 P1 設計柱と本質矛盾するため **永続却下**:
+
+- (α) は self の wall_clock 値を spawn `pos.t` に流用する設計
+- wall_clock は **固有時** (= `dτ = wall_dt`、 各 player の rest frame での時計) と同期
+- coord time `pos.t = γ × wall_clock` は wall_clock とは別軸 (= 動いた人ほど未来に進む)
+- (α) は proper time / coord time の混同で、 上記表 1 行目「pos.t = wall_clock 同期すべき」 と同じ誤り pattern
+
+5/6 spawn formula は **(γ') `sum / N` (mean)** で確定 (= 全 non-NPC peer の virtualPos.t 平均、 詳細は [`respawnTime.ts`](../src/components/game/respawnTime.ts) docstring + [DESIGN.md §NPC 非対称 + spawn formula 整備](../DESIGN.md))。
+
+**NPC の `pos.t` は human の causality 入力に入らない** (= 同 plan §1.2、 5/6 NPC 非対称設計):
+
+5/6 NPC 非対称 plan で導入された規則として、 NPC (= LH 等) の `pos.t` は human の Rule A / Rule B / spawn 計算 input に **流入しない** (= `isNpc(p)` で全 causality calc 経路で skip)。 P1 設計柱を破らない (= `pos.t = γ × wall_clock` は不変、 NPC 自身の advance ロジックも不変)、 「NPC state が他者の causality に流入するか」 という別軸の filter。 詳細: [`lighthouse.ts:isNpc`](../src/components/game/lighthouse.ts) docstring。
+
 ### Thrust energy: laser と同一プール
 
 プレイヤーの推進 (W/S/A/D + touch thrust) は laser と**同一の energy pool** (`ENERGY_MAX = 1.0`) を消費する。`THRUST_ENERGY_RATE = 1/9` (フル thrust 連続で 9 秒で空)、推力使用率 (`|a| / PLAYER_ACCELERATION`) に比例した消費。energy 不足時は賄える分だけ scale して適用し、残りはカット。recovery は「fire も thrust もしていないとき」のみ (`ENERGY_RECOVERY_RATE = 1/6`)。
