@@ -32,6 +32,7 @@ import {
   LIGHTHOUSE_FIRE_INTERVAL,
   LIGHTHOUSE_HIT_RADIUS,
   LIGHTHOUSE_SPAWN_GRACE,
+  MAX_STABLE_SUB_DTAU,
   MAX_WORLDLINE_HISTORY,
   PLAYER_ACCELERATION,
   THRUST_ENERGY_RATE,
@@ -200,11 +201,29 @@ export function processPlayerPhysics(
 
   const thrustAcceleration = createVector3(ax, ay, 0);
 
-  const frictionX = -me.phaseSpace.u.x * FRICTION_COEFFICIENT;
-  const frictionY = -me.phaseSpace.u.y * FRICTION_COEFFICIENT;
-
-  const acceleration = createVector3(ax + frictionX, ay + frictionY, 0);
-  const evolved = evolvePhaseSpace(me.phaseSpace, acceleration, dTau);
+  // Bug 14 完全治療 (2026-05-06 plan: bug14-global-active-time §2.1):
+  // friction `du/dτ = -k u` (k = FRICTION_COEFFICIENT = 0.5) の semi-implicit Euler は
+  // `Δ < 2/k = 4 sec` 安定境界を持ち、 大 dTau (= mobile background suspend 復帰時の
+  // catchup 等) で爆発する。 mobile 12.5h suspend 復帰時に self.pos.t = 20.37M sec の
+  // runaway を生んだ root cause (= live capture: repro/2026-05-06-bug14-state/)。
+  //
+  // **substep**: dTau を MAX_STABLE_SUB_DTAU (= 0.1 sec、 安定境界の 21x 余裕) 単位に
+  // 分割、 各 substep で friction を current u から再計算 (= u 依存のため必須)。 thrust
+  // は tick 内 constant (= 既存設計、 input-driven)、 substep 跨ぎ不変。 通常 dTau =
+  // 0.008 で N=1 (= no overhead)、 mobile suspend 1h で N=36000 (~2ms)、 24h で N=864000
+  // (~50ms = 1 frame drop on wake、 許容)。
+  //
+  // worldLine append は outer 1 回 (= 後段)、 alpha (= thrust display) は initial u からの
+  // boost (= 既存挙動と等価、 substep 中の中間 u に依存しない display vector)。
+  const N = Math.max(1, Math.ceil(dTau / MAX_STABLE_SUB_DTAU));
+  const subDTau = dTau / N;
+  let evolved = me.phaseSpace;
+  for (let i = 0; i < N; i++) {
+    const frictionX = -evolved.u.x * FRICTION_COEFFICIENT;
+    const frictionY = -evolved.u.y * FRICTION_COEFFICIENT;
+    const acceleration = createVector3(ax + frictionX, ay + frictionY, 0);
+    evolved = evolvePhaseSpace(evolved, acceleration, subDTau);
+  }
 
   // phaseSpace.alpha は **表示専用** (噴射炎強度 / 加速度矢印 / 他 peer への broadcast)。
   // 物理進行 (位置 / 4-velocity 更新) には evolvePhaseSpace 内部の `acceleration` 引数のみ
@@ -290,7 +309,17 @@ export function processLighthouseAI(
   // 死亡中 LH は呼び出し側 (useGameLoop) で既に continue されているため、ここには
   // alive な LH しか来ない。死亡中 LH の phaseSpace.pos.t は死亡時刻で固定されており、
   // 他の死亡プレイヤーと対称的に扱われる (DESIGN.md §物理「スポーン座標時刻」原則 2)。
-  let lhNewPs = evolvePhaseSpace(lh.phaseSpace, vector3Zero(), dTau);
+  //
+  // Bug 14 完全治療 (2026-05-06 plan): 現在 LH は u=0 (= proper accel 0、 friction 不在)
+  // で integrator 不安定性は無いが、 future LH motion variant (= u≠0 に変更する設計
+  // 拡張) 時の forward defense として substep 構造を導入。 N=1 で no overhead、 構造
+  // としての対称性を processPlayerPhysics と揃える。
+  const lhN = Math.max(1, Math.ceil(dTau / MAX_STABLE_SUB_DTAU));
+  const lhSubDTau = dTau / lhN;
+  let lhNewPs = lh.phaseSpace;
+  for (let i = 0; i < lhN; i++) {
+    lhNewPs = evolvePhaseSpace(lhNewPs, vector3Zero(), lhSubDTau);
+  }
 
   // Rule B (= 因果律対称ジャンプ): LH が誰かの過去光円錐内に落ちたら、 全 peer の
   // virtualPos を計算し、 全 cone から脱出する λ_exit max まで u^μ 方向に advance。

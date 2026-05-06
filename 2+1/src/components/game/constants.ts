@@ -320,6 +320,27 @@ export const CAUSAL_FREEZE_HYSTERESIS = 2.0; // ヒステリシス: 既に凍結
 export const GAME_LOOP_INTERVAL = 8; // ms
 export const PROCESSED_LASERS_CLEANUP_THRESHOLD = 500;
 
+// --- Bug 14 完全治療: global active time + integrator stability ---
+// 詳細: plans/2026-05-06-bug14-global-active-time.md
+//
+// LARGE_GAP_THRESHOLD_SEC: useGameLoop の selfActive 判定 + (旧仕様の dTau cap 提案で
+// 議論された) 「異常 gap」 境界。 desktop hidden 1Hz throttle (= 通常 rawDTau ≤ 1 sec) の
+// 2x 余裕で、 これ以下なら 「self の event loop は普通の cadence で fire していた」 と
+// 判定。 selfActive ≡ !document.hidden ∧ rawDTau < LARGE_GAP_THRESHOLD_SEC で 「現在 visible
+// かつ loop も普通に回っていた」 を表現。
+export const LARGE_GAP_THRESHOLD_SEC = 2;
+
+// MAX_STABLE_SUB_DTAU: processPlayerPhysics / processLighthouseAI 内部 substep の上限。
+// 数値解析的根拠: 純 friction `du/dτ = -ku` (k = FRICTION_COEFFICIENT = 0.5) の semi-implicit
+// Euler 安定境界は `|1 - kΔ| < 1` ⟺ `Δ < 2/k = 4 sec`。 高 γ 領域の Lorentz boost
+// amplification を考慮すると `k_eff ≈ γ × k`、 γ_max = 1.886 で `Δ < 2.11 sec`。
+// MAX_STABLE_SUB_DTAU = 0.1 は最厳条件の 21x 余裕、 通常境界の 40x 余裕。
+//
+// 通常 dTau (= 0.008 sec) で N = ceil(dTau / 0.1) = 1、 overhead 0。 mobile suspend 1h
+// (dTau = 3600 sec) で N = 36000、 ~2ms execution。 24h で N = 864000、 ~50ms (= wake 時
+// 1 frame drop、 許容)。 N cap せず scientific correctness を維持。
+export const MAX_STABLE_SUB_DTAU = 0.1; // sec
+
 // --- Pending events caps ---
 export const MAX_PENDING_SPAWN_EVENTS = 50;
 

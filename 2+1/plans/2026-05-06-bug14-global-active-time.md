@@ -1,0 +1,234 @@
+# Bug 14 完全治療: global active time + integrator stability
+
+**Date**: 2026-05-06
+**Status**: 進行中
+**Trigger**: Bug 14 live capture ([`repro/2026-05-06-bug14-state/`](../repro/2026-05-06-bug14-state/), commit `4abdf26`) で `self.pos.t = 20.37M sec` runaway を観測。 12.5h background suspend + LH ratchet 仮説完全否定 + alive human 単独 runaway が真因経路と確定。
+
+**設計柱**: ユーザー 2 原則を 1 つの構造で表現:
+- **P1**: 誰も active でない時間 → 全員 skip (= 数値肥大化防止)
+- **P2**: 誰か active な時間 → 全員進める (= 因果律 split / Rule A 凍結 / Rule B 跳躍 防止)
+
+両者を `globalActive ≡ selfActive ∨ ∃peer: peerActive` の存在量化命題で表現、 既存 `lastUpdateTimeRef` infrastructure で **完全 local 計算可能** (= 分散合意不要)。
+
+---
+
+## §1 RCA: 5 層分析の最深層
+
+| 層 | 内容 |
+|---|---|
+| L1 (近因) | 物理が爆発 (= `self.pos.t = 20.37M sec`) |
+| L2 (timing) | `dTau` が巨大化 (= 1 tick で 12.5h) |
+| L3 (architecture) | `lastTimeRef` が loop fire に依存、 mobile 完全 suspend で reset 走らず |
+| **L4 (clock semantic)** | 既存 `if (document.hidden) return` は **per-client active time** ≡ `performance.now()` 流の semantic で、 P2 (= 「peer active なら自機も進める」) と直接矛盾 |
+| **L5 (mathematical)** | `evolvePhaseSpace` の semi-implicit Euler + multiplicative friction は `dτ > 2/k = 4 sec` で **unconditionally 不安定** (`newU = u(1-kΔ)` の係数が ±1 を逸脱) |
+
+L4 + L5 を同時に治す。
+
+---
+
+## §2 設計
+
+### §2.1 Layer 5: integrator 内部 substep
+
+**core idea**: `processPlayerPhysics` / `processLighthouseAI` 内部で `dTau` を `MAX_STABLE_SUB_DTAU = 0.1 sec` 単位に **substep**、 各 substep で friction を current `u` から再計算。
+
+**stability 数値解析**:
+- 純 friction `du/dτ = -ku` の Euler 安定境界: `|1 - kΔ| < 1` ⟺ `Δ < 2/k = 4 sec` (k=0.5)
+- 高 γ 領域での Lorentz boost amplification: `k_eff ≈ γ × k`、 γ_max = 1.89 で `Δ < 2.11 sec`
+- `MAX_STABLE_SUB_DTAU = 0.1` は最厳条件の **21x 余裕** + 通常境界の 40x 余裕
+
+**実装方針**:
+- thrust acceleration は tick 内 constant (= 既存設計、 input-driven、 substep 跨ぎ不変)
+- friction は per-substep 再計算 (= u 依存のため必須)
+- `worldLine` append は **outer 1 回のみ** (= 大 dTau での history flooding 防止、 intermediate state は transient)
+- thrust energy consumption は full dTau で 1 回計算 (= 既存挙動と等価)
+
+**execution time**:
+- 通常 (dTau=0.008): N=1, overhead 0
+- mobile suspend 1h (dTau=3600): N=36000, ~2ms (1 frame drop なし)
+- mobile suspend 24h (dTau=86400): N=864000, ~50ms (1 frame drop、 wake 時 1 回限り、 許容)
+- N cap 不要 (= linear cost で素直に積分、 cap は scientific correctness を犠牲にする)
+
+### §2.2 Layer 4: globalActive ベース dTau
+
+**core idea**: 既存 `if (document.hidden) return` を以下の早期 return に置換:
+
+```typescript
+const prevLastTime = lastTimeRef.current;
+const currentTime = Date.now();
+const rawDTau = (currentTime - prevLastTime) / 1000;
+lastTimeRef.current = currentTime;
+
+const selfActive = !document.hidden && rawDTau < LARGE_GAP_THRESHOLD_SEC;
+const peerActive = anyPeerBroadcastedSince(prevLastTime);
+const globalActive = selfActive || peerActive;
+
+if (!globalActive) return;  // P1: skip when nobody active
+
+const dTau = rawDTau;  // P2: integrate full active gap (substepped in physics)
+```
+
+**`selfActive` の論理**: `!document.hidden ∧ rawDTau < threshold` (両条件必須):
+- `!document.hidden` だけだと lag spike (= main thread 詰まり) で誤って active 判定
+- `rawDTau < threshold` だけだと desktop hidden 1Hz throttle で誤って active 判定
+- 両 AND で 「**document visible かつ loop が普通に回っていた**」 を表現
+
+**`peerActive` の論理**:
+```typescript
+const peerActive = Array.from(stale.lastUpdateTimeRef.current.entries())
+  .some(([id, t]) => id !== myId && !isLighthouse(id) && t > prevLastTime);
+```
+
+`!isLighthouse` 除外理由: host が `processLighthouseAI` 内で毎 tick `lastUpdateTimeRef[lhId] = currentTime` を内部 update する設計 ([useGameLoop.ts:580](../src/hooks/useGameLoop.ts#L580))。 self-as-host のとき LH 経路で self-trigger を起こすため除外、 host 自身の player ID broadcast (= 通常 phaseSpace) が canonical witness。
+
+**LARGE_GAP_THRESHOLD_SEC = 2 sec**: desktop hidden 1Hz throttle (= rawDTau ≤ 1 sec) の 2x 余裕。
+
+### §2.3 mutual amplification 防止: `selfActive` flag in broadcast
+
+**問題**: 両者 hidden 時に互いの broadcast を活動 witness と誤検出 → 自己強化的に integrate + broadcast を継続 → P1 違反 (= 全員 hidden なのに進む)。
+
+**Fix**: `phaseSpace` / `respawn` message に `selfActive: boolean` field 追加、 receiver は `msg.selfActive === true` の場合のみ `lastUpdateTimeRef` 更新。
+
+```typescript
+// Sender (gameLoop broadcast site):
+sendToNetwork({
+  type: "phaseSpace" as const,
+  senderId: myId,
+  position: newPs.pos,
+  velocity: newPs.u,
+  heading: newPs.heading,
+  alpha: newPs.alpha,
+  selfActive,  // ← 追加
+});
+
+// Receiver (messageHandler.ts):
+const isWitness = msg.selfActive ?? true;  // 旧 build fallback
+if (isWitness) {
+  lastUpdateTimeRef.current.set(playerId, now);
+}
+// lastCoordTimeRef は selfActive 不問で update (= gap 検知のため必要)
+```
+
+**両者 hidden の収束証明**:
+- T=10 同時 hidden、 直前 broadcast は selfActive=true
+- T=10 hidden tick: lastUpdate[other]=10 > prev=9.98 で `peerActive=true` → integrate + broadcast (selfActive=false)
+- 受信側: selfActive=false → lastUpdate **更新せず** (= stale at T=10 のまま)
+- T=11 hidden tick: lastUpdate[other]=10 > prev=10 = **false** → `peerActive=false` → `globalActive=false` → **skip** ✓
+- 1-2 tick で収束
+
+**hidden + active 場合の view 連続性**: hidden side も broadcast 継続 (selfActive=false で flag のみ off)、 active side は peer の view を fresh に保つ → un-hide 時の pos.t jump 無し ✓
+
+### §2.4 既存 Rule B との関係
+
+**WebRTC died 経路のみ false negative**:
+- mobile long suspend で WebRTC connection 切断 → 自機側 lastUpdate 更新されず → peerActive=false で skip
+- reconnect 後、 fresh broadcast で peer.pos.t が一気に進んでいるのが見える → **既存 Rule B が catchup** (= `design/network-recovery.md` の正常経路)
+
+**これは絆創膏ではない**: Rule B は state divergence recovery のための設計柱、 本 plan は Rule B の発火頻度を **削減** する (= mutual hidden case で発火しなくなる、 active case で発火しなくなる)、 残る WebRTC died case のみ Rule B に明示的 fallback。
+
+### §2.5 後方互換
+
+旧 build から受信した broadcast は `selfActive` field 不在 → `msg.selfActive ?? true` の fallback で **active witness 扱い** (= 現行 unconditional 更新と等価)。 deploy 期間中の mixed build session で旧仕様の mutual amplification は旧 build 同士でのみ発生、 全員新 build に揃えば構造的消滅。
+
+---
+
+## §3 各シナリオ検証 (= §2 設計が 9 case 全 OK)
+
+| シナリオ | document.hidden | rawDTau | selfActive | peerActive | dTau | 動作 |
+|---|---|---|---|---|---|---|
+| 通常 active play | false | 0.008 | true | (irr) | 0.008 | 進む ✓ |
+| solo lag 0.5s | false | 0.5 | true | none | 0.5 | 進む ✓ |
+| solo 5s 詰まり | false (now) | 5 | **false** | none | 0 | skip ✓ (P1) |
+| solo 1h 放置 | false (now) | 3600 | false | none | 0 | skip ✓ (P1) |
+| desktop hidden + peer active | true | 1 | false | true | 1 | 進む ✓ (P2) |
+| desktop hidden + 全 peer hidden | true | 1 | false | false | 0 | skip (1-2 tick 収束) ✓ |
+| mobile suspend + peer active (WebRTC alive) | false (now) | 3600 | false | true | 3600 | substep ~2ms ✓ (P2) |
+| mobile suspend + peer active (WebRTC dead) | false (now) | 3600 | false | false | 0 | skip → reconnect で Rule B ✓ |
+| mobile suspend + 全 peer 同時 suspend | false (now) | 3600 | false | false | 0 | skip ✓ (P1) |
+
+---
+
+## §4 既存システム互換性
+
+| システム | 影響 | 検証 |
+|---|---|---|
+| Rule A (凍結) | 自然 advance で split が消える → 発火頻度↓ | 改善 ✓ |
+| Rule B (跳躍) | active 経路で発火頻度↓、 WebRTC died case で明示的活用 | 既存設計柱と整合 ✓ |
+| beacon migration | lastUpdateTimeRef は per-peer-id、 beacon role と独立 | 影響無し ✓ |
+| snapshot apply | 全 peer の lastUpdate を recent 化 (= [snapshot.ts:244](../src/components/game/snapshot.ts#L244))、 transient false positive だが joiner の prev 進行で自然解消 | 影響無し ✓ |
+| host migration | 旧 host の lastUpdate stale 化、 新 host broadcast で更新再開 | 影響無し ✓ |
+| stale detection | lastUpdateTimeRef の意味は不変 (= broadcast 受信 timestamp)、 selfActive flag で「activity witness としてカウントするか」 のみ変更 | 影響無し ✓ |
+| 既存 test | `messageHandler.test.ts` の phaseSpace migration 4 test は selfActive 未指定 → fallback `true` で pass、 selfActive=false 用 test 追加 | 影響軽微 ✓ |
+
+---
+
+## §5 Stage 分割
+
+1. **Stage 1**: `LARGE_GAP_THRESHOLD_SEC = 2` + `MAX_STABLE_SUB_DTAU = 0.1` constants in [`constants.ts`](../src/components/game/constants.ts)
+2. **Stage 2**: `processPlayerPhysics` 内部 substep + per-substep friction 再計算 ([`gameLoop.ts:97-233`](../src/components/game/gameLoop.ts))
+3. **Stage 3**: `processLighthouseAI` の `evolvePhaseSpace(lh.phaseSpace, vector3Zero(), dTau)` を substep 化 ([`gameLoop.ts:293`](../src/components/game/gameLoop.ts))
+4. **Stage 4**: `useGameLoop.ts:187-194` の `if (document.hidden) return` を `globalActive` 早期 return に置換、 `selfActive` 計算
+5. **Stage 5**: `phaseSpace` / `respawn` message type に `selfActive?: boolean` 追加 ([`message.ts`](../src/types/message.ts))、 broadcast site で `selfActive` flag 送出 ([`useGameLoop.ts:688-695, 760-767`](../src/hooks/useGameLoop.ts))
+6. **Stage 6**: `messageHandler.ts:185, 338` で `lastUpdateTimeRef` 更新を `msg.selfActive ?? true` で gate
+7. **Stage 7**: tests
+   - `mechanics.test.ts` 拡張: `evolvePhaseSpace` の dTau=45000 friction-only 安定性 (substep 経由)
+   - `useGameLoop.activity.test.ts` 新規 (or 既存 hook test に追加): 9 シナリオ x selfActive flag
+   - `messageHandler.test.ts`: selfActive=false 時 lastUpdate 不変 / undefined 時 fallback true
+8. **Stage 8**: localhost 模擬 — `lastTimeRef -= 3600` 注入 + peer mock で 3 シナリオ動作確認、 odakin に localhost URL 提示
+9. **Stage 9**: docs
+   - `design/physics.md`: 「dτ = global active time delta」 を P1 設計柱の clarification として追記
+   - `design/state-ui.md`: `if (document.hidden) return` 説明を新設計に更新
+   - `design/network-recovery.md`: WebRTC died case の Rule B fallback を明示
+   - `design/meta-principles.md` §M43: 「dτ semantic は global active time、 per-client active time も per-client wall clock も近似でしかない」
+10. **Stage 10**: `SESSION.md` Bug 14 entry を 完全治療 mark + plan close
+
+---
+
+## §6 risks / 却下した代替案
+
+### §6.1 ✗ `Date.now()` → `performance.now()` 切替
+
+**主張案**: clock を mobile suspend で凍結する `performance.now()` に切替、 `if (document.hidden) return` 維持。
+
+**却下根拠**: per-client active time semantic になり P2 違反 (= peer active でも自機 hidden で時間止まる、 因果 split で Rule B 跳躍頻発)。 ユーザー 2 原則 §「誰かアクティヴな時間分は進めないと時間が split する」 と矛盾。
+
+### §6.2 ✗ broadcast 完全 suppress (hidden 中)
+
+**主張案**: hidden 時 broadcast せず。
+
+**却下根拠**: hidden + active peer case で peer の view が stale 化、 un-hide 時に pos.t jump → Rule B 発火。 §2.3 の `selfActive` flag は broadcast 継続しつつ witness のみ off に倒す superior design。
+
+### §6.3 ✗ Substep に N cap
+
+**主張案**: substep 数を `N_max = 1000` 等で cap、 残り dTau は discard。
+
+**却下根拠**: cap した場合の substep size が安定境界を逸脱する場合あり、 substep の安定性保証が壊れる。 N 線形コスト ~50ms@24h で実用充分、 cap 不要。 真に大き過ぎる dTau は §2.4 Rule B fallback で対処。
+
+### §6.4 ✗ 分散合意プロトコル (Paxos / vector clock)
+
+**主張案**: 全 peer の active 状態を分散合意で取得。
+
+**却下根拠**: 我々が答える質問は historical existential (= 過去区間内に誰か broadcast したか) で local message log の existence check で決定可能 (= §「local 計算可能性」 の verification)。 round-trip 不要、 schema 拡張も最小 (= `selfActive` 1 boolean)。
+
+### §6.5 ✗ post-suspend handshake (将来課題)
+
+**主張案**: wake 時 reconnect で peer に 「私の suspend 中、 あなた active だった?」 を問い合わせる。
+
+**defer 根拠**: 現 plan は local で検出可能な範囲を完全 optimal にカバー、 検出不能 case は Rule B fallback。 handshake は L4 設計の上に乗る増分機能、 backbone 不変なため後付け可能。 別 plan で対処。
+
+---
+
+## §7 References
+
+- [`SESSION.md`](../SESSION.md) Bug 14 entry — live capture finding + 仮説変遷
+- [`repro/2026-05-06-bug14-state/`](../repro/2026-05-06-bug14-state/) — 12.5h suspend + alive human 単独 runaway の実機 evidence
+- [`design/physics.md`](../design/physics.md) — dτ = wall_dt の P1 設計柱
+- [`design/network-recovery.md`](../design/network-recovery.md) — Rule B catchup 経路
+- [`design/meta-principles.md`](../design/meta-principles.md) — §M41 (β/γ diagnostic)、 §M42 (ring buffer GC)、 追加 §M43 候補
+- [`plans/2026-05-02-causality-symmetric-jump.md`](2026-05-02-causality-symmetric-jump.md) — Rule B 設計 + §11.6 λ cap 却下根拠 (= 本 plan の L0 dTau cap 却下と独立)
+- [`plans/2026-05-06-npc-asymmetric-causality.md`](2026-05-06-npc-asymmetric-causality.md) — NPC 経路の伝染遮断、 本 plan の前提として完了
+- [`src/hooks/useGameLoop.ts`](../src/hooks/useGameLoop.ts) — gameLoop fire site、 visibility check + broadcast
+- [`src/components/game/gameLoop.ts`](../src/components/game/gameLoop.ts) — `processPlayerPhysics` + `processLighthouseAI`
+- [`src/components/game/messageHandler.ts`](../src/components/game/messageHandler.ts) — `lastUpdateTimeRef` 更新 site
+- [`src/types/message.ts`](../src/types/message.ts) — message schema
+- [`src/components/game/constants.ts`](../src/components/game/constants.ts) — physics constants
