@@ -336,6 +336,21 @@ export const LARGE_GAP_THRESHOLD_SEC = 2;
 // substep 不要、 安全 margin constant 不要。 詳細: physics/mechanics.ts +
 // claude-config/conventions/scientific-computing.md §2。
 
+// LONG_GAP_RESYNC_THRESHOLD_SEC: rawDTau がこの閾値を超えたら **wake-from-suspend** と
+// 判定して BH に snapshotRequest を送信、 既存 snapshot mechanism で event 系 state
+// (= killLog / respawnLog / displayNames) を sync。 self.phaseSpace.pos.t は applySnapshot
+// 内 isMigrationPath logic で local 優先のまま (= Rule B catchup が後段で同期、 設計柱
+// 「sync = snapshot、 causal divergence = Rule B」 の責務分離と整合)。
+//
+// 閾値 = 10 sec の根拠: 通常 lag spike (= GC pause / debugger break) は ~5 sec 以内、
+// LARGE_GAP_THRESHOLD_SEC = 2 sec の selfActive 判定との間に余白を持たせて誤発火を
+// 抑制。 mobile suspend は通常 数分以上で 10 sec 余裕で超過。
+//
+// 詳細: plans/2026-05-06-bug14-global-active-time.md §6.5、
+// claude-config/conventions/debugging-discipline.md §4 (= sibling audit) で発見した
+// 4 層モデル違反 fix の延長で本 trigger 実装。
+export const LONG_GAP_RESYNC_THRESHOLD_SEC = 10;
+
 // --- Pending events caps ---
 export const MAX_PENDING_SPAWN_EVENTS = 50;
 
