@@ -995,3 +995,189 @@ ALWAYS_ON_TOP 撤去計画時:
 本 entry は LorentzArena 1 事例から抽出。 相対論 simulation / visualization リポ (= twcu-phys-* の物理研究 / 教科書 project / forward-scattering) で 2 件目発生したら、 [`claude-config/conventions/scientific-computing.md`](../../claude-config/conventions/scientific-computing.md) に「相対論 visual effect の cause 分離」 として promote 検討。 現時点では LorentzArena meta-principles に留める ([`work-discipline.md L177`](../../odakin-prefs/work-discipline.md))。
 
 ---
+### M35. NPC 非対称 causality: subordinate class は他者を制約しない
+
+**ルール**: NPC (= subordinate class、 LH / 隕石 / ボス等) の `pos.t` は human の causality 計算 (= Rule A / Rule B / spawn 時刻) の **入力に入れない**。 逆に human の `pos.t` は NPC の causality 計算 (= NPC が human を追う側) に通常通り入力される。 NPC は「物理シミュレーションの一部」 で、 「他者の inertial frame に対する優先 reference」 ではない。
+
+**なぜ non-trivial**: 5/2 plan §10.4 では「LH 特別扱い不要」 と結論されていた (= LH を Rule A/B 対称設計に組み込めば自動的に wall_clock-ish に収束)。 しかし 5/2 ~ 5/6 の間に経緯不明の片肺 LH skip が `checkCausalFreeze` に混入、 Rule A だけ非対称化された不整合状態が続いていた。 本 entry は「**§10.4 は LH 自身の advance ロジックの議論、 NPC 非対称は LH state が他者の入力に入るかの議論で完全直交**」 という直交性を明示し、 残り Rule B + spawn 計算にも片肺非対称を completing する。
+
+**実装 site (= 全 4 site で uniform skip)**:
+- `checkCausalFreeze` (= human の Rule A): `if (isNpc(p)) continue;`
+- `useGameLoop` self Rule B (= human の causal jump): 同上 (NEW 2026-05-06)
+- `processLighthouseAI` Rule B (= NPC 同士の循環防止): 同上 (= 既存 LH skip を `isNpc` 統一)
+- `computeSpawnCoordTime` (= spawn 時刻 anchor): 同上 (NEW 2026-05-06)
+
+**type-level discriminator** (= M37 と相補): `RelativisticPlayer.kind: 'human' | 'npc'` field + `isNpc(player) = player.kind === 'npc'` で表現。 ID prefix runtime check (= `isLighthouse(id)`) と意味的に分離、 LH-specific 経路 (= 色 / hit radius / 名前 / render dispatch / score) は引き続き `isLighthouse(id)` を使う。
+
+**Bug 14 propagation race との関係**: NPC 経由の伝染を構造的に断つ (= LH が runaway 状態でも human の Rule B + spawn anchor に流出しない)。 alive human runaway 経路は本 entry では対処しない (= 別 plan の L1 plausibility filter)。
+
+#### 関連メタ原則
+
+- M3 (純関数で書けないか): NPC 非対称は「class 軸の filter を共通 predicate `isNpc` で uniform 化」、 4 site で同じ filter を呼ぶ pure pattern
+- M25 (state 単一化): `isNpc` predicate は `kind` field 単一 source、 ID prefix と並存させない (= type-level discriminator が canonical)
+
+#### claude-config promote 判定
+
+本 entry は LorentzArena 固有 (= NPC class が gameplay 上 subordinate という設計判断は当 game に依存)。 他リポで NPC class が登場することは無いため、 promote しない。 但し「subordinate class が causality / state propagation で skip される」 一般 pattern として、 multi-agent シミュレーション系リポで類似 design choice が出れば LorentzArena 経験値として参照可。
+
+---
+
+### M36. Mean vs midpoint in spread aggregation: outlier robustness
+
+**ルール**: peer 群の coord time / position spread を aggregate して「cluster center」 を出す formula で、 `(min + max) / 2` (midpoint) より `sum / N` (mean) が outlier に robust。 通常 cluster (= 同 cluster 内 N peer) では同値、 runaway peer / accidental outlier 1 個に対しては mean が 1/N 重みで pull、 midpoint は extremum full sensitivity で pull される。
+
+**数値例**:
+- cluster {10, 11, 12} + outlier {100}:
+  - midpoint: (10 + 100) / 2 = **55** (= outlier に full pull)
+  - mean: (10+11+12+100) / 4 = **33.25** (= 1/N=1/4 重み、 cluster 寄り)
+- 通常 cluster {10, 11, 12}:
+  - midpoint = mean = **11** (= 同値)
+
+**実装転換 (= 2026-05-06)**: `computeSpawnCoordTime` を `(min+max)/2` (= 4/28 fix `3ba639a` の Stage 8 (γ) 案) → `sum/N` (= (γ') 案) に migration、 outlier robustness を獲得。 通常 plays で挙動差なし、 outlier scenario (= Bug 14 alive human runaway peer 等) で mean が partial defense として効く。
+
+**併せて signature 簡素化**: `excludeId` 引数を撤去、 self も他 peer と対等に virtualPos で寄与する設計に統一。 これにより solo respawn corner case (= self 死 + 他 alive 不在 + LH のみ → peers 配列空) で fallback 経路が trigger されない (= self_dead が常に peers に居る)、 fallback 構造の structural 消滅を達成。
+
+**Why**: midpoint が直感的に「中点」 で美しいが、 cluster 平均化の semantics には mean が natural。 N peer の対等な寄与で cluster center を出すのが mean、 extremum 2 点だけ見るのが midpoint で意味論が違う。 N=2 では同値だが N≥3 で意味的に乖離する。
+
+#### 関連メタ原則
+
+- M27 (多層 RCA): outlier robustness の獲得は新 Bug 14 mitigation 層、 既存 NPC skip 層 (= M35) と併せて defense-in-depth
+- M29 (絆創膏剥がしの pre-audit): excludeId 撤去は既存 fallback 構造の絆創膏剥がし、 self を virtualPos で寄与させる新設計が pre-audit (= solo respawn の連続性) を満たしてから実施
+
+#### claude-config promote 判定
+
+本 entry は spread aggregation の universal pattern。 他の cluster center 計算 (= 学術データ集計 / scheduling 中央値 / 等) で midpoint / mean / median の選択が question になる場面で参照可。 但し LorentzArena 内 plan §1.3 の数値検証で sufficient なため、 別 plan で 2 件目発生したら [`claude-config/conventions/scientific-computing.md`](../../claude-config/conventions/scientific-computing.md) に promote 検討。 現時点では LorentzArena に留める。
+
+---
+
+### M37. Type-level discriminator field for class-based filter
+
+**ルール**: ID prefix string check (= `id.startsWith("lighthouse-")`) で class 判定する pattern を、 entity type に **`kind: 'A' | 'B'` discriminator field** + typed predicate で置換。 ID convention drift で causality / filter semantics が黙って動作変更する fragility を解消、 type-level の意味分離を確立。
+
+**問題 (= ID prefix runtime check の fragility)**:
+- ID 命名規約が変わると全 `isXxx(id)` 経路が黙って動作変更 (= silent regression)
+- 型から「これ class A かもしれない」 が見えない、 全 caller が runtime check 必須
+- 同義 predicate (= `isLighthouse(id)` と `isNpc(id)`) が「現時点で同値」 という coincidence で統合されやすく、 将来の class 拡張で誤動作する risk
+
+**解決 (= 2026-05-06 実装)**:
+```ts
+// types.ts:
+type RelativisticPlayer = {
+  id: string;
+  kind: 'human' | 'npc';  // ← discriminator field
+  ...
+};
+
+// lighthouse.ts:
+export const isNpc = (player: RelativisticPlayer): boolean =>
+  player.kind === 'npc';
+```
+
+`isLighthouse(id)` (= LH 固有 identity 判定、 ID prefix 由来) は維持、 `isNpc(player)` (= causality skip class、 typed) を別軸として共存。 現時点で両者同値だが意味的に別軸。
+
+**Wire format への影響**: `kind` は wire (= snapshot / phaseSpace message) に乗せず、 受信側で id-prefix から derive (= `isLighthouse(msg.id) ? 'npc' : 'human'`)。 旧 client との backward compat 完璧、 protocol 変更ゼロ。
+
+**Why** (= 2 つの利点):
+1. **future-proof**: 将来 NPC 種が増えた時 (= 隕石 / ボス) は `kind` に値追加 + `isNpc` を OR 拡張、 `isLighthouse` 経路 (= LH-specific 色 / hit radius / score) は不変、 LH-specific 経路と NPC 一般経路が混ざらない
+2. **explicit**: 型を見れば「class A かもしれない」 が分かる、 TS narrowing で compile-time 検査も可能
+
+**統合禁止** (= plan §11.1): 「現時点で同義だから `isLighthouse` を `isNpc` で全置換しよう」 という単純化提案を **却下**。 半年後の class 拡張で LH-specific 経路に NPC 一般 ルールが流出する risk、 grep で経路を分離できなくなる。 詳細: `~/Claude/LorentzArena/2+1/plans/2026-05-06-npc-asymmetric-causality.md §11.1`。
+
+#### 関連メタ原則
+
+- M25 (state 単一化): `kind` field は class 判定の single source、 ID prefix と並存させない
+- M28 (cohesive prop の一括渡し): player creation 5 site で `kind: isLighthouse(id) ? 'npc' : 'human'` を統一形式で初期化、 ad-hoc な derive 散在を防ぐ
+
+#### claude-config promote 判定
+
+本 entry は class-based filter pattern の universal applicable insight。 但し具体例 (= LH NPC) は LorentzArena 固有。 他リポで discriminated union vs runtime check の選択が question になる場面で 2 件目出たら、 [`claude-config/CONVENTIONS.md`](../../claude-config/CONVENTIONS.md) または `convention-design-principles.md` に promote 検討。 現時点では LorentzArena に留める。
+
+---
+
+### M38. (α) wall_clock anchor 案 = proper time / coord time の混同で永続却下
+
+**ルール**: spawn / respawn 時刻として「self の wall_clock 値を直接使う」 案 (= 5/2 plan §6 Stage 8 の (α) 案) は P1 設計柱と本質矛盾するため **永続却下**。 wall_clock は **固有時** (= `dτ = wall_dt`、 各 player の rest frame での時計) と同期、 coord time `pos.t = γ × wall_clock` は wall_clock とは別軸 (= 動いた人ほど未来に進む)。 (α) は proper time / coord time の混同。
+
+**経緯**: 5/2 plan §6 Stage 8 で 4 案 (α / β / γ / δ) を比較、 当時の plan 推奨は (α) `now wall_clock` 自分基準、 但し実機未検証で deferred。 5/6 NPC 非対称 plan の議論中、 odakin が「**wall_clock はつねに固有時と同期。 世界時刻とは一切関係ない**」 と push back、 (α) は P1 設計柱矛盾と即時判明。 5/2 plan §10.1 ✗「pos.t = wall_clock 同期」 と同型却下対象 (= [`design/physics.md`](physics.md) で「Claude が複数回再発した誤った fix 提案」 と明記済の pattern)。
+
+**正しい spawn formula**: 5/6 (γ') `sum / N` (= mean of all non-NPC peer virtualPos.t) で確定、 詳細は [`respawnTime.ts`](../src/components/game/respawnTime.ts) docstring + DESIGN.md §NPC 非対称 + spawn formula 整備。
+
+**Why 永続却下**: P1 設計柱を破棄する game design pivot が無い限り (α) は永続的に invalid。 「動いた人ほど pos.t が未来に進む」 という per-player coord time の semantics が本ゲームの core design choice、 wall_clock anchor はこの semantics を破る。
+
+#### 関連メタ原則
+
+- design/physics.md §pos.t の物理的意味 と「再発防止メモ」 の同型却下 (= 「全 player で wall_clock 同期」 / 「dτ = wall_dt / γ」 の 2 件と同 pattern)
+- M2 (対症療法 vs 根治): (α) は spawn time 算出の表面的解、 真因 (= per-player coord time gap の蓄積) は別 layer (= Rule A/B convergence) で解決すべき
+
+#### claude-config promote 判定
+
+本 entry は LorentzArena 固有 (= per-player coord time semantics は本ゲームの design choice)。 但し「proper time / coord time / wall_clock の混同」 一般 pattern は相対論 simulation 共通。 教科書 project / forward-scattering 等で類似 question が出たら [`design/physics.md §pos.t の物理的意味`](physics.md) への引用を検討、 promote は不要。
+
+---
+
+### M39. dead 扱いの asymmetric: active reaction vs anchor 計算
+
+**ルール**: 死亡 player の「causality 計算への寄与」 は経路別に異なる扱いをする:
+- **走行中 Rule A/B** (= active causality reaction): dead を **完全 skip**
+- **spawn 時刻計算** (= anchor 計算): dead を **virtualPos extension で寄与**
+
+両者は **dead の役割の違い** から導出される必然 asymmetric、 ad-hoc ではない。
+
+**Why (= 走行中 dead-skip の regression mechanism)**:
+- alive other がいる場面で、 dead-me の `virtualPos` が wall_dt 経過と共に未来へ drift
+- alive other 視点で「dead-me は自分の未来 timelike」 と判定 → Rule A (`checkCausalFreeze`) が `l < -threshold` を trigger → alive other が causally frozen
+- gameplay 上 unacceptable (= 死んでる相手に生きてる自分が凍結される)
+- 5/2 dead-skip hotfix で走行中 Rule A/B から dead を除外、 active reaction 経路では「dead = 退場」 として扱う
+
+**Why (= spawn 計算で dead 包含 が必要)**:
+- spawn 計算は anchor 計算で active reaction ではない、 上記 regression が triggering しない
+- dead を spawn 計算からも除外すると alive 群が wall_dt で advance を続ける一方 dead は寄与しない
+- 多数死亡 / 復活サイクルで時刻 split が systemic に広がる
+- dead を virtualPos で寄与させれば、 死者の virtual continuation が cluster と一緒に drift、 cluster 同期維持
+
+**5/2 plan §4 「死者の二本世界線モデル」 の射程確定**: §4 の `pos + u·τ` uniformity は **alive / stale / dead 全状態統一**を提案していたが、 dead-skip hotfix で走行中で破棄、 spawn 計算でのみ温存、 という 2 状態 + dead 別扱いの asymmetric が 5/6 で確定。 render layer (= DeathMarker / DeadShipRenderer) は別 concern として `W_D(τ_0)` parametric を継続使用 (= 観測者の past cone が x_D に届く時の visualization、 W_D parametric は数式 device で「dead が動いてる」 訳ではない)。
+
+**過去の混乱と整理 (= 2026-05-06 plan §1.6 trail)**:
+- (II) dead = 死亡時 spacetime 点固定 案: 「render と causality calc で frozen を統一」 framing で提案 → render が実は W_D 使っていた false premise で撤回
+- (II'') dead を spawn 計算でも完全除外 案: 「走行中 dead-skip を spawn にも completing」 framing で提案 → odakin 「時刻 split が広がる」 指摘で撤回
+- (II''') dead を virtualPos で寄与維持 案: 5/2 plan §4 を causality calc layer で温存、 走行中 / spawn の asymmetric を「dead の役割の違い」 から正当化 → 確定
+
+#### 関連メタ原則
+
+- M27 (多層 RCA): 走行中 vs spawn の asymmetric は「同じ dead でも layer 別の役割で異なる扱い」 = 多層分離原則の dead-specific 適用
+- M35 (NPC 非対称): 同じ「subordinate class skip」 pattern で、 class 軸 (= NPC) は uniform skip、 state 軸 (= dead) は use case で正当化される asymmetric、 二軸独立
+
+#### claude-config promote 判定
+
+本 entry は LorentzArena 固有 (= dead state の取り扱いは当 game の design choice)。 但し「同じ entity を layer 別の role で異なる扱いをする」 一般 pattern は universal、 多層 RCA + 役割分離の好例として LorentzArena 内に保持。 promote は不要。
+
+---
+
+### M40. 構造的 constraint (= friction / cap / bound) を runaway claim 前に確認
+
+**ルール**: 「value X が runaway する」 「Y が arbitrary に大きくなる」 等の claim を立てる前に、 該当 value の **構造的 upper / lower bound** を grep + 計算で確認。 摩擦係数 / friction model / energy bound 等の game / system 設計上の制約を見落とさない。
+
+**LorentzArena 固有 bound (= 2026-05-06 確認済)**:
+- **Player γ_max ≈ 1.89**: `PLAYER_ACCELERATION = 0.8 c/s` + `FRICTION_COEFFICIENT = 0.5 /sec` で terminal velocity u_terminal = 0.8/0.5 = 1.6、 γ = √(1+1.6²) ≈ 1.89 (= constants.ts + gameLoop.ts processPlayerPhysics で確認)
+- **LH γ = 1 厳密**: u=0 固定 (= `evolvePhaseSpace(lh.phaseSpace, vector3Zero(), dTau)` で加速度ゼロ、 createLighthouse で u=vector3Zero() 初期化)、 thrust も摩擦も無し
+- **MAX_VIRTUAL_TAU_SEC = 2 sec**: `virtualPos` の inertial 延長上限 (= safety net)、 dead virtualPos drift は最大 1.89 × 2 = 3.78 ls
+- **Dead window ≤ 10 sec**: `RESPAWN_DELAY = 10000ms` で dead human は 10 sec 後 respawn、 stale GC = 20 sec で peers から削除。 dead state の累積 drift は bounded
+- **LIGHT_CONE_HEIGHT = 20 ls**: 因果論的「相手と通信できる時刻幅」 上限、 spawn anchor の許容差は概ねこの order
+
+**Why (= 2026-05-06 Bug 14 議論での実証)**: 私は「LH の γ が 705 まで上がって ratchet で human を引きずる」 仮説を提示。 odakin push back 「**今って抵抗力があるからそもそも γ ってそんなにでかくなれないよね?**」 で確認、 上記 bound から γ_max ≈ 1.89 が判明、 仮説は数値的に破綻。 別経路 (= dTau cap 不在 + setInterval throttle) で再仮説する必要があった。
+
+**How to apply**:
+- 「X が runaway」 と claim する前に: (1) X を生成する関数 / 方程式 grep、 (2) 関連 const (= PLAYER_ACCELERATION / FRICTION_COEFFICIENT / RESPAWN_DELAY 等) で bound 計算、 (3) claim と bound が consistent か self-check
+- 物理シミュレーションでは特に **friction / drag / cap constants** を見落としやすい (= 「physics は無限に accelerate できる」 と naive に思いがち)、 bound 確認を最初に行う
+- claim を立てる順序: 「X が runaway」 framing で論理を始めない、 「X の bound は?」 を最初に問い、 bound 内で説明できる仮説を優先する
+
+#### 関連メタ原則
+
+- M25 (state 単一化): bound 値は const に集約 (= constants.ts)、 derive ロジックを散在させない
+- work-discipline.md §「物理 / 数値の構造的 constraint を確認してから runaway claim を立てない」: odakin 適用版、 universal な runaway 仮説 hygiene として記録
+
+#### claude-config promote 判定
+
+本 entry は universal な「数値仮説の bound check」 pattern (= 物理だけでなく性能 / メモリ / 容量 系の runaway claim にも applicable)。 他リポで類似 pattern が 2 件目発生したら [`claude-config/conventions/scientific-computing.md`](../../claude-config/conventions/scientific-computing.md) に promote 検討。 現時点では LorentzArena に留めるが、 universal pattern として既に odakin-prefs/work-discipline.md に同型 § を新設済 (= 2026-05-06 同 plan)。
+
+---
