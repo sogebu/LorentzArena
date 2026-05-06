@@ -272,7 +272,7 @@ if (isWitness) {
 
 **2026-05-06 deploy 後 implement 済 (= 本 plan §6.5 (b) を un-defer)**:
 
-**実装** (= 設計対称性で minimum 侵襲、 commit `<set after first commit>`):
+**実装** (= 設計対称性で minimum 侵襲、 commit `3de5a78`):
 
 ```typescript
 // useGameLoop.ts gameLoop tick 冒頭、 globalActive check より前:
