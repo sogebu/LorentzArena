@@ -1181,3 +1181,96 @@ export const isNpc = (player: RelativisticPlayer): boolean =>
 本 entry は universal な「数値仮説の bound check」 pattern (= 物理だけでなく性能 / メモリ / 容量 系の runaway claim にも applicable)。 他リポで類似 pattern が 2 件目発生したら [`claude-config/conventions/scientific-computing.md`](../../claude-config/conventions/scientific-computing.md) に promote 検討。 現時点では LorentzArena に留めるが、 universal pattern として既に odakin-prefs/work-discipline.md に同型 § を新設済 (= 2026-05-06 同 plan)。
 
 ---
+### M41. pos.t / pos.xy 比 と β = √(x²+y²)/t で friction-internal vs external origin を判別する diagnostic
+
+**ルール**: relativistic game で player の `pos.t` / `pos.xy` 比から β = `√(x²+y²)/t` を計算し、 friction model の terminal γ_max から導出される **β_max** と比較。 β > β_max なら **通常 physics 経路 (= friction 内 advance) では発生不能** と判定でき、 別経路 (= state corruption / suspend resume bug / message handler bug 等) を疑う材料になる。
+
+**LorentzArena 固有 bound**:
+- friction `μ = 0.5 /sec`、 thrust `α_max = 0.8 c/s`
+- u_terminal = α_max / μ = 1.6
+- γ_terminal = √(1 + 1.6²) = √3.56 ≈ **1.89**
+- β_terminal = u/γ = 1.6/1.89 = **0.847**
+
+**diagnostic 適用例 (= 2026-05-06 Bug 14 live state)**:
+- 観測: `pos.t = 20.37M sec`、 `pos.xy = (-19.15M, +6.82M)` → `√(19.15² + 6.82²) = 20.33M ls`
+- β = 20.33 / 20.37 = **0.998** (= ほぼ光速)
+- 必要 γ = 1/√(1-β²) = 1/√(0.004) ≈ **15.8**
+- friction model では γ_max = 1.89、 観測 γ=15.8 は **8 倍超**
+- → 「friction model 内の通常 physics で発生不能」 と即判定
+- → 別経路探索: state corruption / suspend resume の異常 dTau / message handler bug 等の path を疑う
+
+**汎用化**: 任意の relativistic / kinematics simulation で「value X が runaway」 と claim する前に:
+1. X を生成する方程式 / 関数を grep
+2. その方程式に流入する upstream variable の **構造的 bound** を計算 (= friction terminal、 cap 定数、 conservation 法則等)
+3. 観測 X が bound から導出可能かチェック → 不可能なら別経路、 可能なら通常 advance
+
+これは M40 (= 構造的 constraint を runaway claim 前に確認) の **実機検証 procedure 拡張版**。 M40 が「bound 確認しろ」 という general principle、 M41 が「比から β を出して γ を逆算」 という specific diagnostic。
+
+#### 関連メタ原則
+
+- M40 (構造的 constraint を runaway claim 前に確認): general principle、 本 entry はその relativistic kinematics specific 適用
+- M27 (多層 RCA): observation layer の数値 → physical bound layer での解析 → 別経路 layer の探索、 という多層分析の一例
+
+#### claude-config promote 判定
+
+本 entry は LorentzArena 固有 (= friction parameter は本ゲームの design)。 但し「観測値から β を計算して γ_max と比較する」 一般 procedure は relativistic simulation 共通。 教科書 project / forward-scattering 等で類似 diagnostic が必要になったら参照可。 promote は不要。
+
+---
+
+### M42. ring buffer GC で過去の bug event 痕跡が消える、 long-running RCA は live capture mandatory
+
+**ルール**: `MAX_WORLDLINE_HISTORY = 2000` 等の **直近 N entry cap** を持つ data structure は、 真因 event から `N × dτ` 時間以上経過すると GC されて消える。 LorentzArena では history.length=2000、 dτ ≈ 0.013 sec で **history 寿命 ≈ 26 sec**。 真因が「数時間前」 に発生する long-running bug は、 タブを reload せずに **live capture を即実行**しないと痕跡が永続的に失われる。
+
+**痕跡が消える data structure 一覧 (= LorentzArena 5/6 時点)**:
+- `worldLine.history` (`MAX_WORLDLINE_HISTORY = 2000`、 寿命 ~26 sec)
+- `frozenWorldLines` (`MAX_FROZEN_WORLDLINES = ?`、 push 制限あり)
+- `killLog` (`MAX_KILL_LOG = 1000`、 通常 GC は pair 成立で済むが overflow で truncate)
+- `respawnLog` (`MAX_RESPAWN_LOG = 500`)
+- `hitLog` (`MAX_HIT_LOG = 200`)
+- 注: localStorage `la-highscores` は **persist する** ので reload 後も残る (= 例外的に session 跨ぎ確認可)
+
+**GC 残存 data**:
+- `players[id].phaseSpace` (= 死亡時値で凍結 / alive なら最新)
+- `scores` (= 累積 derive、 GC されない)
+- `lighthouseSpawnTime` / `lighthouseLastFireTime` (= Map で永続)
+- `staleFrozenIds` (= Set で永続)
+- `causalityJumping` / `causallyFrozen` (= boolean で永続)
+
+**procedure**:
+1. mobile phone で long-running bug が観察された瞬間、 **reload 待たずに live capture 経路を確立**
+2. WiFi ADB + CDP で state dump (= 詳細: `claude-config/conventions/android-chromium-remote-debug.md`)
+3. `worldLine.history` 全 entry + `frozenWorldLines` + 全 log を JSON 保存
+4. `repro/<date>-<bug>/` ディレクトリに永続化、 README で観測 facts + 仮説 + next steps を記録
+
+**why この pattern が長く運用される**: ring buffer GC は **正規の memory pressure 対策** で、 long-running session で memory blowup を防ぐ正しい設計。 これを「真因痕跡保存のため」 拡大すると trade-off (= memory cost + GC race risk)、 簡単に変えられない。 「**GC されることを前提に live capture で対処**」 が筋。
+
+**過去事例 (= 本 entry の trigger)**:
+- 2026-05-06 Bug 14: スマホで 15.77h 動いていたタブで `pos.t = 20.37M` 観測、 worldLine.history は 直近 26 sec しか残ってない、 frozenWorldLines / killLog 全 GC で **巨大 jump 痕跡が完全に失われた**。 user に reload 待ってもらって live capture 取得 → state JSON 732 KB 永続化、 但し真因 event そのものの瞬間は観察できず、 物理 bound (= M41) から「friction 内では不可能」 と判定するに留まる。 真因 isolation は live repro 前提
+
+#### 関連メタ原則
+
+- M27 (多層 RCA): GC は data layer の正規 mechanism、 観測 layer での痕跡保存は別経路 (= live capture)
+- M30 (complex bug 完全治療の 5 phase workflow): live capture は phase 1 (= observation) の必須要素
+
+#### claude-config promote 判定
+
+本 entry は universal applicable な「ring buffer GC + long-running RCA」 pattern。 [`claude-config/conventions/android-chromium-remote-debug.md §5.3`](../../claude-config/conventions/android-chromium-remote-debug.md) で「ring buffer GC を意識した repro 規律」 として universal 化済。 LorentzArena 固有の data structure 一覧は本 entry に保持、 universal 化は完了。
+
+---
+
+### M35 update: LH ratchet 仮説の最終否定 (= 2026-05-06 live capture confirm)
+
+M35 制定時の Bug 14 propagation race 議論で、 旧仮説「**LH ↔ self の Rule B feedback で互いに ratchet forward**」 (= [SESSION.md Bug 14 仮説 (b)](../SESSION.md)) が想定されていた。 5/6 朝の議論で friction γ_max = 1.89 から「γ=705 は不可能」 と数値矛盾で棄却、 5/6 NPC 非対称 plan の (I) で LH を causality 入力から除外する設計に進んだ。
+
+5/6 12:47 JST の **live state capture** で更に確実な棄却 evidence:
+- LH の `pos.t = 57005 sec ≈ 15.83h` = page age (= 15.77h) と完全整合、 LH は終始 normal advance
+- LH の worldLine.history (= 直近 13 秒分) も全 entry で同 spatial 位置 (= u=0)、 異常 pattern なし
+- self.pos.t = 20.37M sec = LH より **20.31M sec 先**、 spatial も 20.33M ls 先
+- 「LH も runaway していた、 self が引っ張られた」 ではなく **「self だけが runaway、 LH は終始 normal」** が live data で確定
+
+つまり、 LH は **そもそも ratchet の片側でなかった**。 self.pos.t / pos.xy の異常は **self 単独**で発生した。 NPC 非対称 plan の (I) で LH 経路を遮断する Bug 14 防御は、 LH が runaway する仮想 scenario への defense-in-depth として依然 valid (= 5/6 plan §12.1 通り)、 但し本実機事例では LH 経路は活性化していなかった。
+
+**含意**: alive human runaway 経路 (= self が単独で runaway) こそが真因経路、 (I) NPC 非対称では完全防御できない。 別 plan の **L1 plausibility filter** (= alive human runaway 検出 + 隔離) または **L0 dTau cap** (= suspend 復帰の異常 dTau 防止) が真因対処の本命。
+
+詳細: `repro/2026-05-06-bug14-state/README.md` 参照。
+
