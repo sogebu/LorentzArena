@@ -70,7 +70,6 @@ export const buildSnapshot = (myId: string, isBeaconHolder: boolean) => {
     undefined,
     Date.now(),
     selectDeadPlayerIds(s),
-    undefined,
   );
 
   type PhaseSpaceWire = {

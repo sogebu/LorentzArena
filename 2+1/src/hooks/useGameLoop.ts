@@ -899,7 +899,6 @@ export function useGameLoop({
                 stale.lastUpdateTimeRef.current,
                 Date.now(),
                 selectDeadPlayerIds(currentStore),
-                victimId,
               );
               sendToNetwork({
                 type: "respawn" as const,
@@ -965,7 +964,6 @@ export function useGameLoop({
               stale.lastUpdateTimeRef.current,
               Date.now(),
               selectDeadPlayerIds(pollState),
-              victimId,
             );
             sendToNetwork({
               type: "respawn" as const,
