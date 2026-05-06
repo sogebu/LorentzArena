@@ -150,6 +150,17 @@ Lighthouse (静止 AI) が誰かの過去光円錐内に落ちたら、最も過
 
 **この誤解を修正に持ち込まないこと**。 `dτ` / `pos.t` の semantics を変える PR / 提案は **基本却下**、 アルゴリズム側で lag を許容する設計にする。
 
+**dτ = wall_dt の精緻化: global active time** (2026-05-06、 `plans/2026-05-06-bug14-global-active-time.md`):
+
+`dτ = wall_dt` の **wall_dt** の正確な定義は 「**過去 [prev_tick, now] 区間内に self か任意 peer のどちらかが active だった時間**」 (= **global active time delta**)。 **per-client active time** (≡ `performance.now()` 流) でも **per-client wall_clock** (≡ `Date.now()` 純) でもない。 2 原則:
+
+- **P1**: 全 peer idle 時間 → 全員 skip (= 数値肥大化防止)
+- **P2**: 誰か active 時間 → 全員進める (= 因果律 split / Rule A 凍結 / Rule B 跳躍 防止)
+
+実装は existing `lastUpdateTimeRef` infrastructure で **完全 local 計算可能** (= 分散合意不要、 broadcast 受信 = peer active witness の historical existential 命題)。 詳細: [`useGameLoop.ts`](../src/hooks/useGameLoop.ts) gameLoop 冒頭 + plan §「local 計算可能性」。
+
+旧仕様 (= `if (document.hidden) return`) は **per-client active time semantic** で P2 違反 (= 自機 hidden + peer active で自機 pos.t だけ凍結 → Rule B 頻発)。 新仕様で構造的解消、 同時に Bug 14 (= mobile 12.5h suspend で integrator 爆発) も `processPlayerPhysics` 内部 substep (= L5 数値解析的安定化) で解消。
+
 **(α) `now wall_clock` anchor 案の永続却下** (2026-05-06、 `plans/2026-05-06-npc-asymmetric-causality.md` §11.13):
 
 5/2 plan §6 Stage 8 で「(α) `now wall_clock` 自分基準」 が spawn pos.t 案として「plan 推奨」 と書かれていたが、 上記 P1 設計柱と本質矛盾するため **永続却下**:

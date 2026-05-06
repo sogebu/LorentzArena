@@ -1274,3 +1274,52 @@ M35 制定時の Bug 14 propagation race 議論で、 旧仮説「**LH ↔ self 
 
 詳細: `repro/2026-05-06-bug14-state/README.md` 参照。
 
+---
+
+### M43. dτ semantic は global active time、 per-client active time / per-client wall_clock は近似でしかない
+
+**Source**: 2026-05-06 Bug 14 完全治療 plan (= `plans/2026-05-06-bug14-global-active-time.md`)、 ユーザーが「per-client active time」 案 (= `performance.now()`) も「per-client wall_clock」 案 (= `Date.now()`) も**両方却下**して「**誰も active でない時間スキップ + 誰か active な時間進める**」 = global active time semantic を直接表現する設計を要求。
+
+#### 原則
+
+`dτ` は per-client な local clock (= `performance.now()` でも `Date.now()` でも) **ではなく**、 **全 peer 通算の active time delta** を表す。 数学的定義:
+
+```
+globalActive(t) ≡ (selfActive(t) ∨ ∃peer: peerActive(t))
+dτ(prev, now) ≡ ∫_{[prev, now]} 1[globalActive(τ)] dτ
+```
+
+実装は **historical existential** (= 過去区間内に誰か broadcast したか) を **local message log の existence check** で評価可能、 broadcast 行為 = peer の game loop が回っていた witness、 という観察から **完全 local 計算可能** (= 分散合意プロトコル不要)。
+
+#### 2 原則の同時充足が semantic 正答
+
+| # | 原則 | 反対例 (= 違反すると起きる現象) |
+|---|---|---|
+| **P1** | 全員 idle 時間 → 全員 skip | 1 週間放置で `pos.t` が無意味に蓄積、 floating-point 精度劣化 |
+| **P2** | 誰か active 時間 → 全員進める | 自機 hidden + peer active で自機 `pos.t` だけ凍結 → Rule A 凍結 / Rule B 跳躍 頻発 |
+
+**per-client active time** (= `performance.now()` 流) は P1 ✓ / P2 ✗ (= 自機 hidden で時間止まる)。
+**per-client wall_clock** (= `Date.now()` 純) は P2 ✓ / P1 ✗ (= solo idle でも時間進む、 数値肥大化)。
+**global active time** だけが両方を同時に満たす唯一の semantic。
+
+#### 実装上の structural 要件
+
+1. **broadcast schema に `selfActive: boolean` flag**: sender が genuine active か (= visible AND loop が普通の cadence で fire) を 1 boolean で乗せる。 旧 build 互換のため `?? true` fallback。
+2. **`lastWitnessTimeRef` を `lastUpdateTimeRef` と分離**: 「broadcast 受信」 (= virtualPos の lastSync 用、 unconditional 更新) と「genuine active witness」 (= peerActive 用、 selfActive=true gate) は **異なる事実**。 単一 ref で gate すると virtualPos overshoot を起こす。 別 ref で structural 分離。
+3. **integrator が大 dTau で安定**: globalActive 経路で mobile suspend 復帰時の rawDTau (= 1h-24h) を直接 integrate するため、 `processPlayerPhysics` 内部 substep で `MAX_STABLE_SUB_DTAU = 0.1 sec` に分割、 friction を per-substep 再計算。
+
+#### 過去事例 (= 本原則の trigger)
+
+- **2026-05-06 Bug 14 root cause**: mobile 12.5h suspend 復帰時に `dτ = 45000 sec` で `du/dτ = -ku` の Euler が発散、 `self.pos.t = 20.37M sec` runaway。 旧仕様は `if (document.hidden) return` の per-client active time semantic で P2 違反 + setInterval が完全 suspend する経路で `lastTimeRef` reset が走らず integrator も爆発。
+- **Claude の絆創膏路線却下**: 私が初回提案した「`performance.now()` 切替 + dTau cap + visibility listener 追加」 は L2-L3 の症状経路を 1 つずつ塞ぐ post-hoc 修正で、 因果モデル (= 2 原則) を直接表現していなかった。 user の「絆創膏の上に絆創膏ではなく根本治療」 指摘で global active time semantic に到達。
+
+#### 関連メタ原則
+
+- **M26 (絆創膏 vs 治療)**: 「症状経路を 1 つずつ塞ぐ post-hoc 修正」 が絆創膏、 「因果モデルを直接表現する設計」 が根本治療。 本原則は M26 を「semantic level の根本治療」 に格上げ。
+- **M27 (多層 RCA)**: L1 (近因 = 物理爆発) → L4 (clock semantic) + L5 (数値積分) の最深層が根本、 L2-L3 は症状の表面化経路。
+- **M25 (state 単一化)**: `lastWitnessTimeRef` を `lastUpdateTimeRef` と別建てするのは違反ではない (= 異なる事実は別 ref が structural 正答)、 単一 ref に gate を足すのが M25 違反 (= 異なる事実を 1 ref に詰める)。
+
+#### claude-config promote 判定
+
+本 entry は LorentzArena 固有の Bug 14 文脈に強く依存 (= broadcast schema の selfActive 1 boolean、 multiplayer + WebRTC peer broadcast の existence check) で universal 化は限定的。 但し「**dτ semantic は global active time** で per-client は近似」 という抽象原則だけ promote 候補。 当面は LorentzArena 固有 entry として保持、 別 P2P multiplayer game project が現れたら抽象化を検討。
+

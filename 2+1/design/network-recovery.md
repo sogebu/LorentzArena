@@ -131,8 +131,22 @@ risk 順では (e) → (a) → (d) (= 既存機構拡張 vs 新機構)、 archit
 - **M26 (絆創膏 vs 治療)**: peer disconnect 検出を真因 layer で対処 (= staleFrozenIds 拡張)、 Fix B cap soft fall-off (= [Bug 11 plan](../plans/2026-05-05-network-split-rule-b-runaway.md) 候補 (b)) は絆創膏として却下
 - **M27 (多層 RCA)**: 表層 (cascade chaos) → 中層 (Fix B cap × split) → 真因 (signaling self-recovery 不足 + per-peer 検出弱い) の 3 層、 推奨 (a)+(d) は真因 layer での surgical fix
 
+## 軸 7: WebRTC died 経路の Rule B catchup 明示 (2026-05-06、 Bug 14 plan)
+
+`plans/2026-05-06-bug14-global-active-time.md` で導入された **globalActive 設計** (= `useGameLoop` の `if (!selfActive && !peerActive) return`) は mobile suspend 復帰時の経路を以下の 3 つに分類:
+
+| 経路 | 状態 | 対処 |
+|---|---|---|
+| (1) WebRTC connection 生存 + queued message 復帰 | OS / browser が message を queue 蓄積、 wake で callback 発火 | `lastWitnessTimeRef` 更新 → `peerActive=true` → **直接 integrate** |
+| (2) WebRTC connection 生存 + message drop | suspend throttle で message drop | `lastWitnessTimeRef` stale → `peerActive=false` → **skip** → 次 broadcast 受信で同期 |
+| (3) WebRTC connection 死亡 | long suspend で peer reset | reconnect まで message 来ない → `peerActive=false` → **skip** → reconnect 後 fresh peer.pos.t で **既存 Rule B が catchup jump** |
+
+**(3) は absorption ではなく structural 設計**: Rule B (= `causalityJumpLambda`) は state divergence recovery のための設計柱で、 既に `2026-05-02 causality-symmetric-jump` plan で 「post-recovery 振動防止」 の hysteresis (`CAUSAL_FREEZE_HYSTERESIS = 2.0`) + exit margin (`CAUSALITY_JUMP_EXIT_MARGIN_LS = 0.001`) と complementary に設計済。 Bug 14 plan の globalActive は **Rule B 発火頻度を削減** する効果があり (= mutual hidden + active hidden case で発火しなくなる)、 残る (3) は明示的 fallback として既存設計柱に乗る。
+
+将来 plan: post-suspend handshake (= wake 時 reconnect で peer に「私の suspend 中、 あなた active だった?」 を問い合わせる broadcast schema 追加) で (3) も Rule B 不要化可能。 現 plan の scope 外、 backbone 不変なため後付け可能。 詳細: `plans/2026-05-06-bug14-global-active-time.md` §6.5。
+
 ## 関連 plan / doc
 
 - 設計記録: [`network.md`](network.md)、 [`authority-d-pattern.md`](authority-d-pattern.md)、 [`plans/2026-04-19-host-migration-symmetry.md`](../plans/2026-04-19-host-migration-symmetry.md)
-- 実装 plan: [`plans/2026-05-05-network-split-rule-b-runaway.md`](../plans/2026-05-05-network-split-rule-b-runaway.md)
-- メタ原則: [`design/meta-principles.md`](meta-principles.md) §M25/M26/M27
+- 実装 plan: [`plans/2026-05-05-network-split-rule-b-runaway.md`](../plans/2026-05-05-network-split-rule-b-runaway.md)、 [`plans/2026-05-06-bug14-global-active-time.md`](../plans/2026-05-06-bug14-global-active-time.md)
+- メタ原則: [`design/meta-principles.md`](meta-principles.md) §M25/M26/M27/M43

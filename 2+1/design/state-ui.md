@@ -152,15 +152,33 @@ React component lifecycle に依存した scheduling (setTimeout)、外部 hook 
 
 ## § UI / 入力
 
-### visibilitychange によるゲームループ停止
+### visibilitychange によるゲームループ停止 (旧仕様)、 globalActive 早期 return (新仕様 2026-05-06)
 
-`document.hidden` のとき、ゲームループ (`setInterval` 8ms) と PeerProvider の ping 送信をスキップ (`clearInterval` ではなくループ内チェック)。
+**旧仕様**: `document.hidden` のとき、ゲームループ (`setInterval` 8ms) と PeerProvider の ping 送信をスキップ (`clearInterval` ではなくループ内チェック)。 `if (document.hidden) { lastTimeRef.current = Date.now(); return; }` で 1 行 early return。
 
-理由: ブラウザはバックグラウンドタブの `setInterval` を throttle する (Chrome: ~1s、Safari: もっと遅い)。throttle されたループが中途半端な頻度で走ると: (1) stale な phaseSpace を低頻度で送信し続ける (2) Lighthouse AI が極低速で動く (3) 座標時間の進行率が異常に低くなる等の不整合が生じる。完全に止めるのが正しい。
+**旧仕様の構造的限界**: per-client active time semantic (≡ `performance.now()` 流) で、 P2 (= 「peer active なら自機も進める」) と直接矛盾。 自機 hidden + peer active で自機 pos.t だけ凍結 → 復帰時 Rule B 跳躍頻発。 また mobile 完全 suspend で `setInterval` が fire せず lastTimeRef reset が走らない経路で **巨大 dTau → integrator 爆発 (= Bug 14 root cause、 live capture: `repro/2026-05-06-bug14-state/`)**。
 
-チェック位置をループ内にした理由: `clearInterval` + `visibilitychange` で再開するアプローチでは、ループ本体のクロージャを再構築する必要がある (useEffect の deps 問題)。ループ先頭の 1 行 `if (document.hidden) { lastTimeRef.current = Date.now(); return; }` で同等の効果を得られ、`lastTimeRef` 更新で復帰時のジャンプも防止。
+**新仕様** (2026-05-06、 `plans/2026-05-06-bug14-global-active-time.md`): `globalActive ≡ selfActive ∨ ∃peer: peerActive` の早期 return に置換。 2 原則を直接表現:
 
-既存メカニズムとの連携: ping 停止 → クライアントがハートビートタイムアウト → migration。phaseSpace 停止 → stale 検知。新プロトコル不要。
+- **P1**: 全員 idle → 全員 skip (= 数値肥大化防止)
+- **P2**: 誰か active → 全員進める (= 因果律 split / Rule A 凍結 / Rule B 跳躍 防止)
+
+```typescript
+const selfActive = !document.hidden && rawDTau < LARGE_GAP_THRESHOLD_SEC;
+const peerActive = lastWitnessTimeRef.entries().some(([id, t]) =>
+  id !== myId && !isLighthouse(id) && t > prevLastTime);
+if (!selfActive && !peerActive) return;
+```
+
+`peerActive` 判定は **存在量化 + 既存 `lastWitnessTimeRef` infrastructure で完全 local 計算可能** (= broadcast 受信 = peer active witness の historical existential)。 分散合意プロトコル不要。
+
+**`lastWitnessTimeRef` を別 ref として持つ理由** (= structural separation): 既存 `lastUpdateTimeRef` は `virtualPos` の lastSync として unconditional 更新が必要。 一方 mutual amplification 防止 (= 両者 hidden で自己強化的 integrate 継続するのを 1-2 tick で収束させる) には `selfActive=true` のみ更新する gate が必要。 単一 ref で gate すると virtualPos overshoot (= peer hidden + globally active の場合、 peer は pos.t 進めているが lastSync 古いまま) を起こす。 「broadcast 受信」 と「genuine active witness」 は **異なる事実** で、 単一 ref に詰めると意味論的衝突 → 別 ref で structural 分離。
+
+**broadcast schema**: `phaseSpace` / `respawn` に `selfActive?: boolean` 追加 ([`message.ts`](../src/types/message.ts))。 旧 build 受信時は `?? true` fallback で active 扱い (= 後方互換、 mixed build session で旧仕様互換、 全員新 build 揃った後 mutual amplification convergence 成立)。
+
+**integrator stability** (= L5 補完): 大 dTau (= mobile suspend 復帰時の catchup) で `processPlayerPhysics` / `processLighthouseAI` 内部の semi-implicit Euler が `Δ > 2/k = 4 sec` で発散するため、 `MAX_STABLE_SUB_DTAU = 0.1 sec` (= 21x 安全余裕) で内部 substep。 friction を per-substep 再計算、 thrust は tick 内 constant。 通常 dTau (= 0.008 sec) で N=1 (no overhead)、 mobile suspend 1h で N=36000 (~2ms)、 24h で ~50ms (= 1 frame drop on wake、 許容)。
+
+既存メカニズムとの連携: ping 停止 → クライアントがハートビートタイムアウト → migration。 phaseSpace 停止 → stale 検知。 新プロトコル不要 (= `selfActive` 1 boolean のみ schema 追加)。
 
 ### モバイルタッチ入力: 全画面ジェスチャ + UI 要素ゼロ
 
