@@ -24,7 +24,7 @@ import type { RelativisticPlayer } from "./types";
 // cause (= live capture: repro/2026-05-06-bug14-state/)。 5/6 plan 初版では substep で
 // workaround、 後続 user push back を契機に **「explicit を温存して dτ を分割する数値
 // workaround」 ではなく「friction 数値不安定性自体を消す」 implicit Euler が L5 root
-// fix と判明** (odakin-prefs/work-discipline.md §「Fix 提案の 3 verification」 (= odakin personal layer))、
+// fix と判明** ([`claude-config/conventions/debugging-discipline.md §1`](../../../claude-config/conventions/debugging-discipline.md))、
 // substep 撤廃 + implicit Euler refactor。
 //
 // implicit Euler の数値特性: `newU = (u + a × dτ) / (1 + γkΔ)` で

@@ -32,7 +32,7 @@ L4 + L5 を同時に治す。
 
 **現状実装** (= 2026-05-06 post-deploy implicit Euler refactor 後): `evolvePhaseSpace` の `frictionCoefficient` 引数経由で **semi-implicit Euler** `newU = (u + a × dτ) / (1 + γkΔ)` の closed-form 1 step solve、 任意 dτ で unconditionally 安定、 substep 不要。 詳細: [`physics/mechanics.ts`](../src/physics/mechanics.ts) docstring + [claude-config/conventions/scientific-computing.md §2](../../../claude-config/conventions/scientific-computing.md) で防止策の階層 ((A) implicit / (B) analytic / (C) substep) を universal 化。
 
-**初期実装 (= 5/6 plan 確定時)** は下記 **substep workaround** だったが、 deploy 後 user 「原理的におかしくない?」 push back を契機に **implicit Euler が線形系で 1 step closed-form で解ける** ことに気付き refactor。 substep は (= explicit Euler を温存して dτ を分割する) 数値 workaround、 implicit Euler は friction の数値不安定性自体を消す L5 root level の fundamental fix。 詳細経緯: odakin-prefs work-discipline.md §「Fix 提案の 3 verification」 V1 不十分の反例 (= odakin personal layer)。
+**初期実装 (= 5/6 plan 確定時)** は下記 **substep workaround** だったが、 deploy 後 user 「原理的におかしくない?」 push back を契機に **implicit Euler が線形系で 1 step closed-form で解ける** ことに気付き refactor。 substep は (= explicit Euler を温存して dτ を分割する) 数値 workaround、 implicit Euler は friction の数値不安定性自体を消す L5 root level の fundamental fix。 詳細経緯: [`claude-config/conventions/debugging-discipline.md §1`](../../../claude-config/conventions/debugging-discipline.md) V1/V3 reflection。
 
 #### ✗ 初期 substep workaround (= 後続 implicit Euler refactor で撤廃済、 設計史として保持)
 
@@ -255,7 +255,7 @@ if (isWitness) {
 
 **5/6 plan 確定時の defer 判断**: 現 plan は local で検出可能な範囲を完全 optimal にカバー、 検出不能 case (= WebRTC died) は Rule B fallback で eventual consistency。 handshake は L4 設計の上に乗る増分機能、 backbone 不変なため後付け可能、 別 plan で対処、 と defer。
 
-**2026-05-06 deploy 後 user push back からの再分析** (= odakin-prefs work-discipline §「Fix 提案の 3 verification」 (= odakin personal layer) を spiral で application):
+**2026-05-06 deploy 後 user push back からの再分析** (= [`claude-config/conventions/debugging-discipline.md §1`](../../../claude-config/conventions/debugging-discipline.md) を spiral で application):
 
 1. **handshake 永続却下**: schema 増分 (= 2 新 message types) + state machine 複雑化、 mechanism overload (= activity tracking 専用 mechanism 追加)。 V2 (= mechanism classification) で過負荷 signal、 「activity tracking 専用 mechanism」 は既存 globalActive と冗長で structural overhead が高い。
 
@@ -280,7 +280,7 @@ if (isWitness) {
 - self が BH の場合は別経路 (= snapshotRequest 不要、 自分が canonical source、 solo or post-migration)
 - **新 message type 追加 0 個**、 **新 schema field 追加 0 個** (= cumActive piggyback / handshake 案の structural cost と対照、 既存 mechanism の trigger 拡張のみ)
 
-**関連メタ規律**: 本節分析は `odakin-prefs/work-discipline.md §「Fix 提案の 3 verification」` (= odakin personal layer) の universal application 例 (= V1 で cumActive 却下、 V2 で 「Rule B fallback で十分」 仮判断を撤回)。
+**関連メタ規律**: 本節分析は [`claude-config/conventions/debugging-discipline.md §1`](../../../claude-config/conventions/debugging-discipline.md) の universal application 例 (= V1 で cumActive 却下、 V2 で 「Rule B fallback で十分」 仮判断を撤回)。
 
 ---
 

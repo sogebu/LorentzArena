@@ -101,8 +101,9 @@ export const createPhaseSpace = (
  *
  * 旧 substep 案との差: substep は explicit Euler を温存して dτ を分割する **数値 workaround**、
  * implicit Euler は L5 root level で「friction 項の数値不安定性自体を消す」 fundamental fix。
- * 詳細経緯: `plans/2026-05-06-bug14-global-active-time.md §6.5`、 `odakin-prefs/work-discipline.md
- * §「Fix 提案の 3 verification」` V1 reflection。
+ * 詳細経緯: `plans/2026-05-06-bug14-global-active-time.md §6.5`、
+ * `claude-config/conventions/debugging-discipline.md §1` V1/V3 reflection、
+ * `claude-config/conventions/scientific-computing.md §2` (A)/(B)/(C) algorithm 階層。
  */
 export const evolvePhaseSpace = (
   ps: PhaseSpace,
