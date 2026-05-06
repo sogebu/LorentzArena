@@ -2,7 +2,7 @@
 
 ## 現在のステータス
 
-**本番最新 deploy**: 2026-05-06 build `14:42:16` **Bug 14 完全治療** ([`plans/2026-05-06-bug14-global-active-time.md`](plans/2026-05-06-bug14-global-active-time.md))。 globalActive clock semantic (= P1 + P2 を直接表現) + integrator substep (= MAX_STABLE_SUB_DTAU で任意 dTau 安定) + lastWitnessTimeRef structural separation + selfActive broadcast schema、 odakin localhost multi-tab verify 「よさそう」 → production deploy 済。 mobile overnight 実機 verify で最終確認待ち (= 12.5h suspend 復帰での integrator 安定性、 deploy 後の overnight test)。 全 274 test pass。
+**本番最新 deploy**: 2026-05-06 build `15:52:19` **Bug 14 完全治療 + implicit Euler refactor** ([`plans/2026-05-06-bug14-global-active-time.md`](plans/2026-05-06-bug14-global-active-time.md))。 globalActive clock semantic (= P1 + P2 を直接表現) + **implicit Euler integration** (= `newU = (u + a × dτ) / (1 + γkΔ)` で friction を任意 dτ で unconditionally 安定、 旧 substep workaround を撤廃) + lastWitnessTimeRef structural separation + selfActive broadcast schema、 odakin localhost multi-tab verify 「よさそう」 (= 14:42 build) → production deploy 済。 全 274 test pass。 mobile overnight 実機 verify で最終確認待ち。
 
 直近 commits:
 - [`a998f9c`] **Stage 9 docs**: physics.md / state-ui.md / network-recovery.md / meta-principles.md §M43 を Bug 14 plan の設計柱に整合

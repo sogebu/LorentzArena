@@ -1306,7 +1306,7 @@ dτ(prev, now) ≡ ∫_{[prev, now]} 1[globalActive(τ)] dτ
 
 1. **broadcast schema に `selfActive: boolean` flag**: sender が genuine active か (= visible AND loop が普通の cadence で fire) を 1 boolean で乗せる。 旧 build 互換のため `?? true` fallback。
 2. **`lastWitnessTimeRef` を `lastUpdateTimeRef` と分離**: 「broadcast 受信」 (= virtualPos の lastSync 用、 unconditional 更新) と「genuine active witness」 (= peerActive 用、 selfActive=true gate) は **異なる事実**。 単一 ref で gate すると virtualPos overshoot を起こす。 別 ref で structural 分離。
-3. **integrator が大 dTau で安定**: globalActive 経路で mobile suspend 復帰時の rawDTau (= 1h-24h) を直接 integrate するため、 `processPlayerPhysics` 内部 substep で `MAX_STABLE_SUB_DTAU = 0.1 sec` に分割、 friction を per-substep 再計算。
+3. **integrator が大 dTau で安定**: globalActive 経路で mobile suspend 復帰時の rawDTau (= 1h-24h) を直接 integrate するため、 `evolvePhaseSpace` で **semi-implicit Euler** (= `newU = (u + a × dτ) / (1 + γkΔ)` の closed-form 1 step) を採用、 friction を任意 dτ で unconditionally 安定化。 **当初 substep workaround (= `MAX_STABLE_SUB_DTAU` で dτ 分割) を採用したが、 deploy 後の user push back を契機に implicit Euler refactor**: substep は explicit Euler を温存する数値 workaround、 implicit Euler は friction 数値不安定性自体を消す L5 root level の fundamental fix。 詳細: [`claude-config/conventions/scientific-computing.md §2`](../../../claude-config/conventions/scientific-computing.md) で防止策の階層 (= (A) implicit / (B) analytic / (C) substep) を universal 化。
 
 #### 過去事例 (= 本原則の trigger)
 

@@ -176,7 +176,7 @@ if (!selfActive && !peerActive) return;
 
 **broadcast schema**: `phaseSpace` / `respawn` に `selfActive?: boolean` 追加 ([`message.ts`](../src/types/message.ts))。 旧 build 受信時は `?? true` fallback で active 扱い (= 後方互換、 mixed build session で旧仕様互換、 全員新 build 揃った後 mutual amplification convergence 成立)。
 
-**integrator stability** (= L5 補完): 大 dTau (= mobile suspend 復帰時の catchup) で `processPlayerPhysics` / `processLighthouseAI` 内部の semi-implicit Euler が `Δ > 2/k = 4 sec` で発散するため、 `MAX_STABLE_SUB_DTAU = 0.1 sec` (= 21x 安全余裕) で内部 substep。 friction を per-substep 再計算、 thrust は tick 内 constant。 通常 dTau (= 0.008 sec) で N=1 (no overhead)、 mobile suspend 1h で N=36000 (~2ms)、 24h で ~50ms (= 1 frame drop on wake、 許容)。
+**integrator stability** (= L5 補完): 大 dTau (= mobile suspend 復帰時の catchup) で 旧 explicit Euler が `Δ > 2/k = 4 sec` で発散していたが、 2026-05-06 post-deploy で **implicit Euler refactor** (= `evolvePhaseSpace` の `frictionCoefficient` 引数経由で `newU = (u + a × dτ) / (1 + γkΔ)` の closed-form 1 step 計算) で **任意 dτ で unconditionally 安定**。 旧 substep workaround / `MAX_STABLE_SUB_DTAU` constant は撤廃済。 詳細: [`physics/mechanics.ts`](../src/physics/mechanics.ts)、 [claude-config/conventions/scientific-computing.md §2](../../../claude-config/conventions/scientific-computing.md) で防止策の階層化 (= (A) implicit Euler / (B) analytic / (C) substep) を universal 規律として記録。
 
 既存メカニズムとの連携: ping 停止 → クライアントがハートビートタイムアウト → migration。 phaseSpace 停止 → stale 検知。 新プロトコル不要 (= `selfActive` 1 boolean のみ schema 追加)。
 

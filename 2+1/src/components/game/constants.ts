@@ -330,16 +330,11 @@ export const PROCESSED_LASERS_CLEANUP_THRESHOLD = 500;
 // かつ loop も普通に回っていた」 を表現。
 export const LARGE_GAP_THRESHOLD_SEC = 2;
 
-// MAX_STABLE_SUB_DTAU: processPlayerPhysics / processLighthouseAI 内部 substep の上限。
-// 数値解析的根拠: 純 friction `du/dτ = -ku` (k = FRICTION_COEFFICIENT = 0.5) の semi-implicit
-// Euler 安定境界は `|1 - kΔ| < 1` ⟺ `Δ < 2/k = 4 sec`。 高 γ 領域の Lorentz boost
-// amplification を考慮すると `k_eff ≈ γ × k`、 γ_max = 1.886 で `Δ < 2.11 sec`。
-// MAX_STABLE_SUB_DTAU = 0.1 は最厳条件の 21x 余裕、 通常境界の 40x 余裕。
-//
-// 通常 dTau (= 0.008 sec) で N = ceil(dTau / 0.1) = 1、 overhead 0。 mobile suspend 1h
-// (dTau = 3600 sec) で N = 36000、 ~2ms execution。 24h で N = 864000、 ~50ms (= wake 時
-// 1 frame drop、 許容)。 N cap せず scientific correctness を維持。
-export const MAX_STABLE_SUB_DTAU = 0.1; // sec
+// 旧 `MAX_STABLE_SUB_DTAU` 定数は 2026-05-06 implicit Euler refactor で **撤廃** 済。
+// `evolvePhaseSpace` の 4 番目引数 `frictionCoefficient` で friction を semi-implicit
+// 統合 (= `newU = (u + a × dτ) / (1 + γkΔ)`) で任意 dτ で unconditionally 安定、
+// substep 不要、 安全 margin constant 不要。 詳細: physics/mechanics.ts +
+// claude-config/conventions/scientific-computing.md §2。
 
 // --- Pending events caps ---
 export const MAX_PENDING_SPAWN_EVENTS = 50;
