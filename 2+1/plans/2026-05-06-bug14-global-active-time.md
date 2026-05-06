@@ -20,7 +20,7 @@
 | L2 (timing) | `dTau` が巨大化 (= 1 tick で 12.5h) |
 | L3 (architecture) | `lastTimeRef` が loop fire に依存、 mobile 完全 suspend で reset 走らず |
 | **L4 (clock semantic)** | 既存 `if (document.hidden) return` は **per-client active time** ≡ `performance.now()` 流の semantic で、 P2 (= 「peer active なら自機も進める」) と直接矛盾 |
-| **L5 (mathematical)** | `evolvePhaseSpace` の semi-implicit Euler + multiplicative friction は `dτ > 2/k = 4 sec` で **unconditionally 不安定** (`newU = u(1-kΔ)` の係数が ±1 を逸脱) |
+| **L5 (mathematical)** | `evolvePhaseSpace` の **explicit** Euler + multiplicative friction は `dτ > 2/k = 4 sec` で **unconditionally 不安定** (`newU = u(1-kΔ)` の係数が ±1 を逸脱)。 注: 「explicit Euler」 が L5 root cause の正確な記述、 「semi-implicit」 表記は本 plan 後続の implicit Euler refactor 後の現行実装を指す。 |
 
 L4 + L5 を同時に治す。
 
@@ -28,26 +28,65 @@ L4 + L5 を同時に治す。
 
 ## §2 設計
 
-### §2.1 Layer 5: integrator 内部 substep
+### §2.1 Layer 5: integrator stability (= 初期 substep → 後続 implicit Euler refactor)
 
-**core idea**: `processPlayerPhysics` / `processLighthouseAI` 内部で `dTau` を `MAX_STABLE_SUB_DTAU = 0.1 sec` 単位に **substep**、 各 substep で friction を current `u` から再計算。
+**現状実装** (= 2026-05-06 post-deploy implicit Euler refactor 後): `evolvePhaseSpace` の `frictionCoefficient` 引数経由で **semi-implicit Euler** `newU = (u + a × dτ) / (1 + γkΔ)` の closed-form 1 step solve、 任意 dτ で unconditionally 安定、 substep 不要。 詳細: [`physics/mechanics.ts`](../src/physics/mechanics.ts) docstring + [claude-config/conventions/scientific-computing.md §2](../../../claude-config/conventions/scientific-computing.md) で防止策の階層 ((A) implicit / (B) analytic / (C) substep) を universal 化。
+
+**初期実装 (= 5/6 plan 確定時)** は下記 **substep workaround** だったが、 deploy 後 user 「原理的におかしくない?」 push back を契機に **implicit Euler が線形系で 1 step closed-form で解ける** ことに気付き refactor。 substep は (= explicit Euler を温存して dτ を分割する) 数値 workaround、 implicit Euler は friction の数値不安定性自体を消す L5 root level の fundamental fix。 詳細経緯: [odakin-prefs work-discipline.md §「Fix 提案の 3 verification」 V1 不十分の反例](../../../odakin-prefs/work-discipline.md)。
+
+#### ✗ 初期 substep workaround (= 後続 implicit Euler refactor で撤廃済、 設計史として保持)
+
+**core idea (= 撤廃済)**: `processPlayerPhysics` / `processLighthouseAI` 内部で `dTau` を `MAX_STABLE_SUB_DTAU = 0.1 sec` 単位に **substep**、 各 substep で friction を current `u` から再計算。
 
 **stability 数値解析**:
-- 純 friction `du/dτ = -ku` の Euler 安定境界: `|1 - kΔ| < 1` ⟺ `Δ < 2/k = 4 sec` (k=0.5)
+- 純 friction `du/dτ = -ku` の **explicit** Euler 安定境界: `|1 - kΔ| < 1` ⟺ `Δ < 2/k = 4 sec` (k=0.5)
 - 高 γ 領域での Lorentz boost amplification: `k_eff ≈ γ × k`、 γ_max = 1.89 で `Δ < 2.11 sec`
 - `MAX_STABLE_SUB_DTAU = 0.1` は最厳条件の **21x 余裕** + 通常境界の 40x 余裕
 
-**実装方針**:
+**実装方針 (= 撤廃済)**:
 - thrust acceleration は tick 内 constant (= 既存設計、 input-driven、 substep 跨ぎ不変)
 - friction は per-substep 再計算 (= u 依存のため必須)
 - `worldLine` append は **outer 1 回のみ** (= 大 dTau での history flooding 防止、 intermediate state は transient)
 - thrust energy consumption は full dTau で 1 回計算 (= 既存挙動と等価)
 
-**execution time**:
+**execution time (= 撤廃済)**:
 - 通常 (dTau=0.008): N=1, overhead 0
 - mobile suspend 1h (dTau=3600): N=36000, ~2ms (1 frame drop なし)
 - mobile suspend 24h (dTau=86400): N=864000, ~50ms (1 frame drop、 wake 時 1 回限り、 許容)
 - N cap 不要 (= linear cost で素直に積分、 cap は scientific correctness を犠牲にする)
+
+#### ✓ 現行 implicit Euler refactor (= 2026-05-06 post-deploy、 commit `c023e02`)
+
+**core idea**: friction が線形項なので **closed-form solve 可**、 `(1 + γkΔ)` の分母で任意 dτ で `|newU| ≤ |u + a × dτ|` の有界性が保証、 sign flip / amplification 構造的に発生しない。
+
+```typescript
+// evolvePhaseSpace 内部 (= physics/mechanics.ts):
+const explicitU = u + a_world × dτ;  // thrust + boost は explicit
+if (frictionCoefficient > 0) {
+  const γ = Math.sqrt(1 + |u|²);
+  const denom = 1 + γ × frictionCoefficient × dτ;
+  newU = explicitU / denom;  // friction の implicit step
+} else {
+  newU = explicitU;  // 旧 explicit Euler 等価 (= LH 等の caller 不変)
+}
+```
+
+**stability 数値解析**:
+- 連続時間: `du/dτ = a - ku` の解 `u(τ) = u_inf + (u₀ - u_inf) × exp(-kτ)` で常に安定
+- 離散 implicit: `newU = (u + a × dτ) / (1 + γkΔ)`、 分母 ≥ 1 で発散不能、 `Δ → ∞` で `newU → 0` (no thrust) or `→ a/k` (terminal balance)、 物理正解と一致
+- 半 implicit (= γ は current u から、 friction 部分のみ implicit): 線形系として closed-form solve 可、 完全 implicit (= γ も newU から) は不要
+
+**execution time**:
+- 通常 (dTau=0.008): O(1)、 overhead ≈ 0 (= 単純な除算 1 回追加)
+- mobile suspend 24h (dTau=86400): O(1)、 substep の ~50ms は不要に
+- 旧 substep の N=864000 loop が 1 closed-form solve に置換、 速度向上 + scientific correctness 向上
+
+**選択基準** (= [scientific-computing.md §2](../../../claude-config/conventions/scientific-computing.md) で universal 化):
+| 系の性質 | 推奨 algorithm |
+|---|---|
+| 線形 ODE (= friction、 spring 等) | **(A) implicit Euler** (= 本 plan の現行) |
+| 解析解が elementary functions で書ける | (B) analytic |
+| 強い非線形 / 多自由度 coupling で implicit が intractable | (C) substep + explicit |
 
 ### §2.2 Layer 4: globalActive ベース dTau
 
