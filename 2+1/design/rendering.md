@@ -733,8 +733,8 @@ dot/triangle で表現。 新設計: **PLC 2D = 3D scene (= flatten 済 ship mod
 
 旧 Radar fullscreen 専用ヘルパー (`drawShipIcon` / `drawLighthouseIcon` / 関連 PLC fullscreen
 分岐) は dead code 化したが残置 (= 必要時 reuse 可能)。 設計 pivot の動機は「user 用語で
-『マーカー』 = 2D vector icon、 『アイコン』 = 実際の 3D model」 という解釈の取り違え判明 (=
-[odakin-prefs/work-discipline.md §同一語の意味取り違え防止](../../odakin-prefs/work-discipline.md))。
+『マーカー』 = 2D vector icon、 『アイコン』 = 実際の 3D model」 という解釈の取り違え判明
+(= 個人層 odakin-prefs/work-discipline.md §同一語の意味取り違え防止 で record)。
 
 ### Radar 2D heading-up canvas 角度式 (Canvas 2D 上面アイコン用)
 
