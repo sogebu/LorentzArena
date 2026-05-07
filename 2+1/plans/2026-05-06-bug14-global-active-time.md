@@ -251,6 +251,8 @@ if (isWitness) {
 
 ### §6.5 ✗ post-suspend handshake (永続却下) / ✅ snapshot rejoin trigger (= 2026-05-06 implement 済)
 
+> **⚠️ Superseded by**: [`2026-05-06-snapshot-rejoin-host-push.md`](2026-05-06-snapshot-rejoin-host-push.md) (= 2026-05-07 push back で WebRTC reconnect timing race を発見、 wake tick の self trigger は drop されるため host push 対称的拡張に倒す)。 (b) snapshot rejoin trigger 実装 (commit `3de5a78`) は新 plan Stage 1 で revert 予定、 本 §6.5 narrative の 「✅ implement 済」 status は historical (= 一時実装済 → supersede による撤回予定) と read。
+
 **初期 主張案**: wake 時 reconnect で peer に 「私の suspend 中、 あなた active だった?」 を問い合わせる handshake (= activeQuery + activeReport 2 message types + per-peer cumulative active time tracking)。
 
 **5/6 plan 確定時の defer 判断**: 現 plan は local で検出可能な範囲を完全 optimal にカバー、 検出不能 case (= WebRTC died) は Rule B fallback で eventual consistency。 handshake は L4 設計の上に乗る増分機能、 backbone 不変なため後付け可能、 別 plan で対処、 と defer。

@@ -2,7 +2,11 @@
 
 ## 現在のステータス
 
-**本番最新 deploy**: 2026-05-06 build `16:38:54` **Bug 14 完全治療 + implicit Euler refactor + snapshot rejoin trigger** ([`plans/2026-05-06-bug14-global-active-time.md`](plans/2026-05-06-bug14-global-active-time.md))。 globalActive clock semantic (= P1 + P2 を直接表現) + **implicit Euler integration** (= `newU = (u + a × dτ) / (1 + γkΔ)` で friction を任意 dτ で unconditionally 安定) + lastWitnessTimeRef structural separation + selfActive broadcast schema + **snapshot rejoin trigger** (= long gap 検知で BH に snapshotRequest 送出、 既存 isMigrationPath logic を対称的に流用、 missed kill / event 系 sync を覆う、 §6.5 un-defer 実装)、 全 274 test pass。 mobile overnight 実機 verify で最終確認待ち。
+**本番最新 deploy**: 2026-05-06 build `16:38:54` **Bug 14 完全治療 + implicit Euler refactor** ([`plans/2026-05-06-bug14-global-active-time.md`](plans/2026-05-06-bug14-global-active-time.md))。 globalActive clock semantic (= P1 + P2 を直接表現) + **implicit Euler integration** (= `newU = (u + a × dτ) / (1 + γkΔ)` で friction を任意 dτ で unconditionally 安定) + lastWitnessTimeRef structural separation + selfActive broadcast schema、 全 274 test pass。 mobile overnight 実機 verify で最終確認待ち。 **snapshot rejoin trigger 暫定実装 (= self 側 long-gap detect → snapshotRequest, commit `3de5a78`) は WebRTC reconnect timing race で wake tick の trigger が drop され効かない欠陥が判明、 host push 対称的拡張による真の根本治療 plan で撤回予定** ([`plans/2026-05-06-snapshot-rejoin-host-push.md`](plans/2026-05-06-snapshot-rejoin-host-push.md), Bug 14 plan §6.5 を supersede)。
+
+### Active plans (= 未完了 / 実装中 / supersession 関係あり)
+
+- **[`plans/2026-05-06-snapshot-rejoin-host-push.md`](plans/2026-05-06-snapshot-rejoin-host-push.md)** — host push 対称的拡張で snapshot rejoin の真の根本治療。 [`plans/2026-05-06-bug14-global-active-time.md §6.5`](plans/2026-05-06-bug14-global-active-time.md) の self trigger 暫定実装 (= commit `3de5a78`) を **supersede**、 self trigger は WebRTC reconnect timing race で drop されるため [`RelativisticGame.tsx:216`](src/components/RelativisticGame.tsx) の host snapshot push skip 条件を 「stale reconnect 例外」 拡張に倒す。 未実装、 別 session で 6 Stage で着手予定 (= 30-45 min 見積、 詳細 plan §4)
 
 直近 commits:
 - [`a998f9c`] **Stage 9 docs**: physics.md / state-ui.md / network-recovery.md / meta-principles.md §M43 を Bug 14 plan の設計柱に整合
