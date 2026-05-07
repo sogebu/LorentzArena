@@ -85,8 +85,12 @@ export const HUD = ({
         getPlayerColor={getPlayerColor}
       />
 
-      {(!showPLCSlice || plcMode === "2d") && (
-        <Radar myId={myId} cameraYawRef={cameraYawRef} fullscreen={showPLCSlice} />
+      {/* Radar mini-map (= 左下) は時空 mode のみ表示。 PLC 2D / 3D は 3D scene 自体が
+          PLC 平面 view を提供するので mini-map 不要 (= 2026-05-07 odakin 「PLC 2D も 3D
+          model を見せる」 指示で PLC 2D = 3D scene の真上俯瞰表示に変更、 Radar fullscreen
+          は廃止)。 */}
+      {!showPLCSlice && (
+        <Radar myId={myId} cameraYawRef={cameraYawRef} fullscreen={false} />
       )}
 
       {/* Arena 中心方向矢印 + 距離 (= 「遠くに行って戻れない」 onboarding fix、

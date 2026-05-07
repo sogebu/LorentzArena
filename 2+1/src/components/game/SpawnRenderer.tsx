@@ -2,16 +2,24 @@ import { useMemo } from "react";
 import * as THREE from "three";
 import { SPAWN_EFFECT_DURATION } from "./constants";
 import { buildMeshMatrix, useDisplayFrame } from "./DisplayFrameContext";
+import { transformEventForDisplay } from "./displayTransform";
 import { getThreeColor, sharedGeometries } from "./threeCache";
 import type { SpawnEffect } from "./types";
 
-// スポーンエフェクト描画コンポーネント (D pattern: world frame geometry + displayMatrix 合成)
+// スポーンエフェクト描画コンポーネント。
+//   - 時空 mode (= flattenT=false): D pattern で 5 本のリングを時間軸 (= +z=+t) に積層 + 中心
+//     光柱で 4D 構造を表現
+//   - PLC slice mode (= flattenT=true): 時間軸が描画次元から落ちているので、 5 リングを **z=0
+//     平面上の ripple effect** (= 同 xy で異 radius) に折り畳み、 光柱は skip。 各リングの
+//     `ringProgress` (= 既存 staggered 進行) で radius / opacity が異なるので 「波紋」 として
+//     2D 平面上に同様の動感が出る。
 export const SpawnRenderer = ({
   spawn,
 }: {
   spawn: SpawnEffect;
 }) => {
-  const { displayMatrix, observerPos } = useDisplayFrame();
+  const { displayMatrix, observerPos, observerBoost, flattenT } =
+    useDisplayFrame();
   const elapsed = Date.now() - spawn.startTime;
   const progress = Math.min(elapsed / SPAWN_EFFECT_DURATION, 1);
   const opacity = 1 - progress;
@@ -22,6 +30,42 @@ export const SpawnRenderer = ({
 
   // 5本のリングが時間軸に沿って配置、収縮アニメーション
   const ringCount = 5;
+
+  // PLC mode: spawn xy を rest-frame xy に投影して z=0 平面に固定。
+  if (flattenT) {
+    const dp = transformEventForDisplay(
+      { t: spawn.pos.t, x: spawn.pos.x, y: spawn.pos.y, z: 0 },
+      observerPos,
+      observerBoost,
+    );
+    return (
+      <group position={[dp.x, dp.y, 0]}>
+        {Array.from({ length: ringCount }, (_, i) => {
+          const ringProgress = (progress * 3 + i / ringCount) % 1;
+          const ringRadius = (1 - ringProgress) * 4;
+          const ringOpacity = opacity * (1 - ringProgress) * 0.8;
+          if (ringRadius < 0.1 || ringOpacity < 0.01) return null;
+          return (
+            <mesh
+              key={`ring-${spawn.id}-${i}`}
+              geometry={sharedGeometries.spawnRing}
+              scale={[ringRadius, ringRadius, 1]}
+            >
+              <meshBasicMaterial
+                color={color}
+                transparent
+                opacity={ringOpacity}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </mesh>
+          );
+        })}
+        {/* PLC では時間軸方向の pillar は意味を持たないので skip。 ring の波紋だけで spawn 演出。 */}
+      </group>
+    );
+  }
+
   return (
     <>
       {Array.from({ length: ringCount }, (_, i) => {

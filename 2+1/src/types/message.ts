@@ -138,15 +138,21 @@ export type Message =
     }
   | {
       /**
-       * Player introduction: display name announcement.
-       * Sent once on connection. Host relays to all peers.
+       * Player introduction: display name + ship appearance announcement.
+       * Sent on connection (= `peerManager.send` broadcast) AND on viewMode change
+       * (= `setViewMode` re-broadcast)。 Host relays to all peers.
        *
-       * JP: プレイヤー自己紹介: 表示名の通知。
-       * 接続時に 1 回送信。ホストが全ピアにリレー。
+       * `viewMode` は機体形状 ("classic" / "shooter" / "jellyfish")。 旧 client は欠落 →
+       * 受信側 fallback "classic" (= 旧 default、 `OtherShipRenderer` も classic 経路だった
+       * ため backward-compat)。
+       *
+       * JP: プレイヤー自己紹介: 表示名 + 機体形状の通知。
+       * 接続時 broadcast + viewMode 変更時に再 broadcast。 ホストが全ピアにリレー。
        */
       type: "intro";
       senderId: string;
       displayName: string;
+      viewMode?: "classic" | "shooter" | "jellyfish";
     }
   | {
       /**
@@ -199,6 +205,9 @@ export type Message =
         ownerId: string;
         color: string;
         displayName?: string;
+        /** 機体形状 (classic / shooter / jellyfish)。 旧 client は欠落 → 受信側 fallback "classic"。
+         *  intro メッセージと同期した backward-compat schema。 */
+        viewMode?: "classic" | "shooter" | "jellyfish";
         isDead: boolean;
         /**
          * Phase C1 (damage model): 被弾時に減算される共有プール。

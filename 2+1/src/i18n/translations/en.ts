@@ -37,10 +37,14 @@ export const en: Record<TranslationKey, string> = {
   "hud.orthographic": "Orthographic",
   "hud.perspective": "Perspective",
   // View mode (plans/2026-04-25-viewpoint-controls.md)
-  // classic: legacy (chase camera, ship body rotates, body-relative thrust)
-  // shooter: twin-stick (fixed camera, ship hull stationary, cannon points to input dir)
-  "hud.viewMode.classic": "Classic",
-  "hud.viewMode.shooter": "Shooter",
+  // viewMode = ship hull shape (orthogonal to controlScheme). Shape-based naming
+  // (2026-05-07 odakin renaming: replaced "Classic" with descriptive "Gunship").
+  // Internal IDs (classic / shooter / jellyfish) are kept for LS / URL hash compat.
+  // - Gunship (classic): octagonal prism hull + 4 RCS + suspended big cannon
+  // - Rocket (shooter):  LatheGeometry teardrop body
+  // - Jellyfish:         translucent dome + Verlet tentacles
+  "hud.viewMode.classic": "Gunship",
+  "hud.viewMode.shooter": "Rocket",
   "hud.viewMode.jellyfish": "Jellyfish",
   "hud.viewMode.label": "Hull",
   // Distance unit (internal c=1 natural unit = light-second).
@@ -60,7 +64,9 @@ export const en: Record<TranslationKey, string> = {
   "hud.coordTime": "Coord time",
   "hud.position": "Position",
   "hud.energy": "ENERGY",
-  "hud.fuelEmpty": "OUT OF FUEL",
+  // Energy pool empty (Speedometer; pool is shared by fire/thrust/damage so "energy"
+  // is more accurate than "fuel" which implies thrust-only).
+  "hud.fuelEmpty": "OUT OF ENERGY",
   // HUD - scoreboard
   "hud.kills": "Kills",
   "hud.you": "You",
@@ -95,9 +101,12 @@ export const en: Record<TranslationKey, string> = {
   "connect.networkHelp":
     "WebRTC may be blocked on school/corporate networks, preventing connection.",
   "connect.peers": "Connected peers",
-  "connect.peerOpen": "open",
+  // Peer connection states (3-value, Connect.tsx). 2026-05-07 renaming:
+  //   peerOpen "open" → "connected" (= clearer than "open" as user-facing text)
+  //   peerClosed "connecting/failed" → "not connected" (= remove ambiguous "/")
+  "connect.peerOpen": "connected",
   "connect.peerStale": "no response",
-  "connect.peerClosed": "connecting/failed",
+  "connect.peerClosed": "not connected",
   "connect.networkSettings": "Network settings (env)",
   // Lobby
   "lobby.title": "Lorentz Arena",

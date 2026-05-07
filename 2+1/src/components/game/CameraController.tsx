@@ -36,22 +36,44 @@ import * as THREE from "three";
  */
 export interface CameraControllerProps {
   useOrthographic: boolean;
-  plc3d: boolean;
+  plcSlice: boolean;
+  plcMode: "2d" | "3d";
 }
 
 export const CameraController = ({
   useOrthographic,
-  plc3d,
+  plcSlice,
+  plcMode,
 }: CameraControllerProps) => {
   const set = useThree((s) => s.set);
   const size = useThree((s) => s.size);
 
   useEffect(() => {
     let camera: THREE.OrthographicCamera | THREE.PerspectiveCamera;
-    if (plc3d) {
+    if (plcSlice && plcMode === "2d") {
+      // PLC 2D: 真上俯瞰 orthographic (= top-down map view)。 同じ flatten 済 ship model
+      // を真上から見るので 3D model 上面が clearly 読める。 zoom は spacetime ortho より
+      // 控えめ (= 15) で arena 範囲が画面に収まる。 size 由来の left/right/top/bottom は
+      // SceneContent useFrame で position/lookAt 設定後に再 sync (= 既存 spacetime ortho
+      // と同 pattern)。
+      const cam = new THREE.OrthographicCamera(
+        -size.width / 2,
+        size.width / 2,
+        size.height / 2,
+        -size.height / 2,
+        -500,
+        500,
+      );
+      cam.zoom = 15;
+      cam.position.set(0, 0, 50);
+      cam.up.set(0, 1, 0); // top-down: world +y が canvas up = screen up
+      cam.updateProjectionMatrix();
+      camera = cam;
+    } else if (plcSlice) {
+      // PLC 3D: 斜め俯瞰 perspective (= 既存挙動、 PLC_SLICE_PITCH=π/8 で深度感を残す)。
       const cam = new THREE.PerspectiveCamera(60, size.width / size.height, 0.1, 1000);
       cam.position.set(0, -12, 20);
-      cam.up.set(0, 0, 1); // PLC 3D mode: time 軸が up
+      cam.up.set(0, 0, 1);
       camera = cam;
     } else if (useOrthographic) {
       // OrthographicCamera は left/right/top/bottom (= camera-space 平面) で初期化。
@@ -76,7 +98,7 @@ export const CameraController = ({
       camera = cam;
     }
     set({ camera });
-  }, [useOrthographic, plc3d, size.width, size.height, set]);
+  }, [useOrthographic, plcSlice, plcMode, size.width, size.height, set]);
 
   return null;
 };

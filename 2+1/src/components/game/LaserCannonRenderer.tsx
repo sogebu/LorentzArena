@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useFlattenT } from "./DisplayFrameContext";
 import {
   SHIP_GUN_PITCH_DOWN_RAD,
   SHIP_HULL_HEIGHT,
@@ -58,6 +59,10 @@ import { getThreeColor } from "./threeCache";
  *   (HDR bloom 維持)。Pod / barrel の structural 色は常に dark navy で固定。
  */
 export const LaserCannonRenderer = ({ color }: { color?: string } = {}) => {
+  // PLC slice では laser が xy 平面を横に飛ぶので砲身も水平 (pitch=0) に向ける。
+  // SelfShipRenderer の cannonStyle="gun" 経路と同じロジックで、 OtherShipRenderer
+  // (= 他機 classic ship、 cannonStyle="laser" 固定) もここで PLC 対応を効かせる。
+  const flattenT = useFlattenT();
   // hsl() 以外 (ShipPreview "#ffffff" stub 等) は default cyan に fall back。
   const playerGlowColor = useMemo(
     () => (color?.startsWith("hsl(") ? color : null),
@@ -146,7 +151,7 @@ export const LaserCannonRenderer = ({ color }: { color?: string } = {}) => {
           [0, 0, -HULL_H/2 - POD_VERTICAL] とする (= gun と同じ -HULL_H/2 - BRACKET_HEIGHT)。 */}
       <group
         position={[0, 0, -SHIP_HULL_HEIGHT / 2 - SHIP_LASER_POD_VERTICAL]}
-        rotation={[0, SHIP_GUN_PITCH_DOWN_RAD, 0]}
+        rotation={[0, flattenT ? 0 : SHIP_GUN_PITCH_DOWN_RAD, 0]}
       >
         <group position={[-SHIP_LASER_MOUNT_X_OFFSET, 0, 0]}>
           {/* (2) Barrel: slender cylinder、rear を REAR_EXTENSION 分 pod 内に埋没させる。

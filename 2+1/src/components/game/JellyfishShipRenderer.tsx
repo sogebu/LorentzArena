@@ -23,6 +23,7 @@ import {
   SHIP_LIFT_Z,
   SHIP_MODEL_SCALE,
 } from "./constants";
+import { useFlattenT } from "./DisplayFrameContext";
 import { transformEventForDisplay } from "./displayTransform";
 import { getThreeColor, sharedGeometries } from "./threeCache";
 
@@ -300,6 +301,8 @@ export const JellyfishShipRenderer = ({
    *  未指定は常に false 扱い (本番ゲームの未接続時 / 通常 preview)。 */
   firingRef?: React.RefObject<boolean>;
 }) => {
+  // PLC スライス mode で anchor を z=0 平面に揃える。 SelfShipRenderer §flattenT と同じ。
+  const flattenT = useFlattenT();
   const groupRef = useRef<THREE.Group>(null);
   // 各触手の mesh ref (per-frame で TubeGeometry を rebuild → 入れ替えのため保持)。
   const tentacleMeshRefs = useRef<Array<THREE.Mesh | null>>([]);
@@ -417,7 +420,7 @@ export const JellyfishShipRenderer = ({
       observerPos,
       observerBoost,
     );
-    group.position.set(dp.x, dp.y, dp.t);
+    group.position.set(dp.x, dp.y, flattenT ? 0 : dp.t);
 
     // group は z 軸 yaw のみ回転 (roll/pitch なし = 縦に置く)。lerp で武装触手が
     // heading 方向 (= +x、player 入力方向) を指す。dome は円対称で見た目不変。
@@ -530,7 +533,8 @@ export const JellyfishShipRenderer = ({
         : alpha4;
       const ax4 = alphaObs.x;
       const ay4 = alphaObs.y;
-      const at4 = alphaObs.t;
+      // PLC slice: at4=0 で xy 平面に lay flat (SelfShipRenderer §flattenT 加速度矢印 と同じ)。
+      const at4 = flattenT ? 0 : alphaObs.t;
       const mag4 = Math.sqrt(ax4 * ax4 + ay4 * ay4 + at4 * at4);
       const rawTarget = mag4 / PLAYER_ACCELERATION;
       const current = arrowSmoothedMagRef.current;
@@ -552,7 +556,8 @@ export const JellyfishShipRenderer = ({
         const originOffset =
           (SHIP_HULL_RADIUS + ARROW_BASE_OFFSET) * SHIP_MODEL_SCALE +
           0.5 * arrowLen;
-        const hullCenterT = dp.t + SHIP_LIFT_Z * SHIP_MODEL_SCALE;
+        // PLC: anchor は z=0 平面、 矢印は xy 平面に水平。
+        const hullCenterT = flattenT ? 0 : dp.t + SHIP_LIFT_Z * SHIP_MODEL_SCALE;
         arrowMesh.position.set(
           dp.x + dirX * originOffset,
           dp.y + dirY * originOffset,

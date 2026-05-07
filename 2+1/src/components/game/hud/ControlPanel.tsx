@@ -200,11 +200,15 @@ export const ControlPanel = ({
           labelLeft={t("hud.orthographic")}
           labelRight={t("hud.perspective")}
         />
+        {/* 時空図 / PLCスライス toggle: default = 時空図 を **右** に置いて他 toggle と
+            convention 統一 (= 静止系 / 透視投影 / 3D が右で bright = default 状態)。
+            user 指示 2026-05-07「時空図がデフォなんだから時空図を右に書くべき」。
+            checked semantics は 「右 label が active」、 反転して `!showPLCSlice` を渡す。 */}
         <ToggleSwitch
-          checked={showPLCSlice}
-          onChange={setShowPLCSlice}
-          labelLeft={t("hud.spacetime")}
-          labelRight={t("hud.plcSlice")}
+          checked={!showPLCSlice}
+          onChange={(v) => setShowPLCSlice(!v)}
+          labelLeft={t("hud.plcSlice")}
+          labelRight={t("hud.spacetime")}
         />
         {showPLCSlice && (
           <ToggleSwitch

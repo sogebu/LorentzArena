@@ -88,6 +88,7 @@ export const buildSnapshot = (myId: string, isBeaconHolder: boolean) => {
     ownerId: string;
     color: string;
     displayName?: string;
+    viewMode?: "classic" | "shooter" | "jellyfish";
     isDead: boolean;
     energy: number;
     phaseSpace: PhaseSpaceWire;
@@ -131,6 +132,7 @@ export const buildSnapshot = (myId: string, isBeaconHolder: boolean) => {
       ownerId,
       color: p.color,
       displayName: p.displayName,
+      viewMode: p.viewMode,
       // 2026-05-04 isDead 二重管理解消: internal field 撤廃で送信値は selectIsDead
       // で derive。 wire format には旧 client 互換のため残す (= pass-through pattern、
       // option (C))。 受信側 (= 新 client) は applySnapshot で読まずに log から再 derive。
@@ -253,6 +255,17 @@ export const applySnapshot = (
     for (const h of sp.worldLineHistory) {
       wl = appendWorldLine(wl, fromPhaseSpaceWire(h));
     }
+    // viewMode 検証 (= snapshot schema 2026-05-07 拡張): 旧 client は欠落 → undefined、
+    // 受信側 SceneContent dispatch で undefined → "classic" fallback。 stray value も undefined。
+    const validViewModes: ReadonlyArray<"classic" | "shooter" | "jellyfish"> = [
+      "classic",
+      "shooter",
+      "jellyfish",
+    ];
+    const spViewMode =
+      sp.viewMode && validViewModes.includes(sp.viewMode)
+        ? sp.viewMode
+        : undefined;
     nextPlayers.set(sp.id, {
       id: sp.id,
       // 2026-05-06 NPC 非対称 plan: kind は ID prefix から derive (= wire format に kind
@@ -267,6 +280,7 @@ export const applySnapshot = (
       // wire の `sp.isDead` は ignore (= 旧 client 互換 pass-through で送られてくるが、
       // 受信側は merged killLog/respawnLog から `selectIsDead` で再 derive する)。
       displayName: sp.displayName,
+      viewMode: spViewMode,
       energy: typeof sp.energy === "number" ? sp.energy : ENERGY_MAX,
     });
     // Stage 3 (2026-04-21): 新規追加時のみ lastUpdate を初期化。既存 entry を
@@ -294,6 +308,21 @@ export const applySnapshot = (
   const mergedDisplayNames = new Map(store.displayNames);
   for (const [id, name] of Object.entries(msg.displayNames)) {
     mergedDisplayNames.set(id, name);
+  }
+
+  // playerViewModes は intro 経路の staging map と整合させるため、 snapshot 経由で来た
+  // 各 player の viewMode も同 map に save する (= local intro より snapshot が遅れて
+  // 来る順序でも viewMode を取りこぼさない)。
+  const mergedPlayerViewModes = new Map(store.playerViewModes);
+  for (const sp of msg.players) {
+    if (sp.viewMode === undefined) continue;
+    if (
+      sp.viewMode !== "classic" &&
+      sp.viewMode !== "shooter" &&
+      sp.viewMode !== "jellyfish"
+    )
+      continue;
+    mergedPlayerViewModes.set(sp.id, sp.viewMode);
   }
 
   if (isMigrationPath) {
@@ -372,6 +401,7 @@ export const applySnapshot = (
       // 到達時に各 peer で独立に加算する)。snapshot の scores で上書きすると
       // 全 peer が beacon holder の観測に同期して相対論的独立性が壊れる。
       displayNames: mergedDisplayNames,
+      playerViewModes: mergedPlayerViewModes,
       killLog: mergedKillLog,
       respawnLog: mergedRespawnLog,
     });
@@ -382,6 +412,7 @@ export const applySnapshot = (
       players: nextPlayers,
       scores: { ...msg.scores },
       displayNames: mergedDisplayNames,
+      playerViewModes: mergedPlayerViewModes,
       killLog: msg.killLog.map((e) => ({ ...e })),
       respawnLog: msg.respawnLog.map((e) => ({ ...e })),
     });

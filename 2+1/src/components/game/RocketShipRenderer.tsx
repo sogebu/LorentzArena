@@ -41,6 +41,7 @@ import {
   SHIP_NOZZLE_OUTWARD_OFFSET,
   SHIP_NOZZLE_THROAT_RADIUS,
 } from "./constants";
+import { useFlattenT } from "./DisplayFrameContext";
 import { transformEventForDisplay } from "./displayTransform";
 import { RocketHullRenderer } from "./RocketHullRenderer";
 import { getThreeColor, sharedGeometries } from "./threeCache";
@@ -81,6 +82,8 @@ export const RocketShipRenderer = ({
   cameraYawRef?: React.RefObject<number>;
   alpha4?: Vector4;
 }) => {
+  // PLC スライス mode で anchor を z=0 平面に揃える。 SelfShipRenderer §flattenT と同じ。
+  const flattenT = useFlattenT();
   const groupRef = useRef<THREE.Group>(null);
   // 単一後部エンジン噴射: de Laval bell exit の直後から -x 方向へ smoothing。
   const rearExhaustOuterRef = useRef<THREE.Mesh | null>(null);
@@ -131,7 +134,7 @@ export const RocketShipRenderer = ({
       observerPos,
       observerBoost,
     );
-    group.position.set(dp.x, dp.y, dp.t);
+    group.position.set(dp.x, dp.y, flattenT ? 0 : dp.t);
 
     // Hull (group) を heading 方向に lerp 追従回転。機体 nose が入力方向を指すことで
     // 「向きが変わる」visual feedback を提供 (砲がない代わりに本体姿勢で direction を伝える)。
@@ -217,7 +220,8 @@ export const RocketShipRenderer = ({
         : alpha4;
       const ax4 = alphaObs.x;
       const ay4 = alphaObs.y;
-      const at4 = alphaObs.t;
+      // PLC slice: at4=0 で xy 平面に lay flat (SelfShipRenderer §flattenT 加速度矢印 と同じ)。
+      const at4 = flattenT ? 0 : alphaObs.t;
       const mag4 = Math.sqrt(ax4 * ax4 + ay4 * ay4 + at4 * at4);
       const rawTarget = mag4 / PLAYER_ACCELERATION;
       const current = arrowSmoothedMagRef.current;
@@ -239,7 +243,8 @@ export const RocketShipRenderer = ({
         const originOffset =
           (SHIP_HULL_RADIUS + ARROW_BASE_OFFSET) * SHIP_MODEL_SCALE +
           0.5 * arrowLen;
-        const hullCenterT = dp.t + SHIP_LIFT_Z * SHIP_MODEL_SCALE;
+        // PLC: anchor は z=0 平面、 矢印は xy 平面に水平。
+        const hullCenterT = flattenT ? 0 : dp.t + SHIP_LIFT_Z * SHIP_MODEL_SCALE;
         arrowMesh.position.set(
           dp.x + dirX * originOffset,
           dp.y + dirY * originOffset,

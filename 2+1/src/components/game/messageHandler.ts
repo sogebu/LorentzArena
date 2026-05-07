@@ -244,6 +244,10 @@ export const createMessageHandler =
           worldLine,
           color,
           displayName,
+          // viewMode: 既存 entry にあれば preserve、 なければ staging map (= 先着 intro が
+          // 保存した place) から拾う。 race 順序 (intro 先 / phaseSpace 先) のどちらでも
+          // 確定 viewMode が反映される。
+          viewMode: existing?.viewMode ?? store.playerViewModes.get(playerId),
           energy: existing?.energy ?? ENERGY_MAX,
         });
         return next;
@@ -251,13 +255,34 @@ export const createMessageHandler =
     } else if (msg.type === "intro") {
       if (!isValidString(msg.senderId) || !isValidString(msg.displayName, 20))
         return;
+      // 機体形状 viewMode (= intro schema 2026-05-07 拡張): 旧 client は欠落 → fallback
+      // "classic"。 enum 妥当性 check で stray value (例: 攻撃的に偽装 message を送られて
+      // unknown viewMode が来た場合) を default に丸める。
+      const validViewModes: ReadonlyArray<"classic" | "shooter" | "jellyfish"> =
+        ["classic", "shooter", "jellyfish"];
+      const introViewMode =
+        msg.viewMode && validViewModes.includes(msg.viewMode)
+          ? msg.viewMode
+          : undefined;
       store.setDisplayName(msg.senderId, msg.displayName);
+      // viewMode は **player entry の有無に関わらず** staging map (= playerViewModes) に
+      // 保存。 intro が phaseSpace より先着した race で受信側 players map に sender 未登録
+      // でも viewMode を失わない。 phaseSpace 経路の新規 player 作成時に本 map から拾われる。
+      store.setPlayerViewMode(msg.senderId, introViewMode);
       store.setPlayers((prev) => {
         const existing = prev.get(msg.senderId);
         if (!existing) return prev;
-        if (existing.displayName === msg.displayName) return prev;
+        if (
+          existing.displayName === msg.displayName &&
+          existing.viewMode === introViewMode
+        )
+          return prev;
         const next = new Map(prev);
-        next.set(msg.senderId, { ...existing, displayName: msg.displayName });
+        next.set(msg.senderId, {
+          ...existing,
+          displayName: msg.displayName,
+          viewMode: introViewMode,
+        });
         return next;
       });
     } else if (msg.type === "snapshot") {

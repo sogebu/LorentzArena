@@ -279,6 +279,16 @@ export interface GameState {
    */
   canvasGeneration: number;
   displayNames: Map<string, string>;
+  /**
+   * 各 peer の選んだ機体形状 (viewMode)。 intro メッセージ受信で更新、 player.viewMode の
+   * staging 領域として機能。 必要性: intro が phaseSpace より先着すると receiver の players
+   * map に該当 peer 未登録 → setPlayers で `existing===null` で update を drop してしまう
+   * race を回避するため、 displayNames と同じ独立 map で保持し、 phaseSpace 経路の player
+   * 新規作成時に本 map から viewMode を読み取って初期 entry に乗せる。
+   * 自機本人の viewMode は `state.viewMode` (= local setting) が source of truth、 本 map は
+   * **他者観察用 + 自機 player entry の同期用**。
+   */
+  playerViewModes: Map<string, ViewMode>;
 
   // --- Non-reactive state (read via getState() only, no re-render) ---
   processedLasers: Set<string>;
@@ -423,6 +433,9 @@ export interface GameState {
   // --- Actions: small helpers ---
   removePlayer: (playerId: string) => void;
   setDisplayName: (playerId: string, name: string) => void;
+  /** 他 peer の機体形状を staging map に保存 (= intro 経由)。 player entry が未登録でも
+   *  保持し、 phaseSpace 受信時の新規 entry 作成で読み出される。 */
+  setPlayerViewMode: (playerId: string, viewMode: ViewMode | undefined) => void;
   addProcessedLaser: (laserId: string) => void;
   cleanupProcessedLasers: (threshold: number) => void;
 
@@ -457,6 +470,7 @@ export const useGameStore = create<GameState>()((set, get) => ({
   signalingDead: false,
   canvasGeneration: 0,
   displayNames: new Map(),
+  playerViewModes: new Map(),
 
   // Non-reactive
   processedLasers: new Set(),
@@ -759,6 +773,20 @@ export const useGameStore = create<GameState>()((set, get) => ({
       const next = new Map(state.displayNames);
       next.set(playerId, name);
       return { displayNames: next };
+    });
+  },
+
+  setPlayerViewMode: (playerId, viewMode) => {
+    set((state) => {
+      const cur = state.playerViewModes.get(playerId);
+      if (cur === viewMode) return state;
+      const next = new Map(state.playerViewModes);
+      if (viewMode === undefined) {
+        next.delete(playerId);
+      } else {
+        next.set(playerId, viewMode);
+      }
+      return { playerViewModes: next };
     });
   },
 

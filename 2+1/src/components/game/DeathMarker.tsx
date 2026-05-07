@@ -44,7 +44,7 @@ export const DeathMarker = ({
   uD: Vector4;
   color: THREE.Color;
 }) => {
-  const { observerPos, observerBoost, torusHalfWidth } = useDisplayFrame();
+  const { observerPos, observerBoost, torusHalfWidth, flattenT } = useDisplayFrame();
   if (!observerPos) return null;
 
   const tau0 = pastLightConeIntersectionDeathWorldLine(xD, uD, observerPos);
@@ -57,11 +57,16 @@ export const DeathMarker = ({
   const ringWorld = evaluateDeathWorldLine(xD, uD, tau0);
   const ringDp = transformEventForDisplay(ringWorld, observerPos, observerBoost, torusHalfWidth);
 
+  // PLC mode: anchor を z=0 平面に揃える (sphere / ring の geometry はもともと xy 円対称
+  // なので、 anchor の t を 0 にすれば PLC 平面上の死亡記号として機能する)。
+  const sphereZ = flattenT ? 0 : sphereDp.t;
+  const ringZ = flattenT ? 0 : ringDp.t;
+
   return (
     <>
       <mesh
         geometry={sharedGeometries.killSphere}
-        position={[sphereDp.x, sphereDp.y, sphereDp.t]}
+        position={[sphereDp.x, sphereDp.y, sphereZ]}
       >
         <meshBasicMaterial
           color={color}
@@ -72,7 +77,7 @@ export const DeathMarker = ({
       </mesh>
       <mesh
         geometry={sharedGeometries.killRing}
-        position={[ringDp.x, ringDp.y, ringDp.t]}
+        position={[ringDp.x, ringDp.y, ringZ]}
       >
         <meshBasicMaterial
           color={color}

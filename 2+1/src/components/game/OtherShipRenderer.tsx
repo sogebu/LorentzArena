@@ -12,7 +12,9 @@ import {
 import { useGameStore } from "../../stores/game-store";
 import { LIGHT_CONE_HEIGHT } from "./constants";
 import { useDisplayFrame } from "./DisplayFrameContext";
+import { JellyfishShipRenderer } from "./JellyfishShipRenderer";
 import { pastConeIntersectionWithFrozenFallback } from "./pastConeFallback";
+import { RocketShipRenderer } from "./RocketShipRenderer";
 import { SelfShipRenderer } from "./SelfShipRenderer";
 import type { RelativisticPlayer } from "./types";
 
@@ -103,6 +105,34 @@ export const OtherShipRenderer = ({
           color: player.color,
         };
 
+        // 機体形状 dispatch (= 2026-05-07 viewMode broadcast 拡張)。 player.viewMode を
+        // intro/snapshot から拾って各 ship renderer を呼ぶ。 旧 client や未通知時は
+        // undefined → fallback "classic" (= SelfShipRenderer)。
+        const otherViewMode = player.viewMode ?? "classic";
+        if (otherViewMode === "shooter") {
+          return (
+            <RocketShipRenderer
+              key={cellKey}
+              player={virtualPlayer}
+              thrustAccelRef={thrustRef}
+              observerPos={observerPos}
+              observerBoost={observerBoost}
+              alpha4={intersection.alpha}
+            />
+          );
+        }
+        if (otherViewMode === "jellyfish") {
+          return (
+            <JellyfishShipRenderer
+              key={cellKey}
+              player={virtualPlayer}
+              thrustAccelRef={thrustRef}
+              observerPos={observerPos}
+              observerBoost={observerBoost}
+              alpha4={intersection.alpha}
+            />
+          );
+        }
         return (
           <SelfShipRenderer
             key={cellKey}

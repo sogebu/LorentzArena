@@ -4,14 +4,149 @@ import {
   lorentzBoost,
   multiplyVector4Matrix4,
   pastLightConeIntersectionWorldLine,
+  quatToYaw,
   subVector4Torus,
 } from "../../../physics";
 import { useTorusHalfWidth } from "../../../hooks/useTorusHalfWidth";
 import { selectIsDead, useGameStore } from "../../../stores/game-store";
-import { ARENA_RADIUS } from "../constants";
-import { pastLightConeIntersectionLaser } from "../laserPhysics";
+import { ARENA_RADIUS, FUTURE_CONE_LASER_TRIANGLE_OPACITY } from "../constants";
+import {
+  futureLightConeIntersectionLaser,
+  pastLightConeIntersectionLaser,
+} from "../laserPhysics";
 import { isLighthouse } from "../lighthouse";
 import { isTouchDevice } from "./utils";
+
+/** PLC 2D fullscreen mode の ship icon 上面アイコン半径 (px)。 fullscreen canvas は ~800-1080 px
+ *  級なので 9 px だと形状認識限界以下 (= 小 dot にしか見えない)、 18 px に bump して
+ *  octagon / teardrop / dome shape が読める寸法に (2026-05-07 odakin 「アイコン表示されてない」
+ *  指摘で形状不明瞭が判明、 サイズ拡大で対処)。 通常 mini-map (= fullscreen=false) は
+ *  `PLAYER_DOT_RADIUS=3.5` の小 dot を維持。 */
+const SHIP_ICON_R = 18;
+
+/**
+ * Canvas 2D top-down ship icon を描画。 PLC 2D fullscreen mode で 3D ship model を 2D
+ * 上面ベクター icon として可視化する (= 2026-05-07 odakin 指示「2D モードでも 3D モデルは
+ * なんかいいかんじに表示しよう」)。 viewMode 別に identity を分ける:
+ *   - classic (gunship): 八角プリズム → octagon + 機首 cannon line
+ *   - shooter (rocket):  teardrop body → 細長い triangle (nose +x、 tail で広がる)
+ *   - jellyfish:         dome + 触手 → circle + 5 短い触手線、 +x の触手だけ長い (= 武装触手)
+ * ctx は呼び出し側で translate(cx, cy) + rotate(canvasAngle) 済を仮定 (= local +x = forward)。
+ * size: icon の基準半径 (px)。 self 強調のため self は他機より 1.4× 大きく描く運用。
+ * outline: 白アウトラインを描くか (= self は true で SELF_DOT_RADIUS の白縁取り継承)。
+ */
+const drawShipIcon = (
+  ctx: CanvasRenderingContext2D,
+  viewMode: "classic" | "shooter" | "jellyfish",
+  color: string,
+  size: number = SHIP_ICON_R,
+  outline: boolean = false,
+) => {
+  const outlineStyle = "rgba(255, 255, 255, 0.95)";
+  const outlineW = 1.5;
+  if (viewMode === "shooter") {
+    const tip = size * 1.2;
+    const back = -size * 0.7;
+    const halfW = size * 0.55;
+    ctx.beginPath();
+    ctx.moveTo(tip, 0);
+    ctx.lineTo(back, halfW);
+    ctx.lineTo(back * 0.7, 0);
+    ctx.lineTo(back, -halfW);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+    if (outline) {
+      ctx.strokeStyle = outlineStyle;
+      ctx.lineWidth = outlineW;
+      ctx.stroke();
+    }
+    return;
+  }
+  if (viewMode === "jellyfish") {
+    const innerR = size * 0.65;
+    ctx.beginPath();
+    ctx.arc(0, 0, innerR, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    if (outline) {
+      ctx.strokeStyle = outlineStyle;
+      ctx.lineWidth = outlineW;
+      ctx.stroke();
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.4;
+    const tCount = 5;
+    for (let i = 0; i < tCount; i++) {
+      const a = (i / tCount) * Math.PI * 2;
+      const isArmed = i === 0;
+      const len = isArmed ? size * 0.95 : size * 0.55;
+      ctx.beginPath();
+      ctx.moveTo(innerR * Math.cos(a), innerR * Math.sin(a));
+      ctx.lineTo((innerR + len) * Math.cos(a), (innerR + len) * Math.sin(a));
+      ctx.stroke();
+    }
+    return;
+  }
+  // gunship (classic)
+  const verts = 8;
+  ctx.beginPath();
+  for (let i = 0; i < verts; i++) {
+    const a = (i / verts) * Math.PI * 2;
+    const x = size * 0.7 * Math.cos(a);
+    const y = size * 0.7 * Math.sin(a);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  if (outline) {
+    ctx.strokeStyle = outlineStyle;
+    ctx.lineWidth = outlineW;
+    ctx.stroke();
+  }
+  // 機首 cannon line
+  ctx.strokeStyle = outline ? outlineStyle : color;
+  ctx.lineWidth = outline ? outlineW : 1.6;
+  ctx.beginPath();
+  ctx.moveTo(size * 0.7, 0);
+  ctx.lineTo(size * 1.25, 0);
+  ctx.stroke();
+};
+
+/** LH 専用 lamp icon サイズ (px)。 outer ring 半径。 SHIP_ICON_R と同寸感で
+ *  fullscreen canvas (~800-1080 px) で形状認識できる寸法に。 */
+const LH_ICON_R = 16;
+
+/**
+ * Lighthouse top-down icon: outer ring + 内 disc + 中央 lamp。 LH の 3D 塔を上から
+ * 見た形 (= 円柱 outer ring、 lantern 内 disc、 lamp emissive 球)。 PLC 2D fullscreen では
+ * LH も「3D モデル」 として表示する (= 2026-05-07 odakin 「3D モデルは見せて、 マーカー
+ * じゃなくて」 指示)。 LH の存在感は維持、 dim dot 系の「marker」 (= world-now / frozen) のみ
+ * 撤去で clean な表現を達成。
+ */
+const drawLighthouseIcon = (
+  ctx: CanvasRenderingContext2D,
+  color: string,
+) => {
+  // outer ring (= 塔本体)
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(0, 0, LH_ICON_R, 0, Math.PI * 2);
+  ctx.stroke();
+  // 内 disc (= lantern wall 半透明)
+  ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
+  ctx.beginPath();
+  ctx.arc(0, 0, LH_ICON_R * 0.65, 0, Math.PI * 2);
+  ctx.fill();
+  // 中央 lamp (= bright emissive)
+  ctx.fillStyle = "rgba(180, 220, 255, 0.95)";
+  ctx.beginPath();
+  ctx.arc(0, 0, LH_ICON_R * 0.3, 0, Math.PI * 2);
+  ctx.fill();
+};
 
 const RADAR_SIZE_PC = 180;
 const RADAR_SIZE_MOBILE = 140;
@@ -166,7 +301,105 @@ export const Radar = ({
         }
         ctx.stroke();
 
-        // 他機 (人間 + 灯台) past-cone 交点
+        // PLC 2D fullscreen mode の richness 追加 (= 2026-05-07 odakin 指示「PLC スライス 2D も
+        // 見た目をリッチに」)。 PLC 3D で描画している同要素を 2D canvas projection で
+        // mirror する。 通常 HUD radar (= fullscreen=false) では従来の minimum 表示維持。
+        if (fullscreen) {
+          // Reference rings (= 距離ガイド concentric circle、 rest-frame ls 単位)。 自機 = 中心
+          // (0,0) 固定なので canvas で normal arc。 PLC 3D の reference rings (5/10/15/20) と同等。
+          ctx.strokeStyle = "rgba(120, 200, 120, 0.08)";
+          ctx.lineWidth = 1;
+          for (const r of [5, 10, 15, 20]) {
+            const screenR = r * scale;
+            if (screenR < 2 || screenR > radius * 1.4) continue;
+            ctx.beginPath();
+            ctx.arc(cx, cy, screenR, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+
+          // レーザー世界線 xy 射影 (= PLC 3D §レーザー世界線 line と平行、 emission → tip
+          // を rest-frame xy に投影、 「光がいま走っている path」 をうっすら可視化)。
+          for (const laser of lasers) {
+            const e = laser.emissionPos;
+            const tipT = e.t + laser.range;
+            const tipX = e.x + laser.direction.x * laser.range;
+            const tipY = e.y + laser.direction.y * laser.range;
+            const [sxE, syE] = projectEvent(e.t, e.x, e.y);
+            const [sxT, syT] = projectEvent(tipT, tipX, tipY);
+            ctx.strokeStyle = laser.color;
+            ctx.globalAlpha = 0.18;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(sxE, syE);
+            ctx.lineTo(sxT, syT);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+          }
+
+          // (旧 神視点 world-now dot は 2026-05-07 に PLC 2D fullscreen から撤去。 user 指示
+          // 「赤丸のマーカーが邪魔 + 他機のマーカーも要らん」、 他機の現在位置 dim 円が視覚 noise
+          // になっていた。 過去光円錐 ∩ worldline 経路 (= 観測者 frame の他機位置) の方は別途
+          // 検討対象 (= 下の他機 past-cone block で全 fullscreen 描画停止)。)
+
+          // レーザー未来光円錐交点マーカー (= PLC 3D §laserFutureIntersections と平行、
+          // photon が将来 laser 世界線に到達する event)。 past-cone 三角形と同じ黄金 gnomon
+          // 形状、 サイズだけ少し小さく (= 2/3、 spacetime mode の past[6,1,1] vs future[1.5,1.5,1.5]
+          // の縮約感に対応)、 opacity = FUTURE_CONE_LASER_TRIANGLE_OPACITY × 0.6 = 0.12 で
+          // 「時空モードよりさらに薄く、 うっすら」 (odakin 指示)。 photon direction は
+          // past-cone 同様 boost で aberration 適用 (= rest-frame 進行方向)。
+          const FUTURE_TRI_LEN = LASER_TRI_LEN * (2 / 3);
+          const FUTURE_TRI_HALF_W =
+            FUTURE_TRI_LEN / Math.sqrt(4 * PHI + 3);
+          for (const laser of lasers) {
+            const fx = futureLightConeIntersectionLaser(laser, obsPos);
+            if (!fx) continue;
+            const photonRest = multiplyVector4Matrix4(
+              boost,
+              createVector4(
+                1,
+                laser.direction.x,
+                laser.direction.y,
+                laser.direction.z,
+              ),
+            );
+            const pxy = Math.hypot(photonRest.x, photonRest.y);
+            if (pxy < 1e-6) continue;
+            const rndx = photonRest.x / pxy;
+            const rndy = photonRest.y / pxy;
+            const rdx = rndx * cosA - rndy * sinA;
+            const rdy = rndx * sinA + rndy * cosA;
+            const sdx = rdx;
+            const sdy = -rdy;
+            const [centerX, centerY] = projectEvent(fx.t, fx.x, fx.y);
+            const tipX = centerX + sdx * ((2 / 3) * FUTURE_TRI_LEN);
+            const tipY = centerY + sdy * ((2 / 3) * FUTURE_TRI_LEN);
+            const baseCX = centerX - sdx * ((1 / 3) * FUTURE_TRI_LEN);
+            const baseCY = centerY - sdy * ((1 / 3) * FUTURE_TRI_LEN);
+            const pSx = -sdy;
+            const pSy = sdx;
+            ctx.fillStyle = laser.color;
+            ctx.globalAlpha = FUTURE_CONE_LASER_TRIANGLE_OPACITY * 0.6;
+            ctx.beginPath();
+            ctx.moveTo(tipX, tipY);
+            ctx.lineTo(
+              baseCX + pSx * FUTURE_TRI_HALF_W,
+              baseCY + pSy * FUTURE_TRI_HALF_W,
+            );
+            ctx.lineTo(
+              baseCX - pSx * FUTURE_TRI_HALF_W,
+              baseCY - pSy * FUTURE_TRI_HALF_W,
+            );
+            ctx.closePath();
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          }
+        }
+
+        // 他機 (人間 + 灯台) past-cone 交点。
+        // - 通常 mini-map (= fullscreen=false): 従来通り小 dot を描画
+        // - PLC 2D fullscreen: viewMode 別の上面 ship icon (= 「3D モデルは見せて、 マーカー
+        //   じゃなくて」 odakin 指示 2026-05-07、 平面 dot は marker、 ship icon は 3D model
+        //   表現として区別)。 LH も lamp icon で 3D 塔の上面 representation。
         for (const player of players.values()) {
           if (player.id === myId) continue;
           const ix = pastLightConeIntersectionWorldLine(
@@ -176,21 +409,43 @@ export const Radar = ({
           );
           if (!ix) continue;
           const isLH = isLighthouse(player.id);
-          const r = isLH ? LIGHTHOUSE_DOT_RADIUS : PLAYER_DOT_RADIUS;
           const [sx, sy] = projectEvent(ix.pos.t, ix.pos.x, ix.pos.y);
-          ctx.fillStyle = player.color;
-          ctx.beginPath();
-          ctx.arc(sx, sy, r, 0, Math.PI * 2);
-          ctx.fill();
-          if (isLH) {
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
-            ctx.lineWidth = 1;
-            ctx.stroke();
+          if (fullscreen) {
+            ctx.save();
+            ctx.translate(sx, sy);
+            if (isLH) {
+              // LH は静止前提 + 球対称 lamp なので heading 回転不要。
+              drawLighthouseIcon(ctx, player.color);
+            } else {
+              // 機体 heading をキャンバス座標系の角度に変換 (self 側と同じ式):
+              //   canvas y は下向き (= y-flip)、 heading-up rotation で +y_world ≡ canvas up =
+              //   -y_canvas。 player heading yaw = yaw_p、 camera yaw = yaw、 canvas での前方
+              //   角度 θ = (yaw - yaw_p) - π/2 (= player.yaw = camera.yaw のとき canvas
+              //   上向き = -π/2)。
+              const playerYaw = quatToYaw(ix.heading);
+              const canvasAngle = yaw - playerYaw - Math.PI / 2;
+              ctx.rotate(canvasAngle);
+              const vm = player.viewMode ?? "classic";
+              drawShipIcon(ctx, vm, player.color);
+            }
+            ctx.restore();
+          } else {
+            const r = isLH ? LIGHTHOUSE_DOT_RADIUS : PLAYER_DOT_RADIUS;
+            ctx.fillStyle = player.color;
+            ctx.beginPath();
+            ctx.arc(sx, sy, r, 0, Math.PI * 2);
+            ctx.fill();
+            if (isLH) {
+              ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+              ctx.lineWidth = 1;
+              ctx.stroke();
+            }
           }
         }
 
-        // 凍結世界線 (死体) past-cone 交点 — 薄く
-        for (const fw of frozenWorldLines) {
+        // 凍結世界線 (死体) past-cone 交点 — 薄く。 PLC 2D fullscreen では「他機マーカー」
+        // 一律撤去 (= odakin 指示) に含めて skip。 mini-map のみ従来通り表示。
+        if (!fullscreen) for (const fw of frozenWorldLines) {
           if (isLighthouse(fw.playerId)) continue;
           const ix = pastLightConeIntersectionWorldLine(fw.worldLine, obsPos, halfW);
           if (!ix) continue;
@@ -273,15 +528,31 @@ export const Radar = ({
           ctx.stroke();
         }
 
-        // 自機 (中心、白縁取り)。heading-up なので上方向 = 自機前方。
+        // 自機 (中心)。 fullscreen mode では viewMode 別 ship icon、 通常 mini-map は従来 dot。
+        // heading-up rotation 由来で canvas 上方向 = camera yaw 方向、 自機 heading が camera と
+        // 一致 (legacy_classic) なら canvas 上向き = 機首前方。 modern / shooter で heading が
+        // camera と独立な場合は canvas angle 計算して回転 (= 他機と同じ式)。
         if (!myIsDead) {
-          ctx.fillStyle = myPlayer.color;
-          ctx.strokeStyle = "white";
-          ctx.lineWidth = 1.5;
-          ctx.beginPath();
-          ctx.arc(cx, cy, SELF_DOT_RADIUS, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
+          if (fullscreen) {
+            const myYaw = quatToYaw(myPlayer.phaseSpace.heading);
+            const myCanvasAngle = yaw - myYaw - Math.PI / 2;
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(myCanvasAngle);
+            const vm = useGameStore.getState().viewMode;
+            // self 強調: 1.4× サイズ + 白アウトラインで他機と差別化 (= 元の SELF_DOT 白縁取り
+            // スタイル継承 + ship icon にスケールアップ)。 自機が常に最も視認しやすい位置に居る。
+            drawShipIcon(ctx, vm, myPlayer.color, SHIP_ICON_R * 1.4, true);
+            ctx.restore();
+          } else {
+            ctx.fillStyle = myPlayer.color;
+            ctx.strokeStyle = "white";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(cx, cy, SELF_DOT_RADIUS, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+          }
         }
 
         ctx.restore();

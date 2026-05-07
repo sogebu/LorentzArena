@@ -47,7 +47,7 @@ export const DebrisRenderer = ({
   debrisRecords: readonly DebrisRecord[];
   myPlayer: { phaseSpace: { pos: Vector4 }; color: string };
 }) => {
-  const { displayMatrix, observerPos, observerBoost, torusHalfWidth } =
+  const { displayMatrix, observerPos, observerBoost, torusHalfWidth, flattenT } =
     useDisplayFrame();
   const explosionMeshRef = useRef<THREE.InstancedMesh>(null);
   const hitMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -148,10 +148,11 @@ export const DebrisRenderer = ({
           observerBoost,
           torusHalfWidth,
         );
+        // PLC mode: marker の anchor を z=0 平面に揃える (球 geometry なので xy 平面上の点として OK)。
         markerElements.push(
           <mesh
             key={`debris-${di}-${pi}`}
-            position={[dp.x, dp.y, dp.t]}
+            position={[dp.x, dp.y, flattenT ? 0 : dp.t]}
             scale={[p.size * 1.5, p.size * 1.5, p.size * 1.5]}
             geometry={sharedGeometries.explosionParticle}
             material={
@@ -258,32 +259,41 @@ export const DebrisRenderer = ({
   // 時間 fade は per-vertex shader で適用 (USE_INSTANCING 分岐あり)。各 instance の
   // world segment が display frame で自動 fade されるため、死亡時刻から離れた debris
   // は個別に薄くなる (v0 の「全 instance 一括」より自然)。
+  //
+  // PLC スライス mode (= flattenT): debris particle の世界線 (= 4D 等速直線運動 segment) は
+  // Pattern M で displayMatrix × T(worldPos) を mesh.matrix に流し込む構造。 PLC 平面 (z=0) では
+  // 4D 世界線そのものは意味を持たない (= 観測者の今の slice には「過去光円錐に当たる 1 点」
+  // しか出ない、 それは markerElements が既に提供している) ので InstancedMesh は描画 skip。
   return (
     <>
-      <instancedMesh
-        ref={explosionMeshRef}
-        args={[debrisCylinderGeo, undefined, maxInstances]}
-        frustumCulled={false}
-      >
-        <meshBasicMaterial
-          transparent
-          opacity={DEBRIS_WORLDLINE_OPACITY}
-          depthWrite={false}
-          onBeforeCompile={applyTimeFadeShader}
-        />
-      </instancedMesh>
-      <instancedMesh
-        ref={hitMeshRef}
-        args={[debrisCylinderGeo, undefined, maxInstances]}
-        frustumCulled={false}
-      >
-        <meshBasicMaterial
-          transparent
-          opacity={HIT_DEBRIS_WORLDLINE_OPACITY}
-          depthWrite={false}
-          onBeforeCompile={applyTimeFadeShader}
-        />
-      </instancedMesh>
+      {!flattenT && (
+        <instancedMesh
+          ref={explosionMeshRef}
+          args={[debrisCylinderGeo, undefined, maxInstances]}
+          frustumCulled={false}
+        >
+          <meshBasicMaterial
+            transparent
+            opacity={DEBRIS_WORLDLINE_OPACITY}
+            depthWrite={false}
+            onBeforeCompile={applyTimeFadeShader}
+          />
+        </instancedMesh>
+      )}
+      {!flattenT && (
+        <instancedMesh
+          ref={hitMeshRef}
+          args={[debrisCylinderGeo, undefined, maxInstances]}
+          frustumCulled={false}
+        >
+          <meshBasicMaterial
+            transparent
+            opacity={HIT_DEBRIS_WORLDLINE_OPACITY}
+            depthWrite={false}
+            onBeforeCompile={applyTimeFadeShader}
+          />
+        </instancedMesh>
+      )}
       {markerElements}
     </>
   );

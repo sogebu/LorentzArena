@@ -35,6 +35,18 @@ export interface DisplayFrameValue {
    *  / buildMeshMatrix でこれを渡すと event の (x, y) を観測者中心 primary cell `[obs±L]²` に
    *  最短画像で折り畳む。 詳細: plans/2026-04-27-pbc-torus.md。 */
   torusHalfWidth?: number;
+  /** PLC スライス mode の anchor 平坦化フラグ。 true のとき Pattern P renderer
+   *  (= group.position に dp を入れるタイプ、Self/Rocket/Jellyfish/DeadShip/DeathMarker
+   *   /Debris marker/HeadingMarker 等) は anchor の z (= display t) を 0 に置換し、
+   *  全 mesh の anchor を z=0 平面に揃える。 local geometry (= ship hull の 3D 構造) は
+   *  そのまま保持される (Pattern P は anchor 並進と local geometry が分離されているため、
+   *  anchor だけを潰せば 3D 形状は 3D のまま z=0 平面上に立つ)。
+   *
+   *  Pattern M renderer (= mesh.matrix = displayMatrix × T(worldPos) の matrix 流し込み) は
+   *  local vertex z = world t と spacetime mix が前提なので flattenT は適用不可。 PLC mode
+   *  では Pattern M 系 (LightCone / Arena / Spawn / 接平面三角形 / LaserBatch / WorldLine) を
+   *  そもそも描画しないことで両立する。 */
+  flattenT?: boolean;
 }
 
 const DisplayFrameCtx = createContext<DisplayFrameValue | null>(null);
@@ -45,11 +57,12 @@ export const DisplayFrameProvider = ({
   observerPos,
   displayMatrix,
   torusHalfWidth,
+  flattenT,
   children,
 }: DisplayFrameValue & { children: ReactNode }) => {
   const value = useMemo<DisplayFrameValue>(
-    () => ({ observerU, observerBoost, observerPos, displayMatrix, torusHalfWidth }),
-    [observerU, observerBoost, observerPos, displayMatrix, torusHalfWidth],
+    () => ({ observerU, observerBoost, observerPos, displayMatrix, torusHalfWidth, flattenT }),
+    [observerU, observerBoost, observerPos, displayMatrix, torusHalfWidth, flattenT],
   );
   return <DisplayFrameCtx.Provider value={value}>{children}</DisplayFrameCtx.Provider>;
 };
@@ -62,4 +75,13 @@ export const useDisplayFrame = (): DisplayFrameValue => {
     );
   }
   return v;
+};
+
+/** PLC スライス mode の flattenT flag を「Provider が無くても安全に false で返す」 lookup。
+ *  ShipPreview / Lobby など DisplayFrameProvider 外で SelfShipRenderer / RocketShipRenderer
+ *  / JellyfishShipRenderer を呼ぶケースで使う (それらは ship 形状 preview のみで PLC mode
+ *  に入らないため flattenT は常に false でよい)。 通常 game scene では provider が必ず居るので
+ *  context 値の flattenT が読まれる。 */
+export const useFlattenT = (): boolean => {
+  return useContext(DisplayFrameCtx)?.flattenT ?? false;
 };

@@ -48,7 +48,10 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
   const [showInRestFrame, setShowInRestFrame] = useState(true);
   const [useOrthographic, setUseOrthographic] = useState(false);
   const [showPLCSlice, setShowPLCSlice] = useState(false);
-  const [plcMode, setPlcMode] = useState<"2d" | "3d">("2d");
+  // 2026-05-07 odakin 指示: PLC slice の default を 3D に。 2D mode は HUD オーバーレイ
+  // 描画 (= Radar 拡大版的な PLC 平面 view) を念頭にした legacy だが、 3D 俯瞰の方が PLC
+  // スライス本来の表現意図 (= 過去光円錐 spatial slice の物理 visual) に合うため。
+  const [plcMode, setPlcMode] = useState<"2d" | "3d">("3d");
   const [fps, setFps] = useState(0);
   const [energy, setEnergy] = useState(ENERGY_MAX);
 
@@ -197,11 +200,14 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     }
 
     if (peerManager && newPeerIds.length > 0) {
+      // 機体形状 viewMode (= intro schema 2026-05-07 拡張): 自分の現在の選択を新 peer に通知。
+      const myViewMode = useGameStore.getState().viewMode;
       for (const newId of newPeerIds) {
         peerManager.sendTo(newId, {
           type: "intro",
           senderId: myId,
           displayName,
+          viewMode: myViewMode,
         });
       }
     }
@@ -340,14 +346,55 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
       type: "intro",
       senderId: myId,
       displayName,
+      viewMode: useGameStore.getState().viewMode,
     });
 
     useGameStore.getState().setDisplayName(myId, displayName);
+
+    // 自機本体の player entry に viewMode を反映 (= self の OtherShipRenderer 経路は無いが、
+    // snapshot serialization で各 client が自分の player を含めて送信する場合の整合のため)。
+    useGameStore.getState().setPlayers((prev) => {
+      const existing = prev.get(myId);
+      if (!existing) return prev;
+      const myViewMode = useGameStore.getState().viewMode;
+      if (existing.viewMode === myViewMode) return prev;
+      const next = new Map(prev);
+      next.set(myId, { ...existing, viewMode: myViewMode });
+      return next;
+    });
 
     return () => {
       peerManager.offMessage("relativistic");
     };
   }, [peerManager, myId]);
+
+  // viewMode 変更時に re-broadcast intro + 自機 player entry も update。
+  // setViewMode (= dropdown / URL hash override) trigger 時に他 peer の OtherShipRenderer
+  // dispatch が即追従するようにする。 displayName と異なり viewMode はゲーム中も変わる。
+  useEffect(() => {
+    if (!peerManager || !myId) return;
+    const unsubscribe = useGameStore.subscribe((state, prev) => {
+      if (state.viewMode === prev.viewMode) return;
+      // 自機 player entry の viewMode も同期 (snapshot 経路 + 自分が他 peer を観察するときの
+      // dispatch の整合のため)。
+      useGameStore.getState().setPlayers((p) => {
+        const existing = p.get(myId);
+        if (!existing) return p;
+        if (existing.viewMode === state.viewMode) return p;
+        const next = new Map(p);
+        next.set(myId, { ...existing, viewMode: state.viewMode });
+        return next;
+      });
+      // 全 peer に再 broadcast (= 接続中の peer 全員に新 viewMode を伝える)。
+      peerManager.send({
+        type: "intro",
+        senderId: myId,
+        displayName,
+        viewMode: state.viewMode,
+      });
+    });
+    return unsubscribe;
+  }, [peerManager, myId, displayName]);
 
   // ゲームループ（useGameLoop hook に委譲）
   useGameLoop({
@@ -468,17 +515,25 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
         key={`game-gen${canvasGeneration}`}
         camera={{ position: [0, 0, 0], fov: 75 }}
       >
+        {/* PLC slice mode (= 2D も 3D も) は SceneContent の PLC branch で flatten 済 ship
+            model を描画、 違いは camera のみ:
+              - 3D: 斜め俯瞰 perspective (PLC_SLICE_PITCH=π/8、 既存挙動)
+              - 2D: 真上 orthographic (= top-down map view、 ship icon 上面が読みやすい) */}
         <CameraController
-          useOrthographic={useOrthographic && !(showPLCSlice && plcMode === "3d")}
-          plc3d={showPLCSlice && plcMode === "3d"}
+          useOrthographic={
+            useOrthographic && !showPLCSlice
+          }
+          plcSlice={showPLCSlice}
+          plcMode={plcMode}
         />
         <SceneContent
           myId={myId}
           showInRestFrame={
-            showPLCSlice && plcMode === "3d" ? false : showInRestFrame
+            showPLCSlice ? false : showInRestFrame
           }
           useOrthographic={useOrthographic}
-          plc3d={showPLCSlice && plcMode === "3d"}
+          plc3d={showPLCSlice}
+          plcMode={plcMode}
           headingYawRef={headingYawRef}
           cameraYawRef={cameraYawRef}
           cameraPitchRef={cameraPitchRef}

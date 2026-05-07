@@ -17,6 +17,8 @@ import { ArenaRenderer } from "./ArenaRenderer";
 import {
   AIM_ARROW_BASE_OPACITY,
   AIM_ARROW_OPACITY_STEP,
+  ARENA_HALF_WIDTH,
+  ARENA_RADIUS,
   CAMERA_DISTANCE_ORTHOGRAPHIC,
   CAMERA_DISTANCE_PERSPECTIVE,
   CAMERA_DISTANCE_PLC_SLICE,
@@ -123,9 +125,13 @@ export type SceneContentProps = {
   myId: string | null;
   showInRestFrame: boolean;
   useOrthographic: boolean;
-  /** PLC スライス 3D mode (= PR #2、 過去光円錐 spatial slice の x-y 平面斜め俯瞰)。
-   *  true なら通常の時空図描画を bypass し、 z=0 の x-y 平面 view を専用 scene で描画。 */
+  /** PLC スライス mode 全般 (= 過去光円錐 spatial slice の x-y 平面 view、 旧名 plc3d だが
+   *  2026-05-07 から 2D / 3D 両方を含む semantics に拡張)。 true なら時空図描画を bypass、
+   *  z=0 の x-y 平面で flatten 済 ship model を描画。 plcMode が camera 視点を分ける。 */
   plc3d: boolean;
+  /** PLC mode の camera 視点。 "3d" = 斜め俯瞰 perspective (PLC_SLICE_PITCH=π/8)、
+   *  "2d" = 真上 orthographic (= top-down map view)。 plc3d=false (= 時空図 mode) では無視。 */
+  plcMode: "2d" | "3d";
   /** heading の唯一の source of truth。SelfShipRenderer の砲塔 / HeadingMarkerRenderer 等で参照。 */
   headingYawRef: React.RefObject<number>;
   /** camera yaw の source of truth。useGameLoop が controlScheme 別に正しい値を書く:
@@ -143,6 +149,7 @@ export const SceneContent = ({
   showInRestFrame,
   useOrthographic,
   plc3d,
+  plcMode,
   headingYawRef,
   cameraYawRef,
   cameraPitchRef,
@@ -276,7 +283,16 @@ export const SceneContent = ({
     }
     const yaw = displayedCameraYawRef.current;
     if (plc3d) {
-      // PLC スライス 3D mode: x-y 平面 (z=0) を斜め俯瞰、 camera up = +z (時間軸)。
+      if (plcMode === "2d") {
+        // PLC 2D: 真上 orthographic、 camera は targetXY の真上 (= 高 z)、 lookAt = target、
+        // up = (cos yaw, sin yaw, 0) で heading-up rotation を持たせる。 camera は ortho で
+        // zoom 経由のスケール、 distance は遠 +z でも projection 不変。
+        camera.position.set(targetX, targetY, targetT + 50);
+        camera.lookAt(targetX, targetY, targetT);
+        camera.up.set(Math.cos(yaw), Math.sin(yaw), 0);
+        return;
+      }
+      // PLC 3D mode: x-y 平面 (z=0) を斜め俯瞰、 camera up = +z (時間軸)。
       // 通常 spacetime 図と異なり pitch/distance は固定値、 cameraPitchRef は無視。
       camera.position.set(
         targetX +
@@ -455,15 +471,9 @@ export const SceneContent = ({
   }, [playerList, observerPos, observerBoost, torusHalfWidth]);
 
   if (plc3d) {
-    // 世界系モード (boost=null) では transformEventForDisplay が x,y を世界座標のまま返す。
-    // 自機・参照リングは observerPos の世界座標に配置する必要がある。
+    // 自機 / 参照リング anchor (rest frame では origin=(0,0)、 world frame では observer 世界座標)。
     const selfX = observerPos?.x ?? 0;
     const selfY = observerPos?.y ?? 0;
-
-    // PLC 交差が確定しているプレイヤーの ID セット (位置表示の輝度調整用)
-    const plcPlayerIds = new Set(
-      worldLineMarkerEntries.pastCone.map((wi) => wi.playerId),
-    );
 
     return (
       <DisplayFrameProvider
@@ -471,110 +481,388 @@ export const SceneContent = ({
         observerBoost={observerBoost}
         observerPos={observerPos}
         displayMatrix={displayMatrix}
+        torusHalfWidth={torusHalfWidth}
+        flattenT={true}
       >
         <GameLights positions={lightPositions} />
-        {/* 参照リング: 自機を中心に x-y平面 (z=0) 上 */}
+
+        {/* 参照リング (自機中心の距離ガイド 5/10/15/20 ls)。 緑系で control 強さを控えめに。 */}
         <group position={[selfX, selfY, 0]}>
           {[5, 10, 15, 20].map((r) => (
             <mesh key={r}>
               <ringGeometry args={[r - 0.06, r + 0.06, 64]} />
-              <meshBasicMaterial color="#1a3a1a" transparent opacity={0.6} depthWrite={false} side={THREE.DoubleSide} />
+              <meshBasicMaterial
+                color="#1a3a1a"
+                transparent
+                opacity={0.6}
+                depthWrite={false}
+                side={THREE.DoubleSide}
+              />
             </mesh>
           ))}
         </group>
-        {/* 自機: SelfShipRenderer が transformEventForDisplay で world 座標に自己配置。
-            controlScheme は spacetime view と同期 (= legacy_classic で本体が heading 回転)。 */}
-        {myPlayer && !myIsDead && (
-          <SelfShipRenderer
-            player={myPlayer}
-            thrustAccelRef={thrustAccelRef}
-            cameraYawRef={headingYawRef}
-            observerPos={observerPos}
-            observerBoost={observerBoost}
-            controlScheme={controlScheme}
-            alpha4={myPlayer.phaseSpace.alpha}
-          />
+
+        {/* アリーナ境界: open_cylinder mode = 半径 ARENA_RADIUS の円、 torus mode =
+            半幅 ARENA_HALF_WIDTH の正方形 (= boundary 位置を可視化)。 spacetime mode の
+            ArenaRenderer (cylinder + 縦線) は 4D 構造なので PLC では flat 1 line で代替。 */}
+        {torusHalfWidth === undefined ? (
+          <mesh position={[0, 0, 0]}>
+            <ringGeometry
+              args={[ARENA_RADIUS - 0.18, ARENA_RADIUS + 0.18, 128]}
+            />
+            <meshBasicMaterial
+              color="hsl(180, 40%, 70%)"
+              transparent
+              opacity={0.5}
+              depthWrite={false}
+              side={THREE.DoubleSide}
+            />
+          </mesh>
+        ) : (
+          <lineLoop position={[0, 0, 0]}>
+            <bufferGeometry>
+              <bufferAttribute
+                attach="attributes-position"
+                args={[
+                  new Float32Array([
+                    -ARENA_HALF_WIDTH, -ARENA_HALF_WIDTH, 0,
+                    ARENA_HALF_WIDTH, -ARENA_HALF_WIDTH, 0,
+                    ARENA_HALF_WIDTH, ARENA_HALF_WIDTH, 0,
+                    -ARENA_HALF_WIDTH, ARENA_HALF_WIDTH, 0,
+                  ]),
+                  3,
+                ]}
+              />
+            </bufferGeometry>
+            <lineBasicMaterial
+              color="hsl(180, 40%, 70%)"
+              transparent
+              opacity={0.5}
+            />
+          </lineLoop>
         )}
 
-        {/* 全プレイヤー現在位置 (dim): PLC 交差未確定でも常に表示 */}
-        {playerList.map((player) => {
-          if (player.id === myId) return null;
-          if (deadIds.has(player.id)) return null;
-          const c = getThreeColor(player.color);
-          const px = player.phaseSpace.pos.x;
-          const py = player.phaseSpace.pos.y;
-          const hasPLC = plcPlayerIds.has(player.id);
+        {/* プレイヤー描画 (時空 mode と同じ flatMap、 flattenT=true で各 renderer が
+            anchor の z (= display t) を 0 に置換 → ship 3D 形状を保ちつつ z=0 平面に立つ。
+            LH は内部で flat top-down icon に切替、 DeathMarker / DeadShipRenderer も
+            flattenT 対応済。 4D 構造系 (LightConeRenderer / WorldLineRenderer / future-cone /
+            laser triangle / 接平面三角形 / spacetime laser segment) は PLC 分岐に出さない
+            ことで両立。 詳細: DisplayFrameValue.flattenT JSDoc。 */}
+        {playerList.flatMap((player) => {
+          const key = `player-${player.id}`;
+          if (isLighthouse(player.id)) {
+            return [<LighthouseRenderer key={key} player={player} />];
+          }
+
+          const isMe = player.id === myId;
+          const items: React.JSX.Element[] = [];
+
+          if (isMe && !deadIds.has(player.id)) {
+            for (const cell of selfShipCells) {
+              const dx = 2 * selfL * (selfObsCellX + cell.kx);
+              const dy = 2 * selfL * (selfObsCellY + cell.ky);
+              const cellKey = `${key}-${cell.kx},${cell.ky}`;
+              const imageObserver = observerPos
+                ? { ...observerPos, x: observerPos.x - dx, y: observerPos.y - dy }
+                : null;
+              const intersection = imageObserver
+                ? pastLightConeIntersectionWorldLine(
+                    player.worldLine,
+                    imageObserver,
+                  )
+                : null;
+              if (!intersection) continue;
+              const offsetPlayer = {
+                ...player,
+                phaseSpace: {
+                  ...player.phaseSpace,
+                  pos: {
+                    ...intersection.pos,
+                    x: intersection.pos.x + dx,
+                    y: intersection.pos.y + dy,
+                  },
+                  heading: intersection.heading,
+                },
+              };
+              if (viewMode === "shooter") {
+                items.push(
+                  <RocketShipRenderer
+                    key={cellKey}
+                    player={offsetPlayer}
+                    thrustAccelRef={thrustAccelRef}
+                    observerPos={observerPos}
+                    observerBoost={observerBoost}
+                    cameraYawRef={headingYawRef}
+                    alpha4={player.phaseSpace.alpha}
+                  />,
+                );
+              } else if (viewMode === "jellyfish") {
+                items.push(
+                  <JellyfishShipRenderer
+                    key={cellKey}
+                    player={offsetPlayer}
+                    thrustAccelRef={thrustAccelRef}
+                    observerPos={observerPos}
+                    observerBoost={observerBoost}
+                    cameraYawRef={headingYawRef}
+                    alpha4={player.phaseSpace.alpha}
+                    firingRef={firingRef}
+                  />,
+                );
+              } else {
+                items.push(
+                  <SelfShipRenderer
+                    key={cellKey}
+                    player={offsetPlayer}
+                    thrustAccelRef={thrustAccelRef}
+                    observerPos={observerPos}
+                    observerBoost={observerBoost}
+                    cannonStyle="laser"
+                    cameraYawRef={headingYawRef}
+                    alpha4={player.phaseSpace.alpha}
+                    controlScheme={controlScheme}
+                  />,
+                );
+              }
+            }
+            // legacy_classic は本体ごと heading 回転で aim 方向が出るので line を出さない
+            // (spacetime branch の判断と同じ)。
+            if (controlScheme !== "legacy_classic") {
+              items.push(
+                <HeadingMarkerRenderer
+                  key={`${key}-heading`}
+                  player={player}
+                  cameraYawRef={headingYawRef}
+                />,
+              );
+            }
+          } else if (!isMe) {
+            // 他機: OtherShipRenderer 内部で PBC 9 image 化済 + flattenT で z=0 に着地。
+            items.push(<OtherShipRenderer key={key} player={player} />);
+          }
+
+          if (deadIds.has(player.id)) {
+            const xD = player.phaseSpace.pos;
+            const uD = getVelocity4(player.phaseSpace.u);
+            const headingD = player.phaseSpace.heading;
+            const deadColor = getThreeColor(player.color);
+            items.push(
+              <DeadShipRenderer
+                key={`${key}-dead-ship`}
+                xD={xD}
+                uD={uD}
+                headingD={headingD}
+                color={player.color}
+                playerId={player.id}
+              />,
+              <DeathMarker
+                key={`${key}-death-marker`}
+                xD={xD}
+                uD={uD}
+                color={deadColor}
+              />,
+            );
+          }
+
+          return items;
+        })}
+
+        {/* 神視点 world-now dot (= 各 player の phaseSpace.pos.xy)。 ship (= past-cone 位置) との
+            xy gap で「光の伝達遅延」 を pedagogical 可視化。 spacetime branch の
+            worldLineFuturePoints と同じ意図、 PLC 用に z=0 + 透明度を抑えた dim 表示。 */}
+        {worldLineFuturePoints.map(({ key, color: colorText, pos }) => {
+          const c = getThreeColor(colorText);
+          const dp = transformEventForDisplay(
+            pos,
+            observerPos,
+            observerBoost,
+            torusHalfWidth,
+          );
+          const size = PLAYER_MARKER_SIZE_OTHER;
           return (
-            <mesh key={`cur-${player.id}`} position={[px, py, 0]}>
-              <circleGeometry args={[0.5, 32]} />
-              <meshBasicMaterial
-                color={c}
+            <group key={key} position={[dp.x, dp.y, 0]}>
+              <mesh
+                scale={[size, size, size]}
+                geometry={sharedGeometries.playerSphere}
+              >
+                <meshBasicMaterial
+                  color={c}
+                  transparent
+                  opacity={0.35}
+                  depthWrite={false}
+                />
+              </mesh>
+            </group>
+          );
+        })}
+
+        {/* デブリ (= flattenT で 4D segment 描画 skip + marker のみ z=0 に着地)。 */}
+        {myPlayer && (
+          <DebrisRenderer debrisRecords={debrisRecords} myPlayer={myPlayer} />
+        )}
+
+        {/* レーザー世界線 xy 射影 (= 各 laser の emission → tip 4D 線分を xy 平面に投影、
+            z=0 のうっすら線)。 spacetime mode の `LaserBatchRenderer` (= per-vertex Lorentz
+            な 4D laser 線) を PLC では time 成分を捨てて 2D 線分で表示。 透明度は spacetime の
+            laser line より低めに設定して「うっすら」 表示 (= odakin 指示 2026-05-07: 「時空
+            モードよりさらに薄く」)。 LaserBatchRenderer は per-vertex shader で displayMatrix
+            適用が前提なので PLC の plain xy 射影には流用せず、 ここで個別 line として描画。 */}
+        {lasers.map((laser) => {
+          const start = transformEventForDisplay(
+            laser.emissionPos,
+            observerPos,
+            observerBoost,
+          );
+          const tipWorld = {
+            t: laser.emissionPos.t + laser.range,
+            x: laser.emissionPos.x + laser.direction.x * laser.range,
+            y: laser.emissionPos.y + laser.direction.y * laser.range,
+            z: 0,
+          };
+          const tip = transformEventForDisplay(
+            tipWorld,
+            observerPos,
+            observerBoost,
+          );
+          return (
+            <line key={`plc3d-laser-line-${laser.id}`}>
+              <bufferGeometry>
+                <bufferAttribute
+                  attach="attributes-position"
+                  args={[
+                    new Float32Array([start.x, start.y, 0, tip.x, tip.y, 0]),
+                    3,
+                  ]}
+                />
+              </bufferGeometry>
+              <lineBasicMaterial
+                color={getThreeColor(laser.color)}
                 transparent
-                opacity={hasPLC ? 0.2 : 0.6}
+                opacity={0.18}
+                depthWrite={false}
+                toneMapped={false}
+              />
+            </line>
+          );
+        })}
+
+        {/* レーザー未来光円錐交点マーカー (= 自分が今 fire したら photon は将来この event で
+            laser 世界線に到達する、 = laser ∩ 観測者 future-cone)。 spacetime mode では cone
+            tangent plane に貼った三角形 (= laserFutureIntersections + computeConeTangentWorldRotation
+            + scale [1.5, 1.5, 1.5] + opacity FUTURE_CONE_LASER_TRIANGLE_OPACITY=0.2 + laser 色)。
+            PLC 平面では時間軸が無いので**平面内 yaw のみ**に縮約 (past-cone 三角形 と同パターン)。
+            past-cone 三角形 (silver、 scale [3,3,1]) との pair として:
+              - past-cone: silver、 scale [3,3,1] で大きく明示 (= 「観測者がいま見ている laser 位置」)
+              - future-cone: **laser 本体色、 scale [2,2,1] で少し小さく、 opacity 0.12** (=
+                spacetime の 0.2 × 0.6 で「さらに薄く」 odakin 指示適合)
+            形状は **黄金三角形** を保持 (= uniform xy scale で頂角 36° を崩さない)。 laser 色は
+            past-cone marker の silver と差別化、 「これは laser 本体と関連の future event」 を識別。 */}
+        {laserFutureIntersections.map(({ laser, pos }) => {
+          const dp = transformEventForDisplay(pos, observerPos, observerBoost);
+          const dirLen2 =
+            laser.direction.x * laser.direction.x +
+            laser.direction.y * laser.direction.y;
+          if (dirLen2 < 1e-12) return null;
+          const aimYaw = Math.atan2(laser.direction.y, laser.direction.x);
+          const flatDir = new THREE.Vector3(
+            Math.cos(aimYaw),
+            Math.sin(aimYaw),
+            0,
+          );
+          const xAxis = new THREE.Vector3(1, 0, 0);
+          const quat = new THREE.Quaternion().setFromUnitVectors(
+            xAxis,
+            flatDir,
+          );
+          return (
+            <mesh
+              key={`plc3d-laser-future-${laser.id}`}
+              position={[dp.x, dp.y, 0]}
+              quaternion={quat}
+              geometry={sharedGeometries.laserIntersectionTriangle}
+              scale={[2, 2, 1]}
+            >
+              <meshBasicMaterial
+                color={getThreeColor(laser.color)}
+                transparent
+                opacity={FUTURE_CONE_LASER_TRIANGLE_OPACITY * 0.6}
                 side={THREE.DoubleSide}
+                depthWrite={false}
               />
             </mesh>
           );
         })}
 
-        {/* PLC 交差位置 (bright): 過去光円錐が届いた実際の観測位置 */}
-        {worldLineMarkerEntries.pastCone.map(
-          ({ playerId, color: colorText, pos }) => {
-            const c = getThreeColor(colorText);
-            const dp = transformEventForDisplay(
-              pos,
-              observerPos,
-              observerBoost,
-            );
-            return (
-              <group key={`plc3d-${playerId}`} position={[dp.x, dp.y, 0]}>
-                <mesh>
-                  <circleGeometry args={[0.5, 32]} />
-                  <meshBasicMaterial color={c} side={THREE.DoubleSide} />
-                </mesh>
-                <mesh>
-                  <ringGeometry args={[0.6, 0.8, 32]} />
-                  <meshBasicMaterial
-                    color={c}
-                    transparent
-                    opacity={0.45}
-                    side={THREE.DoubleSide}
-                  />
-                </mesh>
-              </group>
-            );
-          },
-        )}
-
-        {/* レーザー past 光円錐交点 (= 観測者の lab-frame 過去光円錐 ∩ laser worldline)
-            を rest frame xy で描画 (z=0)。 Bug 6 真因治療。
-            旧仕様 (= `lambda·direction + emission` で lab-frame の laser「現在位置」 を
-            描画) は **光の伝達時間を無視** していた = 「いま laser はここ」 という瞬時
-            通信前提の position。 これだと approaching laser が等速 (= 1c lab) で動く
-            だけで「迫ってくる速い」 効果が消える (= user 報告「ゆっくり近づいてくる」)。
-            正しくは observer に届いた光の発射事象 (= past-cone ∩ worldline) を描く:
-            laser が r(s) で発した photon は t_e+s+|r(s)| に observer 着、 approaching
-            laser ではこれが s に依らず ≈ 一定 → 全 laser 線上事象が同 observer 時刻に
-            届く burst 効果が出る。 つまり「速く見える」 は **lab-frame の光円錐交点
-            計算だけで出る**、 boost や aberration とは別軸 (= 私の以前の説明誤り、
-            5/6 朝 user 訂正)。
-            実装: 時空 mode で precomputed の `laserIntersections` (= world-frame past
-            -cone 交点、 `pastLightConeIntersectionLaser` 経由) をそのまま使用、
-            `transformEventForDisplay` で rest frame xy に座標変換するのは **他 PLC
-            entity (= ship circle L520-547) と座標 frame を統一する目的**。 frame 揃え
-            のための boost であって、 「速い見え方」 効果自体は past-cone 計算で既に
-            出ている。 同パターンの 2D Radar 実装は [hud/Radar.tsx](hud/Radar.tsx)
-            L206-246 参照。 */}
+        {/* レーザー past 光円錐交点 (= observer 過去光円錐 ∩ laser worldline)。 spacetime
+            mode の三角形マーカー (= 円錐接平面上の銀色ビーム三角形) を PLC 平面に投影:
+            anchor (dp.xy) を z=0 に置き、 三角形の local +x を laser 進行方向 (xy 投影) に揃える。
+            spacetime mode は `computeConeTangentWorldRotation` で円錐接平面に貼り付くが、
+            PLC slice は時間軸が無いので**平面内 yaw 回転だけ**に縮約 (laser 方向は world-frame
+            xy 角を採用、 boost 後の rest-frame 角と低 γ では ≈ 等価で 2D Radar の表示と同じ
+            扱い)。
+            **scale**: spacetime mode は `[6, 1, 1]` でビーム感を強調 (= 円錐接平面 tilt の
+            foreshortening で「過剰 stretch」 が緩和されてビームらしく見える)。 PLC は flat
+            俯瞰なので foreshortening が効かず、 同じ `[6,1,1]` だと頂角 6° の極細スパイクに
+            なって geometry 本来の黄金三角形 (= 頂角 36°、 acute golden triangle) が崩れる。
+            そのため PLC のみ uniform `[3, 3, 1]` で黄金比 (脚:底辺 = φ:1) を保つ「chunky 黄金」
+            表示にする (= 2026-04-19 旧 spacetime の `[3,3,3]` chunky と同じ思想)。 silver tint /
+            加算合成は spacetime と揃える。 */}
         {laserIntersections.map(({ laser, pos }) => {
           const dp = transformEventForDisplay(pos, observerPos, observerBoost);
-          const c = getThreeColor(laser.color);
+          // laser 進行方向 xy → 角度 (world-frame、 Radar L206-246 と同パターン)。
+          const dirLen2 =
+            laser.direction.x * laser.direction.x +
+            laser.direction.y * laser.direction.y;
+          if (dirLen2 < 1e-12) return null;
+          const aimYaw = Math.atan2(laser.direction.y, laser.direction.x);
+          // 三角形 geometry の local +x が laser 方向に向くように xy 平面内 yaw 回転。
+          // local +x → (cos θ, sin θ, 0)、 local +y → (-sin θ, cos θ, 0)。 quat は
+          // setFromUnitVectors(+x, dir) で十分 (z 軸回転に縮約される)。
+          const flatDir = new THREE.Vector3(
+            Math.cos(aimYaw),
+            Math.sin(aimYaw),
+            0,
+          );
+          const xAxis = new THREE.Vector3(1, 0, 0);
+          const quat = new THREE.Quaternion().setFromUnitVectors(
+            xAxis,
+            flatDir,
+          );
           return (
-            <mesh key={`plc3d-laser-${laser.id}`} position={[dp.x, dp.y, 0]}>
-              <circleGeometry args={[0.18, 6]} />
-              <meshBasicMaterial color={c} side={THREE.DoubleSide} />
+            <mesh
+              key={`plc3d-laser-${laser.id}`}
+              position={[dp.x, dp.y, 0]}
+              quaternion={quat}
+              geometry={sharedGeometries.laserIntersectionTriangle}
+              scale={[3, 3, 1]}
+            >
+              <meshBasicMaterial
+                color={pastConeMarkerColor}
+                side={THREE.DoubleSide}
+                toneMapped={false}
+                transparent
+                blending={THREE.AdditiveBlending}
+                depthWrite={false}
+              />
             </mesh>
           );
         })}
+
+        {/* aim arrow (= 射撃中 1-3 本の sequential 矢印) は PLC では非表示。
+            spacetime mode の aim arrow は「過去光円錐の母線 (= heading + -z)/√2 に沿って
+            光が後ろに流れていく」 様子の pedagogical 表現で、 PLC slice (= z=0 平面) には
+            時間軸が無いので「光円錐の母線を下に下る」 という visual 自体が意味を持たない
+            (odakin 指示 2026-05-07: 「光円錐上を下に下がってく形で撃つわけではない」)。
+            自機 heading は HeadingMarkerRenderer (= xy 平面上の方向線) で別途示すので
+            aim 標識として不足はしない。 */}
+
+        {/* (リ)スポーンエフェクト (= 2026-05-07 odakin 「PLC スライスモードにも入れよう」)。
+            SpawnRenderer は flattenT を読んで PLC mode 時に xy 平面上の波紋表現に切替 (= 5
+            リングを z=0 の同 xy で異 radius、 光柱は skip)。 spawn は spacetime / PLC 共通
+            の zustand state なので、 ここで map するだけで両 mode 同時動作。 */}
+        {spawns.map((spawn) => (
+          <SpawnRenderer key={spawn.id} spawn={spawn} />
+        ))}
       </DisplayFrameProvider>
     );
   }

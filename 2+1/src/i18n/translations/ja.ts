@@ -3,12 +3,15 @@ export const ja = {
   "hud.title": "相対論的アリーナ (2+1次元 時空図)",
   // ControlPanel.tsx で controlScheme 別に出し分け (= 移動 / 旋回 軸の意味が異なる)。
   // ↑/↓ (camera pitch) と Space (fire) は scheme 共通。
+  // WASD 方向基準は 3 つ: 機体相対 (= 機体の前後左右) / 画面相対 (= camera の上下左右) /
+  // 絶対方向 (= world basis 固定軸)。 旧 "画面基底" / "世界基底" は math jargon で UI に硬い
+  // ため 2026-05-07 に統一名称に改名。
   "hud.controls.legacy_classic.move": "WASD: 前後左右 (機体相対)",
   "hud.controls.legacy_classic.heading": "←/→: 機体回転",
-  "hud.controls.legacy_shooter.move": "WASD: 移動 (画面基底)",
+  "hud.controls.legacy_shooter.move": "WASD: 移動 (画面相対)",
   "hud.controls.legacy_shooter.heading": "←/→: 砲身旋回",
   "hud.controls.legacy_shooter.cameraRotate": "Shift+←/→: カメラ旋回",
-  "hud.controls.modern.move": "WASD: 移動 (世界基底)",
+  "hud.controls.modern.move": "WASD: 移動 (絶対方向)",
   "hud.controls.modern.heading": "←/→: 砲塔旋回",
   "hud.controls.cameraV": "↑/↓: カメラ上下回転",
   "hud.controls.fire": "スペースキー: レーザー発射",
@@ -37,12 +40,16 @@ export const ja = {
   "hud.orthographic": "正射影",
   "hud.perspective": "透視投影",
   // 視点・操作系切替 (plans/2026-04-25-viewpoint-controls.md)
-  // classic: 旧挙動 (camera は heading 追従、機体本体が回る、WASD は機体相対 thrust)
-  // shooter: twin-stick 風 (camera 固定、機体 hull 固定、砲だけ入力方向に向く、heading 線も砲方向)
-  "hud.viewMode.classic": "従来",
-  "hud.viewMode.shooter": "シューター",
+  // viewMode label = 機体形状 (= controlScheme と直交軸)。 値は形状ベース統一 (2026-05-07
+  // odakin 指示「『従来』 じゃ意味分からん」 を受けて「ガンシップ / ロケット / クラゲ」 に統一)。
+  // 内部 ID (classic / shooter / jellyfish) は LS / URL hash の後方互換性のため変更しない。
+  // - ガンシップ (classic): 八角プリズム hull + 4 RCS + 懸架大砲 (旧 SelfShipRenderer)
+  // - ロケット (shooter):   LatheGeometry teardrop body (RocketShipRenderer)
+  // - クラゲ (jellyfish):   半透明 dome + Verlet 触手 (JellyfishShipRenderer)
+  "hud.viewMode.classic": "ガンシップ",
+  "hud.viewMode.shooter": "ロケット",
   "hud.viewMode.jellyfish": "クラゲ",
-  "hud.viewMode.label": "見た目",
+  "hud.viewMode.label": "機体",
   // 距離表示の単位 (= 内部は c=1 自然単位 = 光秒)。 CenterCompass 等で使う。
   "hud.distanceUnit": "光秒",
   "hud.center": "中心",
@@ -65,7 +72,10 @@ export const ja = {
   "hud.coordTime": "世界時刻",
   "hud.position": "位置",
   "hud.energy": "エネルギー",
-  "hud.fuelEmpty": "燃料枯渇",
+  // エネルギー pool 枯渇表示 (Speedometer 内、 fire/thrust/damage 共用 pool)。 旧 "燃料枯渇"
+  // (= 燃料は thrust 専用というニュアンス) は実体 (= energy 共用 pool) と齟齬があったので
+  // 2026-05-07 に "エネルギー切れ" に改名し、 hud.energy "エネルギー" と語彙統一。
+  "hud.fuelEmpty": "エネルギー切れ",
   // HUD - scoreboard
   "hud.kills": "撃破数",
   "hud.you": "自機",
@@ -100,9 +110,14 @@ export const ja = {
   "connect.networkHelp":
     "学校/社内ネットワークだと WebRTC が塞がれて接続できないことがあります。",
   "connect.peers": "接続中の相手",
-  "connect.peerOpen": "接続中",
+  // peer 接続状態 (Connect.tsx の 3 値)。 conn.open && !stale = peerOpen (= 接続確立 + 応答有)、
+  // conn.open && stale = peerStale (= 接続は open だが応答が時間内に来ていない)、
+  // !conn.open = peerClosed (= 接続が確立してない or 切れた)。
+  // 2026-05-07: "接続中" は signaling phase の "接続中..." と紛らわしいので "接続済" に。
+  // "接続準備中/失敗" は "/" 二重意味で曖昧なので "未接続" に。
+  "connect.peerOpen": "接続済",
   "connect.peerStale": "応答なし",
-  "connect.peerClosed": "接続準備中/失敗",
+  "connect.peerClosed": "未接続",
   "connect.networkSettings": "ネットワーク設定(env)",
   // Lobby
   "lobby.title": "Lorentz Arena",

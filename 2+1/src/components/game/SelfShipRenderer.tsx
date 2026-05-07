@@ -68,6 +68,7 @@ import {
   SHIP_NOZZLE_OUTWARD_OFFSET,
   SHIP_NOZZLE_THROAT_RADIUS,
 } from "./constants";
+import { useFlattenT } from "./DisplayFrameContext";
 import { DorsalPodRenderer } from "./DorsalPodRenderer";
 import { transformEventForDisplay } from "./displayTransform";
 import { LaserCannonRenderer } from "./LaserCannonRenderer";
@@ -138,6 +139,12 @@ export const SelfShipRenderer = ({
    *  nozzle outward は world cardinal なので yaw 変換不要。default 'modern' (他機流用時)。 */
   controlScheme?: "legacy_classic" | "legacy_shooter" | "modern";
 }) => {
+  // PLC スライス mode (= flattenT) では anchor の z (display t) を 0 に置換し
+  // ship を z=0 平面に立たせる。 local geometry (= ship hull の 3D 構造) は
+  // group の中で local 座標で組まれているので、 anchor の z を潰しても 3D 形状は維持される。
+  // ShipPreview / Lobby は DisplayFrameProvider 外で本 component を呼ぶため、 useFlattenT は
+  // provider 不在時に false 返却 (= ShipPreview は常に通常 3D 描画)。
+  const flattenT = useFlattenT();
   const groupRef = useRef<THREE.Group>(null);
   // 砲塔 (cannon = laser or gun) のみを heading に追従させるための独立 group。
   // 本体 (hull) は固定で、cannon assembly だけがこの ref を介して回転。
@@ -234,7 +241,7 @@ export const SelfShipRenderer = ({
       observerPos,
       observerBoost,
     );
-    group.position.set(dp.x, dp.y, dp.t);
+    group.position.set(dp.x, dp.y, flattenT ? 0 : dp.t);
 
     // Rotation: 自機 (cameraYawRef 渡し) は ref 直読で rAF 毎に最新値取得、
     // store subscribe 経由の re-render 遅延を避ける。他機流用時 (OtherShipRenderer /
@@ -360,7 +367,11 @@ export const SelfShipRenderer = ({
         : alpha4;
       const ax4 = alphaObs.x;
       const ay4 = alphaObs.y;
-      const at4 = alphaObs.t; // display z 軸 = observer rest frame time
+      // PLC スライス mode (= flattenT) では矢印を xy 平面に lay flat する。
+      // 時間成分 α_t は xy 投影で消し、 magnitude は xy だけで取り直す (= 「観測者静止系
+      // で見た 3 軸加速度」 の空間成分のみ)。 矢印長さの physical 意味は Acceleration の
+      // 空間部分の magnitude / PLAYER_ACCELERATION を表示 (PLC slice は時間軸無し)。
+      const at4 = flattenT ? 0 : alphaObs.t; // display z 軸 = observer rest frame time
       const mag4 = Math.sqrt(ax4 * ax4 + ay4 * ay4 + at4 * at4);
       // Smoothing (EMA): mag / PLAYER_ACCELERATION を attack/release 時定数で平滑化。
       const rawTarget = mag4 / PLAYER_ACCELERATION;
@@ -388,13 +399,15 @@ export const SelfShipRenderer = ({
         const originOffset =
           (SHIP_HULL_RADIUS + ARROW_BASE_OFFSET) * SHIP_MODEL_SCALE +
           0.5 * arrowLen;
-        const hullCenterT = dp.t + SHIP_LIFT_Z * SHIP_MODEL_SCALE;
+        // PLC: anchor の z は 0 (= ship が z=0 平面に立つ)、 矢印は xy 平面に水平に伸びる。
+        // 通常: hullCenterT = display anchor の z 軸位置 + lift。
+        const hullCenterT = flattenT ? 0 : dp.t + SHIP_LIFT_Z * SHIP_MODEL_SCALE;
         arrowMesh.position.set(
           dp.x + dirX * originOffset,
           dp.y + dirY * originOffset,
           hullCenterT + dirT * originOffset,
         );
-        // Orient: local +y → (dirX, dirY, dirT) in display frame
+        // Orient: local +y → (dirX, dirY, dirT) in display frame (PLC は dirT=0 で xy 内回転)
         vecDir.set(dirX, dirY, dirT);
         tmpQuat.setFromUnitVectors(vecY, vecDir);
         arrowMesh.quaternion.copy(tmpQuat);
@@ -605,7 +618,10 @@ export const SelfShipRenderer = ({
                     0,
                     -SHIP_HULL_HEIGHT / 2 - SHIP_GUN_BRACKET_HEIGHT,
                   ]}
-                  rotation={[0, SHIP_GUN_PITCH_DOWN_RAD, 0]}
+                  // PLC slice: laser は xy 平面を横に飛ぶため、 砲身を真ん前 (= heading 方向、
+                  // pitch=0) に向かせる。 spacetime mode では「過去光円錐の母線下 45°」 に
+                  // 揃えて laser が時空図で null geodesic に乗る pedagogical 表示を保つ。
+                  rotation={[0, flattenT ? 0 : SHIP_GUN_PITCH_DOWN_RAD, 0]}
                 >
                   {/* Breech (砲尾、cannon 根元のチャンクなハウジング)。REAR_EXTENSION で
             breech 全体が cannon group origin (= bracket 接続点) より後方に shift。 */}

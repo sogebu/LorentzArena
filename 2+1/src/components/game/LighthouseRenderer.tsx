@@ -62,7 +62,7 @@ export const LighthouseRenderer = ({
 }: {
   player: RelativisticPlayer;
 }) => {
-  const { displayMatrix, observerPos, observerBoost } = useDisplayFrame();
+  const { displayMatrix, observerPos, observerBoost, flattenT } = useDisplayFrame();
   // Fix C 副作用 fix (2026-05-04): Rule B 大ジャンプ直後の 1 点 worldLine では
   // pastLightConeIntersectionWorldLine が null を返し flicker するため、 同 LH の
   // 凍結旧軌跡 (= frozenWorldLines) で fallback intersection を取って描画継続する。
@@ -165,176 +165,163 @@ export const LighthouseRenderer = ({
         const futureMostSphereRaw = !isDead
           ? transformEventForDisplay(wp, observerPos, observerBoost)
           : null;
+        // PLC mode の塔配置: buildApparentShapeMatrix (= 観測者速度に依存した boost tilt) は
+        // 使わず、 anchor の rest-frame xy に **plain position** で塔をそのまま立てる。
+        // 塔の +z 方向 (= world spacetime での +t = 未来) は PLC では「視覚的な高さ」 として
+        // 機能 (= 普通の 3D 建物がそのまま立つ)。 観測者進行で boost 傾きしないのは PLC
+        // slice が 「観測者今の xy slice」 を representation する mode だから (= 時間軸を
+        // 描画次元から落としているので時間方向の Lorentz 変換も意味を持たない)。
+        const towerXY = imageTowerAnchor
+          ? transformEventForDisplay(imageTowerAnchor, observerPos, observerBoost)
+          : null;
+        // 塔 inner content: spacetime (= boost matrix wrap) と PLC (= plain position) で
+        // 共通の中身。 alpha は per-iteration で変わるので closure で参照。
+        const towerInner = (
+          <group position={[0, 0, -LIGHTHOUSE_SINK * 0.5]} scale={0.5}>
+            {/* Body: tapered cylinder, base at event */}
+            <mesh position={[0, 0, 0.5]} rotation={ROT_Y_TO_Z} geometry={G.body}>
+              <meshStandardMaterial
+                color={wallColor}
+                emissive={mainColor}
+                emissiveIntensity={0.25}
+                roughness={0.55}
+                metalness={0.05}
+                transparent
+                depthWrite={false}
+                polygonOffset
+                polygonOffsetFactor={1}
+                polygonOffsetUnits={1}
+                opacity={0.95 * alpha}
+              />
+            </mesh>
+
+            {/* Two horizontal bands */}
+            <mesh position={[0, 0, 0.2]} rotation={ROT_Y_TO_Z} geometry={G.bodyBand}>
+              <meshStandardMaterial
+                color={trimColor}
+                emissive={trimColor}
+                emissiveIntensity={0.4}
+                transparent
+                depthWrite={false}
+                polygonOffset
+                polygonOffsetFactor={1}
+                polygonOffsetUnits={1}
+                opacity={0.95 * alpha}
+              />
+            </mesh>
+            <mesh position={[0, 0, 0.7]} rotation={ROT_Y_TO_Z} geometry={G.bodyBand}>
+              <meshStandardMaterial
+                color={trimColor}
+                emissive={trimColor}
+                emissiveIntensity={0.4}
+                transparent
+                depthWrite={false}
+                polygonOffset
+                polygonOffsetFactor={1}
+                polygonOffsetUnits={1}
+                opacity={0.95 * alpha}
+              />
+            </mesh>
+
+            {/* Balcony torus (sits flat in xy plane, encircling lantern base) */}
+            <mesh position={[0, 0, 1.0]} geometry={G.balcony}>
+              <meshStandardMaterial
+                color={trimColor}
+                emissive={mainColor}
+                emissiveIntensity={0.4}
+                roughness={0.4}
+                metalness={0.3}
+                transparent
+                depthWrite={false}
+                polygonOffset
+                polygonOffsetFactor={1}
+                polygonOffsetUnits={1}
+                opacity={0.95 * alpha}
+              />
+            </mesh>
+
+            {/* Lantern room: open cylinder, semi-transparent so lamp is visible */}
+            <mesh position={[0, 0, 1.15]} rotation={ROT_Y_TO_Z} geometry={G.lantern}>
+              <meshStandardMaterial
+                color={mainColor}
+                emissive={mainColor}
+                emissiveIntensity={0.7}
+                roughness={0.3}
+                transparent
+                depthWrite={false}
+                polygonOffset
+                polygonOffsetFactor={1}
+                polygonOffsetUnits={1}
+                opacity={0.55 * alpha}
+                side={THREE.DoubleSide}
+              />
+            </mesh>
+
+            {/* Lamp: bright emissive sphere */}
+            <mesh position={[0, 0, 1.15]} geometry={G.lamp}>
+              <meshBasicMaterial
+                color={lampColor}
+                transparent
+                depthWrite={false}
+                polygonOffset
+                polygonOffsetFactor={1}
+                polygonOffsetUnits={1}
+                opacity={alpha}
+              />
+            </mesh>
+
+            {/* Roof cone */}
+            <mesh position={[0, 0, 1.41]} rotation={ROT_Y_TO_Z} geometry={G.roof}>
+              <meshStandardMaterial
+                color={trimColor}
+                emissive={mainColor}
+                emissiveIntensity={0.4}
+                roughness={0.5}
+                metalness={0.2}
+                transparent
+                depthWrite={false}
+                polygonOffset
+                polygonOffsetFactor={1}
+                polygonOffsetUnits={1}
+                opacity={0.95 * alpha}
+              />
+            </mesh>
+
+            {/* Spire */}
+            <mesh position={[0, 0, 1.57]} rotation={ROT_Y_TO_Z} geometry={G.spire}>
+              <meshStandardMaterial
+                color={trimColor}
+                emissive={mainColor}
+                emissiveIntensity={0.6}
+                transparent
+                depthWrite={false}
+                polygonOffset
+                polygonOffsetFactor={1}
+                polygonOffsetUnits={1}
+                opacity={alpha}
+              />
+            </mesh>
+          </group>
+        );
         return (
           <Fragment key={cellKey}>
-            {imageTowerAnchor && (
-              <group
-                matrix={buildApparentShapeMatrix(
-                  imageTowerAnchor,
-                  player.phaseSpace.u,
-                  player.phaseSpace.heading,
-                  observerPos,
-                  displayMatrix,
-                )}
-                matrixAutoUpdate={false}
-              >
-                <group position={[0, 0, -LIGHTHOUSE_SINK * 0.5]} scale={0.5}>
-                  {/* Body: tapered cylinder, base at event */}
-                  <mesh
-                    position={[0, 0, 0.5]}
-                    rotation={ROT_Y_TO_Z}
-                    geometry={G.body}
-                  >
-                    <meshStandardMaterial
-                      color={wallColor}
-                      emissive={mainColor}
-                      emissiveIntensity={0.25}
-                      roughness={0.55}
-                      metalness={0.05}
-                      transparent
-                      depthWrite={false}
-                      polygonOffset
-                      polygonOffsetFactor={1}
-                      polygonOffsetUnits={1}
-                      opacity={0.95 * alpha}
-                    />
-                  </mesh>
-
-                  {/* Two horizontal bands */}
-                  <mesh
-                    position={[0, 0, 0.2]}
-                    rotation={ROT_Y_TO_Z}
-                    geometry={G.bodyBand}
-                  >
-                    <meshStandardMaterial
-                      color={trimColor}
-                      emissive={trimColor}
-                      emissiveIntensity={0.4}
-                      transparent
-                      depthWrite={false}
-                      polygonOffset
-                      polygonOffsetFactor={1}
-                      polygonOffsetUnits={1}
-                      opacity={0.95 * alpha}
-                    />
-                  </mesh>
-                  <mesh
-                    position={[0, 0, 0.7]}
-                    rotation={ROT_Y_TO_Z}
-                    geometry={G.bodyBand}
-                  >
-                    <meshStandardMaterial
-                      color={trimColor}
-                      emissive={trimColor}
-                      emissiveIntensity={0.4}
-                      transparent
-                      depthWrite={false}
-                      polygonOffset
-                      polygonOffsetFactor={1}
-                      polygonOffsetUnits={1}
-                      opacity={0.95 * alpha}
-                    />
-                  </mesh>
-
-                  {/* Balcony torus (sits flat in xy plane, encircling lantern base) */}
-                  <mesh
-                    position={[0, 0, 1.0]}
-                    geometry={G.balcony}
-                  >
-                    <meshStandardMaterial
-                      color={trimColor}
-                      emissive={mainColor}
-                      emissiveIntensity={0.4}
-                      roughness={0.4}
-                      metalness={0.3}
-                      transparent
-                      depthWrite={false}
-                      polygonOffset
-                      polygonOffsetFactor={1}
-                      polygonOffsetUnits={1}
-                      opacity={0.95 * alpha}
-                    />
-                  </mesh>
-
-                  {/* Lantern room: open cylinder, semi-transparent so lamp is visible */}
-                  <mesh
-                    position={[0, 0, 1.15]}
-                    rotation={ROT_Y_TO_Z}
-                    geometry={G.lantern}
-                  >
-                    <meshStandardMaterial
-                      color={mainColor}
-                      emissive={mainColor}
-                      emissiveIntensity={0.7}
-                      roughness={0.3}
-                      transparent
-                      depthWrite={false}
-                      polygonOffset
-                      polygonOffsetFactor={1}
-                      polygonOffsetUnits={1}
-                      opacity={0.55 * alpha}
-                      side={THREE.DoubleSide}
-                    />
-                  </mesh>
-
-                  {/* Lamp: bright emissive sphere */}
-                  <mesh
-                    position={[0, 0, 1.15]}
-                    geometry={G.lamp}
-                  >
-                    <meshBasicMaterial
-                      color={lampColor}
-                      transparent
-                      depthWrite={false}
-                      polygonOffset
-                      polygonOffsetFactor={1}
-                      polygonOffsetUnits={1}
-                      opacity={alpha}
-                    />
-                  </mesh>
-
-                  {/* Roof cone */}
-                  <mesh
-                    position={[0, 0, 1.41]}
-                    rotation={ROT_Y_TO_Z}
-                    geometry={G.roof}
-                  >
-                    <meshStandardMaterial
-                      color={trimColor}
-                      emissive={mainColor}
-                      emissiveIntensity={0.4}
-                      roughness={0.5}
-                      metalness={0.2}
-                      transparent
-                      depthWrite={false}
-                      polygonOffset
-                      polygonOffsetFactor={1}
-                      polygonOffsetUnits={1}
-                      opacity={0.95 * alpha}
-                    />
-                  </mesh>
-
-                  {/* Spire */}
-                  <mesh
-                    position={[0, 0, 1.57]}
-                    rotation={ROT_Y_TO_Z}
-                    geometry={G.spire}
-                  >
-                    <meshStandardMaterial
-                      color={trimColor}
-                      emissive={mainColor}
-                      emissiveIntensity={0.6}
-                      transparent
-                      depthWrite={false}
-                      polygonOffset
-                      polygonOffsetFactor={1}
-                      polygonOffsetUnits={1}
-                      opacity={alpha}
-                    />
-                  </mesh>
+            {imageTowerAnchor &&
+              (flattenT && towerXY ? (
+                <group position={[towerXY.x, towerXY.y, 0]}>{towerInner}</group>
+              ) : (
+                <group
+                  matrix={buildApparentShapeMatrix(
+                    imageTowerAnchor,
+                    player.phaseSpace.u,
+                    player.phaseSpace.heading,
+                    observerPos,
+                    displayMatrix,
+                  )}
+                  matrixAutoUpdate={false}
+                >
+                  {towerInner}
                 </group>
-              </group>
-            )}
+              ))}
 
             {/* (A) 過去光円錐 ∩ 世界線マーカー — image cell offset 加算済み display position。 */}
             {pastConeSphereRaw && (
@@ -342,7 +329,7 @@ export const LighthouseRenderer = ({
                 position={[
                   pastConeSphereRaw.x + dx,
                   pastConeSphereRaw.y + dy,
-                  pastConeSphereRaw.t,
+                  flattenT ? 0 : pastConeSphereRaw.t,
                 ]}
               >
                 <mesh
@@ -386,7 +373,7 @@ export const LighthouseRenderer = ({
                 position={[
                   futureMostSphereRaw.x + dx,
                   futureMostSphereRaw.y + dy,
-                  futureMostSphereRaw.t,
+                  flattenT ? 0 : futureMostSphereRaw.t,
                 ]}
               >
                 <mesh

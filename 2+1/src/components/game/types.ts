@@ -169,6 +169,15 @@ export type RelativisticPlayer = {
   // 詳細: plans/2026-05-04-isdead-decomposition.md
   displayName?: string;
   /**
+   * 機体形状: 各 player が選んだ ship appearance ("classic" / "shooter" / "jellyfish")。
+   * 通信は `intro` message に乗せて broadcast、 受信側で本 field に保存。 旧 client (= viewMode を
+   * 送らない) との互換: 欠落時 fallback "classic" (= 旧 default、 OtherShipRenderer も classic
+   * 経路だった)。 自機本人は本 field を見ず local store の `viewMode` を直読 (= setting source
+   * of truth は self、 broadcast は他者表示用)。
+   * 詳細: plans/2026-05-07-viewmode-broadcast.md (簡易、 intro schema 拡張のみ)
+   */
+  viewMode?: "classic" | "shooter" | "jellyfish";
+  /**
    * Damage-based death model (Phase C1): fire/thrust/damage 共有プール。
    * - humans: fire / thrust で消費 + damage 0.5 で減算、自然回復 ENERGY_RECOVERY_RATE。
    * - LH: damage 0.5 減算のみ。fire は timer-based なので非消費、**回復なし**。

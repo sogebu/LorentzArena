@@ -7,6 +7,7 @@ import {
   HEADING_MARKER_OPACITY,
   LASER_PAST_CONE_MARKER_COLOR,
 } from "./constants";
+import { useDisplayFrame } from "./DisplayFrameContext";
 import { getThreeColor } from "./threeCache";
 import type { RelativisticPlayer } from "./types";
 
@@ -37,6 +38,10 @@ export const HeadingMarkerRenderer = ({
   player: RelativisticPlayer;
   cameraYawRef?: React.RefObject<number>;
 }) => {
+  // PLC スライス mode では aim 線が「過去光円錐の母線 (null geodesic)」 ではなく
+  // **xy 平面上の方向ベクトル** になる (slice 平面に時間軸が無いため)。 dirZ=0 + 同じ
+  // 長さで描画 → 「自機からこの方向に狙ってる」 という指示器の役割は維持される。
+  const { flattenT } = useDisplayFrame();
   const meshRef = useRef<THREE.Mesh>(null);
   const yAxis = useMemo(() => new THREE.Vector3(0, 1, 0), []);
   const dirVec = useMemo(() => new THREE.Vector3(), []);
@@ -57,10 +62,11 @@ export const HeadingMarkerRenderer = ({
       return;
     }
     mesh.visible = true;
-    // 過去光円錐の母線 (null geodesic): heading 方向に cos(45°)、-z (過去) に sin(45°)。
-    const dirX = Math.cos(yaw) * SQRT_HALF;
-    const dirY = Math.sin(yaw) * SQRT_HALF;
-    const dirZ = -SQRT_HALF;
+    // 通常: 過去光円錐の母線 (null geodesic): heading 方向に cos(45°)、-z (過去) に sin(45°)。
+    // PLC: heading 方向の単位ベクトル + dirZ=0 (xy 平面上の方向線)。
+    const dirX = flattenT ? Math.cos(yaw) : Math.cos(yaw) * SQRT_HALF;
+    const dirY = flattenT ? Math.sin(yaw) : Math.sin(yaw) * SQRT_HALF;
+    const dirZ = flattenT ? 0 : -SQRT_HALF;
     dirVec.set(dirX, dirY, dirZ);
     // cylinder default の y 軸を direction 方向に向ける。
     tmpQuat.setFromUnitVectors(yAxis, dirVec);
