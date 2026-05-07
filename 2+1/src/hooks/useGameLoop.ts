@@ -24,7 +24,6 @@ import {
   LASER_RANGE,
   LIGHT_CONE_HEIGHT,
   LIGHTHOUSE_HIT_DAMAGE,
-  LONG_GAP_RESYNC_THRESHOLD_SEC,
   MAX_LASERS,
   MAX_WORLDLINE_HISTORY,
   PROCESSED_LASERS_CLEANUP_THRESHOLD,
@@ -222,35 +221,6 @@ export function useGameLoop({
         if (lastWitness > prevLastTime) {
           peerActive = true;
           break;
-        }
-      }
-
-      // Bug 14 plan §6.5 snapshot rejoin trigger (= 2026-05-06 post-deploy 実装):
-      // long gap (= rawDTau > LONG_GAP_RESYNC_THRESHOLD_SEC、 通常 mobile suspend
-      // 復帰 / 長 lag spike) を検知したら BH に snapshotRequest を送って既存 snapshot
-      // mechanism で event 系 state (= killLog / respawnLog / displayNames) を sync。
-      //
-      // 必要性 (= V2 code coverage で発見): host の new connection 受信時に既存 peer
-      // への snapshot push は [`RelativisticGame.tsx:216`](= `if (store.players.has(newId))
-      // continue;`) で skip 設計、 wake-from-suspend で self は missed kill 等の event を
-      // recover する経路が無い。 self.pos.t は Rule B catchup で同期するが event 系は
-      // stale のまま、 「self alive 認識 vs peer 死亡扱い」 inconsistent state 発生可。
-      //
-      // 設計対称性: existing host migration で使う isMigrationPath path (= [`snapshot.ts`](
-      // ../components/game/snapshot.ts) `applySnapshot`) が wake-from-suspend にも対称的に
-      // 適用可能 — self.phaseSpace.pos.t は local 優先 (= Rule B 任せ)、 killLog / respawnLog
-      // は union merge、 scores は観測者相対で local 保持。 つまり trigger 1 line 追加だけ
-      // で wake-from-suspend 完全 handle、 applySnapshot に新 mode 不要。
-      //
-      // self が BH のとき: snapshotRequest 相手不在で skip (= solo or post-migration、
-      // self 自身が canonical source)。
-      //
-      // globalActive check より前に trigger: WebRTC died case (= peer broadcast 届かず
-      // peerActive=false) でも長 gap 検知すれば snapshot を pull して event sync 可能。
-      if (rawDTau > LONG_GAP_RESYNC_THRESHOLD_SEC && !peerManager.getIsBeaconHolder()) {
-        const hostId = peerManager.getBeaconHolderId();
-        if (hostId) {
-          peerManager.sendTo(hostId, { type: "snapshotRequest" as const });
         }
       }
 

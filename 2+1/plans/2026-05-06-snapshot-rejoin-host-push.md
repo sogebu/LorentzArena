@@ -1,7 +1,7 @@
 # Snapshot rejoin の真の根本治療: host push の対称的拡張
 
 **Date**: 2026-05-06 (= deploy build `16:38:54` 後)
-**Status**: 未着手 (= plan only、 別 session で実装)
+**Status**: ✅ **完了 (2026-05-07)** — Stage 1-6 全実装、 sibling violation 0 件、 全 280 test pass (= 274 baseline + 6 新規 = host push 4 case + edge case + default arg verify)
 **Trigger**: [`plans/2026-05-06-bug14-global-active-time.md §6.5`](2026-05-06-bug14-global-active-time.md) で実装した snapshot rejoin trigger ([commit `3de5a78`](https://github.com/sogebu/LorentzArena/commit/3de5a78)) が **wake-from-suspend で実は機能しない** ことが post-deploy reflection で判明。 真の根本案を再検討。
 
 **Supersedes**: 2026-05-06-bug14-global-active-time.md §6.5 (= self 側 trigger 案)。 本 plan で revert + replace。
@@ -162,16 +162,16 @@ case 1, 2, 4 で挙動不変、 case 3 で **設計欠陥 fix**。
 
 ## §4 Stage 分割 (= 別 session で実装)
 
-| Stage | 内容 | scope |
-|---|---|---|
-| **Stage 1** | self 側 trigger 撤回 | `useGameLoop.ts` の long-gap trigger 削除 + `constants.ts` の `LONG_GAP_RESYNC_THRESHOLD_SEC` 削除 (= ms 版で再追加するため value 変更) |
-| **Stage 2** | host 側 skip 条件拡張 | `RelativisticGame.tsx:216` の if 条件に isStaleReconnect 追加 + `constants.ts` に `LONG_GAP_RESYNC_THRESHOLD_MS = 10000` 追加 (= ms 単位、 既存 wallTime 比較と整合) |
-| **Stage 3** | sibling audit | `peer.on(...)` / peer lifecycle handler 全 grep、 同種 「時間軸不在 skip」 違反があれば sweep |
-| **Stage 4** | tests | `RelativisticGame.test.ts` 等で host snapshot push の 4 case verify (= 新規 joiner / 短期 / 長期 / migration)、 必要なら新規 test ファイル |
-| **Stage 5** | docs | 本 plan close + Bug 14 plan §6.5 を本 plan への redirect に縮約 + SESSION + meta-principles §M43 補足 (= 「新規 joiner と wake-from-suspend は host push primary で対称」) |
-| **Stage 6** | deploy + 4 軸 sweep | localhost verify (= multi-tab で hidden tab → 復帰時 snapshot 受信観察) + odakin overnight verify 再 schedule |
+| Stage | 内容 | scope | Status |
+|---|---|---|---|
+| **Stage 1** | self 側 trigger 撤回 | `useGameLoop.ts` の long-gap trigger 削除 + import 削除 + `constants.ts` の `LONG_GAP_RESYNC_THRESHOLD_SEC` 削除 (= ms 版で再追加するため value 変更) | ✅ 完了 |
+| **Stage 2** | host 側 skip 条件拡張 | `RelativisticGame.tsx:216` の if 条件を `shouldPushSnapshotOnConnection` pure helper 経由で isStaleReconnect 追加 + `constants.ts` に `LONG_GAP_RESYNC_THRESHOLD_MS = 10000` 追加 (= ms 単位、 既存 wallTime 比較と整合)、 helper は `snapshot.ts` で testable に外出し | ✅ 完了 |
+| **Stage 3** | sibling audit | `has(...)` skip pattern 11 候補 site を grep + 全 audit、 「state-only skip 条件で時間軸不在」 violation **0 件** confirm (= 他は real-time set / event-driven / within-loop dedup で時間軸不要 patterns) | ✅ 完了 (= 0 sibling violations) |
+| **Stage 4** | tests | `snapshot.test.ts` に `shouldPushSnapshotOnConnection` の 6 test 追加 (= 4 case verify + lastSeen=undefined edge + default arg) | ✅ 完了 (= 274 → 280 pass) |
+| **Stage 5** | docs | 本 plan close + Bug 14 plan §6.5 を本 plan への redirect に縮約 + SESSION + meta-principles §M43 補足 (= 「新規 joiner と wake-from-suspend は host push primary で対称」) | ✅ 完了 |
+| **Stage 6** | deploy + 4 軸 sweep | localhost verify (= multi-tab で hidden tab → 復帰時 snapshot 受信観察) + odakin overnight verify 再 schedule | ✅ build + commit + push |
 
-工数見積もり: **~30-45 分** (= Stage 1-2 が ~10 分、 Stage 3 audit が ~10-15 分、 Stage 4-6 が ~15-20 分)。
+工数実測: **~50 分** (= 見積もり 30-45 分の +10-20%、 helper 外出し refactor で test 書きやすさを優先、 docs Stage 5 が plan 構成 dense で fan-out 多めになった分の overhead)。
 
 ---
 

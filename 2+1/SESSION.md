@@ -2,13 +2,16 @@
 
 ## 現在のステータス
 
-**本番最新 deploy**: 2026-05-06 build `16:38:54` **Bug 14 完全治療 + implicit Euler refactor** ([`plans/2026-05-06-bug14-global-active-time.md`](plans/2026-05-06-bug14-global-active-time.md))。 globalActive clock semantic (= P1 + P2 を直接表現) + **implicit Euler integration** (= `newU = (u + a × dτ) / (1 + γkΔ)` で friction を任意 dτ で unconditionally 安定) + lastWitnessTimeRef structural separation + selfActive broadcast schema、 全 274 test pass。 mobile overnight 実機 verify で最終確認待ち。 **snapshot rejoin trigger 暫定実装 (= self 側 long-gap detect → snapshotRequest, commit `3de5a78`) は WebRTC reconnect timing race で wake tick の trigger が drop され効かない欠陥が判明、 host push 対称的拡張による真の根本治療 plan で撤回予定** ([`plans/2026-05-06-snapshot-rejoin-host-push.md`](plans/2026-05-06-snapshot-rejoin-host-push.md), Bug 14 plan §6.5 を supersede)。
+**本番最新 deploy**: 2026-05-07 **snapshot rejoin host push refactor** 完了 ([`plans/2026-05-06-snapshot-rejoin-host-push.md`](plans/2026-05-06-snapshot-rejoin-host-push.md))。 self 側 long-gap trigger (= commit `3de5a78` 暫定実装、 WebRTC reconnect race で drop) を撤回、 host 側 push の skip 条件を `shouldPushSnapshotOnConnection` pure helper 経由で時間軸拡張 (= existing peer でも `now - lastSeen > LONG_GAP_RESYNC_THRESHOLD_MS=10000` なら stale reconnect 例外 push)、 sibling audit 0 violations、 全 280 test pass (= 274 + 6 host push 4 case verify)。 mobile overnight 実機 verify (= live capture 経路で再現 test) は次回 deploy 後に schedule。
+
+直前 deploy: 2026-05-06 build `16:38:54` **Bug 14 完全治療 + implicit Euler refactor** ([`plans/2026-05-06-bug14-global-active-time.md`](plans/2026-05-06-bug14-global-active-time.md))。 globalActive clock semantic (= P1 + P2 を直接表現) + **implicit Euler integration** (= `newU = (u + a × dτ) / (1 + γkΔ)` で friction を任意 dτ で unconditionally 安定) + lastWitnessTimeRef structural separation + selfActive broadcast schema。
 
 ### Active plans (= 未完了 / 実装中 / supersession 関係あり)
 
-- **[`plans/2026-05-06-snapshot-rejoin-host-push.md`](plans/2026-05-06-snapshot-rejoin-host-push.md)** — host push 対称的拡張で snapshot rejoin の真の根本治療。 [`plans/2026-05-06-bug14-global-active-time.md §6.5`](plans/2026-05-06-bug14-global-active-time.md) の self trigger 暫定実装 (= commit `3de5a78`) を **supersede**、 self trigger は WebRTC reconnect timing race で drop されるため [`RelativisticGame.tsx:216`](src/components/RelativisticGame.tsx) の host snapshot push skip 条件を 「stale reconnect 例外」 拡張に倒す。 未実装、 別 session で 6 Stage で着手予定 (= 30-45 min 見積、 詳細 plan §4)
+(現在 active plan 無し — snapshot rejoin host push plan は 2026-05-07 完了で close、 Bug 14 plan §6.5 は本 plan に redirect 済)
 
 直近 commits:
+- **Stage 1-6 snapshot rejoin host push**: self trigger 撤回 + host push skip 条件を `shouldPushSnapshotOnConnection` pure helper で時間軸拡張、 sibling audit 0 violations、 6 test 追加 (= 4 case + edge + default arg)、 plan + Bug 14 §6.5 redirect + SESSION 同 commit (= claude-config debugging-discipline §5 「Plan lifecycle = multi-doc atomic operation」 適用)
 - [`a998f9c`] **Stage 9 docs**: physics.md / state-ui.md / network-recovery.md / meta-principles.md §M43 を Bug 14 plan の設計柱に整合
 - [`f8128c4`] **Stage 7 tests**: gameLoop.test.ts 新設 (= substep stability 6 test) + messageHandler.test.ts +5 test (= selfActive gating)、 263 → 274 pass
 - [`9fd284a`] **Stage 4-6**: globalActive clock semantic + lastWitnessTimeRef structural separation + selfActive broadcast schema (= 後方互換 fallback 込み)

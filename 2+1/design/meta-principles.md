@@ -1323,3 +1323,15 @@ dτ(prev, now) ≡ ∫_{[prev, now]} 1[globalActive(τ)] dτ
 
 本 entry は LorentzArena 固有の Bug 14 文脈に強く依存 (= broadcast schema の selfActive 1 boolean、 multiplayer + WebRTC peer broadcast の existence check) で universal 化は限定的。 但し「**dτ semantic は global active time** で per-client は近似」 という抽象原則だけ promote 候補。 当面は LorentzArena 固有 entry として保持、 別 P2P multiplayer game project が現れたら抽象化を検討。
 
+#### 2026-05-07 補足: 「新規 joiner と wake-from-suspend は host push primary で対称」
+
+Bug 14 plan §6.5 で初実装した snapshot rejoin trigger (= self 側 long-gap detect → snapshotRequest 送信、 commit `3de5a78`) は **WebRTC reconnect が完了する前に wake tick が fire し snapshotRequest が drop される** timing race を 2026-05-07 に発見、 [`plans/2026-05-06-snapshot-rejoin-host-push.md`](../plans/2026-05-06-snapshot-rejoin-host-push.md) で **host push 側の skip 条件を時間軸拡張** (= [`shouldPushSnapshotOnConnection`](../src/components/game/snapshot.ts) で `now - lastSeen > LONG_GAP_RESYNC_THRESHOLD_MS` の stale reconnect 例外) に切替で根本治療済。
+
+**新原則** (= 本 M43 の event sync 部分の structural 補強):
+
+- **新規 joiner case** と **wake-from-suspend case** は どちらも host が WebRTC connection event を起点に snapshot を push する **同 mechanism (= primary host push)** で handle する。 case の違いは event timing (= 新 connection vs reconnect) と skip 条件 (= `!players.has` vs `!players.has || isStaleReconnect`) のみ。
+- self 側 polling-based trigger は L4 責務分離違反 (= 情報を持っていない self が active 役割、 情報を持っている host が passive 役割) + WebRTC reconnect timing 不確実性 + bandwidth 重複で却下。
+- **設計対称性の原則**: 「新規 joiner と wake-from-suspend を同 mechanism で handle」 vs 「異 mechanism (= self pull) で handle」 の二択で **対称を選ぶ**。 future contributor の cognitive load 低減 + 規模拡張時の特殊 case scaling 容易 + bug fix の同型化 で strictly 優位。
+
+詳細は [`plans/2026-05-06-snapshot-rejoin-host-push.md §7.1-§7.7`](../plans/2026-05-06-snapshot-rejoin-host-push.md) (= 設計哲学 6 視点 chained: 対称設計 → 情報所在地 → event-driven → 時間軸 audit → net LOC → multi-round audit reflex)。
+

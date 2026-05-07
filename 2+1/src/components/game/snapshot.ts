@@ -15,7 +15,12 @@ import {
   selectIsDead,
   useGameStore,
 } from "../../stores/game-store";
-import { ENERGY_MAX, MAX_WORLDLINE_HISTORY, SPAWN_RANGE } from "./constants";
+import {
+  ENERGY_MAX,
+  LONG_GAP_RESYNC_THRESHOLD_MS,
+  MAX_WORLDLINE_HISTORY,
+  SPAWN_RANGE,
+} from "./constants";
 import { isLighthouse } from "./lighthouse";
 import { computeSpawnCoordTime } from "./respawnTime";
 import type {
@@ -151,6 +156,37 @@ export const buildSnapshot = (myId: string, isBeaconHolder: boolean) => {
 };
 
 type SnapshotMsg = ReturnType<typeof buildSnapshot>;
+
+/**
+ * Host (= beacon holder) が new connection event 時に snapshot を push すべきかの
+ * 判定 predicate。 RelativisticGame.tsx の prevConnectionIdsRef useEffect 内で各
+ * newPeerId に対し呼ばれる。
+ *
+ * 設計対称性 (= plans/2026-05-06-snapshot-rejoin-host-push.md §2):
+ * - **新規 joiner** (= isNewJoiner=true、 store.players に entry 無し) → push
+ * - **短期 disconnect / reconnect** (= isNewJoiner=false ∧ now - lastSeen ≤ threshold)
+ *   → skip。 通常 broadcast で event log self-maintained を仮定、 spurious push 抑制
+ * - **長期 disconnect (= mobile suspend、 wake-from-suspend)** (= isNewJoiner=false ∧
+ *   now - lastSeen > threshold) → push。 stale reconnect 例外、 broadcast 停止期間中の
+ *   missed event を snapshot で sync
+ * - **migration** (= player entry 削除 + 再登録、 通常 case 1 と同等) → push
+ *
+ * 旧設計欠陥 (= 2026-05-07 修正前): 「has(newId) なら skip」 は 「player entry が
+ * 連続的に最新 broadcast で self-maintained」 という暗黙の時間軸前提を持ち、 long
+ * disconnect で event log が stale 化する case で破れていた (= debugging-discipline §4
+ * 「skip 条件が時間軸を考慮していない」 設計欠陥 pattern)。
+ */
+export const shouldPushSnapshotOnConnection = (
+  isNewJoiner: boolean,
+  lastSeenMs: number | undefined,
+  nowMs: number,
+  thresholdMs: number = LONG_GAP_RESYNC_THRESHOLD_MS,
+): boolean => {
+  if (isNewJoiner) return true;
+  // existing peer: stale reconnect だけ例外的に push
+  const lastSeen = lastSeenMs ?? 0;
+  return nowMs - lastSeen > thresholdMs;
+};
 
 /**
  * 新規 join 側が受信した snapshot から store を初期化する。syncTime の処理を

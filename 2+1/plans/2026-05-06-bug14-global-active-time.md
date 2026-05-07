@@ -249,59 +249,15 @@ if (isWitness) {
 
 **却下根拠**: 我々が答える質問は historical existential (= 過去区間内に誰か broadcast したか) で local message log の existence check で決定可能 (= §「local 計算可能性」 の verification)。 round-trip 不要、 schema 拡張も最小 (= `selfActive` 1 boolean)。
 
-### §6.5 ✗ post-suspend handshake (永続却下) / ✅ snapshot rejoin trigger (= 2026-05-06 implement 済)
+### §6.5 ✗ post-suspend handshake (永続却下) / ↪︎ snapshot rejoin: see snapshot-rejoin-host-push plan
 
-> **⚠️ Superseded by**: [`2026-05-06-snapshot-rejoin-host-push.md`](2026-05-06-snapshot-rejoin-host-push.md) (= 2026-05-07 push back で WebRTC reconnect timing race を発見、 wake tick の self trigger は drop されるため host push 対称的拡張に倒す)。 (b) snapshot rejoin trigger 実装 (commit `3de5a78`) は新 plan Stage 1 で revert 予定、 本 §6.5 narrative の 「✅ implement 済」 status は historical (= 一時実装済 → supersede による撤回予定) と read。
+> **⚠️ Superseded by**: [`2026-05-06-snapshot-rejoin-host-push.md`](2026-05-06-snapshot-rejoin-host-push.md) (= 2026-05-07 完了)。 self 側 trigger 暫定実装 (commit `3de5a78`) は WebRTC reconnect timing race で wake tick の trigger が drop される設計欠陥が判明、 host push 対称的拡張 ([`RelativisticGame.tsx`](../src/components/RelativisticGame.tsx) の skip 条件を 「stale reconnect 例外」 で時間軸拡張) で根本治療済。 詳細は新 plan §1-§7 + §1.3 で却下した self retry (Option B) の理由 + §7.1-§7.7 の設計哲学 6 視点 chained。
 
-**初期 主張案**: wake 時 reconnect で peer に 「私の suspend 中、 あなた active だった?」 を問い合わせる handshake (= activeQuery + activeReport 2 message types + per-peer cumulative active time tracking)。
+**永続却下案** (= post-suspend handshake): wake 時 reconnect で peer に 「私の suspend 中、 あなた active だった?」 を問い合わせる handshake (= activeQuery + activeReport 2 message types + per-peer cumulative active time tracking)。 V2 (= mechanism classification) で過負荷 signal、 「activity tracking 専用 mechanism」 は既存 globalActive と冗長で structural overhead 過大、 永続却下。
 
-**5/6 plan 確定時の defer 判断**: 現 plan は local で検出可能な範囲を完全 optimal にカバー、 検出不能 case (= WebRTC died) は Rule B fallback で eventual consistency。 handshake は L4 設計の上に乗る増分機能、 backbone 不変なため後付け可能、 別 plan で対処、 と defer。
+**永続却下案** (= cumActive piggyback): broadcast schema に `cumulativeActiveSeconds` field 追加で全 case unified を狙ったが V1 (= numeric trace) で B-disconnect over-count + case 4 under-count with min clamp の両立解 closed-form 不可と判定、 永続却下。
 
-**2026-05-06 deploy 後 user push back からの再分析** (= [`claude-config/conventions/debugging-discipline.md §1`](../../../claude-config/conventions/debugging-discipline.md) を spiral で application):
-
-1. **handshake 永続却下**: schema 増分 (= 2 新 message types) + state machine 複雑化、 mechanism overload (= activity tracking 専用 mechanism 追加)。 V2 (= mechanism classification) で過負荷 signal、 「activity tracking 専用 mechanism」 は既存 globalActive と冗長で structural overhead が高い。
-
-2. **代替案 (a) cumActive piggyback も却下**: broadcast schema に `cumulativeActiveSeconds` field 追加で全 case unified を狙ったが V1 (= numeric trace) で:
-   - **B-disconnect over-count**: A 視点で B 短期切断 + reconnect 時、 max(self_delta, peer_max_delta) で B の cumActive catchup が own active で integrate 済の期間を再 integrate
-   - **case 4 under-count with min clamp**: post-reconnect tick で `min(rawDTau=8ms, peer_delta=3600)` clamp で peer_delta=3600 を取り損ね、 self.pos.t 8ms しか進まず Rule B 跳躍が依然必要
-   - 5 種 refinement (= max → min → max with clamp → max(self, min(peer, rawDTau-self)) → min(rawDTau, self+peer)) で他 case 破壊、 closed-form root 不可と判定。
-
-3. **代替案 (b) snapshot rejoin trigger** (= **un-defer 候補、 推奨 fix path**): long-gap detect (= `rawDTau > LONG_GAP_THRESHOLD = 10 sec`) で snapshotRequest を BH に送って既存 snapshot mechanism で event state (= killLog / scores / debris / 等) を sync。 V2 (= code coverage verify) で [`RelativisticGame.tsx:216`](../src/components/RelativisticGame.tsx#L216) の `if (store.players.has(newId)) continue;` (= "Stage F: 既存 peer は event log から self-maintained") を確認、 wake-from-suspend で **host は snapshot push を skip** する明示設計、 self は missed event recovery 経路が**無い**。 つまり 5/6 deploy のみで wake handle されるのは Rule B catchup による pos.t 同期だけで、 event 系 state は stale のまま (= missed kill で 「self alive 認識 vs peer 死亡扱い」 inconsistent state)。 snapshot rejoin trigger は genuine 必要。
-
-**現状 5/6 build 15:52 deploy で覆われる範囲** (= V2 で確認した implement 前の状態):
-- ✓ self.pos.t: Rule B catchup で同期 (= peer.pos.t 受信 → 自分が past cone 内 → λ jump で前進)
-- ✗ event 系 (= killLog / scores / debris): host snapshot push skip + self snapshotRequest auto-trigger 不発で stale のまま、 missed kill で inconsistent state 発生可
-
-**2026-05-06 deploy 後 implement 済 (= 本 plan §6.5 (b) を un-defer)**:
-
-**実装** (= 設計対称性で minimum 侵襲、 commit `3de5a78`):
-
-```typescript
-// useGameLoop.ts gameLoop tick 冒頭、 globalActive check より前:
-if (rawDTau > LONG_GAP_RESYNC_THRESHOLD_SEC && !peerManager.getIsBeaconHolder()) {
-  const hostId = peerManager.getBeaconHolderId();
-  if (hostId) {
-    peerManager.sendTo(hostId, { type: "snapshotRequest" as const });
-  }
-}
-```
-
-**設計対称性の活用** (= applySnapshot 変更不要):
-- existing isMigrationPath path (= host migration で使う) が wake-from-suspend に対称的に適用可能、 self.players.has(myId)=true の condition で自動的に merge logic 経路に乗る
-- self.phaseSpace.pos.t local 優先 ✓ (= Rule B catchup と整合、 設計柱「sync = snapshot、 causal divergence = Rule B」 の責務分離)
-- killLog / respawnLog union merge ✓ (= missed kill 流入 → selectIsDead 自動更新 → ghost mode → respawn poll 起動)
-- scores 観測者相対で local 保持 ✓ (= firePendingKillEvents が past-cone 到達時 independently 加算)
-- displayNames merge ✓
-
-**閾値選択 `LONG_GAP_RESYNC_THRESHOLD_SEC = 10` 根拠**: 通常 lag spike (= GC pause / debugger break) は ~5 sec 以内、 LARGE_GAP_THRESHOLD_SEC = 2 sec の selfActive 判定との間に余白を持たせて誤発火を抑制。 mobile suspend は通常 数分以上で 10 sec 余裕で超過。
-
-**globalActive check より前 trigger 配置の根拠**: WebRTC died case (= peer broadcast 届かず peerActive=false) でも長 gap 検知すれば snapshot を pull して event sync 可能、 globalActive=false skip path でも fire させて 5/6 deploy 後の残 case を覆う。
-
-**self が BH のとき**: snapshotRequest 相手不在で skip (= solo or post-migration、 self 自身が canonical source)、 condition `!peerManager.getIsBeaconHolder()` で自動分岐。
-
-**新 message type 追加 0 個**、 **新 schema field 追加 0 個**: 既存 `snapshotRequest` message + 既存 `applySnapshot.isMigrationPath` path の trigger 拡張のみ。 cumActive piggyback / handshake 案の structural cost と対照的に minimum 侵襲。
-
-**関連メタ規律**: 本節分析は [`claude-config/conventions/debugging-discipline.md §1`](../../../claude-config/conventions/debugging-discipline.md) の universal application 例 (= V1 で cumActive 却下、 V2 で 「Rule B fallback で十分」 仮判断を撤回、 V3 で algorithm 網羅で implicit Euler refactor)。 implement の対称性検討は同 §4 の 「rule violation 1 件発見 → sibling audit」 の application (= layer 2 → 3 markdown link 1 件発見 → 12 件 sibling sweep + promote refactor の延長で本 trigger 実装、 同種思考 reflex)。
+**過去の implement 経緯 (= historical)**: snapshot rejoin trigger は 2026-05-06 に self 側 long-gap detect (= `rawDTau > LONG_GAP_RESYNC_THRESHOLD_SEC = 10 sec`) → snapshotRequest 送出として commit `3de5a78` で実装した。 設計対称性 (= existing isMigrationPath path 流用) + 新 message type 0 個 / 新 schema field 0 個 で minimum 侵襲を狙ったが、 2026-05-07 push back で **WebRTC reconnect が完了する前に wake tick が fire し snapshotRequest が drop される** timing race を発見 (= V2 audit failure、 PeerJS は connection が open でない send を buffer せず drop)。 host 側 push を時間軸拡張 (= host が WebRTC connection event を直接観測 + stale reconnect 例外で snapshot push) する root fix に切替、 self 側 trigger は revert 予定。 詳細は新 plan §1.1-§1.3 (= V2 audit failure RCA) + §2 (= host push 拡張案)。
 
 ---
 

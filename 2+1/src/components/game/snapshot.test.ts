@@ -14,7 +14,11 @@ import {
   MAX_WORLDLINE_HISTORY,
 } from "./constants";
 import { isLighthouse } from "./lighthouse";
-import { applySnapshot, buildSnapshot } from "./snapshot";
+import {
+  applySnapshot,
+  buildSnapshot,
+  shouldPushSnapshotOnConnection,
+} from "./snapshot";
 import type { RelativisticPlayer } from "./types";
 
 type SnapshotMsg = ReturnType<typeof buildSnapshot>;
@@ -619,5 +623,89 @@ describe("buildSnapshot / applySnapshot heading / alpha round-trip", () => {
     const a = useGameStore.getState().players.get("a");
     expect(a?.phaseSpace.heading).toEqual({ w: 1, x: 0, y: 0, z: 0 });
     expect(a?.phaseSpace.alpha).toEqual({ t: 0, x: 0, y: 0, z: 0 });
+  });
+});
+
+// ===========================================================================
+// shouldPushSnapshotOnConnection — host push 4 case verify
+// (= plans/2026-05-06-snapshot-rejoin-host-push.md §3 V1 scenario trace)
+// ===========================================================================
+describe("shouldPushSnapshotOnConnection", () => {
+  const THRESHOLD_MS = 10000;
+  const NOW_MS = 1_000_000_000_000;
+
+  it("case 1: 新規 joiner (= isNewJoiner=true) は lastSeen に依らず push する", () => {
+    // lastSeen は新規 joiner では meaningless (= まだ broadcast 受けていない)
+    expect(
+      shouldPushSnapshotOnConnection(true, undefined, NOW_MS, THRESHOLD_MS),
+    ).toBe(true);
+    // 仮に lastSeen があっても (= migration 直後等の edge) 新規 joiner 扱いは push
+    expect(
+      shouldPushSnapshotOnConnection(true, NOW_MS - 100, NOW_MS, THRESHOLD_MS),
+    ).toBe(true);
+  });
+
+  it("case 2: 短期 disconnect (= 既存 peer ∧ lastSeen 新しい) は skip する", () => {
+    // network blip 1 sec — broadcast で event log self-maintained を仮定、 spurious
+    // push 抑制が正しい
+    expect(
+      shouldPushSnapshotOnConnection(false, NOW_MS - 1000, NOW_MS, THRESHOLD_MS),
+    ).toBe(false);
+    // 閾値ピッタリ (= 10000 ms) は skip 側 (= 境界包含、 「>」 strict)
+    expect(
+      shouldPushSnapshotOnConnection(false, NOW_MS - 10000, NOW_MS, THRESHOLD_MS),
+    ).toBe(false);
+  });
+
+  it("case 3: 長期 disconnect (= mobile suspend、 wake-from-suspend) は push する", () => {
+    // 閾値超過 1 ms 超えで stale reconnect 例外発動、 missed event sync のため push
+    expect(
+      shouldPushSnapshotOnConnection(false, NOW_MS - 10001, NOW_MS, THRESHOLD_MS),
+    ).toBe(true);
+    // 数分の suspend
+    expect(
+      shouldPushSnapshotOnConnection(
+        false,
+        NOW_MS - 5 * 60 * 1000,
+        NOW_MS,
+        THRESHOLD_MS,
+      ),
+    ).toBe(true);
+    // 12.5 hour mobile suspend (= Bug 14 live capture シナリオ)
+    expect(
+      shouldPushSnapshotOnConnection(
+        false,
+        NOW_MS - 12.5 * 3600 * 1000,
+        NOW_MS,
+        THRESHOLD_MS,
+      ),
+    ).toBe(true);
+  });
+
+  it("case 4: migration (= player entry 削除 + 再登録) は case 1 と同等で push", () => {
+    // migration 経路では player entry が削除されるため再 connect 時点で
+    // !players.has(newId) → isNewJoiner=true として呼ばれる、 これは case 1 同等
+    expect(
+      shouldPushSnapshotOnConnection(true, undefined, NOW_MS, THRESHOLD_MS),
+    ).toBe(true);
+  });
+
+  it("既存 peer ∧ lastSeen 未記録 (= undefined) は long-gap として push する", () => {
+    // lastUpdateTimeRef に entry 無い (= 通常起きないが、 race で player entry は
+    // あるが lastUpdateTimeRef 未 set の edge case)。 undefined → 0 fallback で
+    // now - 0 = NOW_MS が threshold を遥かに超え、 push 側に倒れる安全寄りの挙動
+    expect(
+      shouldPushSnapshotOnConnection(false, undefined, NOW_MS, THRESHOLD_MS),
+    ).toBe(true);
+  });
+
+  it("default threshold (= LONG_GAP_RESYNC_THRESHOLD_MS=10000) も同じ挙動", () => {
+    // signature の 4 番目引数 default を省略しても constant が effective
+    expect(shouldPushSnapshotOnConnection(false, NOW_MS - 5000, NOW_MS)).toBe(
+      false,
+    );
+    expect(shouldPushSnapshotOnConnection(false, NOW_MS - 15000, NOW_MS)).toBe(
+      true,
+    );
   });
 });

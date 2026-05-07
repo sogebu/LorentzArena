@@ -9,6 +9,7 @@ import {
   ENERGY_MAX,
   LIGHTHOUSE_COLOR,
   LIGHTHOUSE_ID_PREFIX,
+  LONG_GAP_RESYNC_THRESHOLD_MS,
   OFFSET,
   PEER_REMOVAL_GRACE_MS,
   SPAWN_RANGE,
@@ -21,7 +22,7 @@ import { CameraController } from "./game/CameraController";
 import { isLighthouse } from "./game/lighthouse";
 import { createMessageHandler } from "./game/messageHandler";
 import { SceneContent } from "./game/SceneContent";
-import { buildSnapshot } from "./game/snapshot";
+import { buildSnapshot, shouldPushSnapshotOnConnection } from "./game/snapshot";
 import { useTouchInput } from "./game/touchInput";
 import { useStaleDetection } from "../hooks/useStaleDetection";
 import { useKeyboardInput } from "../hooks/useKeyboardInput";
@@ -208,12 +209,40 @@ const RelativisticGame = ({ displayName }: { displayName: string }) => {
     if (peerManager?.getIsBeaconHolder()) {
       const myPlayer = store.players.get(myId);
       if (myPlayer) {
+        const now = Date.now();
         for (const newId of newPeerIds) {
           // Stage F: 既存 peer (= store に entry がある) は event log から
-          // self-maintained。migration 経路で元 client 同士が初接続する場合も
-          // ここで弾くことで「既存 peer は snapshot を受け取らない」設計を保つ。
-          // 真の new joiner は player entry を未保持 → has=false → 送信。
-          if (store.players.has(newId)) continue;
+          // self-maintained → 通常 skip。migration 経路で元 client 同士が初接続する
+          // 場合も弾くことで「既存 peer は snapshot を受け取らない」設計を保つ。
+          // 真の new joiner は player entry を未保持 → 送信。
+          //
+          // 2026-05-07 修正 (= snapshot rejoin host-push plan §2.2): 旧 skip 条件
+          // 「has(newId) なら skip」 は 「player entry が連続的に最新 broadcast で
+          // self-maintained」 という暗黙の時間軸前提を持ち、 long disconnect (=
+          // mobile suspend、 数分の network drop) で event log が stale 化する case で
+          // 破れていた (= debugging-discipline §4 「skip 条件が時間軸を考慮していない」
+          // 設計欠陥 pattern)。 「stale reconnect 例外」 を追加して、 最後に peer
+          // broadcast 受信してから LONG_GAP_RESYNC_THRESHOLD_MS 以上経過していれば
+          // 既存 peer 扱いでも snapshot push する。 timing 確実性: peer.on('connection')
+          // event は WebRTC connection が open になった瞬間に fire (= PeerJS internal)、
+          // snapshot push は connection open 状態で確実に届く (= self 側 polling-based
+          // trigger の WebRTC reconnect race を構造的に排除)。
+          //
+          // 設計対称性: 新規 joiner / wake-from-suspend どちらも host が WebRTC
+          // connection event を起点に snapshot を push する 同 mechanism (= primary
+          // host push)。 useSnapshotRetry は 新規 joiner の secondary belt で wake には
+          // 拡張しない (= primary host push に集約)。
+          const isNewJoiner = !store.players.has(newId);
+          const lastSeen = stale.lastUpdateTimeRef.current.get(newId);
+          if (
+            !shouldPushSnapshotOnConnection(
+              isNewJoiner,
+              lastSeen,
+              now,
+              LONG_GAP_RESYNC_THRESHOLD_MS,
+            )
+          )
+            continue;
           peerManager.sendTo(newId, buildSnapshot(myId, true));
         }
       }
