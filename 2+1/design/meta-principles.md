@@ -1335,3 +1335,102 @@ Bug 14 plan §6.5 で初実装した snapshot rejoin trigger (= self 側 long-ga
 
 詳細は [`plans/2026-05-06-snapshot-rejoin-host-push.md §7.1-§7.7`](../plans/2026-05-06-snapshot-rejoin-host-push.md) (= 設計哲学 6 視点 chained: 対称設計 → 情報所在地 → event-driven → 時間軸 audit → net LOC → multi-round audit reflex)。
 
+### M44. broadcast schema に optional field を足すなら staging map を併設して early-arrival drop を避ける
+
+**ルール**: receive 側で「player entry が居れば update」 pattern (= `setPlayers((prev) => { if
+(!existing) return prev; ... })`) は**メッセージ順序によって update が静かに drop される**。
+新 optional wire field を追加するときは、 `displayNames` map と同型の **staging map** を併設し、
+player entry の有無に関わらずまず staging に保存、 phaseSpace で player 新規作成時に staging
+から取り込む構造にする。
+
+**Why**: 2026-05-07 viewMode broadcast 拡張で「intro が phaseSpace より先着 → setPlayers の
+existing=null で viewMode update が drop → phaseSpace 後続 で viewMode 拾えず」 race を発見。
+既存の displayNames は別 map (= `store.displayNames`) で saved されるので同 race を回避できて
+いた。 同型の staging map で対称化すれば new field も同様に safe。
+
+**実装**:
+- `game-store.playerViewModes: Map<string, ViewMode>` 追加 (= setter `setPlayerViewMode`)
+- intro 受信ハンドラで `store.setPlayerViewMode(senderId, viewMode)` を **player entry の有無に
+  関わらず**呼ぶ (= setPlayers の前段階で staging に着地)
+- phaseSpace で player 新規作成時 `viewMode: existing?.viewMode ?? store.playerViewModes.get(playerId)`
+  で staging から取り込む
+- snapshot 受信時も `mergedPlayerViewModes` を用意して同期
+
+**How to apply**: `intro` / `phaseSpace` / `snapshot` 等の wire schema に新 optional field を
+足すたびに、 受信側で「player entry が無いと update が drop される race」 を audit。 drop 経路
+が存在するなら staging map (= displayNames pattern) を作って defensive に。
+
+詳細: [DESIGN.md §PLC スライス全面リッチ化 §7](../DESIGN.md)
+
+### M45. PLC slice (= 時間軸を描画次元から落とした view) では 4D vector の時間成分を 0 に折り畳む
+
+**ルール**: 時間軸を含む 4D 物理量 (= 4-acceleration α^μ、 cone tangent rotation、 null geodesic
+direction、 worldline tangent) を PLC slice (= z=0 平面) で描画するとき、 **時間成分は 0 に
+折り畳む**。 描画意図に応じて (a) 0 に zero-out、 (b) 描画完全 skip、 (c) xy 投影のみ採用、
+の 3 戦略を使い分ける。
+
+**具体例**:
+- 加速度矢印: `at4 = flattenT ? 0 : alphaObs.t` で xy 平面水平に (= zero-out 戦略)
+- Classic ship 砲身 pitch: `rotation y = flattenT ? 0 : SHIP_GUN_PITCH_DOWN_RAD` で水平前方
+  (= zero-out 戦略)
+- HeadingMarkerRenderer (= aim 線): null geodesic `(cy, sy, -1)/√2` → `(cy, sy, 0)` で xy 平面
+  上の方向線 (= xy 投影戦略)
+- 射撃中 aim arrow 3 段: 「光が過去光円錐を下る」 演出は時間軸前提 → PLC で描画完全 skip
+  (= skip 戦略)
+- 接平面三角形マーカー: cone tangent (= 4D 接平面) は PLC で意味なし → xy 平面内 yaw のみに
+  縮約 (= xy 投影戦略)
+
+**Why**: PLC slice = 観測者の今の xy 平面 view、 時間軸が描画次元として存在しない。 時間成分を
+そのまま描画すると 4D 構造が z=0 平面に意味不明な投影として現れる。
+
+**How to apply**: PLC 対応 renderer を書くとき、 「これは時間軸方向の構造か?」 を 1 個ずつ
+audit。 該当する成分 / rotation / position は flattenT branch で zero-out / skip / xy 投影に。
+
+詳細: [DESIGN.md §PLC スライス全面リッチ化 §5](../DESIGN.md)
+
+### M46. visual element sizing は absolute px ではなく canvas 比率で
+
+**ルール**: fullscreen 級の動的サイズ canvas (= 800-1080 px 級) に描画する**形状認識を要する
+visual element** は、 absolute px 指定ではなく canvas 寸法比率で sizing する。 1% 未満は形状
+認識限界以下。 ship icon / marker / glyph 系は最低 1.5-2% 推奨。
+
+**Why**: 2026-05-07 PLC 2D fullscreen に 2D vector ship icon (= drawShipIcon、 SHIP_ICON_R=9 px)
+を描いたが、 canvas 800-1080 px 級では octagon radius 6.3 px = 1% 未満で「形状認識限界以下」
+→ user に「アイコンは表示されてない」 と指摘された (= 描画自体は走っているが視覚的に dot に
+しか見えない)。 一方 mini-map (= 180 px 級) では 6.3 px = 3.5% で十分認識できる。
+
+→ canvas 寸法に応じた scaling、 又は target 比率を意識した最低 px。
+
+**How to apply**:
+- mini-map 級 (= 100-200 px): 形状認識用 marker は 6-10 px (= 3-5%) で OK
+- fullscreen 級 (= 600-1200 px): 形状認識用 marker は 15-25 px (= 1.5-3%) 必要
+- 動的サイズ (= window resize 対応) なら `Math.max(absoluteFloor, canvasSize * ratio)` で両立
+
+詳細: [DESIGN.md §PLC スライス全面リッチ化 §10 + §11](../DESIGN.md) (= LH overlap + spawn
+ripple)、 同 §4 (= Radar fullscreen 廃止に伴い ship icon helper は dead 化)
+
+### M47. 同 xy projection の異 t event は形状 / opacity / render order で識別 channel を分離
+
+**ルール**: PLC slice (= 時間軸 zero-out) で **異なる時刻 t の event が同 xy に投影**される場合
+(例: 静止 LH の past-cone event と future-cone event は両方 LH 位置)、 z=0 平面に collapse して
+**完全 overlap** する。 形状 / opacity / size / render order の **どれかで識別 channel を分離**
+しないと弱い marker が強い marker に隠蔽される。
+
+**具体例**:
+- 静止 LH: past-cone event (= obs.t - |d|, LH.x, LH.y) と future-cone event (= obs.t + |d|,
+  LH.x, LH.y) は両方 LH 位置 (= LH 静止で xy 一致、 t だけ前後)。 PLC では z=0 強制で同 xy に
+  projection、 sphere vs sphere で重なって faint future が隠蔽される
+- 解決: 形状 channel で分離 (= past=sphere、 future=ring)。 size channel (= future=2× ring) で
+  sphere の halo として visible 化。 render order + slight z lift でレイヤー明示分離。
+
+**Why**: 動く target なら past xy と future xy が異なるので overlap しないが、 静止 / 低速の
+target は overlap が常態化。 PLC slice の特性として、 「event が同 xy に collapse する」 は
+default 想定として設計に組み込む。
+
+**How to apply**: PLC 描画で異なる t / 異なる category の event を同 xy に出すとき、 marker
+形状を category 別に統一 (= laser past=triangle silver / laser future=triangle laser-color /
+player past=ship icon / player future=ring 等)。 同 category 内 (= 同 player の past+future)
+は size + opacity で hierarchy。
+
+詳細: [DESIGN.md §PLC スライス全面リッチ化 §10](../DESIGN.md)
+

@@ -676,3 +676,130 @@ opacity = baseOpacity × fade
 
 - 効果: 未来側から見下ろすと future cone は cull、 過去側から見上げると逆、 側方視点では両方見える
 - 物理視点として「観測者の過去光円錐は下向き sphere、 未来光円錐は上向き sphere」 の rest frame 表現を視覚的に強調
+
+## PLC slice flattenT 折り畳み (2026-05-07)
+
+PLC slice mode (= 過去光円錐 spatial slice、 観測者の今の xy 平面 view) を「flatten 済 3D ship
+model + 物理マーカー群」 で表現するための renderer 折り畳み pattern。 設計詳細は
+[DESIGN.md §PLC スライス全面リッチ化](../DESIGN.md)、 関連 meta-principle は
+[design/meta-principles.md M44-M47](meta-principles.md)。
+
+### renderer 分類: Pattern P / Pattern M
+
+renderer の anchor 配置方式は 2 パターンに分類でき、 PLC slice の flatten 可否はこの分類で決まる:
+
+| Pattern | 形式 | flatten 戦略 |
+|---|---|---|
+| **P** (= "Position") | `group.position.set(dp.x, dp.y, dp.t)` で anchor のみ display 並進、 local geometry は group 内 local 座標 | anchor の z (= dp.t) を 0 に潰しても 3D 形状を保つ → flattenT branch で `(dp.x, dp.y, flattenT ? 0 : dp.t)` |
+| **M** (= "Matrix") | `mesh.matrix = displayMatrix × T(worldPos)` で per-vertex Lorentz boost、 local vertex z = world t (= spacetime mix 前提) | 行列で z=0 強制すると local geometry の時間方向 extent も潰れる → PLC では描画 skip 又は別経路 |
+
+### `flattenT` flag dispatch
+
+中央制御は `DisplayFrameValue.flattenT?: boolean`:
+
+- spacetime mode: `flattenT={false}` (= default)、 全 renderer の出力 JSX が refactor 前と一致
+  (= 既存挙動完全保持の不変条件)
+- PLC mode (2D + 3D 共通): `flattenT={true}` を `<DisplayFrameProvider>` で渡す
+- Pattern P 各 renderer: `useFlattenT()` (= Provider 不在で false fallback、 ShipPreview / Lobby
+  互換) で読み、 anchor の z を分岐
+- Pattern M 各 renderer: `useDisplayFrame().flattenT` で読み、 `if (flattenT) skip` か別経路に
+  分岐 (= DebrisRenderer の instanced segment、 SpawnRenderer の光柱、 LighthouseRenderer の
+  buildApparentShapeMatrix)
+
+### SpawnRenderer の 4D → PLC 折り畳み
+
+spacetime mode は 5 リング積層 (= 時間軸方向 stagger、 各 ring が `spawn.pos.t + i*0.25` で
+異 t に配置) + 中心光柱 (= 時間方向 cylinder) で 4D 構造表現。 PLC では:
+
+- **5 リング波紋**: 同 xy で異 radius / 異 opacity に折り畳み (= 「水面の波紋」 表現)、 各 ring
+  の `ringProgress` (= 既存 staggered 進行) で expanding / contracting の動感は同様に出る
+- **光柱は描画 skip** (= 時間軸が描画次元から落ちている、 無意味)
+- 配置: `transformEventForDisplay(spawn.pos, ...)` で rest-frame xy を取り、
+  `<group position={[dp.x, dp.y, 0]}>` の plain position
+
+4D 構造 → 2D 波紋への意味翻訳の好例。 「時間軸 stagger を radius stagger に置き換える」 という
+**異 axis 間 mapping** で動的演出を保持。
+
+### Radar fullscreen pivot (2026-05-07)
+
+旧設計 (= ~2026-05-06): PLC 2D mode は Canvas 2D `<Radar>` を全画面 overlay として黒背景 +
+dot/triangle で表現。 新設計: **PLC 2D = 3D scene (= flatten 済 ship model) を真上 orthographic
+で見る**、 違いは camera だけ:
+
+- PLC 2D: `OrthographicCamera`、 `(targetX, targetY, targetT+50)` から `lookAt(target)`、
+  `up = (cos yaw, sin yaw, 0)` で heading-up rotation の真上 map view
+- PLC 3D: `PerspectiveCamera`、 `PLC_SLICE_PITCH = π/8` の斜め俯瞰 (= 既存挙動)
+- HUD: Radar mini-map は時空 mode のみ表示
+
+旧 Radar fullscreen 専用ヘルパー (`drawShipIcon` / `drawLighthouseIcon` / 関連 PLC fullscreen
+分岐) は dead code 化したが残置 (= 必要時 reuse 可能)。 設計 pivot の動機は「user 用語で
+『マーカー』 = 2D vector icon、 『アイコン』 = 実際の 3D model」 という解釈の取り違え判明 (=
+[odakin-prefs/work-discipline.md §同一語の意味取り違え防止](../../odakin-prefs/work-discipline.md))。
+
+### Radar 2D heading-up canvas 角度式 (Canvas 2D 上面アイコン用)
+
+Radar (= Canvas 2D heading-up rotated) で player heading に向けて icon を描く際の **canvas 角度式**
+を導出 (= ship icon helper 残置 + 将来 reuse のため):
+
+```
+θ_canvas = (yaw - yaw_p) - π/2
+```
+
+ここで `yaw = cameraYawRef.current` (= heading-up rotation 方向)、 `yaw_p = quatToYaw(player.heading)`。
+canvas y は下向き (= y-flip) のため atan2 が `(sin(yaw - yaw_p), -cos(yaw - yaw_p))` を返し、
+これが角度 `(yaw - yaw_p) - π/2`。 player.yaw = camera.yaw のとき canvas 上向き = `-π/2` で
+ship 正面が画面上に向く。 derivation:
+- rest-frame 単位ベクトル `(cos yaw_p, sin yaw_p)` を heading-up 回転 (α = π/2 - yaw) で写すと
+  `(sin(yaw - yaw_p), cos(yaw - yaw_p))`
+- canvas y を反転 (= 下向き) → `(sin(yaw - yaw_p), -cos(yaw - yaw_p))`
+- atan2 で θ = `(yaw - yaw_p) - π/2`
+
+任意の Canvas 2D top-down + heading-up rotation で reuse 可能な式。
+
+### PLC laser 三角形 scale: 黄金比保持
+
+`sharedGeometries.laserIntersectionTriangle` は **acute golden gnomon** (= 頂角 36°、 脚:底辺
+= φ:1)。 spacetime mode の `scale=[6, 1, 1]` (= ビーム感 stretch) は黄金比を**崩して**頂角 6°
+の極細スパイクに。 spacetime view では接平面 tilt + 透視投影で foreshortening が緩和されるが、
+PLC flat 俯瞰では stretch が直接視覚化される (= odakin「えらく尖って見える」 指摘)。
+
+→ PLC mode の三角形 scale:
+- 過去光円錐 marker (silver): **`[3, 3, 1]`** uniform (= 黄金比保持の "chunky golden")
+- 未来光円錐 marker (laser 色): **`[2, 2, 1]`** uniform + opacity 0.12 (= 過去より小・薄、
+  past / future の差別化 + 「時空モードよりさらに薄く」 odakin 指示)
+
+spacetime mode の `[6, 1, 1]` は完全保持 (= ビーム感は spacetime 専用で 4D 接平面 tilt と組合せ
+で機能)。
+
+### Lighthouse PLC 立て方: matrix 抜き plain position
+
+LighthouseRenderer は通常 `buildApparentShapeMatrix` (= 観測者速度依存 boost tilt) で 4D 表示
+する Pattern M。 PLC では:
+
+```jsx
+const towerInner = (
+  <group position={[0, 0, -LIGHTHOUSE_SINK * 0.5]} scale={0.5}>
+    {/* body / band / balcony / lantern / lamp / roof / spire — 7 mesh */}
+  </group>
+);
+
+return (
+  <Fragment>
+    {imageTowerAnchor && (
+      flattenT && towerXY ? (
+        <group position={[towerXY.x, towerXY.y, 0]}>{towerInner}</group>
+      ) : (
+        <group matrix={buildApparentShapeMatrix(...)} matrixAutoUpdate={false}>
+          {towerInner}
+        </group>
+      )
+    )}
+  </Fragment>
+);
+```
+
+塔 inner content (= 7 mesh) を JSX 変数に抽出して spacetime / PLC 共有、 wrapping group のみ
+分岐。 PLC では **boost 抜き plain position** で塔をそのまま立てる (= PLC slice は時間軸を
+描画次元から落としているので時間方向 Lorentz 変換も意味を持たない)。 塔の +z (= world spacetime
+での +t = 未来) は PLC では「視覚的な高さ」 として再 reuse、 普通の 3D 建物がそのまま z=0 平面
+から立ち上がる視覚に。

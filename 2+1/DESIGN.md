@@ -546,3 +546,191 @@ trace が困難になる。 さらに plan §3.6 の intuition 表 (「向かう
 で記載されていたため (= 著者の幾何直感誤り、 cone は peer.t に向けて狭くなるため空間的接近は
 脱出に寄与しない)、 reverse Cauchy-Schwarz `B² ≥ C` で正しい関係を再記述 + Stage 2 test で
 両方向 (向かう/離れる) を numeric assert して固定化。
+
+## PLC スライス全面リッチ化 (2026-05-07)
+
+PLC スライス mode (= 過去光円錐 spatial slice、 観測者の今の xy 平面 view) を「dim circle 集合
+に縮約した raw 抽象表示」 から **「flatten 済 3D ship model + 物理マーカー群」 の rich 表示**に
+拡張した設計記録。 関連 commit: [`2ffdfbc`](https://github.com/sogebu/LorentzArena/commit/2ffdfbc)。
+
+### 1. Pattern P / Pattern M dichotomy (= flatten 可否の分水嶺)
+
+renderer の anchor 配置方式は **2 パターン**に分類でき、 PLC slice (= z=0 平面に折り畳む) の対応
+可否はこの分類で決まる:
+
+- **Pattern P** (= "Position-based"): `group.position.set(dp.x, dp.y, dp.t)` で **anchor のみ
+  display 並進**。 local geometry (= ship hull 等の 3D 構造) は group 内で local 座標、 anchor
+  の z (= dp.t) を 0 に潰しても**形状は維持**される
+- **Pattern M** (= "Matrix-based"): `mesh.matrix = displayMatrix × T(worldPos)` で **per-vertex
+  Lorentz boost**。 local vertex z = world t (= spacetime mix が前提)、 行列で z=0 強制すると
+  **local geometry の時間方向 extent も潰れる**
+
+PLC slice の flattenT 折り畳みは **Pattern P でのみ「3D 形状を保つ」** のに有効。 Pattern M
+(= 4D 構造そのもの = 世界線 / 光円錐 / arena 円柱 / spawn 光柱 / laser line / stardust event
+cloud) は PLC slice では**意味を失う**ので描画 skip 又は別経路で代替する。
+
+具体分類:
+- **Pattern P** (= flatten 可): SelfShipRenderer / RocketShipRenderer / JellyfishShipRenderer /
+  OtherShipRenderer / DeadShipRenderer / DeathMarker / DebrisRenderer (= marker 部分のみ) /
+  HeadingMarkerRenderer / LighthouseRenderer (= tower 部分は Pattern M だが flatten 専用 plain
+  position 経路に分岐)
+- **Pattern M** (= PLC では skip / 別経路): LightConeRenderer / LaserBatchRenderer /
+  WorldLineRenderer / ArenaRenderer / SpawnRenderer (= 光柱) / StardustRenderer / 接平面
+  三角形マーカー / DebrisRenderer の InstancedMesh segment
+
+### 2. `DisplayFrameContext.flattenT` flag 設計
+
+PLC slice 折り畳みの中央 dispatch:
+- **flag**: `flattenT?: boolean` を `DisplayFrameValue` に追加。 PLC mode で `flattenT={true}`、
+  時空図 mode で `flattenT={false}` (= 既存挙動 default)
+- **Pattern P 各 renderer**: `useFlattenT()` (= 後述の non-throwing variant) で読み、
+  `group.position.set(dp.x, dp.y, flattenT ? 0 : dp.t)` で anchor の z を分岐
+- **Pattern M renderer**: `useDisplayFrame()` の flattenT を読み、 `if (flattenT) skip` か別経路
+  に分岐 (= DebrisRenderer の instanced segment、 SpawnRenderer の光柱、 LighthouseRenderer の
+  buildApparentShapeMatrix)
+- spacetime mode (= flattenT=false) は全 renderer の出力 JSX が refactor 前と一致 (= 既存挙動
+  完全保持を不変条件として設計)
+
+### 3. `useDisplayFrame` strict-throw vs `useFlattenT` lazy-fallback
+
+`useDisplayFrame()` は Provider 不在で throw する設計 (= "must be used within DisplayFrameProvider")
+だが、 SelfShipRenderer / RocketShipRenderer / JellyfishShipRenderer は **ShipPreview / Lobby**
+からも (= DisplayFrameProvider の外) 呼ばれる。 strict-throw のままでは Lobby が真っ白事故。
+
+→ **`useFlattenT(): boolean`** を独立 hook として追加、 `useContext(DisplayFrameCtx)?.flattenT
+?? false` で **Provider 不在時 false fallback**。 Provider 内では context 値を読み、 ShipPreview
+等 Provider 外では `false` (= 通常 3D 描画) で安全動作。
+
+教訓: **既存の strict-throw hook に新 field を足すとき、 すべての caller を audit して Provider
+外呼び出しがないか確認**。 ある場合は専用 lazy-fallback hook を分離して安全網を張る。 strict
+は意図した misuse 検知の価値がある一方、 cross-Provider の合理的 use case を破壊する。
+
+### 4. PLC 2D mode = 3D scene の真上 orthographic (= 旧 Radar fullscreen 廃止)
+
+旧設計: PLC 2D mode は Canvas 2D `<Radar>` を全画面 overlay として黒背景 + dot/triangle で表現。
+新設計: **PLC 2D / 3D 共に 3D scene (= flatten 済 ship model) を描画**、 違いは camera のみ。
+
+- **PLC 2D**: `OrthographicCamera`、 真上 `(targetX, targetY, targetT+50)` から `lookAt(target)`、
+  `up = (cos yaw, sin yaw, 0)` で **heading-up rotation の真上 map view**
+- **PLC 3D**: 既存 `PerspectiveCamera`、 `PLC_SLICE_PITCH = π/8` の斜め俯瞰 (= 既存挙動)
+- HUD: Radar mini-map は時空 mode のみ表示、 PLC 2D / 3D では 3D scene 自体が PLC view を提供
+  するので Radar overlay 不要
+
+設計動機 (= odakin 訂正 2026-05-07): user 用語で「マーカー」 = 2D vector icon、 「アイコン」 =
+**実際の 3D model**。 私 (Claude) は逆に取り違えて Radar canvas に gunship octagon / LH lamp 等の
+2D vector を描いていたが、 user は **PLC 3D / 時空図と同じ 3D ship model を 2D mode でも見たい**
+意図だった。 architecture pivot で「PLC 2D = 3D scene + ortho」 に統一、 用語の取り違え自体は
+`odakin-prefs/work-discipline.md` の「同一語の意味取り違え防止」 で record。
+
+### 5. 4D → PLC 翻訳の意味的整合 (= 時間軸成分の zero-out)
+
+PLC slice は時間軸を描画次元から落としているので、 **4D vector の時間成分は 0 に**:
+- **加速度矢印**: 4-加速度 α^μ を観測者 rest frame に boost → 通常は (αx, αy, αt) 全成分で
+  3D 矢印を描く。 PLC では **`at4 = flattenT ? 0 : alphaObs.t`** で時間成分を捨て、 xy 平面
+  水平の矢印に縮約 (= SelfShipRenderer / RocketShipRenderer / JellyfishShipRenderer 共通)
+- **Classic ship 砲身**: 通常は `SHIP_GUN_PITCH_DOWN_RAD = π/4` で「過去光円錐の母線方向 (= 下
+  45°)」 に向ける (= 時空図で laser 発射方向が null geodesic に乗る pedagogical 表示)。 PLC では
+  **`rotation y = flattenT ? 0 : π/4`** で水平前方に。 laser は xy 平面を真横に飛ぶので砲身も
+  これに合わせる (= SelfShipRenderer の "gun" 砲身 + LaserCannonRenderer の "laser" 砲身、
+  両系統で flattenT 対応)
+- **HeadingMarkerRenderer (= aim 線)**: 通常は (cos yaw, sin yaw, -1)/√2 の null geodesic
+  cylinder。 PLC では (cos yaw, sin yaw, 0) で **xy 平面上の方向線**に
+- **射撃中 aim arrow 3 段**: spacetime では「光が過去光円錐を下る」 演出。 PLC では時間軸が無く
+  この演出が意味を成さないため**完全 skip** (= odakin「光円錐上を下に下がってく形で撃つわけでは
+  ない」)
+
+原則: **PLC = 観測者の今の xy slice → 時間軸方向の構造はすべて 0 に折り畳むか描画 skip**。
+
+### 6. Lighthouse 3D 塔の PLC 立て方
+
+LighthouseRenderer は通常 `buildApparentShapeMatrix` (= 観測者速度依存 boost tilt) で 4D 表示
+する Pattern M。 PLC では:
+- 塔 inner content (= body / band / balcony / lantern / lamp / roof / spire) を `towerInner`
+  JSX 変数に抽出して時空図 / PLC 共有
+- 時空図 mode: 従来通り `<group matrix={buildApparentShapeMatrix(...)}>{towerInner}</group>`
+- PLC mode: `<group position={[towerXY.x, towerXY.y, 0]}>{towerInner}</group>` (= boost 抜き
+  plain position、 PLC slice は時間軸を描画次元から落としているので時間方向 Lorentz 変換も
+  意味を持たない)
+
+塔の +z (= world spacetime での +t = 未来) は PLC では「視覚的な高さ」 として再 reuse、 普通の
+3D 建物がそのまま z=0 平面から立ち上がる視覚に。
+
+### 7. viewMode broadcast schema 拡張 + staging map race fix
+
+**問題**: viewMode (= ship 形状 classic / shooter / jellyfish) は local zustand state で各
+client が独立に持つだけで broadcast されておらず、 multiplayer で「A が jellyfish 選んでも B
+には A は classic に見える」 bug が顕在化。
+
+**fix**:
+- `intro` / `snapshot` message に `viewMode?: "classic"|"shooter"|"jellyfish"` field 追加 (=
+  optional で旧 client 互換維持)
+- `RelativisticPlayer` 型に `viewMode?` field、 OtherShipRenderer は `player.viewMode ?? "classic"`
+  で `RocketShipRenderer / JellyfishShipRenderer / SelfShipRenderer` を dispatch
+- viewMode 変更時 (= dropdown / URL hash override) は `useGameStore.subscribe` で検知 → 全 peer
+  に intro re-broadcast
+
+**race fix (= staging map pattern)**: intro が phaseSpace より先着すると受信側の `players` map
+に sender 未登録 → `setPlayers((prev) => { if (!existing) return prev; ... })` で update が暗黙
+drop。 → **`game-store.playerViewModes: Map<string, ViewMode>`** を追加 (= displayNames map と
+同設計)、 intro 受信で **player entry の有無に関わらず**保存。 phaseSpace で player 新規作成時
+に `existing?.viewMode ?? store.playerViewModes.get(playerId)` で staging map から拾う。
+
+→ 教訓 M44 (= meta-principles): **broadcast schema に新 optional field を足すとき、 receiver
+側で player entry が未登録の race で update が drop されないか確認**。 displayNames map と同型
+の staging 領域を併設するのが defensive な pattern。
+
+### 8. UI convention: toggle default 状態を右に統一
+
+ToggleSwitch (= 左 label / slider / 右 label の構造) で **default state の側**を panel 内で揃え
+る convention:
+- 既存: `静止系` / `透視投影` / `2D ⇆ 3D` は **default を右** (= checked=true で knob 右、
+  右 label が bright)
+- 旧 PLC toggle: `時空図` を**左**に置いて default = 時空図 (= checked=false → knob 左)、
+  panel 内の他 toggle と convention が違う
+- → fix: PLC toggle も `時空図` を**右**に移動、 `checked = !showPLCSlice` で反転、 default
+  状態が他 toggle と揃う
+
+設計理由: panel 内 toggle 群で default 状態の **slider 位置 + bright label 側**が揃っている方
+が user の認知負荷が低い。 個別 toggle の意味と無関係に「default = 右」 convention を採用。
+
+cross-cutting 原則として `claude-config/conventions/ui-toggle-convention.md` (本セッションで新設)
+に記録。
+
+### 9. PLC laser 三角形マーカーの黄金比保持
+
+`sharedGeometries.laserIntersectionTriangle` は **acute golden triangle** (= 頂角 36°、 脚:底辺
+= φ:1)。 spacetime mode の `scale=[6, 1, 1]` (= ビーム感 stretch) は黄金比を**崩して** 頂角
+6° の極細スパイクに。 接平面 tilt + 透視投影で foreshortening が緩和されるため spacetime view
+では問題なかったが、 PLC flat 俯瞰では stretch が直接視覚化されて「えらく尖って見える」 (=
+odakin 指摘 2026-05-07)。
+
+→ PLC mode の三角形 scale は **`[3, 3, 1]` uniform** (= 黄金比保持の "chunky golden")。 過去
+光円錐 marker は silver、 未来光円錐 marker は **`[2, 2, 1]` で laser 色 + opacity 0.12 (= 過去
+より小・薄)** で past / future の差別化。 spacetime mode の `[6, 1, 1]` は完全保持 (= ビーム感
+は spacetime 専用)。
+
+### 10. Future-cone marker overlap on stationary targets
+
+静止 LH の場合、 観測者の **過去光円錐 ∩ LH worldline** と **未来光円錐 ∩ LH worldline** は両方
+LH 位置 (= 時刻だけが異なり xy は同じ)。 PLC slice (= z=0 強制) では両方が**同 xy に投影**され、
+faint future marker が bright past marker に**完全隠蔽**される。
+
+設計対応:
+- 形状で差別化: past = bright sphere / triangle、 future = ring / 細小 triangle
+- player worldline 用 future-cone (= sphere + ring) は PLC で撤去、 laser future-cone 三角形
+  のみ残置 (= odakin の「未来光円錐マーカーは三角形」 指示で laser 用が priority と判明)
+
+教訓 M47 (= meta-principles): **同 xy に projection される異 t event の集合**は PLC 折り畳み
+で形状 collision を起こす。 形状 / size / opacity / render order で識別 channel を分離する設計
+が必要。
+
+### 11. (Re)Spawn エフェクトの PLC 折り畳み
+
+SpawnRenderer は spacetime mode で **5 リング積層 (= 時間軸方向 stagger) + 中心光柱 (= 時間方向
+cylinder)** の 4D 構造表現 (= Pattern M)。 PLC では:
+- リング 5 本を**同 xy で異 radius / 異 opacity** に折り畳み (= 「水面の波紋」 表現)
+- 光柱 (= 時間軸方向 cylinder) は描画 skip (= 時間軸が描画次元から落ちている)
+- `transformEventForDisplay` で spawn.pos を rest-frame xy に変換、 plain position で配置
+
+ring 各々の `ringProgress` (= 既存 staggered 進行) は flatten 後も保持されるので、 expanding /
+contracting の動感は同様に出る。 4D 構造 → 2D 波紋への意味翻訳の好例。
