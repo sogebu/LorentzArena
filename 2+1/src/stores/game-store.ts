@@ -73,11 +73,11 @@ const VIEW_MODE_VALUES: readonly ViewMode[] = [
 ];
 
 const loadViewMode = (): ViewMode => {
-  if (typeof localStorage === "undefined") return "classic";
+  if (typeof localStorage === "undefined") return "jellyfish";
   const v = localStorage.getItem(VIEW_MODE_LS_KEY);
   return (VIEW_MODE_VALUES as readonly string[]).includes(v ?? "")
     ? (v as ViewMode)
-    : "classic";
+    : "jellyfish";
 };
 const saveViewMode = (mode: ViewMode) => {
   if (typeof localStorage !== "undefined")
