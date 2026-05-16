@@ -654,6 +654,7 @@ export const SceneContent = ({
                 headingD={headingD}
                 color={player.color}
                 playerId={player.id}
+                viewMode={player.viewMode}
               />,
               <DeathMarker
                 key={`${key}-death-marker`}
@@ -1057,6 +1058,7 @@ export const SceneContent = ({
               headingD={headingD}
               color={player.color}
               playerId={player.id}
+              viewMode={player.viewMode}
             />,
             <DeathMarker
               key={`${key}-death-marker`}

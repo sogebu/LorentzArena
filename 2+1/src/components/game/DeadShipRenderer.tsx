@@ -10,6 +10,8 @@ import {
 import { DEATH_TAU_MAX } from "./constants";
 import { pastLightConeIntersectionDeathWorldLine } from "./deathWorldLine";
 import { useDisplayFrame } from "./DisplayFrameContext";
+import { JellyfishShipRenderer } from "./JellyfishShipRenderer";
+import { RocketShipRenderer } from "./RocketShipRenderer";
 import { SelfShipRenderer } from "./SelfShipRenderer";
 
 /**
@@ -27,11 +29,15 @@ import { SelfShipRenderer } from "./SelfShipRenderer";
  * - thrust: 0 (死者は thrust 発火しない)。exhaust は無視される。
  * - opacity: `(τ_max − τ_0) / τ_max` (0..1)。group 内の全 Mesh material を traverse して一括上書き
  *   (transparent=true, depthWrite=false)。
+ * - **viewMode dispatch** (= 2026-05-16): caller (SceneContent) から player.viewMode を渡し、
+ *   classic = SelfShipRenderer / shooter = RocketShipRenderer / jellyfish = JellyfishShipRenderer
+ *   を選択。 旧 client や undefined は "classic" fallback。 OtherShipRenderer の dispatch と
+ *   対称構造 (= 自機死亡時 / 他機死亡時いずれも生時 hull と一致した沈下映像)。
  *
- * SelfShipRenderer を再利用するため virtualPlayer を synthesize して渡す。SelfShipRenderer
- * は position/heading 以外にも内部 useFrame で exhaust material opacity を毎 tick 上書き
- * するため、exhaust 粒は traverse override の後に再度 0 にされる。thrust=0 なので結果的に
- * exhaust 不可視で問題なし。
+ * traverse override は全 ship hull 共通で動作 (= group 内 Mesh を全部 walk して material.opacity
+ * 上書き)、 dispatch 先 renderer の internal exhaust / arrow useFrame も traverse 後再上書き
+ * される (= 旧 SelfShipRenderer 固定時と同等)、 thrust=0 + alpha4 未渡しなので exhaust /
+ * arrow は表示されず traverse 結果が visible。
  */
 export const DeadShipRenderer = ({
   xD,
@@ -39,12 +45,14 @@ export const DeadShipRenderer = ({
   headingD,
   color,
   playerId,
+  viewMode,
 }: {
   xD: Vector4;
   uD: Vector4;
   headingD: Quaternion;
   color: string;
   playerId: string;
+  viewMode?: "classic" | "shooter" | "jellyfish";
 }) => {
   const { observerPos, observerBoost } = useDisplayFrame();
   const zeroThrustRef = useRef<Vector3>(createVector3(0, 0, 0));
@@ -88,15 +96,32 @@ export const DeadShipRenderer = ({
 
   if (fadeAlpha == null) return null;
 
+  const effectiveViewMode = viewMode ?? "classic";
   return (
     <group ref={wrapperRef}>
-      <SelfShipRenderer
-        player={virtualPlayer}
-        thrustAccelRef={zeroThrustRef}
-        observerPos={observerPos}
-        observerBoost={observerBoost}
-        cannonStyle="laser"
-      />
+      {effectiveViewMode === "shooter" ? (
+        <RocketShipRenderer
+          player={virtualPlayer}
+          thrustAccelRef={zeroThrustRef}
+          observerPos={observerPos}
+          observerBoost={observerBoost}
+        />
+      ) : effectiveViewMode === "jellyfish" ? (
+        <JellyfishShipRenderer
+          player={virtualPlayer}
+          thrustAccelRef={zeroThrustRef}
+          observerPos={observerPos}
+          observerBoost={observerBoost}
+        />
+      ) : (
+        <SelfShipRenderer
+          player={virtualPlayer}
+          thrustAccelRef={zeroThrustRef}
+          observerPos={observerPos}
+          observerBoost={observerBoost}
+          cannonStyle="laser"
+        />
+      )}
     </group>
   );
 };
