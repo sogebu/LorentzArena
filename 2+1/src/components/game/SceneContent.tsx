@@ -829,12 +829,14 @@ export const SceneContent = ({
             xAxis,
             flatDir,
           );
-          // 2026-05-16 odakin 指示: silver base に発射者 (laser owner) 色を 0.25 lerp
-          // で薄く tint、 marker から発射者識別を視認できるようにする。 spacetime の
-          // laser 三角形 (= line 1086+) は中立 silver のまま (= odakin 指定が PLC のみ)。
+          // 2026-05-16 odakin 指示: silver base に発射者 (laser owner) 色を lerp で
+          // 混ぜ、 marker から発射者識別を視認可能化。 spacetime 三角形 (= line 1086+) は
+          // 中立 silver 維持 (= odakin 指定が PLC のみ)。
+          // 比率 0.5 (= 当初 0.25 は silver lightness 高 + additive blending で発射者色
+          // wash out → odakin「自機の色が足されてるの分からない」 5/16、 2x で再 deploy)。
           const tinted = new THREE.Color()
             .copy(pastConeMarkerColor)
-            .lerp(getThreeColor(laser.color), 0.25);
+            .lerp(getThreeColor(laser.color), 0.5);
           return (
             <mesh
               key={`plc3d-laser-${laser.id}`}
