@@ -556,9 +556,18 @@ export const useGameStore = create<GameState>()((set, get) => ({
       type: "explosion",
     };
 
+    // displayName fallback cascade (= ControlPanel.resolveName と同 pattern、
+    // 2026-05-16 odakin 報告「撃破エフェクトで相手の名前ではなく njqn9au3k 等 ID
+    // になっちゃってる」 修復): victim.displayName が undefined でも displayNames
+    // staging map (= intro 経路で先着登録された displayName) を 2 段目 fallback と
+    // して check。 intro/phaseSpace 受信 race で player entry の displayName が
+    // 未反映でも、 staging map 側に displayName があれば拾えるようにする。
+    // 旧仕様は 1 段目で undefined だと即 id.slice に落ちて短い ID が表示されていた。
     const victimName = isLighthouse(victimId)
       ? LIGHTHOUSE_DISPLAY_NAME
-      : (victim.displayName ?? victimId.slice(0, 6));
+      : (victim.displayName ??
+         state.displayNames.get(victimId) ??
+         victimId.slice(0, 6));
 
     // Stage C: authoritative event log entry (now source of truth for
     // UI-pending kill rendering and score derivation)
