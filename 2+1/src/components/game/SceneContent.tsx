@@ -1091,12 +1091,12 @@ export const SceneContent = ({
       {myPlayer && <LightConeRenderer observerPos={myPlayer.phaseSpace.pos} />}
 
       {/* レーザー過去光円錐交差マーカー（円錐接平面に貼り付いた三角形、tip=laser.direction の接平面射影）
-          色は 2026-04-21 odakin 指定で universal `LASER_PAST_CONE_MARKER_COLOR` (silver) に。
-          player / laser 色は kill log + beam 本体で識別されるので、このマーカーは中立 metal 銀で
-          「物理マーカー」表現。*/}
+          色は 2026-04-21 odakin 指定で universal `LASER_PAST_CONE_MARKER_COLOR` (silver) ベース、
+          2026-05-16 から発射者色 lerp(0.5) tint (= odakin「時空図だと色が見えない」 観察で PLC と
+          同じ tint に揃える、 spacetime/PLC marker の見え方を一致)。
+          player / laser 色は kill log + beam 本体で識別されるが、 marker tint で発射者を視認しやすく。*/}
       {observerPos &&
         laserIntersections.map(({ laser, pos }) => {
-          const c = pastConeMarkerColor;
           const rot = computeConeTangentWorldRotation(
             pos,
             observerPos,
@@ -1105,6 +1105,11 @@ export const SceneContent = ({
           if (!rot) return null;
           const m = buildMeshMatrix(pos, displayMatrix);
           m.multiply(rot);
+          // 2026-05-16: silver + 発射者色 lerp(0.5) (= PLC 三角形と同 tint、 SceneContent §PLC
+          // 注記参照)。
+          const tinted = new THREE.Color()
+            .copy(pastConeMarkerColor)
+            .lerp(getThreeColor(laser.color), 0.5);
           return (
             <mesh
               key={`laser-intersection-${laser.id}`}
@@ -1118,7 +1123,7 @@ export const SceneContent = ({
             >
               {/* toneMapped=false で色を明るく出す + additive で背景に光が乗る (ビーム感) */}
               <meshBasicMaterial
-                color={c}
+                color={tinted}
                 side={THREE.DoubleSide}
                 toneMapped={false}
                 transparent
