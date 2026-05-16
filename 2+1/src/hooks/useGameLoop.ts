@@ -720,18 +720,36 @@ export function useGameLoop({
               });
               return next;
             });
-
-            // Network send
-            sendToNetwork({
-              type: "phaseSpace" as const,
-              senderId: myId,
-              position: newPs.pos,
-              velocity: newPs.u,
-              heading: newPs.heading,
-              alpha: newPs.alpha,
-              selfActive,
-            });
           }
+
+          // F1 mutual-freeze 防止 (2026-05-16): broadcast gate を「physics 走った OR
+          // Rule B 発火」 から無条件 (= 凍結中も毎 tick) に拡張。 旧 gate は凍結中の
+          // 完全沈黙を許し、 peer 側 virtualPos が tau cap (= MAX_VIRTUAL_TAU_SEC = 2s)
+          // まで線形外挿 → 両 client が「peer in past」 を観察して mutual freeze flicker
+          // に陥っていた (= 詳細: design/network-recovery.md §軸 8)。
+          //
+          // 代数: 2 player 系では `dt_A = -dt_B` (= peer.t - me.t の符号反転) で「片方が
+          // Rule A 領域 (dt < 0) なら他方は Rule B 領域 (dt > 0)」 の対称的排他が代数的に
+          // 成立する。 ただし各 client は **virtualPos 経由の peer.t 推定値** を使うため、
+          // 凍結中沈黙 + virtualPos 線形外挿 cap の組み合わせで「両 client 局所 view が
+          // peer.t < me.t」 を観察可能 (= 代数的対称性破れ)。 無条件 broadcast で peer 側
+          // virtualPos baseline を毎 tick refresh、 tau ≈ 0 で extrapolation 不要 →
+          // peer.t 推定が真値と一致 → 代数的対称性回復。
+          //
+          // 整合性: frozen + lambda=0 のとき newPs = freshMe.phaseSpace (= 不変)、 store
+          // update を skip しても broadcast 値は wire / store と整合 (= 同 phaseSpace を
+          // wire に乗せて peer に送る)。 受信側 worldLine 重複 append は messageHandler 内
+          // dedup (= 同 commit) で抑制、 zustand subscriber も同 phaseSpace に対して
+          // setPlayers の return prev で no-op 化。
+          sendToNetwork({
+            type: "phaseSpace" as const,
+            senderId: myId,
+            position: newPs.pos,
+            velocity: newPs.u,
+            heading: newPs.heading,
+            alpha: newPs.alpha,
+            selfActive,
+          });
         }
       }
 

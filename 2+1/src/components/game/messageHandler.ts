@@ -110,6 +110,41 @@ const isValidColor = (v: unknown): v is string =>
   typeof v === "string" && v.length < 100 && /^(hsl|rgb|#)/i.test(v);
 
 /**
+ * PhaseSpace の完全 field 等値判定 (= 全 15 数値 component の `===` 比較)。
+ *
+ * 用途: F1 mutual-freeze 防止 (2026-05-16) で sender 側が凍結中も毎 tick 同一
+ * phaseSpace を broadcast する設計に伴い、 受信側で「new = existing」 を検出して
+ * worldLine 重複 append + zustand setPlayers no-op return prev で抑制する。
+ *
+ * 比較は strict `===`: PhaseSpace は network wire から `createVector*` で再構築
+ * された fresh object、 reference equality は使えない。 浮動小数 epsilon 比較は
+ * **しない** (= 物理的に新しい frame で float 演算が一切無ければ bit-exact 一致、
+ * tiny diff があれば dedup 対象外で worldLine append が正解)。 frozen sender は
+ * physics path skip で `freshMe.phaseSpace` を unchanged で wire に乗せるため、
+ * 受信 phaseSpace の再構築でも bit-exact (= JSON shuttle で float 値が変わらない
+ * 前提、 IEEE 754 round-trip 保証されている)。
+ */
+const phaseSpaceEquals = (
+  a: { pos: { t: number; x: number; y: number; z: number }; u: { x: number; y: number; z: number }; heading: { w: number; x: number; y: number; z: number }; alpha: { t: number; x: number; y: number; z: number } },
+  b: { pos: { t: number; x: number; y: number; z: number }; u: { x: number; y: number; z: number }; heading: { w: number; x: number; y: number; z: number }; alpha: { t: number; x: number; y: number; z: number } },
+): boolean =>
+  a.pos.t === b.pos.t &&
+  a.pos.x === b.pos.x &&
+  a.pos.y === b.pos.y &&
+  a.pos.z === b.pos.z &&
+  a.u.x === b.u.x &&
+  a.u.y === b.u.y &&
+  a.u.z === b.u.z &&
+  a.heading.w === b.heading.w &&
+  a.heading.x === b.heading.x &&
+  a.heading.y === b.heading.y &&
+  a.heading.z === b.heading.z &&
+  a.alpha.t === b.alpha.t &&
+  a.alpha.x === b.alpha.x &&
+  a.alpha.y === b.alpha.y &&
+  a.alpha.z === b.alpha.z;
+
+/**
  * Each message handler is a synchronous block that calls store.setXxx() at most once per field.
  * Since no set() call intervenes within a single handler, reading from `store` (= getState()
  * at handler entry) is always fresh. Do NOT call getState() again mid-handler.
@@ -217,6 +252,25 @@ export const createMessageHandler =
         // 死亡中（世界線凍結中）なら phaseSpace を無視。 isDead は killLog/respawnLog
         // から derive (= 2026-05-04 二重管理解消)、 store は handler entry で fresh。
         if (selectIsDead(store, playerId)) return prev;
+
+        // F1 mutual-freeze 防止 dedup (2026-05-16): sender 側が凍結中も毎 tick
+        // broadcast する設計変更に伴い、 受信 phaseSpace が既存と完全一致なら
+        // store update を skip (= return prev で zustand subscriber 全 no-op、
+        // worldLine 重複 append も skip)。 lastUpdateTimeRef / lastWitnessTimeRef
+        // は上 (= setPlayers の外側) で既に更新済 — F1 の核心は peer 側 virtualPos
+        // baseline を fresh に保つことで、 これら ref 更新で達成される。 setPlayers
+        // 自体は wire data に新規性がなければ skip するのが整合的。
+        //
+        // shouldResetWorldLine 時は dedup skip: gap 検出後の正規再構築 (= 既存
+        // worldLine を破棄して 1 点新 worldLine から開始) は phaseSpace 不変でも
+        // 実行必要 (= sender 側で host migration 等の epoch boundary を経た signal)。
+        if (
+          existing &&
+          !shouldResetWorldLine &&
+          phaseSpaceEquals(existing.phaseSpace, phaseSpace)
+        ) {
+          return prev;
+        }
 
         const existingWorldLine = existing?.worldLine;
         const worldLine =

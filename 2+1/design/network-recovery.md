@@ -145,6 +145,47 @@ risk 順では (e) → (a) → (d) (= 既存機構拡張 vs 新機構)、 archit
 
 将来 plan: post-suspend handshake (= wake 時 reconnect で peer に「私の suspend 中、 あなた active だった?」 を問い合わせる broadcast schema 追加) で (3) も Rule B 不要化可能。 現 plan の scope 外、 backbone 不変なため後付け可能。 詳細: `plans/2026-05-06-bug14-global-active-time.md` §6.5。
 
+## 軸 8: F1 mutual-freeze 防止 broadcast gate 撤廃 (2026-05-16)
+
+### 問題
+
+2 player 本番テストで「両者凍結 + 頻繁な flicker」 (odakin 5/16 報告)。 Rule A (= freeze) と Rule B (= jump) は `dt = peer.t - me.t` の符号で代数的に排他的 (= 片方が `dt < 0` で freeze 領域なら他方は `dt > 0` で jump 領域)、 両者 freeze は代数的不可能。 にもかかわらず実機で観察された。
+
+### 真因
+
+各 client は自分の local `me.pos.t` と **virtualPos 経由の peer.pos.t 推定値** を比較する。 旧仕様の broadcast gate ([useGameLoop.ts:710](../src/hooks/useGameLoop.ts) 旧 `if (didPhysics || lambda > 0)`) は凍結中 + Rule B 不発 (= `lambda=0`) で broadcast 完全沈黙。 peer 側の `lastUpdateTime` が更新されず、 [virtualPos](../src/components/game/virtualWorldLine.ts) の線形外挿が `MAX_VIRTUAL_TAU_SEC = 2 sec` cap まで drift。
+
+この結果、 両 client の **局所 view が独立に「peer in past」 を観察可能** な状況が生まれる:
+
+- A 凍結 → A 沈黙 → 2 sec 後 B の virtualPos(A) cap (= `T_A_freeze + 2γ_A`)
+- B はその間に物理走行で B.local.pos.t > virtualPos(A) cap を経由 → B も Rule A 領域 → 両者凍結
+
+代数的対称性は **virtualPos が真値と一致するとき** のみ保証され、 broadcast 停止経路で破れる。
+
+### 修復 (F1)
+
+broadcast gate を撤廃して **凍結中も毎 tick broadcast**:
+
+- sender 側: `if (didPhysics || lambda > 0)` gate は **store update のみ** に残し (= 不要 update 防止)、 [`sendToNetwork`](../src/hooks/useGameLoop.ts) は無条件
+- 受信側: [`messageHandler`](../src/components/game/messageHandler.ts) で `phaseSpaceEquals` dedup を入れ、 `existing.phaseSpace === new phaseSpace` なら setPlayers に `return prev` で no-op (= worldLine 重複 append 抑制 + zustand subscriber 無駄 notify 抑制)。 ただし **`lastUpdateTime` / `lastWitnessTime` は dedup 対象外** で必ず更新 (= F1 の核心: peer の virtualPos baseline を fresh に保つ)
+- 受信側 dedup は **`shouldResetWorldLine` 時は skip**: gap epoch boundary (= host migration / long suspend 後の reconnect) では phaseSpace 不変でも正規再構築が必要
+
+### 整合性
+
+- frozen + lambda=0 で `newPs = freshMe.phaseSpace` (= 不変)、 store update を skip しても broadcast 値は wire と一致 (= 整合性軸 maintain)
+- peer 側受信時 `tau ≈ 0` で virtualPos extrapolation 不要 → peer.t 推定が真値と bit-exact 一致 → 代数的対称性回復
+- 既存の `CAUSAL_FREEZE_HYSTERESIS = 2.0` (= [`constants.ts`](../src/components/game/constants.ts)) と complementary: F1 は「両者凍結」 を構造的に不可能化し、 hysteresis は残る「片側の境界振動」 を吸収
+
+### 残課題 (F1 単独で完治しない部分)
+
+F1 後も「leader / follower 役割の swap」 による flicker は残り得る (= |dt| が時間とともに sign を変える case)。 hysteresis (= 2.0) で多くは吸収されるが、 完全消失は別軸の修復が必要 (= 凍結中も pos.t advance / role hysteresis / tie-breaker)。 5/16 セッション時点では F1 単独で実機 verify、 残 flicker があれば後続 plan で対処。
+
+### 関連
+
+- 修復 commit: TBD (2026-05-16)
+- test: [`messageHandler.test.ts`](../src/components/game/messageHandler.test.ts) §F1 5 case 追加
+- メタ原則: [`design/meta-principles.md`](meta-principles.md) §M43 (= globalActive と complementary) + §M27 (= 多層 RCA: 表層「両者凍結」 → 中層「virtualPos drift」 → 真因「broadcast gate」)
+
 ## 関連 plan / doc
 
 - 設計記録: [`network.md`](network.md)、 [`authority-d-pattern.md`](authority-d-pattern.md)、 [`plans/2026-04-19-host-migration-symmetry.md`](../plans/2026-04-19-host-migration-symmetry.md)

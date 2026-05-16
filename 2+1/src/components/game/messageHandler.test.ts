@@ -303,6 +303,128 @@ describe("messageHandler selfActive witness gating (Bug 14 plan)", () => {
     expect(deps.lastWitnessTimeRef.current.has("peer")).toBe(true);
   });
 
+  it("F1 mutual-freeze 防止 dedup (2026-05-16): 既存 phaseSpace と完全一致なら worldLine 不変 + setPlayers no-op", () => {
+    const deps = makeDeps("me");
+    const handler = createMessageHandler(deps);
+
+    // 既存 peer: pos.t=1.0, pos.x=0、 worldLine.history.length=1
+    useGameStore.setState({
+      players: new Map([["peer", makePlayer("peer", 1.0, 0)]]),
+    });
+    deps.lastCoordTimeRef.current.set("peer", {
+      wallTime: Date.now(),
+      posT: 1.0,
+    });
+    const beforePeer = useGameStore.getState().players.get("peer");
+    const beforePhaseSpaceRef = beforePeer?.phaseSpace;
+    const beforeWorldLineRef = beforePeer?.worldLine;
+
+    // 完全一致な phaseSpace (= 凍結中の sender が同 phaseSpace を re-broadcast)
+    handler("peer", makePhaseSpaceMsg("peer", 1.0, 0));
+
+    const afterPeer = useGameStore.getState().players.get("peer");
+    // worldLine.history は append されない (= dedup の核心)
+    expect(afterPeer?.worldLine.history.length).toBe(1);
+    // phaseSpace / worldLine の reference identity も preserve (= setPlayers が return prev)
+    expect(afterPeer?.phaseSpace).toBe(beforePhaseSpaceRef);
+    expect(afterPeer?.worldLine).toBe(beforeWorldLineRef);
+  });
+
+  it("F1 dedup: phaseSpace 一致でも lastUpdateTime + lastWitnessTime は更新される (= F1 の核心 mechanism)", () => {
+    const deps = makeDeps("me");
+    const handler = createMessageHandler(deps);
+
+    useGameStore.setState({
+      players: new Map([["peer", makePlayer("peer", 1.0, 0)]]),
+    });
+    deps.lastCoordTimeRef.current.set("peer", {
+      wallTime: Date.now() - 100,
+      posT: 1.0,
+    });
+    // 既存 ref を意図的に古い値で初期化
+    const oldWall = Date.now() - 1000;
+    deps.lastUpdateTimeRef.current.set("peer", oldWall);
+    deps.lastWitnessTimeRef.current.set("peer", oldWall);
+
+    handler("peer", {
+      type: "phaseSpace" as const,
+      senderId: "peer",
+      position: { t: 1.0, x: 0, y: 0, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      selfActive: true,
+    });
+
+    // refs は新しい wall_clock に更新 (peer 側 virtualPos baseline を fresh に保つ)
+    expect(deps.lastUpdateTimeRef.current.get("peer")! > oldWall).toBe(true);
+    expect(deps.lastWitnessTimeRef.current.get("peer")! > oldWall).toBe(true);
+  });
+
+  it("F1 dedup: pos.t が違えば dedup せず append (= 通常の physics 走行 broadcast)", () => {
+    const deps = makeDeps("me");
+    const handler = createMessageHandler(deps);
+
+    useGameStore.setState({
+      players: new Map([["peer", makePlayer("peer", 1.0, 0)]]),
+    });
+    deps.lastCoordTimeRef.current.set("peer", {
+      wallTime: Date.now(),
+      posT: 1.0,
+    });
+
+    handler("peer", makePhaseSpaceMsg("peer", 1.1, 0));
+
+    const after = useGameStore.getState().players.get("peer");
+    expect(after?.worldLine.history.length).toBe(2);
+    expect(after?.phaseSpace.pos.t).toBe(1.1);
+  });
+
+  it("F1 dedup: pos 同じだが heading 変更なら dedup せず append (= 凍結中 aim 回転を仮想的に許容、 現仕様では未発火だが将来安全弁)", () => {
+    const deps = makeDeps("me");
+    const handler = createMessageHandler(deps);
+
+    useGameStore.setState({
+      players: new Map([["peer", makePlayer("peer", 1.0, 0)]]),
+    });
+    deps.lastCoordTimeRef.current.set("peer", {
+      wallTime: Date.now(),
+      posT: 1.0,
+    });
+
+    handler("peer", {
+      type: "phaseSpace" as const,
+      senderId: "peer",
+      position: { t: 1.0, x: 0, y: 0, z: 0 },
+      velocity: { x: 0, y: 0, z: 0 },
+      heading: { w: 0.7071, x: 0, y: 0, z: 0.7071 },
+    });
+
+    const after = useGameStore.getState().players.get("peer");
+    expect(after?.worldLine.history.length).toBe(2);
+    expect(after?.phaseSpace.heading.z).toBeCloseTo(0.7071, 4);
+  });
+
+  it("F1 dedup: shouldResetWorldLine 時は dedup skip (= gap epoch boundary は phaseSpace 不変でも正規再構築)", () => {
+    const deps = makeDeps("me");
+    const handler = createMessageHandler(deps);
+
+    useGameStore.setState({
+      players: new Map([["peer", makePlayer("peer", 1.0, 0, "hsl(0,0%,50%)")]]),
+    });
+    // 前回受信は十分昔 (gap > WORLDLINE_GAP_THRESHOLD_MS) で shouldResetWorldLine=true 化
+    deps.lastCoordTimeRef.current.set("peer", {
+      wallTime: Date.now() - WORLDLINE_GAP_THRESHOLD_MS - 100,
+      posT: 1.0,
+    });
+
+    // 完全一致な phaseSpace を send (= 凍結 sender が host migration 等の長 gap 後に再 broadcast)
+    handler("peer", makePhaseSpaceMsg("peer", 1.0, 0));
+
+    const { frozenWorldLines, players } = useGameStore.getState();
+    // 旧 worldLine は frozen に push、 新 WL は 1 点
+    expect(frozenWorldLines.length).toBe(1);
+    expect(players.get("peer")?.worldLine.history.length).toBe(1);
+  });
+
   it("mutual amplification convergence: 連続 selfActive=false で lastWitness 古いまま", () => {
     const deps = makeDeps("me");
     const handler = createMessageHandler(deps);
