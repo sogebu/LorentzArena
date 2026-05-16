@@ -182,9 +182,49 @@ F1 後も「leader / follower 役割の swap」 による flicker は残り得�
 
 ### 関連
 
-- 修復 commit: TBD (2026-05-16)
+- 修復 commit: [`996ac44`](https://github.com/sogebu/LorentzArena/commit/996ac44) (2026-05-16、 build `15:53:27`)、 odakin 実機 verify「大丈夫そう！」 で両者凍結 flicker 消失確認
 - test: [`messageHandler.test.ts`](../src/components/game/messageHandler.test.ts) §F1 5 case 追加
 - メタ原則: [`design/meta-principles.md`](meta-principles.md) §M43 (= globalActive と complementary) + §M27 (= 多層 RCA: 表層「両者凍結」 → 中層「virtualPos drift」 → 真因「broadcast gate」)
+
+## 軸 9: VPN-aware multi-tier transport (= 検討中、 2026-05-16)
+
+### 問題
+
+2026-05-16 F1 deploy 直後、 2 player 本番テストで「繋がっては切れ + 両者ホスト化」 を odakin 観察。 切り分けた結果、 **共著者 (= 安田くん) 側 NordVPN 経由の NAT path 不整合** が原因 (= VPN 除去で復旧、 F1 とは無関係)。 設定確認 screenshot で安田くんは「**NordVPN P2P サーバ Japan-Tokyo #826**」 接続 = NAT 設定は WebRTC 向きの best 寄り。 これでも繋がらないとなると、 user 側設定変更で改善余地は限定的、 ゲーム側で multi-tier fallback を実装すべきと判断。
+
+「繋がっては切れ」 は WebRTC `dc.close` repeat cycle、 「両者ホスト」 は signaling allocation race の二次症状 (= `la-{roomName}` beacon allocation が signaling timeout で release され、 reconnect 時に両者が claim する race)。
+
+### 既存の多段経路 (= code 上)
+
+| Tier | 経路 | 状態 |
+|---|---|---|
+| **1** | WebRTC direct (= host candidates + STUN srflx) | 現状 default、 LAN / 開放 NAT で動く |
+| **2** | WebRTC via TURN (= Cloudflare TURN relay、 `VITE_TURN_CREDENTIAL_URL` 動的 credential) | 現状 default、 [`.env.production`](../.env.production) 設定済 |
+| **3** | **WS Relay** (= [`relay-server/server.mjs`](../relay-server/server.mjs) + [`relay-deploy/`](../relay-deploy/) Caddy + Docker) | **code 既存、 production 未 deploy** (= `VITE_WS_RELAY_URL` 未設定) |
+
+WS Relay は WebRTC を完全に bypass する application-level WebSocket relay。 corporate VPN / 厳しい firewall / TURN 全滅 でも WebSocket (= port 443) が通れば動く、 最終 fallback。 既存 transport mode 機構は [`src/config/peer.ts`](../src/config/peer.ts) で `"peerjs" | "wsrelay" | "auto"` 切替対応、 [`PeerProvider.tsx`](../src/contexts/PeerProvider.tsx) で活性化済。 ただし起動時の選択のみで **runtime fallback (= 接続失敗時の自動切替) は未実装**。
+
+### Tier 3 enable + runtime fallback 設計
+
+実装案 (= 詳細は [`plans/2026-05-16-vpn-multi-tier-fallback.md`](../plans/2026-05-16-vpn-multi-tier-fallback.md)):
+
+**A 改 (= 全員 always-relay)**: `VITE_WEBRTC_ICE_TRANSPORT_POLICY=relay` を `.env.production` で hardcode。 数分で deploy 可能。 全員 +5-15ms latency (= Tokyo TURN endpoint で日本国内同士なら minor)、 Cloudflare TURN 単一依存 → TURN 障害時に **direct で動ける odakin 環境も巻き込まれる**、 credential expire リスク。
+
+**C 案 (= runtime auto-fallback within WebRTC)**: 起動時 `iceTransportPolicy: 'all'` で direct + TURN 自動選択、 N sec 経過しても 'open' イベントが来なければ close + `iceTransportPolicy: 'relay'` で reconnect。 ~1-2 時間実装。 direct 可能 user は latency 増なし、 VPN user のみ N sec 待ち。 TURN 障害でも direct path 生存。
+
+**Tier 3 enable (= C 案 + WS Relay 第 3 経路)**: WS Relay server を Fly.io / Render / 自宅サーバ等に Docker で deploy + TLS 証明書 + `.env.production` に URL 追加 (= 1-2 時間)。 PeerProvider に Tier 2 timeout → Tier 3 fallback ロジック追加 (= 1-2 時間)。 corporate VPN / 厳しい firewall まで対応可、 WebRTC 完全 bypass で TURN 不要。
+
+### 切り分けの教訓
+
+「F1 deploy 直後の新症状 → 真因は F1 ではなく client 環境 (= VPN)」 のパターン。 `~/Claude/odakin-prefs/work-discipline.md §「Fix 投入直後の新症状 → revert 前に pre-existing で再現するか必ず確認」` の事例。 deploy timing と client 環境変化が偶然同時のとき、 deploy を犯人と誤認しないために revert vs pre-existing check を先に。
+
+production multi-machine test では client 環境 (= VPN / proxy / NAT type / browser flag) を **verify checklist** に加えるべき (= 同教訓は odakin-prefs work-discipline 側にも記録)。
+
+### 関連
+
+- 設計議論: 2026-05-16 odakin × Claude session の対話 (= SESSION.md 「5/16 多 commit batch」 +「次セッション持ち越し」)
+- 共著者側 NordVPN 接続情報 (= 5/16 screenshot 共有): P2P server Japan-Tokyo (= NordVPN の P2P カテゴリ、 NAT は WebRTC 向き設定)、 server# / IP / upstream ISP の literal は本 public repo から除外 (= 個人層 / network-notes リポに記録)
+- 実装 plan: [`plans/2026-05-16-vpn-multi-tier-fallback.md`](../plans/2026-05-16-vpn-multi-tier-fallback.md) (= 新設)
 
 ## 関連 plan / doc
 

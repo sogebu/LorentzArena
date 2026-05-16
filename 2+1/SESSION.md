@@ -2,11 +2,49 @@
 
 ## 現在のステータス
 
-**本番最新 deploy (実装中)**: 2026-05-16 **UI polish 3 件** (= odakin 5/16 指示) — (1) [`constants.ts:RESPAWN_DELAY`](src/components/game/constants.ts) を 10 sec → 5 sec に短縮 (= dead.virtualPos drift 上限は γ_death(≤1.89) × 5 sec ≈ 9.45 sec、 respawnTime.ts §4 設計柱で依然 bounded)、 (2) [PLC laser past-cone marker](src/components/game/SceneContent.tsx) の三角形を silver base + 発射者色 (= laser.color) 0.25 lerp tint に変更 (= marker から発射者識別を視認可能化、 spacetime mode は中立 silver 維持)、 (3) [`DeadShipRenderer`](src/components/game/DeadShipRenderer.tsx) に viewMode dispatch を追加 (= classic/shooter/jellyfish → SelfShipRenderer/RocketShipRenderer/JellyfishShipRenderer、 OtherShipRenderer と対称、 旧 client は "classic" fallback)、 死亡時 hull が生時 hull と一致。 typecheck + 285 test pass + build pass。
+**本番最新 deploy**: 2026-05-16 build `16:51:17 JST` **5/16 多 commit batch** — 1 セッション内で 7 commits を deploy、 F1 mutual-freeze 修復 + 当日小修正群 + visual polish。 chronological order:
 
-**直前 deploy ✅ verified**: 2026-05-16 build `15:53:27 JST` **F1 mutual-freeze 防止 broadcast gate 撤廃** (commit [`996ac44`](https://github.com/sogebu/LorentzArena/commit/996ac44))。 odakin 実機 verify「大丈夫そう！」 = 旧来の「両者凍結 flicker」 消失確認。 RCA: Rule A (= freeze) と Rule B (= jump) は `dt = peer.t - me.t` の符号で代数的に排他的だが、 **凍結中の broadcast gate** ([useGameLoop.ts:710](src/hooks/useGameLoop.ts) 旧 `if (didPhysics || lambda > 0)`) で凍結 player が沈黙 → peer の virtualPos 線形外挿が `MAX_VIRTUAL_TAU_SEC = 2 sec` まで drift → 両 client 局所 view が「peer in past」 を観察可能 (= 代数的対称性破れ)。 修復: broadcast を無条件 (= 凍結中も毎 tick) に拡張、 setPlayers (store update) は引き続き `didPhysics || lambda > 0` で gate (= 不要 update 防止)、 受信側 messageHandler に `phaseSpaceEquals` dedup を入れて worldLine 重複 append + zustand subscriber 無駄 notify を抑制 (= shouldResetWorldLine 時は dedup skip で gap epoch boundary 維持)。 設計記録は [`design/network-recovery.md §軸 8`](design/network-recovery.md)。
+| commit | build | 内容 | status |
+|---|---|---|---|
+| [`996ac44`](https://github.com/sogebu/LorentzArena/commit/996ac44) | 15:53:27 | **F1 mutual-freeze 防止 broadcast gate 撤廃** | ✅ odakin 実機 verify「大丈夫そう！」 = 両者凍結 flicker 消失確認 |
+| [`742492f`](https://github.com/sogebu/LorentzArena/commit/742492f) | 16:13:31 | **DeadShipRenderer viewMode dispatch 追加** (= クラゲ等で死亡時 hull が classic ガンシップになる regression 修復) | ⏳ verify 待ち (= クラゲで死んで沈下映像が JellyfishShip になるか) |
+| [`dd9662e`](https://github.com/sogebu/LorentzArena/commit/dd9662e) | 16:20:14 | **RESPAWN_DELAY 10s→5s + PLC laser marker silver+killer 0.25 lerp tint** | ⏳ 0.25 tint は不可視で次 commit で上書き、 RESPAWN は verify 待ち |
+| [`6ac7d60`](https://github.com/sogebu/LorentzArena/commit/6ac7d60) | 16:24:07 | **PLC tint 0.25 → 0.5** (= 0.25 は silver lightness + additive blending で wash out した観察を受けて 2x) | ✅ odakin「PLCスライスで見ると、色がついて見える」 = PLC は確認 |
+| [`ae6ccc6`](https://github.com/sogebu/LorentzArena/commit/ae6ccc6) | 16:28:00 | **時空図 laser marker も silver+killer 0.5 lerp tint に統一** (= 当初「PLC のみ」 の解釈は私の誤解、 odakin は marker 全般を意図していた) | ⏳ verify 待ち (= 時空図でも tint 見えるか) |
+| [`ab8f10a`](https://github.com/sogebu/LorentzArena/commit/ab8f10a) | 16:32:14 | **handleKill victimName cascade fallback** (= 「撃破エフェクトで njqn9au3k 等 ID 表示」 報告に対する fallback 強化、 displayNames staging map を 2 段目に挟む) | ⏳ verify 待ち (= 名前表示されるか)。 ⚠️ **未解決**: 「njqn9au3k」 は 9 文字で `slice(0,6)` より長く別表示経路の可能性、 cascade fix で改善されなければ追跡継続 |
+| [`2ad7207`](https://github.com/sogebu/LorentzArena/commit/2ad7207) | 16:51:17 | **hit debris に killer 0.5 lerp tint 追加** (= 「レーザーが当たったときの煙にも撃った人の色を混ぜよう」) + `mixColors` helper を [`threeCache.ts`](src/components/game/threeCache.ts) に新設 + handleDamage test 3 case を新挙動に update | ⏳ verify 待ち (= hit 煙が銀単色じゃなく killer 色寄りに、 lethal 時は hit+explosion 2 層) |
 
-**deploy 直後 transient (= F1 無関係)**: 5/16 16 時台に「繋がっては切れ + 両者ホスト」 を odakin 観察、 **共著者側 VPN 経由の NAT path 不整合** が原因と切り分け済 (= VPN 除去で復旧)。 教訓: production multi-machine test では client 環境 (= VPN / proxy / NAT type) を verify checklist に加えるべき (= `design/network-recovery.md` の WebRTC ICE consent freshness 経路と整合)。
+**deploy 直後 transient (= F1 無関係)**: 5/16 16 時台に「繋がっては切れ + 両者ホスト」 を odakin 観察、 **共著者 (= 安田くん) 側 NordVPN 経由の NAT path 不整合** が原因と切り分け済 (= VPN 除去で復旧)。 NordVPN screenshot 共有で「P2P Japan-Tokyo #826」 接続 = NAT 設定は WebRTC 向きの best 寄り → user 側設定変更で改善余地小、 ゲーム側 multi-tier fallback で対処すべきと判断。 設計議論は [`design/network-recovery.md §軸 9`](design/network-recovery.md) + 実装 plan は [`plans/2026-05-16-vpn-multi-tier-fallback.md`](plans/2026-05-16-vpn-multi-tier-fallback.md) (= 新設、 next session 着手予定)。
+
+### 次セッション持ち越し (= 未 verify / 検討中 / 未解決)
+
+1. **実機 visual verify** (= odakin、 7 commit 中 5 件分): クラゲ死亡時 hull / RESPAWN 5sec 体感 / 時空図 marker tint / 撃破エフェクト名前 / hit debris killer tint
+2. **「njqn9au3k」 9-char ID 表示の真因特定** (= cascade fix で改善されなければ別表示経路を追跡、 ControlPanel.resolveName / Overlays.tsx 周辺の grep)
+3. **Jellyfish hull dead state での触手挙動** (= dead = thrust 0 / alpha4 未渡しで Verlet rope tentacles が「だらりと垂れる」 想定だが未検証、 動きすぎ場合は thrust 0 を明示的に伝える必要)
+4. **F1 残 flicker (= role swap) の長時間 verify**: F1 で mutual freeze は構造的解消、 hysteresis 2.0 で role swap も多くは吸収、 close-quarter 境界で残り flicker があるか long session test 必要
+5. **VPN 経由接続の multi-tier fallback 実装** (= [`plans/2026-05-16-vpn-multi-tier-fallback.md`](plans/2026-05-16-vpn-multi-tier-fallback.md))。 安田くん次回 play で fix 確認したい優先度。 NordVPN 残り 4 項目 (= Protocol / Kill Switch / Threat Protection / WebRTC leak test) は付加価値で必須ではない
+6. **lerp 比率の微調整余地** (= PLC + spacetime marker 0.5 / hit debris 0.5)、 過剰なら 0.35-0.4 へ。 odakin 体感次第
+
+### 設計記録された当日の知見
+
+- [`design/network-recovery.md §軸 8`](design/network-recovery.md) — F1 mutual-freeze RCA
+- [`design/network-recovery.md §軸 9`](design/network-recovery.md) — VPN 経由 connection 不安定 + multi-tier fallback 検討 (新設)
+- [`plans/2026-05-16-vpn-multi-tier-fallback.md`](plans/2026-05-16-vpn-multi-tier-fallback.md) — C 案 + Tier 3 deploy plan (新設)
+- `~/Claude/odakin-prefs/work-discipline.md §「user の location specifier を scope 限定と reflex 解釈しない」` — 「PLC上の三角形」 を PLC 限定と取った誤解を一般則化 (新設、 layer 3)
+
+### 多 commit batch の §10 4 軸 sweep (= 当日 7 commit 横断、 §17 圧力 (1) 適用)
+
+- **整合性**: 全 commit の docstring + SESSION.md + design docs は本 turn で同期完了。 古い L5 「(実装中)」 marker / 「PLC のみ」 範囲制約 表現は本 update で解消 ✓
+- **無矛盾性**: F1 (= 2026-05-16) と既存 Bug 14 (= globalActive、 2026-05-06) は complementary 設計、 hit debris tint (= killer 色) と 2026-04-21 universal silver design は段階的に撤回 (= 2026-05-04 explosion 復活 + 2026-05-16 hit tint)、 各 docstring に系譜記録 ✓
+- **効率性**: 7 commit 全て typecheck + 285 test pass + build pass、 bundle GameSession +0.3 KB 程度 (= negligible)、 mixColors cache は (HIT_DEBRIS_COLOR, killer.color) 組み合わせ数で bounded ✓
+- **安全性**: dynamic visual verify は全件 odakin 実機依頼 (= [Claude Preview 不可](CLAUDE.md))、 user-driven verify path として残課題 list 化済、 F1 のみ user verified ✓
+
+### Confidence 境界
+
+- High: code-level correctness (= typecheck/test pass)、 F1 user verified
+- Medium: 残 6 commit の visual / dynamic 挙動 (= odakin 実機 verify 必要)
+- Low: 「njqn9au3k」 9-char anomaly の真因 (= cascade fix が当たるか不明、 別表示経路の可能性)
+- Unknown: VPN 経由 multi-tier fallback の効果 (= 安田くん環境で次回 verify 必要)
 
 直前 deploy: 2026-05-07 build `13:24:38 JST` **PLC スライス全面リッチ化 + viewMode broadcast** 完了 (commit [`2ffdfbc`](https://github.com/sogebu/LorentzArena/commit/2ffdfbc))。 PLC slice mode (= 2D / 3D 共通) で flatten 済 3D ship model 群 (= Self / Rocket / Jellyfish / OtherShip / DeadShip / DeathMarker / Lighthouse) を表示、 PLC 2D mode = 3D scene の真上 orthographic に architecture pivot (= 旧 Radar fullscreen overlay 廃止)、 viewMode (ガンシップ / ロケット / クラゲ) を intro / snapshot で broadcast + race fix staging map、 i18n 全面整理 (= 形状ベース命名統一 / math jargon 排除)。 280 test pass、 typecheck clean、 odakin localhost verify 「いいね！」 多数 (= 5/7 13 時台)。 設計記録は [DESIGN.md §PLC スライス全面リッチ化](DESIGN.md) + [design/meta-principles.md M44-M47](design/meta-principles.md) + [design/rendering.md §PLC slice flattenT 折り畳み](design/rendering.md)、 cross-cutting convention は [claude-config/conventions/ui-toggle-convention.md](../claude-config/conventions/ui-toggle-convention.md) (新設) + 個人層 work-discipline §同一語の意味取り違え防止 (新設、 odakin-prefs)。
 
