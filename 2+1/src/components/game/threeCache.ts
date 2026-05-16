@@ -12,6 +12,32 @@ export const getThreeColor = (hslString: string): THREE.Color => {
   return color;
 };
 
+/**
+ * 2 つの CSS color (HSL / RGB / hex 等、 THREE.Color が parse できる形式) を `t` で線形補間
+ * して "rgb(r, g, b)" string で返す。 t=0 で base、 t=1 で tint、 t=0.5 で半々。
+ *
+ * 用途: hit debris / laser past-cone marker 等で「base 色 (= universal silver 等) に
+ * 個別色 (= 発射者 / victim 色) を混ぜる」 ための utility。 `getThreeColor` は引数を
+ * cache する pure converter なので `.clone()` で base を mutate しないようにし、
+ * `.getStyle()` で CSS 形式 string に戻す (= `DebrisRecord.color: string` 等の slot に
+ * 直接入る)。 結果 string は base + tint + ratio の組み合わせごとに unique で、 同じ組み
+ * 合わせなら `getThreeColor` cache が hit する (= cache 肥大化は killer/victim 色種別の
+ * 数程度に bounded)。
+ *
+ * 2026-05-16 odakin 指示「レーザーが当たったときの煙にも、 撃った人の色を混ぜよう」 で
+ * 新設。 過去の universal silver design (= 2026-04-21、 「killer 識別は HUD で行う、
+ * debris に二重情報を入れない」) を撤回、 hit debris 色軸 + HUD 軸の 2 経路で識別性
+ * 強化する設計に移行。
+ */
+export const mixColors = (
+  baseColor: string,
+  tintColor: string,
+  t: number,
+): string => {
+  const mixed = getThreeColor(baseColor).clone().lerp(getThreeColor(tintColor), t);
+  return mixed.getStyle();
+};
+
 // 共有ジオメトリ（シングルトン）
 export const sharedGeometries = {
   playerSphere: new THREE.SphereGeometry(0.5, 8, 8),

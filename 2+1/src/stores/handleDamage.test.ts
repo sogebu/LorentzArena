@@ -112,11 +112,14 @@ describe("handleDamage — lethal damage", () => {
   });
 });
 
-describe("handleDamage — デブリ配色 (2026-05-04: explosion = victim.color に復活、 hit = universal silver 維持)", () => {
-  // 2026-04-21: per-player 色を廃止、 hit / explosion 両方を universal constant に移行。
-  // 2026-05-04 odakin 指定で部分撤回: explosion は victim.color (= 「死んだ player の色の煙」)
-  // に復活、 hit は HIT_DEBRIS_COLOR (universal warm silver) で維持。 lethal 時は
-  // hit silver + explosion victim 色の 2 層が降る。
+describe("handleDamage — デブリ配色 (2026-05-16: hit = silver base + killer.color lerp(0.5) tint、 explosion = victim.color)", () => {
+  // 設計史:
+  // - 2026-04-21: per-player 色を廃止、 hit / explosion 両方を universal constant に移行
+  // - 2026-05-04 odakin 指定で部分撤回: explosion は victim.color (= 「死んだ player の色の煙」)
+  //   に復活、 hit は HIT_DEBRIS_COLOR (universal warm silver) で維持
+  // - 2026-05-16 odakin 指示「レーザーが当たったときの煙にも、 撃った人の色を混ぜよう」:
+  //   hit も HIT_DEBRIS_COLOR base に killer.color を 0.5 lerp で混ぜる設計に再変更、
+  //   killer が players 未登録なら base silver で fallback (= ghost killer 救済)。
   const victimColor = "#ff0000";
   const killerColor = "#00ff00";
 
@@ -127,8 +130,9 @@ describe("handleDamage — デブリ配色 (2026-05-04: explosion = victim.color
     return { ...makePlayer("killer", ENERGY_MAX), color: killerColor };
   }
 
-  it("non-lethal: hit デブリ 1 個が HIT_DEBRIS_COLOR で append される", async () => {
+  it("non-lethal: hit デブリ 1 個が silver + killer.color lerp(0.5) で append される", async () => {
     const { HIT_DEBRIS_COLOR } = await import("../components/game/constants");
+    const { mixColors } = await import("../components/game/threeCache");
     resetStore(
       new Map<string, RelativisticPlayer>([
         ["victim", victimWith(ENERGY_MAX)],
@@ -140,13 +144,15 @@ describe("handleDamage — デブリ配色 (2026-05-04: explosion = victim.color
       .handleDamage("victim", "killer", HIT_POS, HIT_DAMAGE, LASER_DIR, "me");
 
     const s = useGameStore.getState();
+    const expected = mixColors(HIT_DEBRIS_COLOR, killerColor, 0.5);
     expect(s.debrisRecords.length).toBe(1);
     expect(s.debrisRecords[0].type).toBe("hit");
-    expect(s.debrisRecords[0].color).toBe(HIT_DEBRIS_COLOR);
+    expect(s.debrisRecords[0].color).toBe(expected);
   });
 
-  it("lethal: hit (HIT_DEBRIS_COLOR) + explosion (victim.color) の 2 層が入る", async () => {
+  it("lethal: hit (silver + killer tint) + explosion (victim.color) の 2 層が入る", async () => {
     const { HIT_DEBRIS_COLOR } = await import("../components/game/constants");
+    const { mixColors } = await import("../components/game/threeCache");
     resetStore(
       new Map<string, RelativisticPlayer>([
         ["victim", victimWith(HIT_DAMAGE / 2)],
@@ -158,15 +164,16 @@ describe("handleDamage — デブリ配色 (2026-05-04: explosion = victim.color
       .handleDamage("victim", "killer", HIT_POS, HIT_DAMAGE, LASER_DIR, "me");
 
     const s = useGameStore.getState();
+    const expectedHit = mixColors(HIT_DEBRIS_COLOR, killerColor, 0.5);
     expect(s.debrisRecords.length).toBe(2);
     // 追加順: hit → explosion
     expect(s.debrisRecords[0].type).toBe("hit");
-    expect(s.debrisRecords[0].color).toBe(HIT_DEBRIS_COLOR);
+    expect(s.debrisRecords[0].color).toBe(expectedHit);
     expect(s.debrisRecords[1].type).toBe("explosion");
     expect(s.debrisRecords[1].color).toBe(victimColor);
   });
 
-  it("killer が players 未登録でも hit debris は HIT_DEBRIS_COLOR (共通色なので fallback 不要)", async () => {
+  it("killer が players 未登録なら hit debris は base HIT_DEBRIS_COLOR で fallback (= ghost killer 救済)", async () => {
     const { HIT_DEBRIS_COLOR } = await import("../components/game/constants");
     resetStore(
       new Map<string, RelativisticPlayer>([["victim", victimWith(ENERGY_MAX)]]),

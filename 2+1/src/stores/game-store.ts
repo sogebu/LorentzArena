@@ -16,6 +16,7 @@ import {
   generateExplosionParticles,
   generateHitParticles,
 } from "../components/game/debris";
+import { mixColors } from "../components/game/threeCache";
 import { nextFrozenId } from "../components/game/worldLineGap";
 import {
   isLighthouse,
@@ -715,17 +716,25 @@ export const useGameStore = create<GameState>()((set, get) => ({
     };
     const nextHitLog = [...state.hitLog, hitEntry].slice(-MAX_HIT_LOG);
 
-    // 被弾デブリは lethal / non-lethal 問わず生成。 2026-04-21 odakin 指定で
-    // per-killer 色から universal `HIT_DEBRIS_COLOR` (warm silver) へ移行 (= hit は
-    // 「laser 着弾の軽煙」 として universal silver で維持)。 lethal path では handleKill
-    // が追加で `victim.color` の explosion を重ねる (= 2026-05-04 odakin 指定で
-    // explosion は per-victim 色に復活、 hit silver + explosion victim 色の 2 層で
-    // 「laser 着弾 → 爆発」 の時系列が読める)。
+    // 被弾デブリは lethal / non-lethal 問わず生成。
+    // 2026-04-21 odakin 指定で universal `HIT_DEBRIS_COLOR` (warm silver) に移行、
+    // 2026-05-16 odakin 指示で「撃った人 (= killer) の色を混ぜよう」 → `HIT_DEBRIS_COLOR`
+    // base に killer.color を 0.5 lerp で混ぜる設計に再変更 (= killer 識別性を debris
+    // 自体に持たせる、 HUD / kill log との 2 経路 視覚化)。 killer が players map に
+    // 居ない場合 (= disconnect / stale 等) は base silver で fallback。 lerp 比 0.5 は
+    // PLC laser marker tint (= 同 commit 群) と統一、 過剰なら 0.35 程度に調整可能。
+    // lethal path では handleKill が追加で `victim.color` の explosion を重ねる
+    // (= 2026-05-04 odakin 指定で explosion は per-victim 色)、 結果として hit (killer+silver)
+    // + explosion (victim) の 2 層で「誰が誰を撃った」 が視覚で読める。
+    const killer = state.players.get(killerId);
+    const hitColor = killer
+      ? mixColors(HIT_DEBRIS_COLOR, killer.color, 0.5)
+      : HIT_DEBRIS_COLOR;
     const hitParticles = generateHitParticles(victim.phaseSpace.u, laserDir);
     const hitDebris: DebrisRecord = {
       deathPos: hitPos,
       particles: hitParticles,
-      color: HIT_DEBRIS_COLOR,
+      color: hitColor,
       type: "hit",
     };
     const nextDebris = [...state.debrisRecords, hitDebris].slice(-MAX_DEBRIS);

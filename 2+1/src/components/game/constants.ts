@@ -197,17 +197,21 @@ export const EXPLOSION_PARTICLE_COUNT = 30;
 /**
  * 煙 (debris) の色。 hit / explosion で軸が異なる:
  * - `HIT_DEBRIS_COLOR` = hit smoke (laser 被弾、 lethal / non-lethal 両方): warm
- *   silver、 fresh spark / 軽い煙の質感 (cool 寄り)。 universal (= killer/victim
- *   非依存、 2026-04-21 odakin 指定)。
+ *   silver、 fresh spark / 軽い煙の質感 (cool 寄り)。 **`handleDamage` 内で killer.color を
+ *   0.5 lerp で混ぜた色が `DebrisRecord.color` に格納される** (= 2026-05-16 odakin 指示
+ *   「レーザーが当たったときの煙にも、 撃った人の色を混ぜよう」)。 killer が players 未登録
+ *   なら base silver で fallback。 本 constant は base 値 (= mix 前 / fallback 用)。
  * - explosion smoke (death、 victim 起因): **`victim.color`** (= 「死んだ player の
  *   色の煙」、 2026-05-04 odakin 指定で per-victim 色に復活)。 LH 死亡時は
  *   `LIGHTHOUSE_COLOR` (= cyan)。 universal constant は持たない。
  *
- * 設計動機: lethal hit では hit silver + explosion victim 色の 2 層が降り、
- * 「laser 着弾 → 爆発」 の時系列が視覚 2 段で読める。 また誰が死んだかが kill log
- * を見ずに即時判別できる (= 「最初の頃」 の per-victim 色 hero 視覚を温存)。 hit は
- * universal silver で「laser 着弾 == 共通の質感」 を維持 (= killer 識別は HUD /
- * kill log で行う、 debris に二重情報を入れない)。
+ * 設計動機: lethal hit では hit (silver + killer tint) + explosion (victim 色) の
+ * 2 層が降り、 「**誰が** 撃って → **誰が** 死んだ」 の時系列が視覚 2 段で読める。 kill log /
+ * HUD を見ずに即時判別できる (= per-color hero 視覚)。 hit に killer 色を混ぜる設計は
+ * 2026-04-21 の「hit は universal silver、 killer 識別は HUD 軸」 設計を撤回、 hit debris
+ * 自体に killer ID 情報を持たせる方針に再変更 (= 2026-05-16)。 PLC laser past-cone marker
+ * (= [SceneContent.tsx](../game/SceneContent.tsx)) も同 commit 群で同 0.5 lerp tint 化、
+ * 共通の「base + 個別色 lerp」 視覚言語に統一。
  */
 export const HIT_DEBRIS_COLOR = "hsl(40, 12%, 80%)";
 
