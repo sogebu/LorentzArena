@@ -11,8 +11,10 @@ export const SPAWN_EFFECT_DURATION = 1500;
 // レーザーの射程
 export const LASER_RANGE = 10;
 
-// リスポーン遅延（ミリ秒）
-export const RESPAWN_DELAY = 10000;
+// リスポーン遅延（ミリ秒）。 2026-05-16 odakin 指示で 10 sec → 5 sec に短縮
+// (= 死亡 → 復活までの待ち時間)。 dead.virtualPos drift の上限は γ_death(≤1.89)
+// × 5 sec ≈ 9.45 sec で依然 bounded、 respawnTime.ts §4 設計柱と整合。
+export const RESPAWN_DELAY = 5000;
 
 // 凍結世界線の保持上限（世界オブジェクト）
 export const MAX_FROZEN_WORLDLINES = 20;

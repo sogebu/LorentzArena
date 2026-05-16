@@ -45,7 +45,7 @@ import { lastSyncForDead, virtualPos } from "./virtualWorldLine";
  * 寄与しない → 多数死亡 / 復活サイクルで時刻 split が systemic に広がる。 dead を
  * virtualPos で寄与させれば、 死者の virtual continuation が cluster と一緒に drift し
  * cluster 同期維持される。 dead.virtualPos drift は γ_death × elapsed_dead_wall で
- * bounded (= γ_death ≤ 1.89 + RESPAWN_DELAY = 10 sec で最大 ≈ 18.9 sec)、 大幅な発散
+ * bounded (= γ_death ≤ 1.89 × RESPAWN_DELAY = 5 sec で最大 ≈ 9.45 sec、 2026-05-16 odakin 指示で 10 sec → 5 sec 短縮)、 大幅な発散
  * しない。
  *
  * 走行中 Rule A/B (= dead 完全除外) と spawn 計算 (= dead virtualPos 包含) の dead 扱い
