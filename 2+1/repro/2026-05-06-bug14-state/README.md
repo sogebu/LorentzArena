@@ -101,7 +101,7 @@ phase A1 (= u_x=-1.6, dTau=D1) で pos.x -= 1.6 D1 + pos.t += 1.89 D1、 phase A
 
 1. スマホ Brave で `https://sogebu.github.io/LorentzArena/` を開く
 2. game start、 30 分プレイ後 background に
-3. **PC 側で WiFi ADB で接続維持** (= [本セッション adb 手順](../../../../../odakin-prefs/work-discipline.md))
+3. **PC 側で WiFi ADB で接続維持** (= [本セッション adb 手順](https://github.com/odakin/claude-config/blob/main/conventions/android-chromium-remote-debug.md#wifi-adb-setup))
 4. 1 時間ごとに state dump、 worldLine.history を時系列 archive
 5. runaway 検出時 (= self.pos.t が wall_clock × γ_max を超えた瞬間) immediate にスマホ wake → console log 確認
 
