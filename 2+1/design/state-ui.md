@@ -199,7 +199,7 @@ Keyboard coexistence: ゲームループで keyboard と touch の入力を加�
 
 修正: `processCamera` の死亡時 pitch 分岐を削除、`useGameLoop` で `pitchDelta` を毎 tick リセット (蓄積防止)。**縦スワイプは生死問わず thrust に固定**、pitch rotation は PC 矢印キーのみに集約。スマホで pitch 観賞したいニーズが出たら 2 本指縦スワイプ等の別ジェスチャで将来拡張。
 
-設計検討の詳細経緯: [`EXPLORING.md`](./EXPLORING.md) の「スマホ UI の設計思考」および「2026-04-10 の設計議論と方針決定」参照。
+設計検討の詳細経緯: [`EXPLORING.md`](../EXPLORING.md) の「スマホ UI の設計思考」および「2026-04-10 の設計議論と方針決定」参照。
 
 ### レーザーエネルギー制
 
@@ -228,7 +228,7 @@ Keyboard coexistence: ゲームループで keyboard と touch の入力を加�
 
 **動機**: スマホ portrait は縦長で「絵の上に form 重ね」 hero 視覚で問題ないが、 landscape (= 横置き、 ≈ 812×375) では viewport 縦が狭すぎて (a) ship preview と form / title が overlap、 (b) hi-scores が画面外で見えない、 (c) ship が中央 1 列で「なぜここに居るのか分からん」 (= user 評)。 portrait は触らず landscape だけ別 layout に倒した。
 
-**`useOrientation` hook** ([`src/hooks/useOrientation.ts`](src/hooks/useOrientation.ts)): `window.matchMedia("(orientation: landscape)")` を React state に bind、 回転時に re-render。 hook 1 つで Lobby + Game の両方が orientation 反応可能 (Game 側は将来 in-game HUD layout 切替で使う想定、 Phase 2)。
+**`useOrientation` hook** ([`src/hooks/useOrientation.ts`](../src/hooks/useOrientation.ts)): `window.matchMedia("(orientation: landscape)")` を React state に bind、 回転時に re-render。 hook 1 つで Lobby + Game の両方が orientation 反応可能 (Game 側は将来 in-game HUD layout 切替で使う想定、 Phase 2)。
 
 **Lobby layout の orientation 別構造**:
 

@@ -1,7 +1,7 @@
 # 2026-04-21: 2+1 次元 物体描画 (apparent shape pattern)
 
 観測者 O が見る、被観測者 A (灯台 / 自機 / 他機) の 3D モデル描画 spec と実装メモ。
-元ネタ論文: [Nakayama & Oda, "Relativity for games", PTEP 2017 (113J01)](../docs/references/Nakayama-Oda-2017-relativity-for-games-PTEP.pdf)
+元ネタ論文: [Nakayama & Oda, "Relativity for games", PTEP 2017 (113J01)](../../docs/references/Nakayama-Oda-2017-relativity-for-games-PTEP.pdf)
 eq (136)–(137)。
 
 並走する設計書として [`2026-04-21-ship-apparent-shape-M-matrix.md`](2026-04-21-ship-apparent-shape-M-matrix.md)

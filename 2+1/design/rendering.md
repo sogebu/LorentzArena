@@ -509,7 +509,7 @@ D pattern は維持: 全 geometry は world 座標で vertex を持ち、`matrix
 
 加速度は 2+1 では常に xy 平面内にあるため、矢印も xy 平面に埋め込むのが物理的に自然 (3+1 への拡張時は別解が必要)。
 
-**geometry**: [`threeCache.ts`](src/components/game/threeCache.ts) `sharedGeometries.accelerationArrowFlat`。単位 shape は `y ∈ [-0.5, 1.0]` の矢印:
+**geometry**: [`threeCache.ts`](../src/components/game/threeCache.ts) `sharedGeometries.accelerationArrowFlat`。単位 shape は `y ∈ [-0.5, 1.0]` の矢印:
 
 - tip: `(0, 1)`
 - head 左右下: `(±0.35, 0.55)` — 頭の幅 0.7
