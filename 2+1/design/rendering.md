@@ -376,7 +376,7 @@ LH_INNER_HIDE_RADIUS         = SHIP_HULL_RADIUS × 2.5   // LH は砲身が無�
 
 **経緯**: user 指示「光円錐 / 世界線 / LH も含めて全部つながって見せて、 機体・LH が前面で遮ってればよい」 で **hide shader 廃止 → render-order based pattern** に倒した。 inner-hide shader 機構自体は温存 (= radius=0 で `vInnerDist < 0` 不成立 → discard 不発、 全 cone / worldline 可視)、 4 定数 (`SHIP_FUTURE_CONE_HIDE_RADIUS_COEFFICIENT` / `SHIP_INNER_HIDE_RADIUS_COEFFICIENT` / `SHIP_WORLDLINE_HIDE_RADIUS_COEFFICIENT` / `LH_INNER_HIDE_RADIUS_COEFFICIENT`) は 5.0 / 3.0 / 1.5 / 2.5 → 全 0 に。 旧値は docstring に明記、 revert は 1 line edit で可能。
 
-代わりに「機体・LH を最前面」 の意図は **ALWAYS_ON_TOP trio** ([`alwaysOnTopRender.ts`](src/components/game/alwaysOnTopRender.ts)) で実現:
+代わりに「機体・LH を最前面」 の意図は **ALWAYS_ON_TOP trio** ([`alwaysOnTopRender.ts`](https://github.com/sogebu/LorentzArena/blob/170cd33c5453/2+1/src/components/game/alwaysOnTopRender.ts)) で実現:
 
 - `renderOrder=10` (= worldline / cone の default 0 より late draw = 後勝ち)
 - `depthTest=false` (= depth buffer の値を見ない、 直前の depth-writing element に遮られない)

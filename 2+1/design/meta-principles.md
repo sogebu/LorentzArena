@@ -690,7 +690,7 @@ cohesive 度の判定: 「この prop を 1 つだけ set したらどうなる�
 |---|---|
 | 踏み外し不可能化 | callsite で `{...ALWAYS_ON_TOP_MATERIAL_PROPS}` と書けば全要素自動付与、 1 要素抜きが構造的に不可 |
 | pattern 名の明示化 | `ALWAYS_ON_TOP` という名前が「これは何の pattern か」 を 1 行で伝える、 暗黙性の解消 |
-| docstring 集中 | 3 要素の rationale + 失敗事例 + 適用 / 非適用 entity 一覧を 1 ヶ所に集約 ([`alwaysOnTopRender.ts`](src/components/game/alwaysOnTopRender.ts) docstring 例) |
+| docstring 集中 | 3 要素の rationale + 失敗事例 + 適用 / 非適用 entity 一覧を 1 ヶ所に集約 ([`alwaysOnTopRender.ts`](https://github.com/sogebu/LorentzArena/blob/170cd33c5453/2+1/src/components/game/alwaysOnTopRender.ts) docstring 例) |
 | 調整の単一化 | 後から `renderOrder=10 → 20` 等の調整時、 共通 module を変えるだけで全 entity に反映、 callsite 側は不変 |
 
 #### 共通 module 化の判断 heuristic
