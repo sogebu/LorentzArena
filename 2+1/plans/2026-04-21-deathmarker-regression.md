@@ -35,7 +35,7 @@ odakin 確認: この 2 つ anchor 設計は **意図通り**。sphere が「実
     // 光未到達 (elapsedPastDeath < 0) では deathMarkerAlpha = null のまま
   }
   ```
-- [`OtherPlayerRenderer.tsx`](../src/components/game/OtherPlayerRenderer.tsx) 死亡 branch で `if (!state.visible) return null;` → 全消滅時に body / DeathMarker 共に消える。
+- [`OtherPlayerRenderer.tsx`](https://github.com/sogebu/LorentzArena/blob/b7c75b4893af/2+1/src/components/game/OtherPlayerRenderer.tsx) 死亡 branch で `if (!state.visible) return null;` → 全消滅時に body / DeathMarker 共に消える。
 - `DeathMarker.tsx` の早期 return: `if (alpha == null || alpha <= 0) return null;` → 光未到達時 & fade 完了後に消える。
 
 これらは**設計通り**で、以下の 2 ケースで marker が消える:
