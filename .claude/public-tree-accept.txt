@@ -1,0 +1,7 @@
+# public-tree-accept.txt — scan-public-tree.sh の棚卸しで「見た上で残す」 と決めた token。
+#
+# ⚠️ pre-commit gate には効かない (= 新しい書き込みは今までどおり止まる)。 効くのは
+#    scripts/scan-public-tree.sh の棚卸しだけ。
+# ⚠️ ここに書けるのは **既に tree の他の場所に在る文字列** だけ (= 走査が検査する)。
+
+147.0.0.0   # 誤検知。 repro 用 state dump の User-Agent 内 `Chrome/147.0.0.0` = ブラウザの版で IP ではない

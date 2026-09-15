@@ -16,7 +16,7 @@
 | [`ab8f10a`](https://github.com/sogebu/LorentzArena/commit/ab8f10a) | 16:32:14 | **handleKill victimName cascade fallback** (= 「撃破エフェクトで njqn9au3k 等 ID 表示」 対応) | ⏳ verify 待ち。 ⚠️ 9-char ID は別表示経路の可能性、 cascade fix で改善されなければ追跡継続 |
 | [`2ad7207`](https://github.com/sogebu/LorentzArena/commit/2ad7207) | 16:51:17 | **hit debris に killer 0.5 lerp tint 追加** + `mixColors` helper を [`threeCache.ts`](src/components/game/threeCache.ts) に新設 + handleDamage test 3 case を新挙動に update | ⏳ verify 待ち |
 
-**deploy 直後 transient (= F1 無関係)**: 5/16 16 時台に「繋がっては切れ + 両者ホスト」 を odakin 観察、 **共著者 (= 安田くん) 側 NordVPN 経由の NAT path 不整合** が原因と切り分け済 (= VPN 除去で復旧)。 設計議論は [`design/network-recovery.md §軸 9`](design/network-recovery.md) + 実装 plan は [`plans/2026-05-16-vpn-multi-tier-fallback.md`](plans/2026-05-16-vpn-multi-tier-fallback.md)。
+**deploy 直後 transient (= F1 無関係)**: 5/16 16 時台に「繋がっては切れ + 両者ホスト」 を odakin 観察、 **テスト相手側の VPN 経由の NAT path 不整合** が原因と切り分け済 (= VPN 除去で復旧)。 設計議論は [`design/network-recovery.md §軸 9`](design/network-recovery.md) + 実装 plan は [`plans/2026-05-16-vpn-multi-tier-fallback.md`](plans/2026-05-16-vpn-multi-tier-fallback.md)。
 
 ## 次セッション持ち越し (= 未 verify / 検討中 / 未解決)
 
@@ -24,7 +24,7 @@
 2. **「njqn9au3k」 9-char ID 表示の真因特定** (= cascade fix で改善されなければ別表示経路を追跡、 ControlPanel.resolveName / Overlays.tsx 周辺の grep)
 3. **Jellyfish hull dead state での触手挙動** (= dead = thrust 0 / alpha4 未渡しで Verlet rope tentacles が「だらりと垂れる」 想定だが未検証)
 4. **F1 残 flicker (= role swap) の長時間 verify**: F1 で mutual freeze は構造的解消、 hysteresis 2.0 で role swap も多くは吸収、 close-quarter 境界で残り flicker があるか long session test 必要
-5. **VPN 経由接続の multi-tier fallback 実装** (= [`plans/2026-05-16-vpn-multi-tier-fallback.md`](plans/2026-05-16-vpn-multi-tier-fallback.md))。 安田くん次回 play で fix 確認したい優先度
+5. **VPN 経由接続の multi-tier fallback 実装** (= [`plans/2026-05-16-vpn-multi-tier-fallback.md`](plans/2026-05-16-vpn-multi-tier-fallback.md))。 テスト相手の次回 play で fix 確認したい優先度
 6. **lerp 比率の微調整余地** (= PLC + spacetime marker 0.5 / hit debris 0.5)、 過剰なら 0.35-0.4 へ。 odakin 体感次第
 
 ### 5/16 batch §10 4 軸 sweep + confidence 境界

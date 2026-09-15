@@ -9,7 +9,7 @@ LorentzArena が依拠する / 直接の元ネタとなっている公開論文�
 
 **File**: [`Nakayama-Oda-2017-relativity-for-games-PTEP.pdf`](./Nakayama-Oda-2017-relativity-for-games-PTEP.pdf)
 
-- Daiju Nakayama and Kin-ya Oda (尾田欣也), "Relativity for games"
+- Daiju Nakayama and Kin-ya Oda, "Relativity for games"
 - Progress of Theoretical and Experimental Physics, 2017, 113J01
 - DOI: [10.1093/ptep/ptx127](https://doi.org/10.1093/ptep/ptx127)
 - arXiv: [1703.07063 [physics.class-ph]](https://arxiv.org/abs/1703.07063)

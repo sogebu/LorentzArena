@@ -190,7 +190,7 @@ F1 後も「leader / follower 役割の swap」 による flicker は残り得�
 
 ### 問題
 
-2026-05-16 F1 deploy 直後、 2 player 本番テストで「繋がっては切れ + 両者ホスト化」 を odakin 観察。 切り分けた結果、 **共著者 (= 安田くん) 側 NordVPN 経由の NAT path 不整合** が原因 (= VPN 除去で復旧、 F1 とは無関係)。 設定確認 screenshot で安田くんは「**NordVPN P2P サーバ Japan-Tokyo #826**」 接続 = NAT 設定は WebRTC 向きの best 寄り。 これでも繋がらないとなると、 user 側設定変更で改善余地は限定的、 ゲーム側で multi-tier fallback を実装すべきと判断。
+2026-05-16 F1 deploy 直後、 2 player 本番テストで「繋がっては切れ + 両者ホスト化」 を odakin 観察。 切り分けた結果、 **テスト相手側の VPN 経由の NAT path 不整合** が原因 (= VPN 除去で復旧、 F1 とは無関係)。 設定確認 screenshot では **VPN の P2P 向けサーバ**に接続 = NAT 設定は WebRTC 向きの best 寄り。 これでも繋がらないとなると、 user 側設定変更で改善余地は限定的、 ゲーム側で multi-tier fallback を実装すべきと判断。
 
 「繋がっては切れ」 は WebRTC `dc.close` repeat cycle、 「両者ホスト」 は signaling allocation race の二次症状 (= `la-{roomName}` beacon allocation が signaling timeout で release され、 reconnect 時に両者が claim する race)。
 

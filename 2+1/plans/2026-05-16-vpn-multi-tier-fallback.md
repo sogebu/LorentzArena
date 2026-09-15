@@ -2,7 +2,7 @@
 
 **Date**: 2026-05-16
 **Status**: 📋 **検討中** (= next session 着手予定)
-**Motivation**: 2026-05-16 F1 deploy 直後、 共著者 (= 安田くん) 側 NordVPN 経由で「繋がっては切れ + 両者ホスト」 観察。 NordVPN P2P サーバ Japan-Tokyo #826 接続でも繋がらず、 user 側設定変更で改善余地小 → ゲーム側 multi-tier fallback で対処。
+**Motivation**: 2026-05-16 F1 deploy 直後、 テスト相手側の VPN 経由で「繋がっては切れ + 両者ホスト」 観察。 P2P 向けサーバ接続でも繋がらず、 user 側設定変更で改善余地小 → ゲーム側 multi-tier fallback で対処。
 **Design 思想 doc**: [`design/network-recovery.md §軸 9`](../design/network-recovery.md)
 
 ---
@@ -25,7 +25,7 @@ VPN が WebRTC connection を以下のいずれかで壊す:
 - **MITM inspection**: VPN endpoint で DTLS handshake を inspect → 失敗
 - **IP 不整合**: VPN tunnel 経由の IP candidate と STUN reflexive candidate が混在 → ICE pair check が confuse
 
-安田くん NordVPN は P2P サーバで NAT は WebRTC 向き設定だったが、 それでも繋がらない → ICE candidate gathering / pair selection の何らかが問題、 setting 変更で fix 困難と判断。
+テスト相手の VPN は P2P サーバで NAT は WebRTC 向き設定だったが、 それでも繋がらない → ICE candidate gathering / pair selection の何らかが問題、 setting 変更で fix 困難と判断。
 
 ### §1.3 既存の経路 (= code 上 multi-tier 構造)
 
@@ -49,7 +49,7 @@ VPN が WebRTC connection を以下のいずれかで壊す:
 
 ### §2.1 段階的アプローチ
 
-**段階 1 (= 次セッション着手)**: C 案を実装。 安田くん次回 play で verify。 多くの VPN ケースはこれで救えるはず。
+**段階 1 (= 次セッション着手)**: C 案を実装。 テスト相手の次回 play で verify。 多くの VPN ケースはこれで救えるはず。
 
 **段階 2 (= C 案で救えなかった場合)**: WS Relay deploy + runtime fallback (= Tier 3 enable)。 段階 1 失敗が観察されたときのみ着手、 over-engineering 回避。
 
@@ -130,7 +130,7 @@ PeerProvider で:
 ### §5.1 段階 1 (= C 案) 後
 
 - odakin 自宅環境 (= 直接接続可) で latency 変化なし confirm
-- 安田くん次回 play 時、 VPN ON 状態で接続成功 confirm
+- テスト相手の次回 play 時、 VPN ON 状態で接続成功 confirm
 - 接続時間が ~5-15 sec (= Tier 1+2 timeout) 後に確立する観察
 
 ### §5.2 段階 2 (= Tier 3 enable) 後
