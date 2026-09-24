@@ -1,6 +1,6 @@
 # CLAUDE.md — LorentzArena 2+1
 
-2+1 次元時空図アリーナ (x-y-t)。three.js + React Three Fiber。全リポ共通の規約は `CONVENTIONS.md` (リポルートの symlink) を参照。
+2+1 次元時空図アリーナ (x-y-t)。three.js + React Three Fiber。全リポ共通の規約は `CONVENTIONS.md` (リポルートの pointer file) を参照。
 
 **詳細アーキテクチャは [`docs/architecture.md`](docs/architecture.md) を参照** (file-by-file / store / message / Relay security / 主要機能)。設計 rationale は [`DESIGN.md`](DESIGN.md)、option space は [`EXPLORING.md`](EXPLORING.md)、現在の作業状態は [`SESSION.md`](SESSION.md)。
 
@@ -196,7 +196,7 @@ session 冒頭の orientation 用。各項目の詳細は [`docs/architecture.md
 - [`EXPLORING.md`](EXPLORING.md) — option space 探索
 - [`SESSION.md`](SESSION.md) — 現在の作業状態
 - `plans/` — 複数 Stage リファクタの計画書 (`2026-04-14-authority-dissolution.md` 完了、`2026-04-15-design-reorg.md` 完了、`2026-04-18-design-reorg.md` §7 retroactive、`2026-04-18-claude-md-delegation-level2.md` 本 migration の設計、`2026-04-19-host-migration-symmetry.md` host migration 5 点修正の post-mortem)
-- `../CONVENTIONS.md` → `~/Claude/claude-config/CONVENTIONS.md` (symlink)
+- `../CONVENTIONS.md` → `~/Claude/claude-config/CONVENTIONS.md` (pointer file)
 - `../docs/NETWORKING.md` — ネットワーク設定の詳細
 - `relay-deploy/README.md` — WS Relay 本番デプロイ手順
 - `src/components/game/constants.ts` — ゲームパラメータ canonical

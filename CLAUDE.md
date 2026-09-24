@@ -1,6 +1,6 @@
 # CLAUDE.md — LorentzArena
 
-Claude Code 作業マニュアル。全リポ共通の規約は `CONVENTIONS.md`（claude-config の symlink）を参照。
+Claude Code 作業マニュアル。全リポ共通の規約は `CONVENTIONS.md`（claude-config の正本を指す pointer file）を参照。
 
 ## プロジェクト構成
 
@@ -37,7 +37,7 @@ pnpm run format                # 2+1 の Biome formatter
 - `2+1/CLAUDE.md` — 2+1 アプリの詳細（アーキテクチャ、パラメータ、ビルド設定）
 - `2+1/DESIGN.md` — 2+1 の設計判断
 - `2+1/SESSION.md` — 2+1 の作業状態
-- `CONVENTIONS.md` → `~/Claude/claude-config/CONVENTIONS.md`（symlink）
+- `CONVENTIONS.md` → `~/Claude/claude-config/CONVENTIONS.md`（pointer file）
 - `docs/NETWORKING.md` — ネットワーク設定の詳細
 - `docs/ARCHITECTURE.md` — アーキテクチャ概要
 - `docs/references/` — 元ネタ論文の PDF archive (CC BY 4.0 Open Access 自著 + 引用 BibTeX)
