@@ -493,7 +493,7 @@ export function useGameLoop({
           // ghost 中: 生存時物理 (processPlayerPhysics) を流用して ghost phaseSpace
           // を動的更新する。thrust/heading/friction/energy はすべて生存時と同一挙動。
           // ローカルのみ更新・ネットワーク非送信、worldLine 更新もしない。
-          // (design/physics.md §「スポーン座標時刻」 原則 3 および ghost 物理統合 = commit 1430eba の設計 1)
+          // (design/physics.md §「スポーン座標時刻」 原則 1・2 および ghost 物理統合 = commit 1430eba の設計 1)
           //
           // **lazy init** (= 2026-05-04 plan: mydeathevent-decomposition §2): 別経路 (=
           // snapshot 流入 + handleKill guard early return race 等) で myGhostPhaseSpace
