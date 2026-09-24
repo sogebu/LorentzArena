@@ -493,7 +493,7 @@ export function useGameLoop({
           // ghost 中: 生存時物理 (processPlayerPhysics) を流用して ghost phaseSpace
           // を動的更新する。thrust/heading/friction/energy はすべて生存時と同一挙動。
           // ローカルのみ更新・ネットワーク非送信、worldLine 更新もしない。
-          // (design/physics.md §「スポーン座標時刻」 原則 3 および DESIGN.md §物理 ghost 物理統合)
+          // (design/physics.md §「スポーン座標時刻」 原則 3 および ghost 物理統合 = commit 1430eba の設計 1)
           //
           // **lazy init** (= 2026-05-04 plan: mydeathevent-decomposition §2): 別経路 (=
           // snapshot 流入 + handleKill guard early return race 等) で myGhostPhaseSpace
@@ -997,7 +997,7 @@ export function useGameLoop({
       //   peerManager 差し替えで respawnTimeoutsRef.clear() される
       // - LH: solo 環境 (= 唯一の peer) で beacon holder が hidden→visible し Phase 1 経由で
       //   再取得するケース。旧 `useBeaconMigration` の LH setTimeout rebuild に依存していたが、
-      //   同日の refactor で tick poll に一本化 (DESIGN.md §migration 権威は assumeHostRole に集約)
+      //   同日の refactor で tick poll に一本化 (design/state-ui.md §「migration 堅牢化リファクタ」 の「assumeHostRole inline 集約」)
       //
       // 冪等性: handleSpawn が respawnLog に entry 追加 → selectIsDead が false に落ちる →
       // 次 tick で poll が skip。dev build では assert で壊れていないか確認。

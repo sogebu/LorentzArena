@@ -37,7 +37,7 @@
 
 **プレイヤー初期化**: ホストは START 直後に自己初期化 (`OFFSET = Date.now()/1000` で座標時間 t ≈ 0 から開始)。新規 join client は beacon holder から `snapshot` で `hostTime` を受け取りスポーン (Authority 解体 Stage F-1 で `syncTime` 廃止、snapshot に統合)。
 
-**ホストマイグレーション**: beacon holder 切断で最古参クライアントが自動昇格。ハートビート方式 (1s ping / 2.5s timeout、Stage G)。人間の respawn timer は owner がローカル保持で再構築不要。2026-04-18 に `useBeaconMigration` hook + `isMigrating` flag を削除、LH owner 書き換えは `PeerProvider.assumeHostRole` inline に集約し、LH 死亡中の respawn 再 schedule は tick poll 化で不要化 (DESIGN.md §migration 権威は assumeHostRole に集約)。`hostMigration` メッセージは Stage H で完全削除済。
+**ホストマイグレーション**: beacon holder 切断で最古参クライアントが自動昇格。ハートビート方式 (1s ping / 2.5s timeout、Stage G)。人間の respawn timer は owner がローカル保持で再構築不要。2026-04-18 に `useBeaconMigration` hook + `isMigrating` flag を削除、LH owner 書き換えは `PeerProvider.assumeHostRole` inline に集約し、LH 死亡中の respawn 再 schedule は tick poll 化で不要化 (design/state-ui.md §「migration 堅牢化リファクタ」 の「assumeHostRole inline 集約」)。`hostMigration` メッセージは Stage H で完全削除済。
 
 `assumeHostRole` の責任 (single source of truth): (a) `clearBeaconHolder` + `setAsBeaconHolder`、(b) `registerStandardHandlers`、(c) **LH ownerId を newHostId に rewrite** (sync `setPlayers` で次 RAF tick の useGameLoop が `lh.ownerId === myId` を即読む → LH 沈黙窓ゼロ)、(d) **`peerOrderRef.current` から自分を filter** (旧 host の最後の ping から自分含むリストを継承するため、host の peerOrder = 非自分 peers の不変条件を eager に維持)、(e) `setRoleVersion` bump で role-dependent effects 再評価。`RelativisticGame` の init effect は LH ownership 操作をしない (二重実装回避、2026-04-19)。
 

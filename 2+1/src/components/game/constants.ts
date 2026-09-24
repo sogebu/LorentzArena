@@ -108,7 +108,7 @@ export const POST_HIT_IFRAME_MS = 500;
 // 復帰時に、CatmullRomCurve3 が gap 両端の phaseSpace を直線補間して tube に「橋」を
 // 生やすのを回避する。ping interval (1000ms) の半分、通常 relay (~125Hz, 8ms) との
 // safety margin は十分、単発 network blip (100-200ms) では発火しない。
-// 詳細: DESIGN.md § migration 「phaseSpace gap → worldLine 凍結」
+// 詳細: design/state-ui.md §「migration 堅牢化リファクタ」 の「worldLine gap 検知」
 export const WORLDLINE_GAP_THRESHOLD_MS = 500;
 
 // Rule B (= 因果律対称ジャンプ) が 1 tick で λ > これ の jump を出したとき、 旧 worldLine
