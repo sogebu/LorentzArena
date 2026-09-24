@@ -290,7 +290,7 @@ export function processLighthouseAI(
 ): LighthouseResult {
   // 死亡中 LH は呼び出し側 (useGameLoop) で既に continue されているため、ここには
   // alive な LH しか来ない。死亡中 LH の phaseSpace.pos.t は死亡時刻で固定されており、
-  // 他の死亡プレイヤーと対称的に扱われる (DESIGN.md §物理「スポーン座標時刻」原則 2)。
+  // 他の死亡プレイヤーと対称的に扱われる (design/physics.md §「スポーン座標時刻」原則 2)。
   //
   // Bug 14 完全治療 implicit Euler refactor (= 2026-05-06 post-deploy): 現在 LH は u=0
   // (= proper accel 0、 friction 不在) で integrator 不安定性は無く、 substep 不要。

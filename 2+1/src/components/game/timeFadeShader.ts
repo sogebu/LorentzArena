@@ -15,7 +15,7 @@ import { TIME_FADE_SCALE } from "./constants";
  *
  * and interpolated into the fragment stage, where it multiplies the final
  * output alpha. This is the GPU counterpart of the formula documented in
- * DESIGN.md §描画「時間的距離 opacity fade」. The CPU-side helper was removed
+ * design/rendering.md §「時間的距離 opacity fade」. The CPU-side helper was removed
  * when all targets migrated to per-vertex v1; bring it back if a non-shader
  * path needs the same value.
  *

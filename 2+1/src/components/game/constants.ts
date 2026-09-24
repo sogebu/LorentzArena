@@ -395,7 +395,7 @@ export const LASER_PAST_CONE_MARKER_COLOR = "hsl(210, 20%, 85%)";
 // per-vertex shader で光円錐・円柱・世界線・レーザーが自然グラデーションする
 // ため、scale は LCH と同値の緩やかな減衰で十分 (LCH/2 だと急峻すぎた)。
 // 時間距離の 2 乗反比例、物理の逆 2 乗法則と同型。
-// 詳細: DESIGN.md §描画「時間的距離 opacity fade」
+// 詳細: design/rendering.md §「時間的距離 opacity fade」
 export const TIME_FADE_SCALE = LIGHT_CONE_HEIGHT;
 
 // --- Stardust (時空星屑、案 17、2026-04-17) ---

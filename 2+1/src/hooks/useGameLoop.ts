@@ -493,7 +493,7 @@ export function useGameLoop({
           // ghost 中: 生存時物理 (processPlayerPhysics) を流用して ghost phaseSpace
           // を動的更新する。thrust/heading/friction/energy はすべて生存時と同一挙動。
           // ローカルのみ更新・ネットワーク非送信、worldLine 更新もしない。
-          // (DESIGN.md §スポーン座標時刻 原則 3 および §物理 ghost 物理統合)
+          // (design/physics.md §「スポーン座標時刻」 原則 3 および DESIGN.md §物理 ghost 物理統合)
           //
           // **lazy init** (= 2026-05-04 plan: mydeathevent-decomposition §2): 別経路 (=
           // snapshot 流入 + handleKill guard early return race 等) で myGhostPhaseSpace
@@ -796,7 +796,7 @@ export function useGameLoop({
           if (!isLighthouse(lhId)) continue; // metadata: この owner filter 下で AI を回すのは LH のみ
           if (lhDeadIds.has(lhId)) continue;
           // 死亡中 LH は純粋な placeholder (他人間 ghost と対称的に死亡時刻で固定)。
-          // tick 不要、phaseSpace の pos.t は死亡時刻のまま。詳細: DESIGN.md §スポーン座標時刻。
+          // tick 不要、phaseSpace の pos.t は死亡時刻のまま。詳細: design/physics.md §「スポーン座標時刻」。
 
           const result = processLighthouseAI(
             freshForLH.players,
