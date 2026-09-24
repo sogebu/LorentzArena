@@ -540,7 +540,7 @@ D pattern は維持: 全 geometry は world 座標で vertex を持ち、`matrix
 | AccelerationArrow | 加速度方向の指示 (UI 意図) | 船体の前方 = 加速度と同じ | Amber flat、球から離れる |
 
 **除外したケース**:
-- 他機の矢印表示: heading ≠ 加速度方向 (pitch/yaw 入力次第で任意に独立)、phaseSpace の共変 α 同期と heading-from-controls の両方が要る → 設計が exhaust よりも複雑、Phase A のスコープ外 (SESSION.md §次にやること「進行方向可視化 分岐 A」に合流予定)
+- 他機の矢印表示: heading ≠ 加速度方向 (pitch/yaw 入力次第で任意に独立)、phaseSpace の共変 α 同期と heading-from-controls の両方が要る → 設計が exhaust よりも複雑、Phase A のスコープ外 (他機への拡張 = 旧「進行方向可視化 分岐 A」 は [`plans/2026-04-21-phaseSpace-heading-accel.md`](../plans/2026-04-21-phaseSpace-heading-accel.md) に合流済み)
 - 3D 化 (pitch で上下に振れる立体矢印): 2+1 では pitch はカメラのみで物理には影響しないため不要
 
 **参考 commit**: 2026-04-18 (Phase A2)。パラメータ調整履歴 (length 0.8→1.6→1.2, arrow 1.2→2.4→ "きもーち小さく" 保留) は git log を参照。
@@ -734,7 +734,7 @@ dot/triangle で表現。 新設計: **PLC 2D = 3D scene (= flatten 済 ship mod
 旧 Radar fullscreen 専用ヘルパー (`drawShipIcon` / `drawLighthouseIcon` / 関連 PLC fullscreen
 分岐) は dead code 化したが残置 (= 必要時 reuse 可能)。 設計 pivot の動機は「user 用語で
 『マーカー』 = 2D vector icon、 『アイコン』 = 実際の 3D model」 という解釈の取り違え判明
-(= 個人層 odakin-prefs/work-discipline.md §同一語の意味取り違え防止 で record)。
+(= 個人層 odakin-prefs/work-discipline-archive.md §同一語の意味取り違え防止 で record)。
 
 ### Radar 2D heading-up canvas 角度式 (Canvas 2D 上面アイコン用)
 

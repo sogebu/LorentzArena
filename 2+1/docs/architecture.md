@@ -25,7 +25,7 @@
 - `mechanics.ts` — 相対論的運動方程式、phase space (4元位置 + 4元速度)
 - `worldLine.ts` — 世界線の離散履歴、過去光円錐交差計算 (binary search、O(log N + K=16))、`version` カウンターで描画スロットリング
 
-単位系: c = 1。ファクトリパターン (クラス不使用)。TDD 運用 (`*Linear` 旧実装残存 + regression test → 新実装切替) は DESIGN.md §worldLine.history サイズ。
+単位系: c = 1。ファクトリパターン (クラス不使用)。TDD 運用 (`*Linear` 旧実装残存 + regression test → 新実装切替) は design/rendering.md §worldLine.history サイズ。
 
 ## ネットワーク (`src/services/`, `src/contexts/`)
 
@@ -62,7 +62,7 @@
 | `game/laserPhysics.ts` | レーザー当たり判定 + 光円錐交差 |
 | `game/debris.ts` | デブリ生成 + 光円錐交差 |
 | `game/killRespawn.ts` | `applyKill`/`applyRespawn` 純粋関数 (全 peer 共通、players Map を返す) |
-| `game/respawnTime.ts` | `computeSpawnCoordTime(players, excludeId?)` (初回/リスポーン/新 joiner 共通、LH 含む)、`createRespawnPosition`。excludeId の役割は DESIGN.md §物理「スポーン座標時刻」 |
+| `game/respawnTime.ts` | `computeSpawnCoordTime(players, excludeId?)` (初回/リスポーン/新 joiner 共通、LH 含む)、`createRespawnPosition`。excludeId の役割は design/physics.md §「スポーン座標時刻」 |
 | `game/lighthouse.ts` | Lighthouse AI + 表示名定数 (`createLighthouse` ファクトリ、`isLighthouse` 判定、`computeInterceptDirection` 相対論的偏差射撃、`LIGHTHOUSE_DISPLAY_NAME`) |
 | `game/LighthouseRenderer.tsx` | 灯台 3D 塔モデル (body/band/balcony/lantern/lamp/roof/spire の procedural ジオメトリ、past-cone anchor で観測者から光伝播遅延込みで見え、`LIGHTHOUSE_SINK` で足元を視覚的に地面に埋める)。死亡時は past cone が death event に届くまで past cone anchor 維持 → 届いた瞬間から debris と同期で過去に沈みつつ 1→0 フェード |
 | `game/gameLoop.ts` | ゲームループ内の純関数群 (カメラ制御、プレイヤー物理、Lighthouse AI、当たり判定、ゴースト移動、因果律ガード、レーザー発射) |
@@ -119,7 +119,7 @@
 - **ゴースト UI**: 死亡中は青白い半透明オーバーレイ + DEAD カウントダウン。カメラ回転は PC 矢印キー (yaw + pitch) / モバイル横スワイプ (yaw のみ、縦スワイプは thrust 固定)
 - **キルスコア + キル通知 + スポーンエフェクト**: 因果律遅延 (過去光円錐到達時に発火)。自分のリスポーンは即時、他プレイヤーは `pendingSpawnEventsRef`
 - **永続デブリ**: 死亡イベントからの等速直線運動パーティクル。lineSegments でバッチ描画。光円錐交差マーカーは observer 非依存 (maxLambda 固定)
-- **世界線管理**: `player.worldLine` 1 本、過去ライフは `frozenWorldLines[]`。`origin` は常に null (半直線延長は廃止、DESIGN.md §物理「初回スポーン = リスポーン統一」)
+- **世界線管理**: `player.worldLine` 1 本、過去ライフは `frozenWorldLines[]`。`origin` は常に null (半直線延長は廃止、design/physics.md §「初回スポーン = リスポーン統一」)
 - **プレイヤー色**: `colorForJoinOrder(index)` が主 (接続順 × 黄金角)、peerList 未受信時は `colorForPlayerId(id)` fallback。ネットワーク同期不要の純関数方式
 - **因果律の守護者**: 他プレイヤーの未来光円錐内で操作凍結。死亡プレイヤー・灯台は除外。灯台は別方式 (誰かの過去光円錐に落ちたら最も過去の生存プレイヤーの座標時間にジャンプ)
 - **光円錐描画** (`LightConeRenderer`): DoubleSide 半透明 surface + wireframe の 2 層、各 θ で `cylinderHitDistance` でアリーナ円柱境界まで延伸。色は `LIGHT_CONE_COLOR` 固定 (プレイヤー色非依存、2026-04-18 A4)
@@ -173,7 +173,7 @@ Canonical 型定義は **`src/types/message.ts`**、validation と handler は `
 
 **relay 対象** (`PeerProvider.isRelayable`): `phaseSpace` / `laser` / `intro` / `kill` / `respawn`。beacon holder が非 owner の発信を他 peer へ転送。
 
-**色は同期しない**: 全ピアが `colorForJoinOrder(index)` で接続順に基づく色を独立算出。ホストが peerList に `joinRegistry` (全履歴) を含めて送信、クライアントは丸ごと置換 (ホストが唯一の正本)。peerList 未受信時は `colorForPlayerId(id)` fallback。詳細: DESIGN.md § 描画「色割り当て」。
+**色は同期しない**: 全ピアが `colorForJoinOrder(index)` で接続順に基づく色を独立算出。ホストが peerList に `joinRegistry` (全履歴) を含めて送信、クライアントは丸ごと置換 (ホストが唯一の正本)。peerList 未受信時は `colorForPlayerId(id)` fallback。詳細: design/rendering.md §「色割り当て」。
 
 **Authority の所在** (Authority 解体 Stage A〜H 完了後):
 - `phaseSpace` / `laser` / `kill` / `respawn` はすべて owner 発信 (target-authoritative)。beacon holder は relay hub

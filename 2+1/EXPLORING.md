@@ -447,12 +447,12 @@ SESSION.md の TODO「自機および敵機のマーカーに向き (heading) �
 - **pedagogy**: 光行差は相対論の観測効果そのもの。教材価値が所感 1 位の (3) 推進ジェットより高い可能性
 - **スマホ UI (UI 要素ゼロ原則) と完全両立** — HUD 追加なしで方向感覚が発生する
 
-**案 17 (C に追加、2026-04-17): 時空星屑 (4D spacetime stardust)** — **2026-04-17 夜 実装・デプロイ済 (`b15694d`)。詳細: DESIGN.md §描画「時空星屑」**
+**案 17 (C に追加、2026-04-17): 時空星屑 (4D spacetime stardust)** — **2026-04-17 夜 実装・デプロイ済 (`b15694d`)。詳細: design/rendering.md §「時空星屑」**
 
 案 16 との違い: 案 16 は timelike worldline を持つ「天体」(= t 方向に無限に伸びる静止物)、案 17 は **時空の 1 event (null 的な瞬間)** を world frame で 4D 一様分布させる。
 
 - **実装** (採用版): 固定 N=6000 の spark を世界座標で pre-generated (初回 useMemo)、observer が box 外に出たら periodic boundary で wrap-around。time fade で境界不可視。Haiku 先行実装 (grid+hash procedural 動的再生成で cell 境界ポッピング) は revert、修正版の失敗点も DESIGN.md に記録
-- **timelike drift 実験**: spark.t を observer.t と同期させる「静止観測者には止まって見える案」も試したが、体感評価で流入版 (drift なし) を採用。記録は DESIGN.md §stardust「timelike drift 実験と撤回」
+- **timelike drift 実験**: spark.t を observer.t と同期させる「静止観測者には止まって見える案」も試したが、体感評価で流入版 (drift なし) を採用。記録は design/rendering.md §「時空星屑」 の timelike drift 撤回
 - **効果** (実機体感): 動くと空間方向に新しい spark 群が前方から流れ込む、静止時も時間方向に流入で「時空を通過している感」が強い
 - **案 16 との関係**: 案 16 (timelike 星) と案 17 (4D event 星屑) は排他ではなく併用可。案 16 は外部世界の永続天体、案 17 は時空の質感そのもの
 - **パフォーマンス**: FPS ~65-70 @ N=6000 (Apple Silicon、`GC_PAST_LCH_MULTIPLIER=5` で laser 等 temporal GC 併用)

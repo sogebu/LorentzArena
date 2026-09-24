@@ -1174,7 +1174,7 @@ export const isNpc = (player: RelativisticPlayer): boolean =>
 #### 関連メタ原則
 
 - M25 (state 単一化): bound 値は const に集約 (= constants.ts)、 derive ロジックを散在させない
-- work-discipline.md §「物理 / 数値の構造的 constraint を確認してから runaway claim を立てない」: odakin 適用版、 universal な runaway 仮説 hygiene として記録
+- work-discipline-archive.md §「物理 / 数値の構造的 constraint を確認してから runaway claim を立てない」: odakin 適用版、 universal な runaway 仮説 hygiene として記録
 
 #### claude-config promote 判定
 

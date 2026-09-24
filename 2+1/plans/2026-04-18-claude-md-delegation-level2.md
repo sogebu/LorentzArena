@@ -98,7 +98,7 @@ LorentzArena session の session-start auto-load:
 - **Risk A**: docs/architecture.md への pointer を Claude が辿らない → session 開始時に architecture の全貌が把握できない
   - Mitigation: CLAUDE.md の超要約 10 行に D pattern / C pattern / network / authority / state / message の一行ずつを必ず含める (「詳細は辿って」と「超要約は見えている」の 2 層化)
 - **Risk B**: constants.ts を pointer した後、CLAUDE.md の parameter 前提で書かれた他 doc (DESIGN.md 等) との整合が崩れる
-  - Mitigation: 他 doc の参照は既に CLAUDE.md § Parameters ではなく constants.ts を指すように書き直されているか確認 (DESIGN.md は rationale で値自体の table は持たないので影響小の予想)
+  - Mitigation: 他 doc の参照は既に CLAUDE.md の Parameters 節 (= 本 plan の Level-2 migration で撤去) ではなく constants.ts を指すように書き直されているか確認 (DESIGN.md は rationale で値自体の table は持たないので影響小の予想)
 - **Risk C**: Level-2 migration 後に Architecture の情報が必要になった session で docs/architecture.md を丸ごと読むと、結局 ~200 行 load される
   - Mitigation: それは Architecture 情報が必要な session だけで、毎 session ではない。net で autocompact 頻度は下がる
 

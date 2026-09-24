@@ -741,5 +741,5 @@ Stage 2 で demote 頻度が上がって顕在化しやすくなった側面も�
 ## 参考
 
 - 過去の host migration 修正: `plans/2026-04-19-host-migration-symmetry.md`
-- リスポーン世界線連結バグ (F-1 後に再発報告、別現象だが同系統の可能性): [SESSION.md §リスポーン時に世界線が繋がる](../SESSION.md)
+- リスポーン世界線連結バグ (F-1 後に再発報告、別現象だが同系統の可能性): [SESSION.md](../SESSION.md) の当時の項「リスポーン時に世界線が繋がる」 (→ 現在は SESSION.md §Bug ledger)
 - `docs/architecture.md` — beacon pattern / 全体アーキ

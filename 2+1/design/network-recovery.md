@@ -216,7 +216,7 @@ WS Relay は WebRTC を完全に bypass する application-level WebSocket relay
 
 ### 切り分けの教訓
 
-「F1 deploy 直後の新症状 → 真因は F1 ではなく client 環境 (= VPN)」 のパターン。 `~/Claude/odakin-prefs/work-discipline.md §「Fix 投入直後の新症状 → revert 前に pre-existing で再現するか必ず確認」` の事例。 deploy timing と client 環境変化が偶然同時のとき、 deploy を犯人と誤認しないために revert vs pre-existing check を先に。
+「F1 deploy 直後の新症状 → 真因は F1 ではなく client 環境 (= VPN)」 のパターン。 `~/Claude/odakin-prefs/work-discipline-archive.md §「Fix 投入直後の新症状 → revert 前に pre-existing で再現するか必ず確認」` の事例。 deploy timing と client 環境変化が偶然同時のとき、 deploy を犯人と誤認しないために revert vs pre-existing check を先に。
 
 production multi-machine test では client 環境 (= VPN / proxy / NAT type / browser flag) を **verify checklist** に加えるべき (= 同教訓は odakin-prefs work-discipline 側にも記録)。
 
@@ -230,4 +230,4 @@ production multi-machine test では client 環境 (= VPN / proxy / NAT type / b
 
 - 設計記録: [`network.md`](network.md)、 [`authority-d-pattern.md`](authority-d-pattern.md)、 [`plans/2026-04-19-host-migration-symmetry.md`](../plans/2026-04-19-host-migration-symmetry.md)
 - 実装 plan: [`plans/2026-05-05-network-split-rule-b-runaway.md`](../plans/2026-05-05-network-split-rule-b-runaway.md)、 [`plans/2026-05-06-bug14-global-active-time.md`](../plans/2026-05-06-bug14-global-active-time.md)
-- メタ原則: [`design/meta-principles.md`](meta-principles.md) §M25/M26/M27/M43
+- メタ原則: [`design/meta-principles.md`](meta-principles.md) §M25 / §M26 / §M27 / §M43
