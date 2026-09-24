@@ -28,7 +28,7 @@ pnpm run lint                  # 2+1 の Biome linter
 pnpm run format                # 2+1 の Biome formatter
 ```
 
-`build` から `tsc -b` を分離している理由は `DESIGN.md` §build/typecheck 分離。
+`build` から `tsc -b` を分離している理由は `DESIGN.md` §「build と typecheck の分離」。
 
 1+1 を触る時は `cd 1+1 && pnpm install && pnpm dev`。
 
