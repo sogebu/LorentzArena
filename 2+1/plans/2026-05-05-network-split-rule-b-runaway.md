@@ -63,7 +63,7 @@ const vPos = virtualPos(p, lastSync, currentTime);
 
 ### 仮説 H3 (= 5/5 PM 新観察): PeerProvider 再接続 robustness 不足
 
-**5/5 PM の sleep-wake 観察** ([SESSION 5/5 PM verify session 観察 参照](../SESSION.md)):
+**5/5 PM の sleep-wake 観察** (旧 SESSION.md の 5/5 PM verify session 観察 参照、 現物は git history):
 - odakin: PC を sleep → wake → 2 tab を確認すると両方「ホスト」 表示で互いが見えない
 - Tab 1 (36mpplykf) console: `[PeerManager] Peer error qz: Cannot connect to new Peer after disconnecting from server`、 「split detected — real BH: 1lnqafvxo — demoting self」 → split を検知して降格、 但し復帰先 (= 真の host) への接続も失敗、 HUD「シグナリング: エラー(disconnected)」 = 信号サーバ接続が完全に死亡
 - Tab 2 (1lnqafvxo) console: `Lost connection to server` → 再接続成功、 solo host 化、 HUD「シグナリング: 接続OK」 で 800s 以上 play 継続

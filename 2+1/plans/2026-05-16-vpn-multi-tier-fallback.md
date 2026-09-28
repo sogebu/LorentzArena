@@ -143,6 +143,6 @@ PeerProvider で:
 ## §6 関連
 
 - 設計思想 doc: [`design/network-recovery.md §軸 9`](../design/network-recovery.md)
-- SESSION 記録: [`SESSION.md `「5/16 多 commit batch」](../SESSION.md) +「次セッション持ち越し §5」
+- SESSION 記録: [`SESSION-archive.md`「5/16 多 commit batch」](../SESSION-archive.md#deploy-batch-table) + [`SESSION.md`](../SESSION.md)「次セッション持ち越し §5」
 - F1 plan (= 同 session deploy、 異なる問題): commit [`996ac44`](https://github.com/sogebu/LorentzArena/commit/996ac44) + design/network-recovery.md §軸 8
 - 共著者側 NordVPN 接続情報 (= 5/16 screenshot 共有): P2P server Japan-Tokyo、 NAT は WebRTC 向き設定。 詳細 (= server# / IP / upstream ISP) は本 public repo 除外で個人層 / network-notes リポ参照

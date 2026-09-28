@@ -41,7 +41,7 @@
 
 ### v1 (2026-04-22 昼): sci-fi references refine
 
-**参考文献** (web search 調査、詳細は SESSION.md 2026-04-22 エントリ):
+**参考文献** (web search 調査、詳細は旧 SESSION.md 2026-04-22 エントリ、 現物は git history):
 - **Spartan Laser** (Halo): 保護シュラウド、smart-linked 光学、bulky profile、赤ビーム
 - **Turbolaser** (Star Wars): 長 barrel (10m)、turret mount、**prismatic crystal**、plasma 磁気ボトル式
 - **Lascannon** (Warhammer 40K): 超太 barrel、紫/白ビーム、独立 power pack

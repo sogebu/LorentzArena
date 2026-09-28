@@ -263,7 +263,7 @@ if (isWitness) {
 
 ## §7 References
 
-- [`SESSION.md`](../SESSION.md) Bug 14 entry — live capture finding + 仮説変遷
+- [`SESSION.md`](../SESSION.md) Bug 14 entry — live capture finding + 仮説変遷 (narrative は旧 SESSION.md、 現物は git history)
 - [`repro/2026-05-06-bug14-state/`](../repro/2026-05-06-bug14-state/) — 12.5h suspend + alive human 単独 runaway の実機 evidence
 - [`design/physics.md`](../design/physics.md) — dτ = wall_dt の P1 設計柱
 - [`design/network-recovery.md`](../design/network-recovery.md) — Rule B catchup 経路
