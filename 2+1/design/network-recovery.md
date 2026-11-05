@@ -223,7 +223,7 @@ production multi-machine test では client 環境 (= VPN / proxy / NAT type / b
 ### 関連
 
 - 設計議論: 2026-05-16 odakin × Claude session の対話 (= SESSION.md 「5/16 多 commit batch」 +「次セッション持ち越し」)
-- 共著者側 NordVPN 接続情報 (= 5/16 screenshot 共有): P2P server Japan-Tokyo (= NordVPN の P2P カテゴリ、 NAT は WebRTC 向き設定)、 server# / IP / upstream ISP の literal は本 public repo から除外 (= 個人層 / network-notes リポに記録)
+- 共著者側 NordVPN 接続情報 (= 5/16 screenshot 共有): P2P server Japan-Tokyo (= NordVPN の P2P カテゴリ、 NAT は WebRTC 向き設定)、 server# / IP / upstream ISP の literal は本 public repo から除外 (= 個人層 / 非公開のネットワーク実測ノートに記録)
 - 実装 plan: [`plans/2026-05-16-vpn-multi-tier-fallback.md`](../plans/2026-05-16-vpn-multi-tier-fallback.md) (= 新設)
 
 ## 関連 plan / doc

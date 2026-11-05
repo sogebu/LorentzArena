@@ -845,7 +845,7 @@ ALWAYS_ON_TOP 撤去計画時:
 
 #### claude-config promote 判定 (work-discipline.md L177「汎用原則がプロジェクト固有文書に埋もれている」 対応)
 
-本 entry は LorentzArena 1 事例から抽出。 同 pattern が他リポ (= twcu-seminar / einstein-cartan / 等) で 2 件目発生したら **claude-config に promote** して全 Claude Code ユーザー向け規約に格上げする。 現時点では LorentzArena meta-principles に留めて、 future case で再認識する anchor として機能。
+本 entry は LorentzArena 1 事例から抽出。 同 pattern が他リポ (= 非公開の研究 repo 等) で 2 件目発生したら **claude-config に promote** して全 Claude Code ユーザー向け規約に格上げする。 現時点では LorentzArena meta-principles に留めて、 future case で再認識する anchor として機能。
 
 ---
 
@@ -914,7 +914,7 @@ ALWAYS_ON_TOP 撤去計画時:
 
 #### claude-config promote 判定
 
-本 entry は LorentzArena 1 事例から抽出。 同 pattern (= numerical optimization landing on optima、 state machine threshold flicker、 物理 simulation null cone surface 等) が **他の科学計算 / 数値解析リポ (= bayes-kai / forward-scattering / einstein-cartan / 等)** で 2 件目発生したら、 [`claude-config/conventions/scientific-computing.md`](../../../claude-config/conventions/scientific-computing.md) に「公式が境界に着地する設計の chatter リスク」 として promote 検討。 現時点では LorentzArena meta-principles に留める (`work-discipline.md L177` (= odakin personal layer))。
+本 entry は LorentzArena 1 事例から抽出。 同 pattern (= numerical optimization landing on optima、 state machine threshold flicker、 物理 simulation null cone surface 等) が **他の科学計算 / 数値解析リポ (= 非公開の研究 repo 等)** で 2 件目発生したら、 [`claude-config/conventions/scientific-computing.md`](../../../claude-config/conventions/scientific-computing.md) に「公式が境界に着地する設計の chatter リスク」 として promote 検討。 現時点では LorentzArena meta-principles に留める (`work-discipline.md L177` (= odakin personal layer))。
 
 ---
 
@@ -948,7 +948,7 @@ ALWAYS_ON_TOP 撤去計画時:
 
 #### claude-config promote 判定
 
-本 entry は LorentzArena 1 事例から抽出。 同 pattern (= listener-based observability で fire タイミング = trigger phase の手がかり) が他リポ (= bayes-kai / network 系 / 等) で 2 件目発生したら、 [`claude-config/docs/usage-tips.ja.md`](../../../claude-config/docs/usage-tips.ja.md) に「listener event timestamp で trigger phase を読む」 として promote 検討。 現時点では LorentzArena meta-principles に留める (`work-discipline.md L177` (= odakin personal layer))。
+本 entry は LorentzArena 1 事例から抽出。 同 pattern (= listener-based observability で fire タイミング = trigger phase の手がかり) が他リポ (= 非公開の研究 repo / network 系 / 等) で 2 件目発生したら、 [`claude-config/docs/usage-tips.ja.md`](../../../claude-config/docs/usage-tips.ja.md) に「listener event timestamp で trigger phase を読む」 として promote 検討。 現時点では LorentzArena meta-principles に留める (`work-discipline.md L177` (= odakin personal layer))。
 
 ---
 
@@ -992,7 +992,7 @@ ALWAYS_ON_TOP 撤去計画時:
 
 #### claude-config promote 判定
 
-本 entry は LorentzArena 1 事例から抽出。 相対論 simulation / visualization リポ (= twcu-phys-* の物理研究 / 教科書 project / forward-scattering) で 2 件目発生したら、 [`claude-config/conventions/scientific-computing.md`](../../../claude-config/conventions/scientific-computing.md) に「相対論 visual effect の cause 分離」 として promote 検討。 現時点では LorentzArena meta-principles に留める (`work-discipline.md L177` (= odakin personal layer))。
+本 entry は LorentzArena 1 事例から抽出。 相対論 simulation / visualization リポ (= 物理研究 / 教科書 project 等の非公開 repo) で 2 件目発生したら、 [`claude-config/conventions/scientific-computing.md`](../../../claude-config/conventions/scientific-computing.md) に「相対論 visual effect の cause 分離」 として promote 検討。 現時点では LorentzArena meta-principles に留める (`work-discipline.md L177` (= odakin personal layer))。
 
 ---
 ### M35. NPC 非対称 causality: subordinate class は他者を制約しない
@@ -1111,7 +1111,7 @@ export const isNpc = (player: RelativisticPlayer): boolean =>
 
 #### claude-config promote 判定
 
-本 entry は LorentzArena 固有 (= per-player coord time semantics は本ゲームの design choice)。 但し「proper time / coord time / wall_clock の混同」 一般 pattern は相対論 simulation 共通。 教科書 project / forward-scattering 等で類似 question が出たら [`design/physics.md §pos.t の物理的意味`](physics.md) への引用を検討、 promote は不要。
+本 entry は LorentzArena 固有 (= per-player coord time semantics は本ゲームの design choice)。 但し「proper time / coord time / wall_clock の混同」 一般 pattern は相対論 simulation 共通。 教科書 project / 非公開の研究 repo 等で類似 question が出たら [`design/physics.md §pos.t の物理的意味`](physics.md) への引用を検討、 promote は不要。
 
 ---
 
@@ -1213,7 +1213,7 @@ export const isNpc = (player: RelativisticPlayer): boolean =>
 
 #### claude-config promote 判定
 
-本 entry は LorentzArena 固有 (= friction parameter は本ゲームの design)。 但し「観測値から β を計算して γ_max と比較する」 一般 procedure は relativistic simulation 共通。 教科書 project / forward-scattering 等で類似 diagnostic が必要になったら参照可。 promote は不要。
+本 entry は LorentzArena 固有 (= friction parameter は本ゲームの design)。 但し「観測値から β を計算して γ_max と比較する」 一般 procedure は relativistic simulation 共通。 教科書 project / 非公開の研究 repo 等で類似 diagnostic が必要になったら参照可。 promote は不要。
 
 ---
 
