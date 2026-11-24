@@ -17,6 +17,14 @@ import {
   type ViewMode,
 } from "../stores/game-store";
 import { LIGHTHOUSE_DISPLAY_NAME } from "./game/lighthouse";
+import {
+  DEFAULT_ROOM_NAME,
+  filterRoomNameInput,
+  generateRoomName,
+  normalizeRoomName,
+  ROOM_NAME_MAX_LENGTH,
+  roomShareUrl,
+} from "./roomName";
 
 // ViewMode (game-store) → ShipPreview hullStyle: shooter ⇒ rocket。 in-arena は
 // SceneContent で同じ dispatch をしている (3 way: classic / shooter→Rocket /
@@ -38,12 +46,55 @@ declare const __BUILD_TIME__: string;
 type LobbyProps = {
   displayName: string;
   setDisplayName: (name: string) => void;
+  /** 部屋名欄の値。 空欄 = 公開部屋 `default` (正規化は開始時に App 側で行う)。 */
+  roomInput: string;
+  setRoomInput: (room: string) => void;
   onStart: () => void;
 };
 
-const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
+// 部屋名欄の下の小ボタン (新しい部屋 / リンクをコピー)。
+const roomButtonStyle = (enabled: boolean) => ({
+  flex: 1,
+  padding: "4px 6px",
+  fontSize: "12px",
+  fontFamily: "monospace",
+  backgroundColor: "transparent",
+  border: `1px solid ${enabled ? "rgba(255,255,255,0.3)" : "rgba(255,255,255,0.1)"}`,
+  borderRadius: "4px",
+  color: enabled ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.3)",
+  cursor: enabled ? "pointer" : "default",
+});
+
+const Lobby = ({
+  displayName,
+  setDisplayName,
+  roomInput,
+  setRoomInput,
+  onStart,
+}: LobbyProps) => {
   const { t, lang, setLang } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
+  // 部屋を選ぶ = 対戦相手を選ぶ。 同じ部屋名の人とだけ同じ試合になる (旧「ホストの ID を
+  // 入力」 方式の後継: 部屋を作る人が名前かリンクを伝え、 相手はそれを入れて入る)。
+  const room = normalizeRoomName(roomInput);
+  const [linkCopied, setLinkCopied] = useState(false);
+  useEffect(() => {
+    if (!linkCopied) return;
+    const id = window.setTimeout(() => setLinkCopied(false), 2000);
+    return () => window.clearTimeout(id);
+  }, [linkCopied]);
+  const handleCopyLink = () => {
+    if (!room) return;
+    const url = roomShareUrl(room);
+    // clipboard API は secure context (https / localhost) でしか使えない。 失敗したら
+    // prompt で URL を見せて手でコピーしてもらう。
+    const fallback = () => window.prompt(t("lobby.roomSharePrompt"), url);
+    if (!navigator.clipboard) {
+      fallback();
+      return;
+    }
+    navigator.clipboard.writeText(url).then(() => setLinkCopied(true), fallback);
+  };
   const viewMode = useGameStore((s) => s.viewMode);
   const setViewMode = useGameStore((s) => s.setViewMode);
   const controlScheme = useGameStore((s) => s.controlScheme);
@@ -277,6 +328,72 @@ const Lobby = ({ displayName, setDisplayName, onStart }: LobbyProps) => {
               boxSizing: "border-box",
             }}
           />
+
+          {/* 部屋名: 空欄 = 公開部屋。 Enter はフォーム送信 (= 開始) のまま。 */}
+          <label
+            htmlFor="room-name"
+            style={{
+              display: "block",
+              fontSize: "13px",
+              opacity: 0.7,
+              margin: "14px 0 8px",
+              textAlign: "left",
+            }}
+          >
+            {t("lobby.roomLabel")}
+          </label>
+          <input
+            id="room-name"
+            type="text"
+            value={roomInput}
+            onChange={(e) => setRoomInput(filterRoomNameInput(e.target.value))}
+            placeholder={DEFAULT_ROOM_NAME}
+            maxLength={ROOM_NAME_MAX_LENGTH}
+            autoCapitalize="off"
+            autoCorrect="off"
+            autoComplete="off"
+            spellCheck={false}
+            style={{
+              width: "100%",
+              padding: "8px 14px",
+              fontSize: "16px",
+              fontFamily: "monospace",
+              backgroundColor: "rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.25)",
+              borderRadius: "6px",
+              color: "white",
+              outline: "none",
+              boxSizing: "border-box",
+            }}
+          />
+          <div style={{ display: "flex", gap: "6px", marginTop: "6px" }}>
+            <button
+              type="button"
+              onClick={() => setRoomInput(generateRoomName())}
+              style={roomButtonStyle(true)}
+            >
+              {t("lobby.roomNew")}
+            </button>
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              disabled={!room}
+              style={roomButtonStyle(!!room)}
+            >
+              {linkCopied ? t("lobby.roomCopied") : t("lobby.roomCopyLink")}
+            </button>
+          </div>
+          <div
+            style={{
+              marginTop: "6px",
+              fontSize: "11px",
+              opacity: 0.5,
+              textAlign: "left",
+            }}
+          >
+            {room ? t("lobby.roomHintPrivate") : t("lobby.roomHintPublic")}
+          </div>
+
           <button
             type="submit"
             disabled={!displayName.trim()}

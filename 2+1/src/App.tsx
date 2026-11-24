@@ -1,6 +1,11 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import "./App.css";
 import Lobby from "./components/Lobby";
+import {
+  DEFAULT_ROOM_NAME,
+  normalizeRoomName,
+  roomNameFromHashValue,
+} from "./components/roomName";
 import { useI18n, type Lang } from "./i18n";
 import {
   useGameStore,
@@ -39,7 +44,27 @@ const parseHash = (): { params: Record<string, string>; flags: Set<string> } => 
   return { params, flags };
 };
 
-const getRoomName = (): string => parseHash().params.room ?? "default";
+// Lobby の部屋名欄の初期値。 `#room=` があればそれを正規化して入れ、 無ければ空欄
+// (= 公開部屋 `default`)。
+const getInitialRoomInput = (): string =>
+  roomNameFromHashValue(parseHash().params.room);
+
+// 開始時に、 実際に入った部屋を URL hash に書き戻す (他の key / flag は保持)。
+// F5 で同じ部屋に戻れ、 アドレスバーの URL がそのまま招待リンクになる。 公開部屋は
+// `room=` を付けない従来の URL のまま。 replaceState なので履歴は増えない。
+const writeRoomToHash = (room: string) => {
+  const parts = window.location.hash
+    .replace(/^#/, "")
+    .split("&")
+    .filter((p) => p && !p.startsWith("room="));
+  if (room !== DEFAULT_ROOM_NAME) parts.unshift(`room=${room}`);
+  const hash = parts.length > 0 ? `#${parts.join("&")}` : "";
+  window.history.replaceState(
+    null,
+    "",
+    `${window.location.pathname}${window.location.search}${hash}`,
+  );
+};
 
 // `#viewer` で機体 design preview に切り替え。PeerProvider / GameStore 等は起動せず
 // ShipViewer 単独で動作 (ゲーム本体と完全独立)。
@@ -163,9 +188,10 @@ const LangPicker = () => {
 const App = () => {
   // hooks は早期 return より前に呼ぶ (React rules-of-hooks)
   const { langChosen } = useI18n();
-  const roomName = getRoomName();
   useUrlHashOverrides();
   const [gameStarted, setGameStarted] = useState(false);
+  const [roomInput, setRoomInput] = useState(getInitialRoomInput);
+  const [roomName, setRoomName] = useState(DEFAULT_ROOM_NAME);
   const [displayName, setDisplayName] = useState(
     () => {
       try { return localStorage.getItem(STORAGE_KEY_NAME) || ""; }
@@ -188,6 +214,9 @@ const App = () => {
     try { localStorage.setItem(STORAGE_KEY_NAME, trimmed); }
     catch { /* ignore */ }
     setDisplayName(trimmed);
+    const room = normalizeRoomName(roomInput) || DEFAULT_ROOM_NAME;
+    writeRoomToHash(room);
+    setRoomName(room);
     setGameStarted(true);
   };
 
@@ -200,6 +229,8 @@ const App = () => {
       <Lobby
         displayName={displayName}
         setDisplayName={setDisplayName}
+        roomInput={roomInput}
+        setRoomInput={setRoomInput}
         onStart={handleStart}
       />
     );

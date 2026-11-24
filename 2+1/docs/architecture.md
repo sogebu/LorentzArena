@@ -33,7 +33,7 @@
 - `WsRelayManager.ts` — WebSocket Relay フォールバック
 - `PeerProvider.tsx` — 自動接続 + ホストマイグレーション
 
-**自動接続フロー**: START を押すと PeerProvider がマウント → 接続開始。`#room=name` で部屋分離。最初に `la-{roomName}` ビーコンを取得した人がホスト。全員ランダム ID でゲーム接続、`la-{roomName}` は発見専用 (redirect 送信)。
+**自動接続フロー**: START を押すと PeerProvider がマウント → 接続開始。`#room=name` または Lobby の部屋名欄で部屋分離 (`components/roomName.ts` で PeerJS の ID 規則に正規化、START 時に hash へ書き戻し、空欄は `default`)。最初に `la-{roomName}` ビーコンを取得した人がホスト。全員ランダム ID でゲーム接続、`la-{roomName}` は発見専用 (redirect 送信)。
 
 **プレイヤー初期化**: ホストは START 直後に自己初期化 (`OFFSET = Date.now()/1000` で座標時間 t ≈ 0 から開始)。新規 join client は beacon holder から `snapshot` で `hostTime` を受け取りスポーン (Authority 解体 Stage F-1 で `syncTime` 廃止、snapshot に統合)。
 
