@@ -11,7 +11,7 @@ pnpm install
 pnpm dev
 ```
 
-Open the URL in multiple browser tabs to play. No ID sharing needed -- everyone on the same URL joins the same room automatically. Use `#room=name` in the URL for separate rooms.
+Open the URL in multiple browser tabs to play. No ID sharing needed -- everyone on the same URL joins the same room automatically. Use `#room=name` in the URL, or the room name field in the lobby, for separate rooms.
 
 ### Controls
 
@@ -212,7 +212,7 @@ pnpm install
 pnpm dev
 ```
 
-ブラウザで複数タブを開くだけで対戦可能。ID の共有は不要（同じ URL を開けば自動で同じ部屋に入る）。`#room=名前` で部屋を分けられる。
+ブラウザで複数タブを開くだけで対戦可能。ID の共有は不要（同じ URL を開けば自動で同じ部屋に入る）。`#room=名前` かタイトル画面の「部屋名」欄で部屋を分けられる。
 
 ### 操作
 

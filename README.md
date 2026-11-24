@@ -18,7 +18,7 @@ You see another player's marker at position (10, 0). You fire. Your laser travel
 
 <https://sogebu.github.io/LorentzArena/>
 
-Open the URL in multiple tabs, or share with friends. The URL is the room — no ID to enter. Use `#room=name` in the URL for separate rooms.
+Open the URL in multiple tabs, or share with friends. The URL is the room — no ID to enter. Use `#room=name` in the URL, or type a room name in the lobby, for separate rooms ("New room" picks a random name, "Copy link" copies an invite link).
 
 ## Quick start
 
